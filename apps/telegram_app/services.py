@@ -99,9 +99,9 @@ class TelegramMiniAppService:
 
         # Compare
         if not hmac.compare_digest(computed_hash, received_hash):
-            logger.warning(
-                "Hash mismatch: computed=%s, received=%s", computed_hash, received_hash
-            )
+            # Never log computed_hash: it is a valid signature for the
+            # (attacker-supplied) data, so anyone reading logs could forge it.
+            logger.warning("TMA initData hash mismatch")
             return None
 
         # Check auth_date (not too old, not from future)

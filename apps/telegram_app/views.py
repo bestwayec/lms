@@ -1015,6 +1015,16 @@ def tma_essay_result_view(request: Request, submission_id: int) -> Response:
             for c in criteria
         ],
     }
+    # Real writing time (timer start → submit). Omitted when either end is
+    # unknown or implausible (a draft left open for days is not "time spent").
+    time_spent = None
+    if submission.password_verified_at and submission.submitted_at:
+        seconds = int(
+            (submission.submitted_at - submission.password_verified_at).total_seconds()
+        )
+        if 0 < seconds <= 6 * 3600:
+            time_spent = seconds
+    response["time_spent_seconds"] = time_spent
     if submission.status == EssaySubmission.Status.PENDING:
         response["poll_after"] = 3
     return Response(response)

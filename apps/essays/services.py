@@ -1235,6 +1235,9 @@ def _validate_result(result: dict, essay_text: str = "") -> None:
             raise ValueError(
                 f"Criterion #{i} score {score} not in allowed set {allowed_set} (max: {crit_max})"
             )
+        # Persist a number, never the model's string ("1.5"): raw_result is
+        # served to the UI verbatim, where a string score breaks arithmetic.
+        c["score"] = float(score_decimal)
 
         if not isinstance(c["name"], str) or not c["name"].strip():
             raise ValueError(f"Criterion #{i} name must be non-empty text")
@@ -1506,8 +1509,8 @@ def parse_llm_json(raw_text: str) -> dict:
       3. To'g'ridan-to'g'ri json.loads() — yoki regex bilan birinchi `{` dan
          oxirgi `}` gacha blokni ajratib parse qiladi (fikrlash matni ichida
          JSON yashirilgan bo'lsa — "Expecting value" xatosining manbai edi).
-      4. To'liq ob'ektdan keyin qo'shimcha tekst bo'lsa raw_decode ishlaydi;
-         kesilgan JSON uchun cheklangan (5 urinish) qisqartirish ta'mirlashi.
+      4. To'liq ob'ektdan keyin qo'shimcha tekst bo'lsa raw_decode ishlaydi.
+         Kesilgan JSON ataylab ta'mirlanmaydi (pastdagi izohga qarang).
       5. Hammasi muvaffaqiyatsiz bo'lsa — xavfsiz fallback dict qaytaradi
          ("_parse_failed": True). Chaqiruvchi bu belgi orqali retry qiladi.
     """
@@ -1544,16 +1547,12 @@ def parse_llm_json(raw_text: str) -> dict:
                 return obj
         except (json.JSONDecodeError, ValueError):
             pass
-        # 4) Kesilgan JSON: oxiridan boshlab qisqartirib, eng uzun to'liq
-        #    prefiksni topishga urinish (cheklangan — 5 urinish).
-        for _ in range(5):
-            end = block.rfind("}")
-            if end <= 0:
-                break
-            block = block[:end]
-            result = _try_load_json(block)
-            if result is not None:
-                return result
+    # Kesilgan (max_tokens tugagan) JSON ataylab ta'mirlanmaydi: topic_status
+    # / is_completely_off_topic sxemada oxirida keladi, ta'mirlangan javob
+    # mavzudan chetlashgan esseni "on_topic" deb baholab yuborishi mumkin.
+    # _parse_failed qaytadi va chaqiruvchi keyingi model bilan qayta uradi.
+    # (Avvalgi "oxirgi `}` gacha qisqartirish" sikli yopuvchi qavsni ham
+    # kesgani uchun hech qachon natija bermas edi — olib tashlandi.)
 
     logger.warning(
         "parse_llm_json: JSON ajratib bo'lmadi (first 300 chars): %s",
@@ -3957,6 +3956,15 @@ Evaluate the candidate's English writing strictly according to the 4 official IE
 2. Coherence and Cohesion (id: 2)
 3. Lexical Resource (id: 3)
 4. Grammatical Range and Accuracy (id: 4)
+
+FEEDBACK QUALITY (write like a supportive coach, not an examiner report):
+The reader is a 15–18 year-old learner. Use plain, direct, encouraging English — avoid unexplained rubric jargon ("lexical resource is limited", "cohesion is mechanical"). Every comment must point to something the candidate actually wrote; generic advice is not allowed.
+- "reason" (1–2 sentences per criterion): say WHY the band is not higher, quoting or pinpointing the place in the essay, then HOW to reach the next band (e.g. "Band 6.5: you repeat 'very important' four times; swap in 'crucial', 'vital' or 'a key factor' to reach 7.0").
+- "errors" (0–2 per criterion, ≤180 characters each): exactly the format "verbatim quote from the essay" → "improved rewrite". The quote must appear word-for-word in the essay — never invent one. Leave [] when nothing needs fixing.
+- "spelling_errors": each spelling, grammar or article/preposition slip as {"word": the exact wrong word or short phrase from the essay, "correction": the fix, "explanation": the rule in one short, plain sentence}.
+- "strengths" / "weaknesses" (2–3 each): each tied to a specific place in the essay; weaknesses ordered by how much band score they cost.
+- "teacher_recommendation": exactly 3 concrete next steps formatted "1) ... 2) ... 3) ...", highest-impact first, each one actionable in the next essay.
+- "summary" (2–3 sentences): current level, the strongest point, and the single most important improvement. Any required topic warning stays at the very start.
 
 Return ONLY a valid JSON object with the following structure:
 {

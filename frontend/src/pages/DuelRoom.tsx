@@ -456,49 +456,30 @@ export default function DuelRoom() {
         </button>
       </p>
       {opponentDisconnected && (
-        <div
-          style={{
-            background: 'rgba(239, 68, 68, 0.15)',
-            border: '1px solid rgba(239, 68, 68, 0.4)',
-            color: '#f87171',
-            borderRadius: 12,
-            padding: '12px 16px',
-            marginBottom: 16,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            fontWeight: 600,
-          }}
-        >
-          <span style={{ fontSize: 22 }}>⚠️</span>
+        <div className="duel-alert is-bad" role="status">
+          <span aria-hidden="true">⚠️</span>
           <div>
-            <div>Raqib interneti qayta ulanmoqda... (qolgan vaqt: {opponentGraceSeconds}s)</div>
-            <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>
-              Agar 30 soniya ichida qayta ulanmasa, g‘alaba avtomatik sizga taqdim etiladi.
-            </div>
+            <strong>{t('arena_opp_reconnecting').replace('{s}', String(opponentGraceSeconds))}</strong>
+            <p>{t('arena_opp_forfeit_hint')}</p>
           </div>
         </div>
       )}
       {isReconnecting && (
-        <div
-          style={{
-            background: 'rgba(234, 179, 8, 0.15)',
-            border: '1px solid rgba(234, 179, 8, 0.4)',
-            color: '#fde047',
-            borderRadius: 8,
-            padding: '8px 12px',
-            marginBottom: 12,
-            fontSize: 13,
-            fontWeight: 600,
-          }}
-        >
-          ⚡ Tarmoq uzildi. Qayta ulanmoqda...
+        <div className="duel-alert is-warn" role="status">
+          <span aria-hidden="true">⚡</span>
+          <strong>{t('arena_reconnecting')}</strong>
         </div>
       )}
       {notice && <p className="muted">{notice}</p>}
 
       {(state === 'session' || state === 'connecting') && (
-        <p className="muted">{t('loading')}</p>
+        <div className="duel-skeleton" aria-busy="true" aria-label={t('loading')}>
+          <div className="dsh-skeleton" style={{ height: 76 }} />
+          <div className="dsh-skeleton-line" style={{ height: 22, width: '70%' }} />
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="dsh-skeleton" style={{ height: 52 }} />
+          ))}
+        </div>
       )}
       {state === 'error' && <p className="error">{notice || t('arena_ws_error')}</p>}
 
@@ -512,23 +493,17 @@ export default function DuelRoom() {
 
       {state === 'countdown' && (
         <div className="card" style={{ textAlign: 'center', padding: '3rem 1rem' }}>
-          <div style={{
-            fontSize: 88,
-            fontWeight: 900,
-            color: countdown <= 1 ? '#10b981' : '#FACC15',
-            lineHeight: 1,
-            transition: 'color 0.3s ease',
-          }}>
+          <div className={`duel-count${countdown <= 1 ? ' is-go' : ''}`} aria-live="assertive">
             {countdown <= 0 ? '⚔️' : Math.max(countdown, 1)}
           </div>
-          <p className="muted" style={{ marginTop: 14, fontSize: '1.05rem', fontWeight: 600 }}>
-            {countdown <= 0 ? 'JANG BOSHLANDI!' : t('arena_starting')}
+          <p className="duel-count__label">
+            {countdown <= 0 ? t('arena_fight') : t('arena_starting')}
           </p>
           {p1 && p2 && (
-            <p className="muted small" style={{ marginTop: 8 }}>
-              <strong style={{ color: '#FACC15' }}>{p1.name}</strong>
-              {' '}⚔️{' '}
-              <strong style={{ color: '#ef4444' }}>{p2.name}</strong>
+            <p className="duel-versus">
+              <strong className="is-me">{p1.name}</strong>
+              <span aria-hidden="true">⚔️</span>
+              <strong className="is-opp">{p2.name}</strong>
             </p>
           )}
         </div>
@@ -548,34 +523,25 @@ export default function DuelRoom() {
                 >
                   {myName.slice(0, 2).toUpperCase()}
                 </span>
-                <span>
-                  <b style={{ display: 'block', fontSize: 13 }}>{myName}</b>
-                  <b style={{ color: '#FACC15' }}>{myScore}</b>
+                <span className="duel-player">
+                  <b className="duel-player__name">{myName}</b>
+                  <b className="duel-player__score is-me">{myScore}</b>
                 </span>
               </div>
-              <span className={`timer${timeLeft <= 5 ? ' low' : ''}`} style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                minWidth: 48,
-                height: 34,
-                borderRadius: 17,
-                padding: '0 10px',
-                background: timeLeft <= 5 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(245, 158, 11, 0.15)',
-                border: `1.5px solid ${timeLeft <= 5 ? '#ef4444' : '#f59e0b'}`,
-                color: timeLeft <= 5 ? '#ef4444' : '#f59e0b',
-                fontWeight: 800,
-                fontSize: '1rem',
-              }}>
-                ⏱️ {timeLeft}s
+              <span
+                className={`duel-timer${timeLeft <= 5 ? ' is-low' : ''}`}
+                role="timer"
+                aria-label={t('arena_time_left')}
+              >
+                {timeLeft}s
               </span>
               <div className="score-side right">
-                <span>
-                  <b style={{ display: 'block', fontSize: 13 }}>
+                <span className="duel-player">
+                  <b className="duel-player__name">
                     {oppName}
                     {isBotDuel ? ` (${t('arena_bot')})` : ''}
                   </b>
-                  <b style={{ color: '#e11d48' }}>{otherScore}</b>
+                  <b className="duel-player__score is-opp">{otherScore}</b>
                 </span>
                 <span
                   className="score-ava"
@@ -592,7 +558,7 @@ export default function DuelRoom() {
               <div className="laser-beam-line" />
             </div>
             {streak >= 2 && (
-              <p style={{ color: '#f59e0b', fontWeight: 800 }}>
+              <p className="duel-streak">
                 <FlameIcon size={14} className="ico" /> x{streak}
               </p>
             )}
@@ -606,8 +572,10 @@ export default function DuelRoom() {
 
           <div className="card" style={{ marginTop: 12 }}>
             <p className="muted small">
-              {t('th_questions')} {total > 0 ? qIndex + 1 : qIndex}/{total} ·{' '}
-              {question.points} {t('points')}
+              {t('arena_question_n')
+                .replace('{i}', String(total > 0 ? qIndex + 1 : qIndex))
+                .replace('{n}', String(total))}{' '}
+              · {question.points} {t('points')}
             </p>
             <div
               className="progress"
@@ -620,8 +588,8 @@ export default function DuelRoom() {
                 }}
               />
             </div>
-            <h2>{question.question_text}</h2>
-            <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
+            <h2 className="duel-question">{question.question_text}</h2>
+            <div className="duel-options">
               {OPTS.map((opt) => {
                 const label = question[`option_${opt}` as keyof Question] as string;
                 const cls =
@@ -663,44 +631,23 @@ export default function DuelRoom() {
           <p className="stat-value">
             {myScore} : {otherScore}
           </p>
-          <div style={{ marginTop: 8, marginBottom: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 16, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '0.9rem', color: '#a78bfa', fontWeight: 600 }}>
-                ⚡ +{rewards.xp} {t('xp')}
-              </span>
-              <span style={{ fontSize: '0.9rem', color: '#fbbf24', fontWeight: 600 }}>
-                🪙 +{rewards.coins} {t('coins')}
-              </span>
-              <span style={{
-                fontSize: '1.05rem',
-                fontWeight: 800,
-                color: rewards.elo >= 0 ? '#10b981' : '#ef4444',
-                padding: '2px 8px',
-                borderRadius: 6,
-                background: rewards.elo >= 0 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
-              }}>
-                ELO {rewards.elo >= 0 ? `▲ +${rewards.elo}` : `▼ ${rewards.elo}`}
-              </span>
-            </div>
-            {result === 'win' && (
-              <p style={{ fontSize: '0.85rem', color: '#10b981', marginTop: 10, fontWeight: 600 }}>
-                🎉 Ajoyib g'alaba! Reytingingiz oshdi!
-              </p>
-            )}
-            {result === 'lose' && (
-              <p style={{ fontSize: '0.85rem', color: '#ef4444', marginTop: 10, fontWeight: 600 }}>
-                💪 Yaxshi kurash bo'ldi! Keyingi duelda albatta yutasiz.
-              </p>
-            )}
-            {result === 'draw' && (
-              <p style={{ fontSize: '0.85rem', color: '#94a3b8', marginTop: 10, fontWeight: 600 }}>
-                🤝 Do'stlik g'alaba qozondi! Teng kurash bo'ldi.
-              </p>
-            )}
+          <div className="duel-rewards">
+            <span className="duel-reward">⚡ +{rewards.xp} {t('xp')}</span>
+            <span className="duel-reward">🪙 +{rewards.coins} {t('coins')}</span>
+            <span className={`duel-reward is-elo ${rewards.elo >= 0 ? 'is-up' : 'is-down'}`}>
+              ELO {rewards.elo >= 0 ? `▲ +${rewards.elo}` : `▼ ${rewards.elo}`}
+            </span>
           </div>
-          <button className="btn primary" onClick={() => navigate('/arena')}>
-            {t('back')} →
-          </button>
+          {result && (
+            <p className={`duel-outcome is-${result}`}>
+              {t(result === 'win' ? 'arena_win_msg' : result === 'lose' ? 'arena_lose_msg' : 'arena_draw_msg')}
+            </p>
+          )}
+          <div className="duel-end-actions">
+            <button className="ui-btn ui-btn--primary" onClick={() => navigate('/arena')}>
+              {t('arena_play_again')}
+            </button>
+          </div>
         </div>
       )}
     </div>

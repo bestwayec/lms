@@ -5,8 +5,6 @@ import { useLang } from '../i18n/LangContext';
 import { essayStatus } from '../lib/essays';
 import { useAuth } from '../auth/AuthContext';
 import { Essays } from '../lib/api';
-import HologramRadar3D from '../components/HologramRadar3D';
-import TiltCard from '../components/TiltCard';
 import ScoreCardModal from '../components/ScoreCardModal';
 import {
   countEssayWords,
@@ -16,17 +14,16 @@ import {
 } from '../lib/essays-arena';
 
 /**
- * Essay result — mirrors GET /tma/api/essays/<id>/result/ (JWT), polled
- * while the status is non-terminal (pending/draft), exactly like the legacy
- * polling against GET /essays/api/<id>/status/ (templates/essays/result.html
- * polls until graded/ai_evaluated/pending_teacher/teacher_reviewed/error).
+ * Essay result — GET /tma/api/essays/<id>/result/ (JWT), polled while the
+ * status is non-terminal.
  *
- * Extra legacy behavior ported from templates/essays/result.html:
- * - pending_teacher → "teacher reviewing" card (terminal, no more polling)
- * - error → error card with retry link
- * - final_score (teacher override) takes visual priority over the AI score
- * - AI improved version via POST /api/v1/essays/<id>/improve/ (JWT)
- * - teacher-review request via POST /api/v1/essays/<id>/request-review/ (JWT)
+ * Layout uses progressive disclosure so a student sees the essentials first:
+ *   1. Hero: score (BMB grade or IELTS band + CEFR), words, time spent,
+ *      and the top 3 next steps.
+ *   2. Tabs: criteria (grouped accordions) · corrections (before → after
+ *      cards) · the essay with inline fixes · the AI model answer.
+ * Everything shown comes from the API; nothing is invented when a field is
+ * missing — the block is simply hidden.
  */
 
 interface SpellingError {
@@ -46,7 +43,6 @@ interface Criterion {
 
 interface Result {
   status: string;
-  /** Provenance of this student's own grade (never another account's data). */
   grading_source?: 'ai' | 'cache' | 'mock' | string;
   cached?: boolean;
   total_score: number | null;
@@ -58,7 +54,7 @@ interface Result {
   word_count: number;
   is_off_topic: boolean;
   is_completely_off_topic?: boolean;
-  topic_status?: 'on_topic' | 'partially_off_topic' | 'completely_off_topic' | string;
+  topic_status?: string;
   topic_match_reason?: string;
   topic_title: string;
   topic_id?: number | null;
@@ -77,54 +73,72 @@ interface Result {
   rubric_type?: string;
   overall_band?: number | null;
   cefr_level?: string | null;
+  time_spent_seconds?: number | null;
 }
 
-function renderHighlightedText(text?: string, errors?: SpellingError[]) {
-  if (!text) return '(Asl matn topilmadi)';
-  if (!errors || !errors.length) return text;
-  const words = errors.map((e) => e.word.trim()).filter((w) => w.length > 0);
-  if (!words.length) return text;
-  try {
-    const escaped = words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-    const regex = new RegExp(`(${escaped})`, 'gi');
-    const parts = text.split(regex);
-    return parts.map((part, i) => {
-      const match = errors.find((e) => e.word.toLowerCase() === part.toLowerCase());
-      if (match) {
-        return (
-          <mark
-            key={i}
-            style={{
-              background: 'rgba(239, 68, 68, 0.25)',
-              color: '#ef4444',
-              padding: '1px 4px',
-              borderRadius: '4px',
-              fontWeight: 600,
-              borderBottom: '2px solid #ef4444',
-            }}
-            title={`${match.word} ➔ ${match.correction} (${match.explanation})`}
-          >
-            {part}
-          </mark>
-        );
-      }
-      return part;
-    });
-  } catch {
-    return text;
+type Tab = 'criteria' | 'corrections' | 'essay' | 'improved';
+
+/** BMB 12 criteria grouped by what the student has to work on. */
+const BMB_GROUPS: Array<{ key: string; ids: number[] }> = [
+  { key: 'er_group_content', ids: [1, 3, 10, 12] },
+  { key: 'er_group_structure', ids: [2, 9, 11] },
+  { key: 'er_group_language', ids: [4, 5] },
+  { key: 'er_group_accuracy', ids: [6, 7, 8] },
+];
+
+const fmt = (s: string, vars: Record<string, string | number>) =>
+  Object.entries(vars).reduce((acc, [k, v]) => acc.split(`{${k}}`).join(String(v)), s);
+
+const num = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
+
+const escapeRe = (w: string) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** "quoted original → rewrite" evidence (as the grading prompt asks for). */
+function splitEvidence(raw: string): { before: string; after: string | null } {
+  const clean = (s: string) => s.trim().replace(/^["“«']+|["”»']+$/g, '').trim();
+  const parts = String(raw ?? '').split(/\s*(?:→|->|➔|=>)\s*/);
+  if (parts.length >= 2 && parts[0].trim() && parts.slice(1).join(' ').trim()) {
+    return { before: clean(parts[0]), after: clean(parts.slice(1).join(' → ')) };
   }
+  return { before: clean(String(raw ?? '')), after: null };
 }
 
-function getBmbGrade(totalScore: number | null, maxScore: number): { grade: string; color: string; bg: string } | null {
-  if (totalScore === null || totalScore === undefined) return null;
-  const score60 = Math.round((totalScore / maxScore) * 60);
-  if (score60 >= 54) return { grade: 'A+', color: '#10b981', bg: 'rgba(16, 185, 129, 0.12)' };
-  if (score60 >= 48) return { grade: 'A', color: '#10b981', bg: 'rgba(16, 185, 129, 0.10)' };
-  if (score60 >= 42) return { grade: 'B+', color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.12)' };
-  if (score60 >= 36) return { grade: 'B', color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.10)' };
-  if (score60 >= 30) return { grade: 'C+', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)' };
-  if (score60 >= 24) return { grade: 'C', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.10)' };
-  return { grade: 'F', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.10)' };
+/** Split a "1) … 2) … 3) …" recommendation into steps (else no steps). */
+function numberedSteps(text?: string): string[] {
+  if (!text) return [];
+  const parts = text
+    .split(/(?:^|\s)(?:\d{1,2}[).]|[-•])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return parts.length >= 2 ? parts : [];
+}
+
+function gradeFor(score: number | null, max: number): { grade: string; tone: string; key: string } | null {
+  if (score === null || score === undefined || !max) return null;
+  const pct = score / max;
+  if (pct >= 0.9) return { grade: 'A+', tone: 'good', key: 'er_grade_aplus' };
+  if (pct >= 0.8) return { grade: 'A', tone: 'good', key: 'er_grade_a' };
+  if (pct >= 0.7) return { grade: 'B+', tone: 'info', key: 'er_grade_bplus' };
+  if (pct >= 0.6) return { grade: 'B', tone: 'info', key: 'er_grade_b' };
+  if (pct >= 0.5) return { grade: 'C+', tone: 'warn', key: 'er_grade_cplus' };
+  if (pct >= 0.4) return { grade: 'C', tone: 'warn', key: 'er_grade_c' };
+  return { grade: 'F', tone: 'bad', key: 'er_grade_f' };
+}
+
+function tone(score: number, max: number): string {
+  const r = max ? score / max : 0;
+  return r >= 1 ? 'good' : r >= 0.7 ? 'warn' : 'bad';
+}
+
+function Skeleton() {
+  return (
+    <div className="er" aria-busy="true">
+      <div className="dsh-skeleton-line" style={{ height: 28, width: '60%' }} />
+      <div className="dsh-skeleton" style={{ height: 180 }} />
+      <div className="dsh-skeleton-line" style={{ height: 44 }} />
+      <div className="dsh-skeleton" style={{ height: 260 }} />
+    </div>
+  );
 }
 
 export default function EssayResult() {
@@ -134,138 +148,27 @@ export default function EssayResult() {
   const [res, setRes] = useState<Result | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [showScoreCard, setShowScoreCard] = useState(false);
+  const [tab, setTab] = useState<Tab>('criteria');
+  const [openCrit, setOpenCrit] = useState<Set<number>>(new Set());
 
-  // Improved version (session improve endpoint).
-  const [improvedOpen, setImprovedOpen] = useState(false);
   const [improved, setImproved] = useState<string | null>(null);
   const [improvedBusy, setImprovedBusy] = useState(false);
   const [improvedErr, setImprovedErr] = useState<string | null>(null);
   const [improvedView, setImprovedView] = useState<'diff' | 'after' | 'before'>('diff');
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
 
-  // Teacher-review request (session form endpoint).
   const [reason, setReason] = useState('');
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewSent, setReviewSent] = useState(false);
   const [reviewErr, setReviewErr] = useState<string | null>(null);
 
-  // One-click retry for failed grading (status=error).
   const [retryBusy, setRetryBusy] = useState(false);
   const [retryErr, setRetryErr] = useState<string | null>(null);
   const [pollNonce, setPollNonce] = useState(0);
-  const [selectedCritId, setSelectedCritId] = useState<number>(1);
 
-  // Grammarly-style Interactive Inline Reviewer
-  const [workingEssayText, setWorkingEssayText] = useState<string>('');
+  const [workingText, setWorkingText] = useState('');
   const [activeError, setActiveError] = useState<SpellingError | null>(null);
-  const [fixedErrors, setFixedErrors] = useState<Record<string, string>>({});
-  const [copiedWorkingText, setCopiedWorkingText] = useState(false);
-
-  useEffect(() => {
-    if (res?.essay_text && !workingEssayText) {
-      setWorkingEssayText(res.essay_text);
-    }
-  }, [res?.essay_text, workingEssayText]);
-
-  const handleReplaceError = (errToFix: SpellingError) => {
-    const current = workingEssayText || res?.essay_text || '';
-    if (!current) return;
-    try {
-      const escaped = errToFix.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const regex = new RegExp(`\\b${escaped}\\b`, 'gi');
-      const updated = current.replace(regex, errToFix.correction);
-      setWorkingEssayText(updated);
-      setFixedErrors((prev) => ({ ...prev, [errToFix.word.toLowerCase()]: errToFix.correction }));
-      setActiveError(null);
-    } catch {
-      const updated = current.split(errToFix.word).join(errToFix.correction);
-      setWorkingEssayText(updated);
-      setFixedErrors((prev) => ({ ...prev, [errToFix.word.toLowerCase()]: errToFix.correction }));
-      setActiveError(null);
-    }
-  };
-
-  const handleFixAllErrors = () => {
-    if (!res?.spelling_errors?.length) return;
-    let txt = workingEssayText || res.essay_text || '';
-    if (!txt) return;
-    const nextFixed = { ...fixedErrors };
-    for (const errItem of res.spelling_errors) {
-      try {
-        const escaped = errItem.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const regex = new RegExp(`\\b${escaped}\\b`, 'gi');
-        txt = txt.replace(regex, errItem.correction);
-        nextFixed[errItem.word.toLowerCase()] = errItem.correction;
-      } catch {
-        txt = txt.split(errItem.word).join(errItem.correction);
-        nextFixed[errItem.word.toLowerCase()] = errItem.correction;
-      }
-    }
-    setWorkingEssayText(txt);
-    setFixedErrors(nextFixed);
-    setActiveError(null);
-  };
-
-  const renderInlineGrammarlyText = (text: string, errors: SpellingError[]) => {
-    if (!text) return <span className="muted">(Asl matn topilmadi)</span>;
-    if (!errors || !errors.length) return <span>{text}</span>;
-
-    const activeList = errors.filter((e) => !fixedErrors[e.word.toLowerCase()]);
-    if (!activeList.length) {
-      return <span>{text}</span>;
-    }
-
-    try {
-      const words = activeList.map((e) => e.word.trim()).filter((w) => w.length > 0);
-      const sorted = [...words].sort((a, b) => b.length - a.length);
-      const escaped = sorted.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-      const regex = new RegExp(`(${escaped})`, 'gi');
-      const parts = text.split(regex);
-
-      return parts.map((part, i) => {
-        const match = activeList.find((e) => e.word.toLowerCase() === part.toLowerCase());
-        if (match) {
-          const isSelected = activeError?.word.toLowerCase() === match.word.toLowerCase();
-          return (
-            <span
-              key={i}
-              onClick={() => setActiveError(match)}
-              style={{
-                textDecoration: 'underline wavy #ef4444',
-                textUnderlineOffset: '4px',
-                fontWeight: 600,
-                color: isSelected ? '#f87171' : '#ef4444',
-                background: isSelected ? 'rgba(239, 68, 68, 0.25)' : 'rgba(239, 68, 68, 0.08)',
-                padding: '1px 4px',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-              }}
-              title={`❌ ${match.word} ➔ ✅ ${match.correction} (${match.explanation}) — Bosib almashtirish`}
-            >
-              {part}
-            </span>
-          );
-        }
-        return part;
-      });
-    } catch {
-      return <span>{text}</span>;
-    }
-  };
-
-  const radarItems = useMemo(() => {
-    if (!res?.criteria || !res.criteria.length) return [];
-    return res.criteria.map((c) => {
-      const max = c.max_score || 2;
-      return {
-        id: c.id,
-        name: c.name,
-        score: `${c.score} / ${max}`,
-        percent: Math.min(Math.round((c.score / max) * 100), 100),
-      };
-    });
-  }, [res?.criteria]);
+  const [fixed, setFixed] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let stop = false;
@@ -274,15 +177,13 @@ export default function EssayResult() {
       try {
         const r = (await Essays.result(id)) as unknown as Result;
         if (stop) return;
-        setRes({ ...r, criteria: r.criteria ?? [] });
-        if (r.improved_text) {
-          setImproved(r.improved_text);
-        }
+        setRes({ ...r, criteria: Array.isArray(r.criteria) ? r.criteria : [] });
+        if (r.improved_text) setImproved(r.improved_text);
         if (!isEssayTerminal(r.status)) {
           timer = setTimeout(poll, (r.poll_after ?? 3) * 1000);
         }
       } catch (e) {
-        if (!stop) setErr(e instanceof Error ? e.message : 'Failed.');
+        if (!stop) setErr(e instanceof Error ? e.message : t('essay_js_error'));
       }
     };
     poll();
@@ -290,7 +191,59 @@ export default function EssayResult() {
       stop = true;
       clearTimeout(timer);
     };
-  }, [id, pollNonce]);
+  }, [id, pollNonce, t]);
+
+  useEffect(() => {
+    if (res?.essay_text && !workingText) setWorkingText(res.essay_text);
+  }, [res?.essay_text, workingText]);
+
+  const isEnglish = Boolean(
+    res &&
+      (res.subject === 'english' ||
+        res.rubric_type?.startsWith('ielts') ||
+        (res.overall_band !== null && res.overall_band !== undefined)),
+  );
+
+  const criteria = useMemo(() => res?.criteria ?? [], [res?.criteria]);
+  const spelling = useMemo(
+    () => (res?.spelling_errors ?? []).filter((e) => e && typeof e.word === 'string' && e.word.trim()),
+    [res?.spelling_errors],
+  );
+
+  const groups = useMemo(() => {
+    if (!criteria.length) return [];
+    if (isEnglish) return [{ key: 'er_group_ielts', items: criteria }];
+    const used = new Set<number>();
+    const out = BMB_GROUPS.map((g) => {
+      const items = criteria.filter((c) => g.ids.includes(c.id));
+      items.forEach((c) => used.add(c.id));
+      return { key: g.key, items };
+    }).filter((g) => g.items.length);
+    const rest = criteria.filter((c) => !used.has(c.id));
+    if (rest.length) out[0] = { ...out[0], items: [...out[0].items, ...rest] };
+    return out;
+  }, [criteria, isEnglish]);
+
+  // Open the criterion that cost the most points by default.
+  useEffect(() => {
+    if (!criteria.length) return;
+    const worst = [...criteria].sort(
+      (a, b) => (b.max_score ?? 2) - b.score - ((a.max_score ?? 2) - a.score),
+    )[0];
+    setOpenCrit((prev) => (prev.size ? prev : new Set([worst.id])));
+  }, [criteria]);
+
+  const takeaways = useMemo(() => {
+    if (!res) return [];
+    const out: string[] = [];
+    for (const s of numberedSteps(res.teacher_recommendation)) if (out.length < 3) out.push(s);
+    for (const w of res.weaknesses ?? []) if (out.length < 3 && w && !out.includes(w)) out.push(w);
+    const lossy = [...criteria]
+      .filter((c) => c.score < (c.max_score ?? 2) && c.reason)
+      .sort((a, b) => (b.max_score ?? 2) - b.score - ((a.max_score ?? 2) - a.score));
+    for (const c of lossy) if (out.length < 3) out.push(`${c.name}: ${c.reason}`);
+    return out;
+  }, [res, criteria]);
 
   const loadImproved = useCallback(async () => {
     if (improved !== null || improvedBusy) return;
@@ -298,11 +251,8 @@ export default function EssayResult() {
     setImprovedErr(null);
     try {
       const r = await Essays.improve(id);
-      if (r.ok && r.content) {
-        setImproved(r.content);
-      } else {
-        setImprovedErr(r.error ?? t('essay_improved_error'));
-      }
+      if (r.ok && r.content) setImproved(r.content);
+      else setImprovedErr(r.error ?? t('essay_improved_error'));
     } catch {
       setImprovedErr(t('essay_improved_error'));
     } finally {
@@ -310,21 +260,40 @@ export default function EssayResult() {
     }
   }, [id, improved, improvedBusy, t]);
 
-  const toggleImproved = () => {
-    const next = !improvedOpen;
-    setImprovedOpen(next);
-    setCopied(false);
-    if (next) void loadImproved();
+  const copy = async (key: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(key);
+      setTimeout(() => setCopied((c) => (c === key ? null : c)), 2000);
+    } catch {
+      /* clipboard unavailable — the user can still select the text */
+    }
   };
 
-  const copyImproved = async () => {
-    if (!improved) return;
+  const replaceIn = (text: string, e: SpellingError) => {
     try {
-      await navigator.clipboard.writeText(improved);
-      setCopied(true);
+      return text.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(e.word)}(?![\\p{L}\\p{N}])`, 'giu'), e.correction);
     } catch {
-      /* clipboard unavailable — user can select manually */
+      return text.split(e.word).join(e.correction);
     }
+  };
+
+  const applyFix = (e: SpellingError) => {
+    setWorkingText((cur) => replaceIn(cur || res?.essay_text || '', e));
+    setFixed((prev) => ({ ...prev, [e.word.toLowerCase()]: e.correction }));
+    setActiveError(null);
+  };
+
+  const applyAll = () => {
+    let txt = workingText || res?.essay_text || '';
+    const next = { ...fixed };
+    for (const e of spelling) {
+      txt = replaceIn(txt, e);
+      next[e.word.toLowerCase()] = e.correction;
+    }
+    setWorkingText(txt);
+    setFixed(next);
+    setActiveError(null);
   };
 
   const sendReview = async () => {
@@ -332,11 +301,8 @@ export default function EssayResult() {
     setReviewErr(null);
     try {
       const r = await requestTeacherReview(id, reason.trim());
-      if (r.ok) {
-        setReviewSent(true);
-      } else {
-        setReviewErr(t('essay_js_error'));
-      }
+      if (r.ok) setReviewSent(true);
+      else setReviewErr(t('essay_js_error'));
     } catch {
       setReviewErr(t('essay_js_error'));
     } finally {
@@ -346,18 +312,15 @@ export default function EssayResult() {
 
   const retryGrading = async () => {
     if (!res || retryBusy) return;
+    const text = (res.essay_text ?? '').trim();
+    if (!text) {
+      setRetryErr(t('essay_js_error'));
+      return;
+    }
     setRetryBusy(true);
     setRetryErr(null);
     try {
-      const text = (res.essay_text ?? '').trim();
-      if (!text) {
-        setRetryErr(t('essay_js_error'));
-        setRetryBusy(false);
-        return;
-      }
       await Essays.submit(id, text);
-      // Backend re-queues grading (ERROR without result → PENDING).
-      // Switch to polling UI immediately and restart the poll loop.
       setRes({ ...res, status: 'pending' });
       setPollNonce((n) => n + 1);
     } catch (e) {
@@ -367,847 +330,495 @@ export default function EssayResult() {
     }
   };
 
-  if (err) return <p className="error">{err}</p>;
-  if (!res) return <p className="muted">{t('loading')}</p>;
+  if (err) return <p className="error" role="alert">{err}</p>;
+  if (!res) return <Skeleton />;
 
   const pending = !isEssayTerminal(res.status);
   const done = isEssayDone(res.status);
+  const hasTeacherScore = res.final_score !== null && res.final_score !== undefined;
   const displayScore = res.final_score ?? res.total_score;
-  const isEnglish =
-    res.subject === 'english' ||
-    res.rubric_type?.startsWith('ielts') ||
-    (res.overall_band !== null && res.overall_band !== undefined);
+  const grade = !isEnglish ? gradeFor(displayScore, res.max_score) : null;
+  const band = res.overall_band ?? (isEnglish ? displayScore : null);
+  const fullMarks = criteria.filter((c) => c.score >= (c.max_score ?? 2)).length;
+  const activeErrors = spelling.filter((e) => !fixed[e.word.toLowerCase()]);
+  const offTopicFull = res.is_completely_off_topic || res.topic_status === 'completely_off_topic';
+  const offTopicPartial = !offTopicFull && (res.is_off_topic || res.topic_status === 'partially_off_topic');
+  const minutes = res.time_spent_seconds ? Math.max(1, Math.round(res.time_spent_seconds / 60)) : null;
+
+  const toggleCrit = (cid: number) =>
+    setOpenCrit((prev) => {
+      const next = new Set(prev);
+      if (next.has(cid)) next.delete(cid);
+      else next.add(cid);
+      return next;
+    });
+
+  const renderEssay = (text: string) => {
+    if (!text) return <span className="muted">{t('er_no_text')}</span>;
+    if (!activeErrors.length) return text;
+    try {
+      const words = activeErrors.map((e) => e.word.trim()).sort((a, b) => b.length - a.length);
+      const parts = text.split(new RegExp(`(${words.map(escapeRe).join('|')})`, 'gi'));
+      return parts.map((part, i) => {
+        const match = activeErrors.find((e) => e.word.toLowerCase() === part.toLowerCase());
+        if (!match) return part;
+        const selected = activeError?.word.toLowerCase() === match.word.toLowerCase();
+        return (
+          <button
+            key={i}
+            type="button"
+            className={`er-mark${selected ? ' is-active' : ''}`}
+            onClick={() => setActiveError(match)}
+            aria-label={`${match.word} → ${match.correction}`}
+          >
+            {part}
+          </button>
+        );
+      });
+    } catch {
+      return text;
+    }
+  };
+
+  const tabs: Array<{ key: Tab; label: string; count?: number }> = [
+    { key: 'criteria', label: t('er_tab_criteria'), count: criteria.length || undefined },
+    { key: 'corrections', label: t('er_tab_corrections'), count: spelling.length || undefined },
+    { key: 'essay', label: t('er_tab_essay') },
+    { key: 'improved', label: t('er_tab_improved') },
+  ];
 
   return (
-    <div>
-      <h1>{res.topic_title || t('essay_results')}</h1>
-      <p>
-        <span className={`es-status is-${essayStatus(res.status)}`}>{t(`es_status_${essayStatus(res.status)}`)}</span>
-        {done && (res.final_score === null || res.final_score === undefined) && res.grading_source !== 'mock' && (
-          <span className="es-status" style={{ marginLeft: 8 }}>{t('er_ai_graded')}</span>
-        )}
-        {res.final_score !== null && res.final_score !== undefined && (
-          <span className="badge green" style={{ marginLeft: 8 }}>
-            {t('essay_teacher_done')}
-          </span>
-        )}
-      </p>
+    <div className="er">
+      <header className="er-head">
+        <h1 className="clamp-2">{res.topic_title || t('essay_results')}</h1>
+        <div className="er-badges">
+          <span className={`es-status is-${essayStatus(res.status)}`}>{t(`es_status_${essayStatus(res.status)}`)}</span>
+          {done && !hasTeacherScore && res.grading_source !== 'mock' && (
+            <span className="es-status">{t('er_ai_graded')}</span>
+          )}
+          {hasTeacherScore && <span className="es-status is-graded">{t('essay_teacher_done')}</span>}
+        </div>
+      </header>
 
       {pending && res.status !== 'draft' && (
-        <div className="ui-card" role="status" style={{ display: 'grid', gap: 8 }}>
+        <div className="ui-card er-pending" role="status">
           <strong>{t('essay_grading_pending')}</strong>
-          <div className="er-progress" aria-hidden="true">
-            <i />
-          </div>
-          <p className="muted small" style={{ margin: 0 }}>{t('er_can_leave')}</p>
+          <div className="er-progress" aria-hidden="true"><i /></div>
+          <div className="dsh-skeleton-line" style={{ height: 14, width: '80%' }} />
+          <div className="dsh-skeleton-line" style={{ height: 14, width: '55%' }} />
+          <p className="muted small">{t('er_can_leave')}</p>
         </div>
       )}
 
       {res.status === 'pending_teacher' && !reviewSent && (
-        <div className="card">
+        <div className="ui-card">
           <strong>{t('essay_grading_recheck')}</strong>
-          <p>{t('essay_teacher_reviewing')}</p>
+          <p className="muted">{t('essay_teacher_reviewing')}</p>
         </div>
       )}
 
       {reviewSent && (
-        <div className="card">
+        <div className="ui-card">
           <strong>{t('essay_review_requested')}</strong>
           <p className="muted small">{t('essay_review_requested_hint')}</p>
         </div>
       )}
 
       {res.status === 'error' && (
-        <div className="card">
-          <strong className="error">{t('essay_grading_failed')}</strong>
-          <p className="error">{t('essay_error')}</p>
-          {res.error && <p className="muted">{res.error}</p>}
-          {retryErr && <p className="error">{retryErr}</p>}
-          <div className="toolbar">
+        <div className="ui-card er-banner is-bad" role="alert">
+          <strong>{t('essay_grading_failed')}</strong>
+          <p>{t('essay_error')}</p>
+          {res.error && <p className="muted small">{res.error}</p>}
+          {retryErr && <p className="error small">{retryErr}</p>}
+          <div className="er-actions">
             <button
-              className="btn primary sm"
+              className="ui-btn ui-btn--primary"
               disabled={retryBusy || !(res.essay_text ?? '').trim()}
               onClick={retryGrading}
             >
               {retryBusy ? t('loading') : t('essay_error_retry')}
             </button>
-            {res.topic_id ? (
-              <Link className="btn sm" to={`/essays/write/${res.topic_id}`}>
-                {t('essay_continue_writing')}
-              </Link>
-            ) : (
-              <Link className="btn sm" to="/essays">
-                {t('essay_back_topics')}
-              </Link>
-            )}
+            <Link className="ui-btn" to={res.topic_id ? `/essays/write/${res.topic_id}` : '/essays'}>
+              {res.topic_id ? t('essay_continue_writing') : t('essay_back_topics')}
+            </Link>
           </div>
         </div>
       )}
 
       {res.status === 'draft' && (
-        <div className="card">
+        <div className="ui-card">
           <p className="muted">{t('essay_status_draft')}</p>
-          <Link className="btn primary sm" to="/essays">
-            {t('essay_continue_writing')}
-          </Link>
+          <Link className="ui-btn ui-btn--primary" to="/essays">{t('essay_continue_writing')}</Link>
         </div>
       )}
 
       {done && (
         <>
-          {(res.is_completely_off_topic || res.topic_status === 'completely_off_topic') ? (
-            <div
-              className="card error-card"
-              style={{
-                marginBottom: 20,
-                border: '1px solid rgba(239, 68, 68, 0.4)',
-                background: 'rgba(239, 68, 68, 0.08)',
-                padding: '16px 20px',
-                borderRadius: '12px',
-              }}
-            >
-              <h4 style={{ color: '#ef4444', margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span>⛔</span> DIQQAT: Mavzuga mutlaqo mos emas (0 ball)
-              </h4>
-              <p style={{ margin: 0, color: 'var(--text-color, #e2e8f0)', fontSize: '0.95rem', lineHeight: 1.5 }}>
-                Taqdim etilgan esse berilgan mavzuga mutlaqo mos kelmaydi (Off-topic). Mavzudan butunlay chetlashilganligi sababli barcha mezonlar bo'yicha 0 ball qo'yildi.
-              </p>
+          {(offTopicFull || offTopicPartial) && (
+            <div className={`ui-card er-banner ${offTopicFull ? 'is-bad' : 'is-warn'}`} role="alert">
+              <strong>{t(offTopicFull ? 'er_offtopic_full_title' : 'er_offtopic_partial_title')}</strong>
+              <p>{t(offTopicFull ? 'er_offtopic_full_text' : 'er_offtopic_partial_text')}</p>
+              {res.topic_match_reason && <p className="muted small">{res.topic_match_reason}</p>}
             </div>
-          ) : (res.is_off_topic || res.topic_status === 'partially_off_topic') ? (
-            <div
-              className="card warning-card"
-              style={{
-                marginBottom: 20,
-                border: '1px solid rgba(245, 158, 11, 0.4)',
-                background: 'rgba(245, 158, 11, 0.08)',
-                padding: '16px 20px',
-                borderRadius: '12px',
-              }}
-            >
-              <h4 style={{ color: '#f59e0b', margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span>⚠️</span> OGOHLANTIRISH: Mavzudan jiddiy chetlanish
-              </h4>
-              <p style={{ margin: 0, color: 'var(--text-color, #e2e8f0)', fontSize: '0.95rem', lineHeight: 1.5 }}>
-                Esseda mavzudan jiddiy chetlanish kuzatildi. Asosiy savolga to'liq javob berilmaganligi sababli baho 2 – 35 ball oralig'iga keskin tushirildi.
-              </p>
+          )}
+
+          {/* ---- Hero: the essentials --------------------------------- */}
+          <section className="ui-card er-hero" aria-labelledby="er-hero-title">
+            <div className="er-hero__score">
+              {isEnglish ? (
+                <>
+                  <span className="er-hero__big is-info">{band !== null && band !== undefined ? Number(band).toFixed(1) : '—'}</span>
+                  <span className="er-hero__label" id="er-hero-title">{t('er_band')} <small>/ 9.0</small></span>
+                </>
+              ) : (
+                <>
+                  <span className={`er-hero__big is-${grade?.tone ?? 'info'}`}>{grade?.grade ?? '—'}</span>
+                  <span className="er-hero__label" id="er-hero-title">
+                    {hasTeacherScore ? t('essay_final_score').replace(/:\s*$/, '') : t('er_bmb_grade')}
+                  </span>
+                  {grade && <span className={`er-hero__hint is-${grade.tone}`}>{t(grade.key)}</span>}
+                </>
+              )}
             </div>
-          ) : null}
-          {!isEnglish && (() => {
-            const bmbGrade = getBmbGrade(displayScore, res.max_score);
-            const score60 = displayScore !== null ? Math.round((displayScore / res.max_score) * 60) : null;
-            return bmbGrade ? (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 16,
-                padding: '16px 20px',
-                background: bmbGrade.bg,
-                border: `2px solid ${bmbGrade.color}`,
-                borderRadius: 16,
-                marginBottom: 20,
-              }}>
-                <div style={{
-                  fontSize: '3.5rem',
-                  fontWeight: 900,
-                  color: bmbGrade.color,
-                  lineHeight: 1,
-                  minWidth: 80,
-                  textAlign: 'center',
-                }}>
-                  {bmbGrade.grade}
-                </div>
+
+            <dl className="er-stats">
+              {!isEnglish && (
                 <div>
-                  <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text, #f3f4f6)' }}>
-                    🏆 BMB Rasmiy Baho
-                  </div>
-                  <div style={{ fontSize: '0.9rem', color: 'var(--muted, #9ca3af)', marginTop: 4 }}>
-                    {score60 !== null ? `${score60} / 60 ball` : ''} · 12 mezon bo’yicha baholandi
-                  </div>
-                  <div style={{ fontSize: '0.8rem', color: bmbGrade.color, fontWeight: 600, marginTop: 4 }}>
-                    {bmbGrade.grade === 'A+' ? '⭐ Ajoyib! Eng yuqori daraja' :
-                     bmbGrade.grade === 'A' ? "🎉 A'lo! Yuqori daraja" :
-                     bmbGrade.grade === 'B+' ? "✅ Yaxshi+! Yuqori o'rta" :
-                     bmbGrade.grade === 'B' ? "✅ Yaxshi! O'rta daraja" :
-                     bmbGrade.grade === 'C+' ? '⚠️ Qoniqarli+! Rivojlanish kerak' :
-                     bmbGrade.grade === 'C' ? "⚠️ Qoniqarli. Ko'proq mashq qiling" :
-                     '❌ Qoniqarsiz. Qayta yozish tavsiya etiladi'}
-                  </div>
+                  <dt>{t('er_score')}</dt>
+                  <dd>{displayScore !== null ? num(displayScore) : '—'}<small> / {res.max_score}</small></dd>
                 </div>
+              )}
+              {isEnglish && res.cefr_level && (
+                <div>
+                  <dt>{t('er_cefr')}</dt>
+                  <dd>{res.cefr_level}</dd>
+                </div>
+              )}
+              <div>
+                <dt>{t('words')}</dt>
+                <dd>{res.word_count || countEssayWords(res.essay_text ?? '')}</dd>
               </div>
-            ) : null;
-          })()}
-          <h2>{t('essay_grading_graded')}</h2>
-          {res.cached && (
-            <p className="muted small">{t('essay_grading_cached')}</p>
-          )}
-          {res.grading_source === 'mock' && (
-            <p className="muted small">{t('essay_grading_mock')}</p>
-          )}
-          <div className="grid">
-            {isEnglish ? (
-              <>
-                <div
-                  className="card stat"
-                  style={{
-                    borderColor: 'rgba(245, 158, 11, 0.45)',
-                    background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(16, 185, 129, 0.08))',
-                  }}
-                >
-                  <span className="stat-label">🏆 IELTS Overall Band Score</span>
-                  <span className="stat-value" style={{ color: '#f59e0b', fontSize: '2rem' }}>
-                    {res.overall_band !== null && res.overall_band !== undefined
-                      ? Number(res.overall_band).toFixed(1)
-                      : displayScore !== null
-                      ? Number(displayScore).toFixed(1)
-                      : '—'}
-                    <small className="muted" style={{ fontSize: '1rem' }}> / 9.0</small>
-                  </span>
+              {minutes !== null && (
+                <div>
+                  <dt>{t('er_time_spent')}</dt>
+                  <dd>{fmt(t('er_minutes'), { m: minutes })}</dd>
                 </div>
-                <div className="card stat">
-                  <span className="stat-label">🎓 CEFR Equivalency</span>
-                  <span className="stat-value" style={{ color: '#10b981' }}>
-                    {res.cefr_level || (displayScore && displayScore >= 7 ? 'C1' : 'B2')}
-                  </span>
-                </div>
-                <div className="card stat">
-                  <span className="stat-label">{t('words')}</span>
-                  <span className="stat-value">{res.word_count}</span>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="card stat">
-                  <span className="stat-label">
-                    {res.final_score !== null && res.final_score !== undefined
-                      ? t('essay_final_score')
-                      : t('em_overall')}
-                  </span>
-                  <span className="stat-value">
-                    {displayScore ?? '—'}
-                    <small className="muted"> / {res.max_score}</small>
-                  </span>
-                </div>
-                <div className="card stat">
-                  <span className="stat-label">{t('em_overall')}</span>
-                  <span className="stat-value">{res.converted_score ?? '—'}</span>
-                </div>
-                <div className="card stat">
-                  <span className="stat-label">{t('words')}</span>
-                  <span className="stat-value">{res.word_count}</span>
-                </div>
-              </>
+              )}
+            </dl>
+
+            {res.cached && <p className="muted small er-hero__note">{t('essay_grading_cached')}</p>}
+            {res.grading_source === 'mock' && <p className="muted small er-hero__note">{t('essay_grading_mock')}</p>}
+            {res.summary && <p className="er-hero__summary">{res.summary}</p>}
+
+            {takeaways.length > 0 && (
+              <div className="er-takeaways">
+                <h2>{t('er_takeaways')}</h2>
+                <ol>
+                  {takeaways.map((s, i) => (
+                    <li key={i}>{s}</li>
+                  ))}
+                </ol>
+              </div>
             )}
-          </div>
-          {res.summary && (
-            <div className="card" style={{ marginTop: 16 }}>
-              <p>{res.summary}</p>
-            </div>
-          )}
-          <h2>{isEnglish ? 'IELTS 4 criteria (band 1.0 – 9.0)' : t('essay_12_criteria')}</h2>
-          {radarItems.length > 0 && (
-            <div style={{ display: 'flex', justifyContent: 'center', margin: '20px 0 28px' }}>
-              <HologramRadar3D
-                items={radarItems}
-                activeId={selectedCritId}
-                size={270}
-              />
-            </div>
-          )}
-          <div className="grid">
-            {res.criteria.map((c) => (
-              <TiltCard
-                key={c.id}
-                glare
-                maxTilt={6}
-                scale={1.02}
-                style={{ borderRadius: 'var(--radius)', height: '100%' }}
+          </section>
+
+          {/* ---- Tabs ---------------------------------------------------- */}
+          <div className="er-tabs" role="tablist" aria-label={t('essay_results')}>
+            {tabs.map((tb) => (
+              <button
+                key={tb.key}
+                type="button"
+                role="tab"
+                id={`er-tab-${tb.key}`}
+                aria-selected={tab === tb.key}
+                aria-controls={`er-panel-${tb.key}`}
+                className={`er-tab${tab === tb.key ? ' is-active' : ''}`}
+                onClick={() => {
+                  setTab(tb.key);
+                  if (tb.key === 'improved') void loadImproved();
+                }}
               >
-                <div
-                  className="card"
-                  style={{
-                    height: '100%',
-                    margin: 0,
-                    cursor: 'pointer',
-                    borderColor: selectedCritId === c.id ? '#f59e0b' : undefined,
-                    boxShadow: selectedCritId === c.id ? '0 0 16px rgba(245, 158, 11, 0.25)' : undefined,
-                    transition: 'all 0.2s ease',
-                  }}
-                  onClick={() => setSelectedCritId(c.id)}
-                  onMouseEnter={() => setSelectedCritId(c.id)}
-                >
-                  <strong>{c.name}</strong>
-                  <p className="stat-value" style={{ margin: '6px 0 2px' }}>
-                    {c.score}
-                    <small className="muted"> / {c.max_score ?? 2}</small>
-                  </p>
-                  {/* Progress bar */}
-                  <div style={{ height: 6, background: 'rgba(255,255,255,0.08)', borderRadius: 3, overflow: 'hidden', margin: '4px 0 8px' }}>
-                    <div
-                      style={{
-                        height: '100%',
-                        width: `${Math.min(100, Math.round((c.score / (c.max_score || 2)) * 100))}%`,
-                        background: c.score >= (c.max_score || 2) ? '#10b981' : c.score >= (c.max_score || 2) * 0.7 ? '#f59e0b' : '#ef4444',
-                        borderRadius: 3,
-                        transition: 'width 0.4s ease',
-                      }}
-                    />
-                  </div>
-                  <p className="muted small">{c.reason}</p>
-                  {!!c.errors?.length && (
-                    <ul className="muted small" style={{ marginTop: 4, paddingLeft: 18 }}>
-                      {c.errors.map((e, i) => (
-                        <li key={i}>“{e}”</li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </TiltCard>
+                {tb.label}
+                {tb.count !== undefined && <span className="er-tab__count">{tb.count}</span>}
+              </button>
             ))}
           </div>
 
-          {/* Strengths, Weaknesses, and Teacher Recommendation */}
-          {(!!res.strengths?.length || !!res.weaknesses?.length || !!res.teacher_recommendation) && (
-            <div className="grid" style={{ marginTop: 20 }}>
-              {!!res.strengths?.length && (
-                <div className="card" style={{ borderLeft: '4px solid #10b981' }}>
-                  <h4 style={{ color: '#10b981', margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span>💪</span> Kuchli tomonlari
-                  </h4>
-                  <ul className="muted small" style={{ margin: 0, paddingLeft: 18 }}>
-                    {res.strengths.map((s, i) => (
-                      <li key={i} style={{ marginBottom: 4 }}>{s}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {!!res.weaknesses?.length && (
-                <div className="card" style={{ borderLeft: '4px solid #f59e0b' }}>
-                  <h4 style={{ color: '#f59e0b', margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span>⚠️</span> E'tibor qaratish kerak
-                  </h4>
-                  <ul className="muted small" style={{ margin: 0, paddingLeft: 18 }}>
-                    {res.weaknesses.map((w, i) => (
-                      <li key={i} style={{ marginBottom: 4 }}>{w}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {!!res.teacher_recommendation && (
-                <div className="card" style={{ borderLeft: '4px solid #3b82f6', gridColumn: '1 / -1' }}>
-                  <h4 style={{ color: '#3b82f6', margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span>💡</span> Ustoz / AI Tavsiyasi
-                  </h4>
-                  <p className="small" style={{ margin: 0, color: 'var(--text, #f3f4f6)', lineHeight: 1.6 }}>
-                    {res.teacher_recommendation}
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 📝 Yozilgan Esse va Interaktiv Grammatika Tahrirchisi (Grammarly rejimida) */}
-          {(res.essay_text || !!res.spelling_errors?.length) && (
-            <div
-              className="card"
-              style={{
-                marginTop: 20,
-                border: '1px solid rgba(239, 68, 68, 0.35)',
-                background: 'linear-gradient(180deg, rgba(239, 68, 68, 0.04) 0%, rgba(16, 185, 129, 0.02) 100%)',
-                borderRadius: 14,
-                padding: 20,
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
-                <div>
-                  <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: '1.15rem' }}>
-                    <span>✍️</span> Yozilgan Esse va Interaktiv Grammatika Tahrirchisi
-                  </h3>
-                  <p className="muted small" style={{ margin: '4px 0 0' }}>
-                    Grammarly rejimida to&apos;g&apos;ridan-to&apos;g&apos;ri matn ustida to&apos;lqinsimon qizil chiziqli xatoni bosib tuzatish mumkin
-                  </p>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  {!!res.spelling_errors?.length && Object.keys(fixedErrors).length < res.spelling_errors.length && (
-                    <button
-                      type="button"
-                      className="btn sm"
-                      onClick={handleFixAllErrors}
-                      style={{
-                        background: 'rgba(16, 185, 129, 0.15)',
-                        borderColor: '#10b981',
-                        color: '#10b981',
-                        fontWeight: 700,
-                        fontSize: '0.8rem',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 6,
-                      }}
-                      title="Barcha aniqlangan xatolarni bir zumda to'g'ri shakliga almashtirish"
-                    >
-                      <span>⚡</span> Barchasini to&apos;g&apos;rilash ({res.spelling_errors.length - Object.keys(fixedErrors).length} ta)
-                    </button>
-                  )}
-
+          {tab === 'criteria' && (
+            <section id="er-panel-criteria" role="tabpanel" aria-labelledby="er-tab-criteria" className="er-panel">
+              {criteria.length > 0 && (
+                <div className="er-panel__bar">
+                  {!isEnglish && <span className="muted small">{fmt(t('er_criteria_full'), { n: fullMarks })}</span>}
                   <button
                     type="button"
-                    className="btn sm ghost"
-                    onClick={() => {
-                      navigator.clipboard.writeText(workingEssayText || res.essay_text || '');
-                      setCopiedWorkingText(true);
-                      setTimeout(() => setCopiedWorkingText(false), 2000);
-                    }}
-                    style={{ fontSize: '0.8rem' }}
+                    className="ui-btn ui-btn--sm"
+                    onClick={() =>
+                      setOpenCrit(openCrit.size === criteria.length ? new Set() : new Set(criteria.map((c) => c.id)))
+                    }
                   >
-                    {copiedWorkingText ? '✓ Nusxalandi' : '📋 Matnni nusxalash'}
+                    {openCrit.size === criteria.length ? t('er_collapse_all') : t('er_expand_all')}
                   </button>
-                </div>
-              </div>
-
-              {/* Interactive Grammarly Error Popover / Inspector */}
-              {activeError && (
-                <div
-                  style={{
-                    marginBottom: 16,
-                    padding: 14,
-                    borderRadius: 10,
-                    background: 'rgba(24, 24, 27, 0.95)',
-                    border: '1.5px solid #ef4444',
-                    boxShadow: '0 8px 24px rgba(239, 68, 68, 0.25)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 10,
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f87171', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span>💡</span> Grammatika &amp; Imlo Tavsiyasi
-                    </span>
-                    <button
-                      type="button"
-                      className="btn sm ghost"
-                      onClick={() => setActiveError(null)}
-                      style={{ padding: '2px 8px', fontSize: '0.78rem' }}
-                    >
-                      ✕
-                    </button>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                    <div>
-                      <span style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block' }}>Matndagi xato:</span>
-                      <span style={{ fontSize: '1rem', fontWeight: 700, color: '#ef4444', textDecoration: 'line-through' }}>
-                        {activeError.word}
-                      </span>
-                    </div>
-                    <span style={{ color: 'var(--muted)' }}>➔</span>
-                    <div>
-                      <span style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block' }}>Tavsiya etilgan to&apos;g&apos;ri shakl:</span>
-                      <span style={{ fontSize: '1.05rem', fontWeight: 800, color: '#10b981' }}>
-                        {activeError.correction}
-                      </span>
-                    </div>
-                  </div>
-
-                  {activeError.explanation && (
-                    <p style={{ margin: 0, fontSize: '0.84rem', color: 'var(--ink)', lineHeight: 1.5 }}>
-                      <strong>Izoh:</strong> {activeError.explanation}
-                    </p>
-                  )}
-
-                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
-                    <button
-                      type="button"
-                      className="btn sm ghost"
-                      onClick={() => setActiveError(null)}
-                      style={{ fontSize: '0.8rem' }}
-                    >
-                      Yopish
-                    </button>
-                    <button
-                      type="button"
-                      className="btn sm primary"
-                      onClick={() => handleReplaceError(activeError)}
-                      style={{
-                        background: '#10b981',
-                        borderColor: '#10b981',
-                        color: '#ffffff',
-                        fontWeight: 700,
-                        fontSize: '0.82rem',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 6,
-                      }}
-                    >
-                      <span>🪄</span> Matnda almashtirish
-                    </button>
-                  </div>
                 </div>
               )}
 
-              {/* The Essay Text with Wave Underlines */}
-              <div
-                style={{
-                  whiteSpace: 'pre-line',
-                  lineHeight: 1.85,
-                  fontSize: '0.98rem',
-                  color: 'var(--ink)',
-                  background: 'rgba(0, 0, 0, 0.15)',
-                  padding: '16px 18px',
-                  borderRadius: 10,
-                  border: '1px solid rgba(255, 255, 255, 0.06)',
-                }}
-              >
-                {renderInlineGrammarlyText(workingEssayText || res.essay_text || '', res.spelling_errors || [])}
-              </div>
-
-              {/* Status footer */}
-              <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-                <span className="muted small">
-                  {res.word_count || countEssayWords(workingEssayText || res.essay_text || '')} ta so&apos;z
-                </span>
-                {Object.keys(fixedErrors).length > 0 && (
-                  <span style={{ fontSize: '0.8rem', color: '#10b981', fontWeight: 600 }}>
-                    ✓ {Object.keys(fixedErrors).length} ta xato muvaffaqiyatli almashtirildi
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Spelling Errors Table/List */}
-          {!!res.spelling_errors?.length && (
-            <div
-              className="card"
-              style={{
-                marginTop: 20,
-                border: '1px solid rgba(239, 68, 68, 0.3)',
-                background: 'rgba(239, 68, 68, 0.02)',
-              }}
-            >
-              <h3 style={{ margin: '0 0 12px', color: '#ef4444', display: 'flex', alignItems: 'center', gap: 8, fontSize: '1.05rem' }}>
-                <span>✍️</span> Aniqlangan imlo va grammatika xatoliklari ({res.spelling_errors.length} ta)
-              </h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(280px, 100%), 1fr))', gap: 10 }}>
-                {res.spelling_errors.map((err, idx) => {
-                  const isFixed = Boolean(fixedErrors[err.word.toLowerCase()]);
-                  return (
-                    <div
-                      key={idx}
-                      onClick={() => !isFixed && setActiveError(err)}
-                      style={{
-                        padding: '10px 14px',
-                        background: isFixed ? 'rgba(16, 185, 129, 0.05)' : 'rgba(239, 68, 68, 0.05)',
-                        borderRadius: 8,
-                        border: isFixed ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.2)',
-                        cursor: isFixed ? 'default' : 'pointer',
-                        transition: 'all 0.15s ease',
-                      }}
-                      title={isFixed ? "To'g'rilandi" : "Bosib matnda almashtirish"}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ textDecoration: 'line-through', color: '#ef4444', fontWeight: 600 }}>{err.word}</span>
-                          <span style={{ color: 'var(--text-muted, #9ca3af)' }}>➔</span>
-                          <span style={{ color: '#10b981', fontWeight: 700 }}>{err.correction}</span>
+              {groups.map((g) => (
+                <div key={g.key} className="er-group">
+                  <h3 className="er-group__title">{t(g.key)}</h3>
+                  {g.items.map((c) => {
+                    const max = c.max_score ?? 2;
+                    const lost = Math.max(0, max - c.score);
+                    const open = openCrit.has(c.id);
+                    const tn = tone(c.score, max);
+                    return (
+                      <div key={c.id} className={`er-crit${open ? ' is-open' : ''}`}>
+                        <button
+                          type="button"
+                          className="er-crit__head"
+                          aria-expanded={open}
+                          aria-controls={`er-crit-${c.id}`}
+                          onClick={() => toggleCrit(c.id)}
+                        >
+                          <span className="er-crit__name">{c.name}</span>
+                          <span className={`er-crit__score is-${tn}`}>
+                            {num(c.score)}<small>/{num(max)}</small>
+                          </span>
+                          <span className="er-crit__bar" aria-hidden="true">
+                            <i className={`is-${tn}`} style={{ width: `${Math.min(100, Math.round((c.score / (max || 1)) * 100))}%` }} />
+                          </span>
+                          <span className="er-crit__chev" aria-hidden="true">▾</span>
+                        </button>
+                        <div className="er-crit__body" id={`er-crit-${c.id}`} role="region">
+                          <div className="er-crit__inner">
+                            <p className={`er-chip is-${tn}`}>
+                              {lost > 0 && !isEnglish ? fmt(t('er_lost'), { n: num(lost) }) : lost > 0 ? `${num(c.score)} / ${num(max)}` : t('er_full_marks')}
+                            </p>
+                            {c.reason && <p className="er-crit__reason">{c.reason}</p>}
+                            {!!c.errors?.length && (
+                              <div className="er-evidence">
+                                <span className="muted small">{t('er_evidence')}</span>
+                                {c.errors.map((e, i) => {
+                                  const ev = splitEvidence(e);
+                                  return ev.after ? (
+                                    <div key={i} className="er-diff">
+                                      <p className="er-diff__before"><span aria-hidden="true">❌</span> {ev.before}</p>
+                                      <p className="er-diff__after"><span aria-hidden="true">✅</span> {ev.after}</p>
+                                    </div>
+                                  ) : (
+                                    <blockquote key={i} className="er-quote">{ev.before}</blockquote>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        {isFixed ? (
-                          <span style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 700 }}>✓ To&apos;g&apos;rilandi</span>
-                        ) : (
-                          <span style={{ fontSize: '0.72rem', color: '#f59e0b', fontWeight: 600 }}>🪄 Tuzatish</span>
-                        )}
                       </div>
-                      {err.explanation && (
-                        <p className="muted small" style={{ margin: 0, fontSize: '0.8rem' }}>{err.explanation}</p>
-                      )}
+                    );
+                  })}
+                </div>
+              ))}
+
+              {(!!res.strengths?.length || !!res.weaknesses?.length || !!res.teacher_recommendation) && (
+                <div className="er-notes">
+                  {!!res.strengths?.length && (
+                    <div className="ui-card er-note is-good">
+                      <h3>{t('er_strengths')}</h3>
+                      <ul>{res.strengths.map((s, i) => <li key={i}>{s}</li>)}</ul>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
+                  )}
+                  {!!res.weaknesses?.length && (
+                    <div className="ui-card er-note is-warn">
+                      <h3>{t('er_weaknesses')}</h3>
+                      <ul>{res.weaknesses.map((w, i) => <li key={i}>{w}</li>)}</ul>
+                    </div>
+                  )}
+                  {!!res.teacher_recommendation && (
+                    <div className="ui-card er-note is-info er-note--wide">
+                      <h3>{t('er_recommendation')}</h3>
+                      <p>{res.teacher_recommendation}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
           )}
 
-          {/* 🪄 AI tahriri (Oldin / Keyin) - Interactive Redactor */}
-          <div
-            className="card"
-            style={{
-              marginTop: 20,
-              background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.05) 0%, rgba(16, 185, 129, 0.05) 100%)',
-              border: '1px solid rgba(245, 158, 11, 0.25)',
-              borderRadius: '14px',
-              padding: '20px',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-              <div>
-                <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span>🪄</span> AI tahriri (Oldin / Keyin)
-                </h3>
-                <p className="muted small" style={{ margin: '4px 0 0' }}>
-                  12 mezon talablari asosida tuzatilgan mukammal namuna matn
-                </p>
+          {tab === 'corrections' && (
+            <section id="er-panel-corrections" role="tabpanel" aria-labelledby="er-tab-corrections" className="er-panel">
+              {spelling.length === 0 ? (
+                <p className="ui-card muted">{t('er_no_corrections')}</p>
+              ) : (
+                <>
+                  <div className="er-panel__bar">
+                    <span className="muted small">{fmt(t('er_fixed_count'), { n: Object.keys(fixed).length })}</span>
+                    {activeErrors.length > 0 && (
+                      <button type="button" className="ui-btn ui-btn--sm" onClick={applyAll}>
+                        {fmt(t('er_fix_all'), { n: activeErrors.length })}
+                      </button>
+                    )}
+                  </div>
+                  <div className="er-fixes">
+                    {spelling.map((e, idx) => {
+                      const isFixed = Boolean(fixed[e.word.toLowerCase()]);
+                      return (
+                        <article key={idx} className={`ui-card er-fix${isFixed ? ' is-fixed' : ''}`}>
+                          <p className="er-diff__before">
+                            <span className="er-fix__tag">{t('er_original')}</span> {e.word}
+                          </p>
+                          <p className="er-diff__after">
+                            <span className="er-fix__tag">{t('er_corrected')}</span> {e.correction}
+                          </p>
+                          {e.explanation && <p className="er-fix__why"><b>{t('er_explanation')}:</b> {e.explanation}</p>}
+                          <button
+                            type="button"
+                            className="ui-btn ui-btn--sm"
+                            disabled={isFixed}
+                            onClick={() => applyFix(e)}
+                          >
+                            {isFixed ? `✓ ${t('er_fixed')}` : t('er_apply_fix')}
+                          </button>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </section>
+          )}
+
+          {tab === 'essay' && (
+            <section id="er-panel-essay" role="tabpanel" aria-labelledby="er-tab-essay" className="er-panel">
+              <div className="er-panel__bar">
+                {activeErrors.length > 0 ? <span className="muted small">{t('er_essay_hint')}</span> : <span />}
+                <button
+                  type="button"
+                  className="ui-btn ui-btn--sm"
+                  onClick={() => void copy('essay', workingText || res.essay_text || '')}
+                >
+                  {copied === 'essay' ? t('er_copied') : t('er_copy')}
+                </button>
               </div>
-              <button
-                type="button"
-                className="btn sm"
-                disabled={improvedBusy}
-                onClick={toggleImproved}
-                style={{
-                  borderColor: '#f59e0b',
-                  color: '#f59e0b',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
-                <span>{improvedOpen ? '✕ Yopish' : '✨ AI Tahririni ochish'}</span>
-              </button>
-            </div>
-
-            {improvedBusy && (
-              <p className="muted small" style={{ marginTop: 14 }}>
-                🤖 AI matningizni tahrirlamoqda va uslubiy xatolarni tuzatmoqda…
-              </p>
-            )}
-            {improvedErr && <p className="error small" style={{ marginTop: 14 }}>{improvedErr}</p>}
-
-            {improvedOpen && improved && (
-              <div style={{ marginTop: 18 }}>
-                {/* View Mode Switcher */}
-                <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    className={`btn sm ${improvedView === 'diff' ? 'primary' : 'ghost'}`}
-                    onClick={() => setImprovedView('diff')}
-                  >
-                    🔄 Solishtirish (Oldin / Keyin)
-                  </button>
-                  <button
-                    type="button"
-                    className={`btn sm ${improvedView === 'after' ? 'primary' : 'ghost'}`}
-                    onClick={() => setImprovedView('after')}
-                  >
-                    ✨ Faqat AI tahriri
-                  </button>
-                  <button
-                    type="button"
-                    className={`btn sm ${improvedView === 'before' ? 'primary' : 'ghost'}`}
-                    onClick={() => setImprovedView('before')}
-                  >
-                    📝 Asl esse matni
-                  </button>
+              {activeError && (
+                <div className="ui-card er-inspector" role="dialog" aria-label={t('er_tab_corrections')}>
+                  <p className="er-diff__before">❌ {activeError.word}</p>
+                  <p className="er-diff__after">✅ {activeError.correction}</p>
+                  {activeError.explanation && <p className="er-fix__why">{activeError.explanation}</p>}
+                  <div className="er-actions">
+                    <button type="button" className="ui-btn ui-btn--sm" onClick={() => setActiveError(null)}>
+                      {t('close')}
+                    </button>
+                    <button type="button" className="ui-btn ui-btn--sm ui-btn--primary" onClick={() => applyFix(activeError)}>
+                      {t('er_apply_fix')}
+                    </button>
+                  </div>
                 </div>
+              )}
+              <div className="ui-card er-essay">{renderEssay(workingText || res.essay_text || '')}</div>
+            </section>
+          )}
 
-                {/* Diff: Side-by-side comparison */}
-                {improvedView === 'diff' && (
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))',
-                      gap: 16,
-                    }}
-                  >
-                    <div
-                      style={{
-                        background: 'rgba(239, 68, 68, 0.03)',
-                        border: '1px solid rgba(239, 68, 68, 0.2)',
-                        borderRadius: '10px',
-                        padding: '14px',
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                        <strong style={{ color: '#ef4444', fontSize: '0.9rem' }}>
-                          📝 Oldin (Siz yozgan asl matn):
-                        </strong>
-                        <span className="muted small">{res.word_count} so‘z</span>
-                      </div>
-                      <div
-                        style={{
-                          whiteSpace: 'pre-line',
-                          fontSize: '0.88rem',
-                          lineHeight: 1.6,
-                          maxHeight: '400px',
-                          overflowY: 'auto',
-                          color: 'var(--text-muted, #9ca3af)',
-                        }}
+          {tab === 'improved' && (
+            <section id="er-panel-improved" role="tabpanel" aria-labelledby="er-tab-improved" className="er-panel">
+              <p className="muted small">{t('er_improved_hint')}</p>
+              {improvedBusy && (
+                <div className="ui-card er-pending" role="status">
+                  <span className="muted small">{t('er_improved_loading')}</span>
+                  <div className="dsh-skeleton-line" style={{ height: 14 }} />
+                  <div className="dsh-skeleton-line" style={{ height: 14, width: '90%' }} />
+                  <div className="dsh-skeleton-line" style={{ height: 14, width: '70%' }} />
+                </div>
+              )}
+              {improvedErr && <p className="error small">{improvedErr}</p>}
+              {improved && (
+                <>
+                  <div className="er-seg" role="group">
+                    {(['diff', 'after', 'before'] as const).map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        aria-pressed={improvedView === v}
+                        className={`er-seg__btn${improvedView === v ? ' is-active' : ''}`}
+                        onClick={() => setImprovedView(v)}
                       >
-                        {renderHighlightedText(res.essay_text, res.spelling_errors)}
+                        {t(v === 'diff' ? 'er_view_diff' : v === 'after' ? 'er_view_after' : 'er_view_before')}
+                      </button>
+                    ))}
+                  </div>
+                  <div className={`er-compare${improvedView === 'diff' ? ' is-split' : ''}`}>
+                    {improvedView !== 'after' && (
+                      <div className="ui-card er-compare__col is-before">
+                        <div className="er-compare__head">
+                          <strong>{t('er_before_label')}</strong>
+                          <span className="muted small">{res.word_count} {t('words_suffix')}</span>
+                        </div>
+                        <div className="er-compare__text">{res.essay_text || t('er_no_text')}</div>
                       </div>
-                    </div>
-
-                    <div
-                      style={{
-                        background: 'rgba(16, 185, 129, 0.04)',
-                        border: '1px solid rgba(16, 185, 129, 0.25)',
-                        borderRadius: '10px',
-                        padding: '14px',
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, alignItems: 'center' }}>
-                        <strong style={{ color: '#10b981', fontSize: '0.9rem' }}>
-                          ✨ Keyin (AI tuzatgan namuna):
-                        </strong>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span className="muted small">{countEssayWords(improved)} so‘z</span>
-                          <button type="button" className="btn sm ghost" onClick={copyImproved} style={{ padding: '2px 8px', fontSize: '0.78rem' }}>
-                            {copied ? '✓ Nusxalandi' : '📋 Nusxa'}
+                    )}
+                    {improvedView !== 'before' && (
+                      <div className="ui-card er-compare__col is-after">
+                        <div className="er-compare__head">
+                          <strong>{t('er_after_label')}</strong>
+                          <button type="button" className="ui-btn ui-btn--sm" onClick={() => void copy('improved', improved)}>
+                            {copied === 'improved' ? t('er_copied') : t('er_copy')}
                           </button>
                         </div>
+                        <div className="er-compare__text">{improved}</div>
                       </div>
-                      <div
-                        style={{
-                          whiteSpace: 'pre-line',
-                          fontSize: '0.88rem',
-                          lineHeight: 1.6,
-                          maxHeight: '400px',
-                          overflowY: 'auto',
-                          color: 'var(--text, #f3f4f6)',
-                        }}
-                      >
-                        {improved}
-                      </div>
-                    </div>
+                    )}
                   </div>
-                )}
+                </>
+              )}
+            </section>
+          )}
 
-                {/* View only After */}
-                {improvedView === 'after' && (
-                  <div
-                    style={{
-                      background: 'rgba(16, 185, 129, 0.04)',
-                      border: '1px solid rgba(16, 185, 129, 0.25)',
-                      borderRadius: '10px',
-                      padding: '16px',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, alignItems: 'center' }}>
-                      <span className="muted small">
-                        {countEssayWords(improved)} {t('words_suffix')} · AI tomonidan mukammallashtirildi
-                      </span>
-                      <button type="button" className="btn sm" onClick={copyImproved}>
-                        {copied ? '✓ Nusxalandi' : '📋 Matnni nusxalash'}
-                      </button>
-                    </div>
-                    <p style={{ whiteSpace: 'pre-line', fontSize: '0.92rem', lineHeight: 1.7, margin: 0 }}>
-                      {improved}
-                    </p>
-                  </div>
-                )}
-
-                {/* View only Before */}
-                {improvedView === 'before' && (
-                  <div
-                    style={{
-                      background: 'rgba(255, 255, 255, 0.02)',
-                      border: '1px solid rgba(255, 255, 255, 0.08)',
-                      borderRadius: '10px',
-                      padding: '16px',
-                    }}
-                  >
-                    <p className="muted small" style={{ marginBottom: 10 }}>
-                      Asl yozilgan variant · {res.word_count} {t('words_suffix')}
-                    </p>
-                    <div style={{ whiteSpace: 'pre-line', fontSize: '0.92rem', lineHeight: 1.7, margin: 0 }}>
-                      {renderHighlightedText(res.essay_text, res.spelling_errors)}
-                    </div>
-                  </div>
-                )}
+          {(res.status === 'graded' || res.status === 'ai_evaluated') && !hasTeacherScore && !reviewSent && (
+            <details className="ui-card er-review">
+              <summary>{t('essay_ask_teacher')}</summary>
+              <div className="er-review__body">
+                <textarea
+                  className="ui-input"
+                  rows={3}
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder={t('essay_review_reason_ph')}
+                />
+                <button className="ui-btn ui-btn--primary" disabled={reviewBusy} onClick={sendReview}>
+                  {reviewBusy ? t('loading') : t('essay_review_send')}
+                </button>
+                {reviewErr && <p className="error small">{reviewErr}</p>}
               </div>
-            )}
+            </details>
+          )}
+
+          <div className="er-actions er-actions--footer">
+            <button type="button" className="ui-btn" onClick={() => window.print()}>
+              {t('er_print')}
+            </button>
+            <button type="button" className="ui-btn ui-btn--primary" onClick={() => setShowScoreCard(true)}>
+              {t('er_share')}
+            </button>
           </div>
-
-          {(res.status === 'graded' || res.status === 'ai_evaluated') &&
-            res.final_score === null &&
-            !reviewSent && (
-              <div className="card" style={{ marginTop: 16 }}>
-                <strong>{t('essay_ask_teacher')}</strong>
-                <div className="form" style={{ maxWidth: '100%' }}>
-                  <textarea
-                    rows={3}
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value)}
-                    placeholder={t('essay_review_reason_ph')}
-                  />
-                  <button
-                    className="btn primary sm"
-                    disabled={reviewBusy}
-                    onClick={sendReview}
-                  >
-                    {reviewBusy ? t('loading') : t('essay_review_send')}
-                  </button>
-                  {reviewErr && <p className="error">{reviewErr}</p>}
-                </div>
-              </div>
-            )}
-        {/* PDF/Print & Score Card Buttons */}
-        <div style={{ marginTop: 20, textAlign: 'center', display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
-          <button
-            type="button"
-            className="btn sm"
-            onClick={() => window.print()}
-            style={{
-              background: 'rgba(59, 130, 246, 0.1)',
-              borderColor: '#3b82f6',
-              color: '#3b82f6',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 8,
-              fontWeight: 700,
-            }}
-          >
-            <span>📄</span> Rasmiy BMB Natija Varaqasini (PDF) yuklab olish
-          </button>
-
-          <button
-            type="button"
-            className="btn sm"
-            onClick={() => setShowScoreCard(true)}
-            style={{
-              background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
-              borderColor: '#D97706',
-              color: '#0F172A',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 8,
-              fontWeight: 900,
-              boxShadow: '0 4px 14px rgba(245, 158, 11, 0.25)',
-            }}
-          >
-            <span>📲</span> Natijani Stories'ga ulashish (9:16)
-          </button>
-        </div>
         </>
       )}
 
-      {res && (
+      {done && (
         <ScoreCardModal
           isOpen={showScoreCard}
           onClose={() => setShowScoreCard(false)}
-          title={res.topic_title || 'AI Esse Studiyasi'}
-          studentName={
-            formatDisplayName(user?.full_name, user?.email)
-          }
+          title={res.topic_title || t('essay_results')}
+          studentName={formatDisplayName(user?.full_name, user?.email)}
           scorePercentage={
-            res.score_percentage ||
-            (res.total_score && res.max_score
-              ? Math.round((res.total_score / res.max_score) * 100)
-              : 0)
+            res.score_percentage ??
+            (displayScore !== null && res.max_score ? Math.round((displayScore / res.max_score) * 100) : 0)
           }
-          gradeBadge={
-            (() => {
-              const ds = res.final_score !== null && res.final_score !== undefined ? res.final_score : res.total_score;
-              const bg = getBmbGrade(ds, res.max_score);
-              return bg ? `⭐️ ${bg.grade} DARAJA` : '⭐️ RASMIY NATIJA';
-            })()
-          }
-          correctCount={Math.round((res.score_percentage || 70) * 0.12)}
-          incorrectCount={12 - Math.round((res.score_percentage || 70) * 0.12)}
-          totalQuestions={12}
-          timeSpent={`${res.word_count || 250} so'z`}
+          gradeBadge={grade ? fmt(t('er_badge'), { grade: grade.grade }) : isEnglish && band ? `IELTS ${Number(band).toFixed(1)}` : t('er_badge_default')}
+          correctCount={fullMarks}
+          incorrectCount={Math.max(0, criteria.length - fullMarks)}
+          totalQuestions={criteria.length}
+          timeSpent={minutes !== null ? fmt(t('er_minutes'), { m: minutes }) : `${res.word_count} ${t('words_suffix')}`}
         />
       )}
 
-      <p style={{ marginTop: 16 }}>
+      <p>
         <Link to="/essays">{t('essay_back_topics')}</Link>
       </p>
     </div>

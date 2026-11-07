@@ -1,0 +1,54 @@
+/* Duel room (1v1 Arena). Tokens only; readable in light and dark mode and
+   sized for the Telegram Mini App viewport (≥ 44px tap targets, no x-overflow). */
+.duel-alert {
+  display: flex; align-items: flex-start; gap: var(--sp-3); margin-bottom: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4); border-radius: var(--r-md); border: 1px solid; color: var(--ink);
+}
+.duel-alert p { margin: 2px 0 0; font-size: var(--fs-xs); color: var(--muted); }
+.duel-alert.is-bad { border-color: color-mix(in srgb, var(--danger) 45%, transparent); background: color-mix(in srgb, var(--danger) 9%, var(--card)); }
+.duel-alert.is-warn { border-color: color-mix(in srgb, var(--accent) 50%, transparent); background: color-mix(in srgb, var(--accent) 10%, var(--card)); }
+.duel-skeleton { display: grid; gap: var(--sp-3); }
+
+.duel-count { font-size: 88px; font-weight: 900; line-height: 1; color: var(--accent-dark); transition: color 0.3s ease; }
+html.dark .duel-count { color: var(--accent); }
+.duel-count.is-go { color: var(--emerald); }
+.duel-count__label { margin: var(--sp-3) 0 0; font-size: var(--fs-md); font-weight: 700; color: var(--muted); }
+.duel-versus { margin: var(--sp-2) 0 0; display: flex; justify-content: center; align-items: center; gap: var(--sp-2); flex-wrap: wrap; font-size: var(--fs-sm); }
+.duel-versus .is-me, .duel-player__score.is-me { color: var(--accent-dark); }
+.duel-versus .is-opp, .duel-player__score.is-opp { color: var(--danger); }
+html.dark .duel-versus .is-me, html.dark .duel-player__score.is-me { color: var(--accent); }
+
+.duel-player { display: grid; min-width: 0; }
+.duel-player__name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.duel-player__score { font-size: var(--fs-lg); font-variant-numeric: tabular-nums; }
+.duel-timer {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; min-width: 52px; height: 36px; padding: 0 10px;
+  border-radius: var(--r-pill); border: 1.5px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent-dark); font-weight: 800; font-variant-numeric: tabular-nums;
+}
+html.dark .duel-timer { color: var(--accent); }
+.duel-timer.is-low { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
+.duel-streak { margin: var(--sp-2) 0 0; font-weight: 800; color: var(--accent-dark); }
+html.dark .duel-streak { color: var(--accent); }
+
+.duel-question { font-size: var(--fs-lg); line-height: 1.45; overflow-wrap: anywhere; }
+.duel-options { display: grid; gap: var(--sp-2); margin-top: var(--sp-3); }
+.duel-options .quiz-opt { min-height: 52px; overflow-wrap: anywhere; color: var(--ink); }
+.duel-options .quiz-opt.right { border-color: var(--emerald); background: color-mix(in srgb, var(--emerald) 14%, var(--card)); }
+.duel-options .quiz-opt.wrong { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, var(--card)); }
+.duel-options .quiz-opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.duel-rewards { display: flex; justify-content: center; gap: var(--sp-2); flex-wrap: wrap; margin: var(--sp-2) 0 var(--sp-3); }
+.duel-reward { padding: 4px 12px; border-radius: var(--r-pill); background: var(--card-2); border: 1px solid var(--border); font-size: var(--fs-sm); font-weight: 700; color: var(--ink); }
+.duel-reward.is-elo.is-up { color: var(--emerald); border-color: color-mix(in srgb, var(--emerald) 40%, transparent); }
+.duel-reward.is-elo.is-down { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+.duel-outcome { margin: 0 0 var(--sp-4); font-size: var(--fs-sm); font-weight: 700; color: var(--ink-soft); }
+.duel-outcome.is-win { color: var(--emerald); }
+.duel-end-actions { display: flex; justify-content: center; }
+.duel-end-actions .ui-btn { min-width: 200px; min-height: var(--tap); }
+
+@media (max-width: 480px) {
+  .duel-count { font-size: 72px; }
+  .duel-end-actions .ui-btn { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) { .duel-count { transition: none; } }

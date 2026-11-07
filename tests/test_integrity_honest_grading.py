@@ -180,6 +180,33 @@ def test_ielts_endpoint_failure_returns_503_and_gives_the_allowance_back(api, st
     assert usage.status == SubscriptionUsage.Status.RELEASED
 
 
+def test_ielts_endpoint_prevalidation_rejection_is_400_not_500(api, student):
+    # Gibberish / too-short text is rejected before any AI call. It used to
+    # escape the view as a 500, leaving the submission PENDING and the
+    # allowance reserved forever.
+    from apps.essays.pre_validation import PreValidationError
+
+    with patch("apps.essays.services.grade_ielts_essay", side_effect=PreValidationError("too short")):
+        res = api.post("/api/v1/essays/ielts/grade/", {"essay_text": IELTS_TEXT}, format="json")
+    assert res.status_code == 400 and res.json()["code"] == "rejected"
+    sub = EssaySubmission.objects.get(student=student)
+    assert sub.status == EssaySubmission.Status.ERROR
+    assert SubscriptionUsage.objects.get(user=student).status == SubscriptionUsage.Status.RELEASED
+
+
+def test_ielts_endpoint_unexpected_error_releases_allowance(api, student):
+    with patch("apps.essays.services.grade_ielts_essay", side_effect=RuntimeError("boom")):
+        res = api.post("/api/v1/essays/ielts/grade/", {"essay_text": IELTS_TEXT}, format="json")
+    assert res.status_code == 503
+    assert EssaySubmission.objects.get(student=student).status == EssaySubmission.Status.ERROR
+    assert SubscriptionUsage.objects.get(user=student).status == SubscriptionUsage.Status.RELEASED
+
+
+def test_ielts_endpoint_rejects_non_integer_topic_id(api):
+    res = api.post("/api/v1/essays/ielts/grade/", {"essay_text": IELTS_TEXT, "topic_id": "abc"}, format="json")
+    assert res.status_code == 400
+
+
 def test_ielts_endpoint_respects_the_text_essay_allowance(api, student):
     # FREE tier: one text essay in the window; the second is refused and leaves no trace.
     ok = {
@@ -338,3 +365,38 @@ def test_tutor_without_ai_gives_only_the_answer_key_and_is_not_cached(db):
     assert out["why_wrong"] == "" and out["memory_tip"] == ""  # no reason for the mistake is made up
     assert cache.get(f"ai_explain_q{q.id}_c{wrong.id}") is None  # not cached: the next request can still get a real answer
     assert right.pk
+
+
+# --------------------------------------------------------------------------
+# Essay result: time spent is real or absent, never invented
+# --------------------------------------------------------------------------
+def test_essay_result_reports_real_time_spent(api, student):
+    now = timezone.now()
+    sub = EssaySubmission.objects.create(
+        student=student,
+        essay_text=IELTS_TEXT,
+        word_count=60,
+        status=EssaySubmission.Status.GRADED,
+        password_verified_at=now - timedelta(minutes=42),
+        submitted_at=now,
+    )
+    res = api.get(f"/tma/api/essays/{sub.id}/result/")
+    assert res.status_code == 200
+    assert res.json()["time_spent_seconds"] == 42 * 60
+
+
+def test_essay_result_omits_implausible_time_spent(api, student):
+    now = timezone.now()
+    sub = EssaySubmission.objects.create(
+        student=student,
+        essay_text=IELTS_TEXT,
+        word_count=60,
+        status=EssaySubmission.Status.GRADED,
+        password_verified_at=now - timedelta(days=3),  # draft left open for days
+        submitted_at=now,
+    )
+    assert api.get(f"/tma/api/essays/{sub.id}/result/").json()["time_spent_seconds"] is None
+    no_start = EssaySubmission.objects.create(
+        student=student, essay_text=IELTS_TEXT, word_count=60, status=EssaySubmission.Status.GRADED
+    )
+    assert api.get(f"/tma/api/essays/{no_start.id}/result/").json()["time_spent_seconds"] is None
