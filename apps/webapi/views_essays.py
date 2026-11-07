@@ -138,6 +138,9 @@ def teacher_submission_view(request, submission_id: int):
                 for c in ai_criteria
             ],
             "criterion_names": EssayCriterionScore.CRITERION_NAMES,
+            "criterion_max": {
+                str(cid): float(mx) for cid, mx in EssayCriterionScore.CRITERION_MAX_SCORES.items()
+            },
             "existing_review": (
                 {
                     "criteria_scores": existing_review.criteria_scores,
@@ -344,6 +347,7 @@ def ielts_grade_view(request):
     """
     from django.utils import timezone
     from apps.essays.models import EssayTopic
+    from apps.essays.pre_validation import PreValidationError
     from apps.essays.services import apply_ai_result, grade_ielts_essay
 
     data = request.data or {}
@@ -351,7 +355,10 @@ def ielts_grade_view(request):
     if not essay_text:
         return Response({"error": "Please enter your essay text."}, status=400)
 
-    topic_id = data.get("topic_id")
+    try:
+        topic_id = int(data["topic_id"]) if data.get("topic_id") not in (None, "") else None
+    except (TypeError, ValueError):
+        return Response({"error": "topic_id must be an integer."}, status=400)
     topic = EssayTopic.objects.filter(id=topic_id).first() if topic_id else None
     task_type = (
         str(data.get("task_type") or (topic.rubric_type if topic else "ielts_task2"))
@@ -415,12 +422,29 @@ def ielts_grade_view(request):
             min_words=min_words,
         )
         apply_ai_result(submission, result)
-    except AIUnavailable as exc:
-        record_ai_failure("essay_ielts", exc)
+    except PreValidationError as exc:
+        # Rejected before any AI call (too short, gibberish, wrong language…):
+        # a client error, not a 500. Previously this escaped the view, left
+        # the submission PENDING forever and never returned the allowance.
         release_usage(reservation)
         submission.status = EssaySubmission.Status.ERROR
-        submission.error_message = "AI baholash ishlamadi"
+        submission.error_message = str(exc)[:500]
         submission.save(update_fields=["status", "error_message", "updated_at"])
+        return Response(
+            {"ok": False, "code": "rejected", "error": str(exc), "submission_id": submission.id},
+            status=400,
+        )
+    except Exception as exc:
+        # AIUnavailable, or anything unexpected while persisting: never leave a
+        # PENDING row or a held reservation behind.
+        if isinstance(exc, AIUnavailable):
+            record_ai_failure("essay_ielts", exc)
+        else:
+            logger.exception("IELTS grading failed: submission=%s", submission.id)
+        release_usage(reservation)
+        EssaySubmission.objects.filter(
+            pk=submission.pk, status=EssaySubmission.Status.PENDING
+        ).update(status=EssaySubmission.Status.ERROR, error_message="AI baholash ishlamadi")
         return Response(
             {"ok": False, "code": "not_graded", "error": AIUnavailable.user_message, "submission_id": submission.id},
             status=503,

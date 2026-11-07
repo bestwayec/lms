@@ -1328,17 +1328,30 @@ export const TelegramAuth = {
     if (!res.ok) await throwForResponse(res, 'Telegram orqali kirishda xatolik yuz berdi.');
     return (await res.json()) as TelegramAuthLogin;
   },
-  loginWithInitData: async (initData: string) => {
-    const res = await fetch(`${API_BASE}/tma/api/auth/`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ init_data: initData }),
-    });
-    if (!res.ok) await throwForResponse(res, 'Telegram WebApp avtorizatsiyasida xatolik.');
-    return (await res.json()) as TelegramAuthLogin;
+  /**
+   * Single-flight: the backend accepts each initData hash once (replay
+   * guard), and both AuthContext and the Login page try to sign in on mount
+   * inside the Mini App. Sharing one request means the second caller gets
+   * the same tokens instead of a 401.
+   */
+  loginWithInitData: (initData: string): Promise<TelegramAuthLogin> => {
+    if (inflightInitData && inflightInitData.key === initData) return inflightInitData.promise;
+    const promise = (async () => {
+      const res = await fetch(`${API_BASE}/tma/api/auth/`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ init_data: initData }),
+      });
+      if (!res.ok) await throwForResponse(res, 'Telegram WebApp avtorizatsiyasida xatolik.');
+      return (await res.json()) as TelegramAuthLogin;
+    })();
+    inflightInitData = { key: initData, promise };
+    return promise;
   },
 };
+
+let inflightInitData: { key: string; promise: Promise<TelegramAuthLogin> } | null = null;
 
 export interface GoogleAuthVerifyResponse {
   status: string;
@@ -2587,6 +2600,8 @@ export interface TeacherEssayDetail {
   submission: TeacherEssayCard & { essay_text: string; summary: string };
   ai_criteria: { criterion_id: number; name: string; score: number; reason: string }[];
   criterion_names: Record<string, string>;
+  /** Max score per criterion id (BMB 12-criterion rubric). */
+  criterion_max?: Record<string, number>;
   existing_review: {
     criteria_scores: Record<string, number>;
     final_score: number;

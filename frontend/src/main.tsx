@@ -8,6 +8,8 @@ import './styles/review.css'
 import './styles/exam.css'
 import './styles/essay.css'
 import './styles/dashboard.css'
+import './styles/arena.css'
+import './styles/studio.css'
 import App from './App.tsx'
 import { LangProvider } from './i18n/LangContext.tsx'
 

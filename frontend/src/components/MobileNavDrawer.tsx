@@ -232,6 +232,10 @@ export default function MobileNavDrawer({ isOpen, onClose }: MobileNavDrawerProp
                     <FolderOpenIcon size={18} />
                     <span>{t('tf_groups')}</span>
                   </NavLink>
+                  <NavLink to="/teacher/studio" style={linkStyle} onClick={onClose}>
+                    <SparklesIcon size={18} />
+                    <span>{t('studio_title')}</span>
+                  </NavLink>
                   <NavLink to="/teacher/ai-converter" style={linkStyle} onClick={onClose}>
                     <SparklesIcon size={18} />
                     <span>{t('nav_converter')}</span>

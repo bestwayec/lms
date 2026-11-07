@@ -31,7 +31,7 @@ from rest_framework.views import APIView
 from apps.accounts.permissions import IsStudent
 from apps.accounts.access import is_platform_admin
 
-from .models import Test, TestAttempt
+from .models import ExamPart, Test, TestAttempt
 from .permissions import CanStartAttempt, IsAttemptOwner
 from .serializers import (
     AttemptCreateSerializer,
@@ -76,6 +76,8 @@ def _my_status_map(user, tests) -> dict[int, dict[str, Any]]:
 
     ids = [t.pk for t in tests]
     english = {t.pk for t in tests if t.subject == "english" or str(t.exam_type).startswith(("ielts", "cefr"))}
+    # Section → part → group tests (e.g. Teacher Studio) run on the CD engine in any subject.
+    english |= set(ExamPart.objects.filter(section__test_id__in=ids).values_list("section__test_id", flat=True))
     out: dict[int, dict[str, Any]] = {}
     for r in (
         Result.objects.filter(student=user, test_id__in=ids, attempt__is_preview=False, attempt__trial_part__isnull=True)

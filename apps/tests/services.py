@@ -217,6 +217,11 @@ class StartAttemptService:
                 elif hasattr(student, "student_groups"):
                     is_member = student.student_groups.exists()
             if not is_member:
+                # Teacher Studio: the test may be assigned (Homework) to several groups.
+                from apps.tests.studio_service import student_has_assignment
+
+                is_member = student_has_assignment(student, test)
+            if not is_member:
                 raise TestAccessDeniedError("Ushbu test faqat o'qituvchining biriktirilgan guruhidagi o'quvchilar uchun mo'ljallangan.")
 
         # -- Aktiv attempt mavjudmi? --------------------------------------

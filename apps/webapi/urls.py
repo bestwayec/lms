@@ -25,11 +25,27 @@ from . import (
     views_branches,
 )
 from apps.organizations import views as views_enterprise
-from apps.tests import views_converter, views_mistakes, views_omr, views_placement, views_teacher_inspector
+from apps.tests import (
+    views_converter,
+    views_mistakes,
+    views_omr,
+    views_placement,
+    views_studio,
+    views_teacher_inspector,
+)
 
 app_name = "webapi"
 
 urlpatterns = [
+    # -- Teacher Studio (test builder, assignment, item analysis) -----------
+    path("teacher/studio/parse/", views_studio.studio_parse_view, name="studio-parse"),
+    path("teacher/studio/validate/", views_studio.studio_validate_view, name="studio-validate"),
+    path("teacher/studio/media/", views_studio.studio_media_view, name="studio-media"),
+    path("teacher/studio/tests/", views_studio.studio_tests_view, name="studio-tests"),
+    path("teacher/studio/tests/<int:test_id>/", views_studio.studio_test_detail_view, name="studio-test-detail"),
+    path("teacher/studio/tests/<int:test_id>/publish/", views_studio.studio_publish_view, name="studio-test-publish"),
+    path("teacher/studio/tests/<int:test_id>/assign/", views_studio.studio_assign_view, name="studio-test-assign"),
+    path("teacher/studio/tests/<int:test_id>/analysis/", views_studio.studio_analysis_view, name="studio-test-analysis"),
     # -- Teacher Mistake Inspector & Test Analytics -------------------------
     path(
         "teacher/tests/<int:test_id>/analytics/",

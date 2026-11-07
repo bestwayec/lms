@@ -72,12 +72,16 @@ const TeacherVocabGenerator = lazyPage(() => import('./pages/TeacherVocabGenerat
 const EnglishExamInterface = lazyPage(() => import('./pages/tests/EnglishExamInterface'));
 const JoinGroup = lazyPage(() => import('./pages/JoinGroup'));
 const ReferralRedirect = lazyPage(() => import('./pages/ReferralRedirect'));
+const TeacherStudio = lazyPage(() => import('./pages/TeacherStudio'));
+const TeacherStudioEditor = lazyPage(() => import('./pages/TeacherStudioEditor'));
+const TeacherStudioResults = lazyPage(() => import('./pages/TeacherStudioResults'));
 const PanelBranches = lazyPage(() => import('./pages/PanelBranches'));
 const PanelTeachers = lazyPage(() => import('./pages/PanelTeachers'));
 const StudentGroupDetail = lazyPage(() => import('./pages/StudentGroupDetail'));
 
 import AuthModal from './components/AuthModal';
 import ErrorBoundary from './components/ErrorBoundary';
+import { useLang } from './i18n/LangContext';
 import { ToastProvider } from './context/ToastContext';
 
 export default function App() {
@@ -97,9 +101,14 @@ export default function App() {
 /** Remounts the route tree on every navigation so .page-enter replays. */
 function AnimatedRoutes() {
   const { pathname } = useLocation();
+  const { t } = useLang();
   return (
     <div key={pathname} className="page-enter">
-      <Suspense fallback={<p className="route-loading" role="status">Yuklanmoqda…</p>}>
+      {/* Last-resort boundary: any page crash (or a stale lazy chunk after a
+          deploy) shows a recoverable screen instead of a blank page. The
+          keyed parent remounts it on navigation, which resets it. */}
+      <ErrorBoundary backTo="/" backKey="error_boundary_home">
+      <Suspense fallback={<p className="route-loading" role="status">{t('route_loading')}</p>}>
         <Routes>
         {/* Public */}
         <Route path="/" element={<Landing />} />
@@ -115,8 +124,8 @@ function AnimatedRoutes() {
         <Route path="/password-reset/done" element={<Navigate to="/password-reset" replace />} />
         <Route path="/password-reset/complete" element={<Navigate to="/login" replace />} />
         {/* Telegram Mini App shell (bot web_app button points at /tma/) */}
-        <Route path="/tma" element={<Tma />} />
-        <Route path="/tma/" element={<Tma />} />
+        <Route path="/tma" element={<ErrorBoundary backTo="/tma" backKey="error_boundary_home"><Tma /></ErrorBoundary>} />
+        <Route path="/tma/" element={<ErrorBoundary backTo="/tma" backKey="error_boundary_home"><Tma /></ErrorBoundary>} />
           <Route path="/verify" element={<VerifyCertificate />} />
           <Route path="/verify/:number" element={<VerifyCertificate />} />
           {/* Legacy Django URL parity: /certificates/verify/<number>/ */}
@@ -143,12 +152,16 @@ function AnimatedRoutes() {
             <Route path="/profile" element={<Profile />} />
             <Route path="/tests" element={<Tests />} />
             <Route path="/tests/create" element={<SmartTestCreate />} />
-            <Route path="/tests/run/:id" element={<Navigate to="/tests/:id" replace />} />
+            {/* <Navigate to="/tests/:id"> does not interpolate params — it sent
+                users to the literal path "/tests/:id". Keep the real id. */}
+            <Route path="/tests/run/:id" element={<TestDetailRedirect />} />
             <Route path="/tests/:id" element={<TestDetail />} />
             <Route path="/tests/:id/gradebook" element={<TeacherGradebook />} />
             {/* Legacy /tests/<id>/take/ → detail (starts attempt there) */}
-            <Route path="/tests/:id/take" element={<Navigate to="/tests/:id" replace />} />
-            <Route path="/tests/take/:id" element={<Navigate to="/tests/:id" replace />} />
+            <Route path="/tests/:id/take" element={<TestDetailRedirect />} />
+            <Route path="/tests/take/:id" element={<TestDetailRedirect />} />
+            {/* Telegram Mini App deep link (startapp=test_<id>, AuthContext) */}
+            <Route path="/take-test/:id" element={<TestDetailRedirect />} />
             <Route
               path="/take/:attemptId"
               element={
@@ -172,13 +185,34 @@ function AnimatedRoutes() {
             <Route path="/essays" element={<EssayTopics />} />
             {/* Legacy password-gate page → topics (gate is inline in write flow) */}
             <Route path="/essays/:topicId/start" element={<Navigate to="/essays" replace />} />
-            <Route path="/essays/write/:id" element={<EssayWrite />} />
+            <Route
+              path="/essays/write/:id"
+              element={
+                <ErrorBoundary titleKey="error_boundary_essay_title" backTo="/essays" backKey="error_boundary_home">
+                  <EssayWrite />
+                </ErrorBoundary>
+              }
+            />
             <Route path="/essays/new" element={<EssayNew />} />
             <Route path="/essays/upload" element={<EssayUpload />} />
-            <Route path="/essays/result/:id" element={<EssayResult />} />
+            <Route
+              path="/essays/result/:id"
+              element={
+                <ErrorBoundary titleKey="error_boundary_essay_title" backTo="/essays" backKey="error_boundary_home">
+                  <EssayResult />
+                </ErrorBoundary>
+              }
+            />
             {/* Arena */}
             <Route path="/arena" element={<Arena />} />
-            <Route path="/arena/:code" element={<DuelRoom />} />
+            <Route
+              path="/arena/:code"
+              element={
+                <ErrorBoundary titleKey="error_boundary_duel_title" backTo="/arena" backKey="error_boundary_home">
+                  <DuelRoom />
+                </ErrorBoundary>
+              }
+            />
             {/* Tournaments (Sunday Live League) */}
             <Route path="/tournaments" element={<Tournaments />} />
             <Route path="/tournaments/:id/live" element={<TournamentLive />} />
@@ -211,6 +245,10 @@ function AnimatedRoutes() {
             {/* School */}
             <Route element={<TeacherRoute />}>
               <Route path="/teacher" element={<TeacherDashboard />} />
+              <Route path="/teacher/studio" element={<TeacherStudio />} />
+              <Route path="/teacher/studio/new" element={<TeacherStudioEditor />} />
+              <Route path="/teacher/studio/:id/edit" element={<TeacherStudioEditor />} />
+              <Route path="/teacher/studio/:id/results" element={<TeacherStudioResults />} />
               <Route path="/teacher/ai-converter" element={<TeacherAiConverter />} />
               <Route path="/teacher/finance" element={<TeacherFinanceDashboard />} />
               <Route path="/teacher/vocab-generator" element={<TeacherVocabGenerator />} />
@@ -279,8 +317,15 @@ function AnimatedRoutes() {
         <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
+      </ErrorBoundary>
     </div>
   );
+}
+
+/** Legacy /tests/run|take/<id> shapes → /tests/<id> (keeps the real id). */
+function TestDetailRedirect() {
+  const { id } = useParams();
+  return <Navigate to={`/tests/${id}`} replace />;
 }
 
 /** Legacy /subscribe/<id>/subscribe/ → /subscribe/<id> (param passthrough). */
