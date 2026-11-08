@@ -3111,6 +3111,7 @@ export interface StudentGroupViewData {
       date: string;
     } | null;
     attempt_id?: number | null;
+    due_at?: string | null;
   }[];
   leaderboard: {
     rank: number;

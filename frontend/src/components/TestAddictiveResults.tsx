@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import confetti from 'canvas-confetti';
 import { useAuth } from '../auth/AuthContext';
 import { useLang } from '../i18n/LangContext';
 import { TestsApi } from '../lib/testing';
@@ -8,7 +9,7 @@ import type { ReviewQuestion } from '../lib/review';
 import ScoreCardModal from './ScoreCardModal';
 import QuestionReview from './QuestionReview';
 import QuestionIssueButton from './QuestionIssueButton';
-import { Send, FileText, Share2, Sparkles, AlertTriangle } from 'lucide-react';
+import { Send, FileText, Share2, Sparkles, AlertTriangle, Crown } from 'lucide-react';
 
 export interface SubjectAnalysisData {
   kind: 'science_bmb' | 'law_jurisprudence' | string;
@@ -139,11 +140,61 @@ export default function TestAddictiveResults({
   const [retesting, setRetesting] = useState(false);
   const [retestMsg, setRetestMsg] = useState<string | null>(null);
   const [showScoreCard, setShowScoreCard] = useState(false);
+  const [isNewRecord, setIsNewRecord] = useState(false);
 
   const pct = Math.round(percentage);
   const isBmb = subject !== 'english';
   const tone = pct >= 70 ? 'good' : pct >= 50 ? 'mid' : 'low';
   const grade = bmbGrade || raschGrade || '';
+
+  // 1. Dopamine celebration burst on result page mount
+  useEffect(() => {
+    try {
+      confetti({
+        particleCount: 110,
+        spread: 80,
+        origin: { y: 0.55 },
+        colors: ['#F59E0B', '#10B981', '#38BDF8', '#EC4899', '#8B5CF6'],
+      });
+
+      if (pct >= 60) {
+        const timerId = window.setTimeout(() => {
+          confetti({
+            particleCount: 50,
+            angle: 60,
+            spread: 55,
+            origin: { x: 0 },
+            colors: ['#F59E0B', '#FBBF24', '#10B981'],
+          });
+          confetti({
+            particleCount: 50,
+            angle: 120,
+            spread: 55,
+            origin: { x: 1 },
+            colors: ['#F59E0B', '#FBBF24', '#38BDF8'],
+          });
+        }, 300);
+        return () => window.clearTimeout(timerId);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [pct]);
+
+  // 2. Personal Record check against previous best score in this subject
+  useEffect(() => {
+    try {
+      const key = `grandec_pb_${(subject || 'general').toLowerCase()}`;
+      const prev = localStorage.getItem(key);
+      const prevScore = prev ? Number(prev) : 0;
+      if (pct > 0 && pct > prevScore) {
+        setIsNewRecord(true);
+        localStorage.setItem(key, String(pct));
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [pct, subject]);
 
   const formatTime = (secs: number) => {
     if (!secs || secs <= 0) return `0 ${t('res_unit_sec')}`;
@@ -310,19 +361,123 @@ export default function TestAddictiveResults({
           </div>
         </div>
 
-        {isBmb && (grade || Number(raschScore) > 0) && (
-          <div className="res-badges" style={{ marginTop: 16, display: 'flex', justifyContent: 'center', gap: 10, flexWrap: 'wrap' }}>
+        {/* Personal Best Record Indicator */}
+        {isNewRecord && (
+          <div
+            style={{
+              marginTop: 18,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              padding: '8px 18px',
+              borderRadius: 30,
+              background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.3) 0%, rgba(236, 72, 153, 0.25) 100%)',
+              border: '1.5px solid #F59E0B',
+              color: '#FEF08A',
+              fontWeight: 800,
+              fontSize: 13,
+              boxShadow: '0 0 25px rgba(245, 158, 11, 0.45)',
+            }}
+          >
+            <Sparkles size={16} color="#FBBF24" />
+            <span>Yangi shaxsiy rekord! 🚀 Oldingi eng yaxshi natijangiz yangilandi!</span>
+          </div>
+        )}
+
+        {/* Prestigious Shimmer Diploma Certificate Badge */}
+        {isBmb && grade ? (
+          <div
+            className={grade.startsWith('A') ? 'diploma-badge-shimmer' : 'diploma-badge-shimmer-silver'}
+            style={{
+              marginTop: 18,
+              borderRadius: 20,
+              padding: '16px 20px',
+              border: grade.startsWith('A')
+                ? '2px solid #F59E0B'
+                : grade.startsWith('B')
+                ? '2px solid #38BDF8'
+                : '2px solid #94A3B8',
+              boxShadow: grade.startsWith('A')
+                ? '0 0 30px rgba(245, 158, 11, 0.35), inset 0 0 20px rgba(245, 158, 11, 0.15)'
+                : '0 0 25px rgba(56, 189, 248, 0.3)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              textAlign: 'center',
+              gap: 8,
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Crown size={20} color={grade.startsWith('A') ? '#FBBF24' : '#38BDF8'} className="gold-crown-anim" />
+              <span
+                style={{
+                  fontSize: 12,
+                  fontWeight: 900,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                  color: grade.startsWith('A') ? '#FEF08A' : '#E0F2FE',
+                }}
+              >
+                Rasmiy BMB Milliy Sertifikat Darajasi
+              </span>
+              <Crown size={20} color={grade.startsWith('A') ? '#FBBF24' : '#38BDF8'} className="gold-crown-anim" />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <span
+                style={{
+                  fontSize: 38,
+                  fontWeight: 900,
+                  color: '#FFFFFF',
+                  textShadow: grade.startsWith('A')
+                    ? '0 0 20px rgba(245, 158, 11, 0.9)'
+                    : '0 0 20px rgba(56, 189, 248, 0.8)',
+                  lineHeight: 1,
+                }}
+              >
+                {grade}
+              </span>
+              <div style={{ textAlign: 'left' }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: '#FFFFFF' }}>
+                  {grade.startsWith('A')
+                    ? "Oliy Toifa — Maksimal Imtiyoz (100% Ball)"
+                    : grade.startsWith('B')
+                    ? "Yuqori Toifa — Imtiyozli Ball Sertifikati"
+                    : "Standart Toifa — BMB Milliy Sertifikati"}
+                </div>
+                <div style={{ fontSize: 11, color: 'rgba(255, 255, 255, 0.75)' }}>
+                  Oliy ta'lim muassasalariga kirish imtihonlarida davlat tomonidan tan olinadi
+                </div>
+              </div>
+            </div>
+
             {Number(raschScore) > 0 && (
+              <div
+                style={{
+                  marginTop: 4,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: '#FDE68A',
+                  background: 'rgba(0, 0, 0, 0.25)',
+                  padding: '3px 12px',
+                  borderRadius: 12,
+                }}
+              >
+                ⚡️ Rasch qiyinlik ko'rsatkichi: <b>{Number(raschScore).toFixed(1)}</b>
+              </div>
+            )}
+          </div>
+        ) : (
+          Number(raschScore) > 0 && (
+            <div className="res-badges" style={{ marginTop: 16, display: 'flex', justifyContent: 'center', gap: 10, flexWrap: 'wrap' }}>
               <span style={{ background: 'rgba(245, 158, 11, 0.2)', border: '1px solid rgba(245, 158, 11, 0.4)', color: '#FBBF24', padding: '4px 12px', borderRadius: 8, fontSize: 13, fontWeight: 700 }}>
                 ⚡️ {t('res_rasch')}: <b>{Number(raschScore).toFixed(1)}</b>
               </span>
-            )}
-            {grade && (
-              <span style={{ background: 'rgba(16, 185, 129, 0.2)', border: '1px solid rgba(16, 185, 129, 0.4)', color: '#34D399', padding: '4px 14px', borderRadius: 8, fontSize: 14, fontWeight: 800 }}>
-                🏆 Milliy Sertifikat: <b>{grade}</b>
-              </span>
-            )}
-          </div>
+            </div>
+          )
         )}
       </section>
 

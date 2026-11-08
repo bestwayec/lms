@@ -2349,3 +2349,81 @@ html.dark .results-xp-desc { color: #FCD34D !important; }
   background: color-mix(in srgb, var(--accent) 10%, transparent); border-left: 3px solid var(--accent); color: var(--ink); }
 .fb-prompt { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; padding: 0.9rem 1.1rem; margin-bottom: 1rem; color: var(--ink); }
 .fb-prompt p { margin: 0; font-weight: 700; }
+
+/* ========================================================================= */
+/* STAGE 3/4 GAMIFICATION & SOCIAL LEARNING: DIPLOMA SHIMMER & 3D PODIUM     */
+/* ========================================================================= */
+@keyframes diplomaShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes crownFloatPulse {
+  0%, 100% {
+    transform: translateY(0px) scale(1);
+    filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.6));
+  }
+  50% {
+    transform: translateY(-5px) scale(1.1);
+    filter: drop-shadow(0 0 14px rgba(245, 158, 11, 0.9));
+  }
+}
+
+@keyframes neonRowGlow {
+  0%, 100% {
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 24px rgba(245, 158, 11, 0.55);
+  }
+}
+
+@keyframes urgentPulseTimer {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.03);
+  }
+}
+
+.diploma-badge-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(245, 158, 11, 0.15) 0%,
+    rgba(254, 240, 138, 0.45) 50%,
+    rgba(245, 158, 11, 0.15) 100%
+  );
+  background-size: 200% 100%;
+  animation: diplomaShimmer 3.5s infinite linear;
+}
+
+.diploma-badge-shimmer-silver {
+  background: linear-gradient(
+    90deg,
+    rgba(148, 163, 184, 0.15) 0%,
+    rgba(241, 245, 249, 0.45) 50%,
+    rgba(148, 163, 184, 0.15) 100%
+  );
+  background-size: 200% 100%;
+  animation: diplomaShimmer 3.5s infinite linear;
+}
+
+.gold-crown-anim {
+  animation: crownFloatPulse 2.4s infinite ease-in-out;
+}
+
+.neon-rank-highlight {
+  animation: neonRowGlow 2.5s infinite ease-in-out;
+}
+
+.urgent-pulse {
+  animation: urgentPulseTimer 2s infinite ease-in-out;
+}
+
