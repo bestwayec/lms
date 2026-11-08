@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useLang } from '../i18n/LangContext';
 import { api } from '../lib/api';
 import { TrashIcon, UserIcon } from './icons';
@@ -28,6 +28,7 @@ export default function ParentMonitoringCard() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadRelations = async () => {
     try {
@@ -45,14 +46,20 @@ export default function ParentMonitoringCard() {
 
   useEffect(() => {
     void loadRelations();
+    return () => {
+      if (copyTimerRef.current) {
+        clearTimeout(copyTimerRef.current);
+      }
+    };
   }, []);
 
   const handleCopyLink = () => {
     if (!deepLink) return;
-    navigator.clipboard.writeText(deepLink);
+    navigator.clipboard.writeText(deepLink).catch(() => {});
     setCopied(true);
-    setMessage('Telegram ulanish havolasi nusxalandi! Uni ota-onangizga yuboring.');
-    setTimeout(() => setCopied(false), 3000);
+    setMessage(t('parent_link_copied'));
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = setTimeout(() => setCopied(false), 3000);
   };
 
   const handleAddPhone = async (e: React.FormEvent) => {
@@ -152,10 +159,10 @@ export default function ParentMonitoringCard() {
             <div>
               <div style={{ fontWeight: 700, fontSize: 15, color: '#F59E0B', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <ShieldCheck size={18} />
-                <span>👨‍👩‍👧 Ota-onani Telegramga ulash (1-klikda)</span>
+                <span>{t('parent_telegram_connect')}</span>
               </div>
               <div className="muted small" style={{ marginTop: 2 }}>
-                Ota-onangiz ushbu havola orqali botga kirishi bilan natijalaringiz unga avtomatik biriktiriladi.
+                {t('parent_telegram_desc')}
               </div>
             </div>
 
@@ -179,7 +186,7 @@ export default function ParentMonitoringCard() {
                 }}
               >
                 <Send size={14} />
-                <span>Telegramda ochish</span>
+                <span>{t('parent_open_telegram')}</span>
               </a>
 
               <button
@@ -200,7 +207,7 @@ export default function ParentMonitoringCard() {
                 }}
               >
                 {copied ? <Check size={14} /> : <Copy size={14} />}
-                <span>{copied ? 'Nusxalandi' : 'Nusxa olish'}</span>
+                <span>{copied ? (t('copied') || 'Nusxalandi') : (t('copy') || 'Nusxa olish')}</span>
               </button>
             </div>
           </div>
@@ -334,7 +341,7 @@ export default function ParentMonitoringCard() {
                         handleToggle(rel.id, 'instant_alerts_enabled', rel.instant_alerts_enabled)
                       }
                     />
-                    <span>{rel.instant_alerts_enabled ? <Bell size={14} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} /> : <BellOff size={14} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />} Tezkor imtihon xabarnomalari</span>
+                    <span>{rel.instant_alerts_enabled ? <Bell size={14} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} /> : <BellOff size={14} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />} {t('parent_instant_alerts')}</span>
                   </label>
 
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
@@ -345,7 +352,7 @@ export default function ParentMonitoringCard() {
                         handleToggle(rel.id, 'weekly_report_enabled', rel.weekly_report_enabled)
                       }
                     />
-                    <span>Haftalik yakshanba hisoboti</span>
+                    <span>{t('parent_weekly_reports')}</span>
                   </label>
                 </div>
               )}
@@ -356,11 +363,11 @@ export default function ParentMonitoringCard() {
 
       {/* Manual Phone / Name Form */}
       <form onSubmit={handleAddPhone} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ fontSize: 13, fontWeight: 600 }}>Raqam orqali taklif qilish:</div>
+        <div style={{ fontSize: 13, fontWeight: 600 }}>{t('parent_invite_by_phone')}</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           <input
             type="text"
-            placeholder="Ota-ona ismi (ixtiyoriy)"
+            placeholder={t('parent_name_placeholder')}
             value={nameInput}
             onChange={(e) => setNameInput(e.target.value)}
             style={{

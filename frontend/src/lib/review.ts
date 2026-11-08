@@ -35,6 +35,8 @@ export interface ReviewQuestion {
   evidence?: string;
   explanation_status?: string;
   can_ai_explain?: boolean;
+  points?: number;
+  earned_points?: number;
 }
 
 /** Choice questions where the option letter is part of the answer ("B: It starts at 9 a.m."). */

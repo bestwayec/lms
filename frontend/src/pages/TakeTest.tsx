@@ -282,6 +282,15 @@ export default function TakeTest() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  useEffect(() => {
+    return () => {
+      for (const id of Object.values(timers.current)) {
+        clearTimeout(id);
+      }
+      timers.current = {};
+    };
+  }, []);
+
   const load = useCallback(async () => {
     setLoadError(null);
     let lastErr: unknown = null;

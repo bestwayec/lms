@@ -96,10 +96,11 @@ export default function QuestionReview({ questions, resultId, renderIssue }: Pro
         ...prev,
         [q.question_id]: { text: res.explanation },
       }));
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : (e && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message) : null);
       setSocratic((prev) => ({
         ...prev,
-        [q.question_id]: { error: e?.message || "Tushuntirish olishda xatolik yuz berdi." },
+        [q.question_id]: { error: msg || t('rv_socratic_error') },
       }));
     }
   };
@@ -194,7 +195,7 @@ export default function QuestionReview({ questions, resultId, renderIssue }: Pro
                   }}
                 >
                   <span>🧠</span>
-                  <span>Nega xato qildim? (AI)</span>
+                  <span>{t('rv_socratic_btn')}</span>
                 </button>
               )}
             </div>
@@ -224,7 +225,7 @@ export default function QuestionReview({ questions, resultId, renderIssue }: Pro
                   }}
                 />
                 <span style={{ fontSize: '13px', fontWeight: 500, color: '#C8922A' }}>
-                  🧠 Sokratik AI tyutor xatoingizni tahlil qilmoqda...
+                  {t('rv_socratic_loading')}
                 </span>
               </div>
             )}
@@ -245,7 +246,7 @@ export default function QuestionReview({ questions, resultId, renderIssue }: Pro
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                   <span style={{ fontSize: '16px' }}>🧠</span>
                   <span style={{ fontSize: '12px', fontWeight: 700, color: '#C8922A', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    Sokratik Tyutor Tahlili (DeepSeek V3)
+                    {t('rv_socratic_title')}
                   </span>
                 </div>
                 <p style={{ margin: 0, fontSize: '13.5px', lineHeight: 1.6, color: 'inherit' }}>

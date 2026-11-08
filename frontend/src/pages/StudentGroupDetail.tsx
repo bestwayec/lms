@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   GraduationCap,
@@ -16,14 +16,17 @@ import {
 } from 'lucide-react';
 import { StudentGroupDetailApi, type StudentGroupViewData } from '../lib/api';
 import { useToast } from '../context/ToastContext';
+import { useLang } from '../i18n/LangContext';
 
 export default function StudentGroupDetail() {
   const { groupId } = useParams<{ groupId: string }>();
   const navigate = useNavigate();
+  const { t } = useLang();
   const [data, setData] = useState<StudentGroupViewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const toast = useToast();
 
@@ -35,7 +38,7 @@ export default function StudentGroupDetail() {
       const res = await StudentGroupDetailApi.getStudentView(Number(groupId));
       setData(res);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Guruh ma‘lumotlarini yuklab bo‘lmadi';
+      const msg = err instanceof Error ? err.message : t('group_load_err');
       setError(msg);
     } finally {
       setLoading(false);
@@ -44,20 +47,26 @@ export default function StudentGroupDetail() {
 
   useEffect(() => {
     loadData();
+    return () => {
+      if (copyTimerRef.current) {
+        clearTimeout(copyTimerRef.current);
+      }
+    };
   }, [groupId]);
 
   const copyCode = () => {
     if (!data?.group.invite_code) return;
-    navigator.clipboard.writeText(data.group.invite_code);
+    navigator.clipboard.writeText(data.group.invite_code).catch(() => {});
     setCopied(true);
-    toast.success('Guruh kodi nusxalandi: ' + data.group.invite_code);
-    setTimeout(() => setCopied(false), 2000);
+    toast.success(`${t('group_code_copied_toast')} ${data.group.invite_code}`);
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
   };
 
   if (loading) {
     return (
       <div style={{ maxWidth: 1000, margin: '0 auto', padding: '60px 16px', textAlign: 'center', color: '#94A3B8' }}>
-        <div style={{ fontSize: 18, fontWeight: 600 }}>Guruh muhiti yuklanmoqda...</div>
+        <div style={{ fontSize: 18, fontWeight: 600 }}>{t('group_env_loading')}</div>
       </div>
     );
   }
@@ -66,9 +75,9 @@ export default function StudentGroupDetail() {
     return (
       <div style={{ maxWidth: 600, margin: '60px auto', padding: 24, textAlign: 'center' }}>
         <AlertCircle size={48} color="#EF4444" style={{ marginBottom: 16 }} />
-        <h2 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 8px' }}>Guruh topilmadi yoki ruxsat yo‘q</h2>
+        <h2 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 8px' }}>{t('group_not_found_or_forbidden')}</h2>
         <p style={{ color: '#94A3B8', fontSize: 14, margin: '0 0 20px' }}>
-          {error || 'Siz ushbu guruh a‘zosi emassiz.'}
+          {error || t('group_not_a_member')}
         </p>
         <Link
           to="/dashboard"
@@ -84,7 +93,7 @@ export default function StudentGroupDetail() {
             fontWeight: 600,
           }}
         >
-          <ArrowLeft size={16} /> Bosh sahifaga qaytish
+          <ArrowLeft size={16} /> {t('group_back_home')}
         </Link>
       </div>
     );
@@ -110,7 +119,7 @@ export default function StudentGroupDetail() {
             fontWeight: 500,
           }}
         >
-          <ArrowLeft size={16} /> Orqaga
+          <ArrowLeft size={16} /> {t('group_back')}
         </button>
       </div>
 
@@ -163,7 +172,7 @@ export default function StudentGroupDetail() {
                   border: '1px solid rgba(200, 146, 42, 0.3)',
                 }}
               >
-                Guruh Kodi: {group.invite_code}
+                {t('group_code_label')} {group.invite_code}
               </span>
             </div>
 
@@ -255,7 +264,7 @@ export default function StudentGroupDetail() {
               }}
             >
               {copied ? <Check size={16} color="#10B981" /> : <Copy size={16} />}
-              {copied ? 'Nusxalandi!' : 'Kodni ulashish'}
+              {copied ? (t('copied') || 'Nusxalandi!') : t('group_share_code')}
             </button>
 
             {my_rank && (
@@ -274,7 +283,7 @@ export default function StudentGroupDetail() {
                 }}
               >
                 <Flame size={16} />
-                Sizning reytingingiz: {my_rank}-o‘rin
+                {t('group_my_rank').replace('{rank}', String(my_rank))}
               </div>
             )}
           </div>
@@ -288,7 +297,7 @@ export default function StudentGroupDetail() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
             <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
               <BookOpen size={20} color="#C8922A" />
-              Faol Uy Vazifasi Testlari ({assigned_tests.length})
+              {t('group_active_homework')} ({assigned_tests.length})
             </h2>
           </div>
 
@@ -305,17 +314,17 @@ export default function StudentGroupDetail() {
             >
               <CheckCircle2 size={36} color="#10B981" style={{ marginBottom: 10 }} />
               <div style={{ fontSize: 15, fontWeight: 600, color: '#F8FAFC' }}>
-                Hozircha faol vazifalar yo‘q
+                {t('group_no_active_tasks')}
               </div>
               <p style={{ fontSize: 13, margin: '6px 0 0' }}>
-                Ustoz yangi test biriktirganda shu yerda paydo bo‘ladi.
+                {t('group_no_active_tasks_desc')}
               </p>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {assigned_tests.map((t) => (
+              {assigned_tests.map((testItem) => (
                 <div
-                  key={t.id}
+                  key={testItem.id}
                   style={{
                     background: 'var(--card-bg, #1E293B)',
                     borderRadius: 16,
@@ -331,15 +340,15 @@ export default function StudentGroupDetail() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
                     <div>
                       <h3 style={{ fontSize: 16, fontWeight: 700, margin: '0 0 6px', color: '#F8FAFC' }}>
-                        {t.title}
+                        {testItem.title}
                       </h3>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12, color: '#94A3B8' }}>
-                        <span>📝 {t.total_questions} ta savol</span>
-                        <span>⏱ {t.duration_minutes} daqiqa</span>
+                        <span>📝 {t('group_questions_count').replace('{n}', String(testItem.total_questions))}</span>
+                        <span>⏱ {t('group_duration_minutes').replace('{n}', String(testItem.duration_minutes))}</span>
                       </div>
                     </div>
 
-                    {t.status === 'completed' && t.result ? (
+                    {testItem.status === 'completed' && testItem.result ? (
                       <span
                         style={{
                           padding: '4px 10px',
@@ -352,7 +361,7 @@ export default function StudentGroupDetail() {
                           whiteSpace: 'nowrap',
                         }}
                       >
-                        ✅ {t.result.percentage}% ({t.result.grade})
+                        ✅ {testItem.result.percentage}% ({testItem.result.grade})
                       </span>
                     ) : (
                       <span
@@ -367,38 +376,38 @@ export default function StudentGroupDetail() {
                           whiteSpace: 'nowrap',
                         }}
                       >
-                        ⚡️ Kutilmoqda
+                        ⚡️ {t('group_status_pending')}
                       </span>
                     )}
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 6 }}>
-                    {t.status === 'completed' && t.result ? (
+                    {testItem.status === 'completed' && testItem.result ? (
                       <div style={{ fontSize: 12, color: '#94A3B8' }}>
-                        Sana: {t.result.date} • Ball: {t.result.score}/{t.result.max_score}
+                        {t('date') || 'Sana'}: {testItem.result.date} • {t('score') || 'Ball'}: {testItem.result.score}/{testItem.result.max_score}
                       </div>
                     ) : (
                       <div style={{ fontSize: 12, color: '#F59E0B' }}>
-                        Muddati: Joriy darsgacha topshiring
+                        {t('group_deadline_next_lesson')}
                       </div>
                     )}
 
                     <Link
-                      to={t.status === 'completed' ? `/results/${t.id}` : `/tests/${t.id}`}
+                      to={testItem.status === 'completed' ? `/results/${testItem.id}` : `/tests/${testItem.id}`}
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
                         gap: 6,
                         padding: '8px 16px',
                         borderRadius: 10,
-                        background: t.status === 'completed' ? 'rgba(255,255,255,0.08)' : '#C8922A',
+                        background: testItem.status === 'completed' ? 'rgba(255,255,255,0.08)' : '#C8922A',
                         color: '#fff',
                         fontWeight: 600,
                         fontSize: 13,
                         textDecoration: 'none',
                       }}
                     >
-                      {t.status === 'completed' ? 'Natijani ko‘rish' : 'Testni boshlash'}
+                      {testItem.status === 'completed' ? t('group_view_result') : t('group_start_test')}
                       <ArrowRight size={14} />
                     </Link>
                   </div>
@@ -413,10 +422,10 @@ export default function StudentGroupDetail() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
             <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
               <Award size={20} color="#F59E0B" />
-              Jonli Guruh Reytingi (Leaderboard)
+              {t('group_live_leaderboard')}
             </h2>
             <span style={{ fontSize: 12, color: '#94A3B8' }}>
-              Jami: {leaderboard.length} o‘quvchi
+              {t('group_total_students').replace('{count}', String(leaderboard.length))}
             </span>
           </div>
 
@@ -431,7 +440,7 @@ export default function StudentGroupDetail() {
           >
             {leaderboard.length === 0 ? (
               <div style={{ padding: '30px 20px', textAlign: 'center', color: '#94A3B8', fontSize: 14 }}>
-                Hozircha hech kim test topshirmagan.
+                {t('group_no_one_tested')}
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -478,10 +487,10 @@ export default function StudentGroupDetail() {
 
                       <div>
                         <div style={{ fontSize: 14, fontWeight: 700, color: item.is_me ? '#F59E0B' : '#F8FAFC' }}>
-                          {item.student_name} {item.is_me && '(Siz)'}
+                          {item.student_name} {item.is_me && t('group_you')}
                         </div>
                         <div style={{ fontSize: 11, color: '#94A3B8' }}>
-                          {item.tests_taken} ta test • BMB: <b>{item.bmb_grade}</b>
+                          {t('group_tests_taken').replace('{n}', String(item.tests_taken))} • BMB: <b>{item.bmb_grade}</b>
                         </div>
                       </div>
                     </div>

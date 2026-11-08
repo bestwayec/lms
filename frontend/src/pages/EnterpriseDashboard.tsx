@@ -1,5 +1,22 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
+
+function getErrMsg(err: unknown, fallback: string): string {
+  if (err && typeof err === 'object') {
+    const e = err as Record<string, unknown>;
+    if (typeof e.detail === 'string') return e.detail;
+    if (typeof e.message === 'string') return e.message;
+    if (e.response && typeof e.response === 'object') {
+      const resp = e.response as Record<string, unknown>;
+      if (resp.data && typeof resp.data === 'object') {
+        const d = resp.data as Record<string, unknown>;
+        if (typeof d.error === 'string') return d.error;
+        if (typeof d.detail === 'string') return d.detail;
+      }
+    }
+  }
+  return fallback;
+}
 import {
   AwardIcon,
   BarChartIcon,
@@ -118,8 +135,8 @@ export default function EnterpriseDashboard() {
       setBranches(res.branches || []);
       setTeachers(res.teachers || []);
       setRecentResults(res.recent_results || []);
-    } catch (err: any) {
-      const msg = err?.detail || err?.message || "O'quv markaz ma'lumotlarini yuklashda xatolik.";
+    } catch (err: unknown) {
+      const msg = getErrMsg(err, "O'quv markaz ma'lumotlarini yuklashda xatolik.");
       setError(msg);
       setCenter(null);
       setStats(null);
@@ -128,8 +145,15 @@ export default function EnterpriseDashboard() {
     }
   };
 
+  const createTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     void loadData();
+    return () => {
+      if (createTimerRef.current) {
+        clearTimeout(createTimerRef.current);
+      }
+    };
   }, []);
 
   const handleCreateCenter = async (e: React.FormEvent) => {
@@ -163,13 +187,14 @@ export default function EnterpriseDashboard() {
       setNewCenterBranchesCount(1);
       setNewCenterSeatLimit(50);
 
-      setTimeout(() => {
+      if (createTimerRef.current) clearTimeout(createTimerRef.current);
+      createTimerRef.current = setTimeout(() => {
         setCreateCenterModalOpen(false);
         setCreateCenterSuccess(null);
         void loadData(res.center?.id);
       }, 1000);
-    } catch (err: any) {
-      setCreateCenterError(err?.detail || err?.message || "Markaz yaratishda xatolik yuz berdi.");
+    } catch (err: unknown) {
+      setCreateCenterError(getErrMsg(err, "Markaz yaratishda xatolik yuz berdi."));
     } finally {
       setCreatingCenter(false);
     }
@@ -181,11 +206,11 @@ export default function EnterpriseDashboard() {
     setImportResult(null);
 
     try {
-      let res: any;
+      let res: { message: string };
       if (selectedFile) {
         const formData = new FormData();
         formData.append('file', selectedFile);
-        res = await api.post('/api/v1/enterprise/students/bulk-import/', formData, {
+        res = await api.post<{ message: string }>('/api/v1/enterprise/students/bulk-import/', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
       } else if (csvText.trim()) {
@@ -200,7 +225,7 @@ export default function EnterpriseDashboard() {
             branch_name: parts[4] || '',
           };
         });
-        res = await api.post('/api/v1/enterprise/students/bulk-import/', { students });
+        res = await api.post<{ message: string }>('/api/v1/enterprise/students/bulk-import/', { students });
       } else {
         alert("Iltimos, CSV faylni tanlang yoki matn maydoniga o'quvchilar ma'lumotlarini kiriting.");
         setImporting(false);
@@ -211,10 +236,10 @@ export default function EnterpriseDashboard() {
       setSelectedFile(null);
       setCsvText('');
       await loadData(center?.id);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setImportResult({
         success: false,
-        message: err?.detail || err?.response?.data?.error || "Yuklashda xatolik yuz berdi.",
+        message: getErrMsg(err, "Yuklashda xatolik yuz berdi."),
       });
     } finally {
       setImporting(false);

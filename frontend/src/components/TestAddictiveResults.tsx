@@ -178,7 +178,7 @@ export default function TestAddictiveResults({
   };
 
   const effectiveBranchName = branchInfo?.branch_name || shareData?.branch_name || 'Grand Education Bosh Filiali';
-  const refCode = shareData?.referral_code || (user as any)?.referral_code || 'GRAND';
+  const refCode = shareData?.referral_code || user?.referral_code || 'GRAND';
   const effectiveRefUrl = shareData?.referral_url || `https://grandec.uz/join?ref=${refCode}`;
   const pdfDownloadUrl = shareData?.pdf_download_url || `/api/results/${resultId}/pdf/`;
 
@@ -209,8 +209,8 @@ export default function TestAddictiveResults({
     label: '1–32 Yopiq testlar',
     correct_count: questions.slice(0, 32).filter((q) => q.status === 'correct').length,
     total_count: Math.min(32, questions.length) || 32,
-    earned_score: questions.slice(0, 32).reduce((sum, q) => sum + (q.status === 'correct' ? Number((q as any).points || 1.9) : 0), 0),
-    max_score: questions.slice(0, 32).reduce((sum, q) => sum + Number((q as any).points || 1.9), 0) || 60.8,
+    earned_score: questions.slice(0, 32).reduce((sum, q) => sum + (q.status === 'correct' ? Number(q.points || 1.9) : 0), 0),
+    max_score: questions.slice(0, 32).reduce((sum, q) => sum + Number(q.points || 1.9), 0) || 60.8,
     percentage: Math.round(
       (questions.slice(0, 32).filter((q) => q.status === 'correct').length / (Math.min(32, questions.length) || 1)) * 100,
     ),
@@ -220,8 +220,8 @@ export default function TestAddictiveResults({
     label: '33–35 Moslashtirish matritsasi',
     correct_count: questions.slice(32, 35).filter((q) => q.status === 'correct').length,
     total_count: 3,
-    earned_score: questions.slice(32, 35).reduce((sum, q) => sum + (q.status === 'correct' ? Number((q as any).points || 2.8) : 0), 0),
-    max_score: questions.slice(32, 35).reduce((sum, q) => sum + Number((q as any).points || 2.8), 0) || 8.4,
+    earned_score: questions.slice(32, 35).reduce((sum, q) => sum + (q.status === 'correct' ? Number(q.points || 2.8) : 0), 0),
+    max_score: questions.slice(32, 35).reduce((sum, q) => sum + Number(q.points || 2.8), 0) || 8.4,
     percentage: Math.round(
       (questions.slice(32, 35).filter((q) => q.status === 'correct').length / 3) * 100,
     ),
@@ -231,8 +231,8 @@ export default function TestAddictiveResults({
     label: '36–45 a/b Ikki qismli ochiq masalalar',
     correct_count: questions.slice(35, 45).filter((q) => q.status === 'correct').length,
     total_count: 10,
-    earned_score: questions.slice(35, 45).reduce((sum, q) => sum + (q.status === 'correct' ? Number((q as any).points || 2.8) : (q as any).earned_points || 0), 0),
-    max_score: questions.slice(35, 45).reduce((sum, q) => sum + Number((q as any).points || 2.8), 0) || 28.0,
+    earned_score: questions.slice(35, 45).reduce((sum, q) => sum + (q.status === 'correct' ? Number(q.points || 2.8) : q.earned_points || 0), 0),
+    max_score: questions.slice(35, 45).reduce((sum, q) => sum + Number(q.points || 2.8), 0) || 28.0,
     percentage: Math.round(
       (questions.slice(35, 45).filter((q) => q.status === 'correct').length / 10) * 100,
     ),
@@ -243,8 +243,8 @@ export default function TestAddictiveResults({
     label: 'Nazariy savollar (1–35)',
     correct_count: questions.slice(0, 35).filter((q) => q.status === 'correct').length,
     total_count: Math.min(35, questions.length) || 35,
-    earned_score: questions.slice(0, 35).reduce((sum, q) => sum + (q.status === 'correct' ? Number((q as any).points || 2) : 0), 0),
-    max_score: questions.slice(0, 35).reduce((sum, q) => sum + Number((q as any).points || 2), 0) || 70,
+    earned_score: questions.slice(0, 35).reduce((sum, q) => sum + (q.status === 'correct' ? Number(q.points || 2) : 0), 0),
+    max_score: questions.slice(0, 35).reduce((sum, q) => sum + Number(q.points || 2), 0) || 70,
     percentage: Math.round(
       (questions.slice(0, 35).filter((q) => q.status === 'correct').length / (Math.min(35, questions.length) || 1)) * 100,
     ),
@@ -254,8 +254,8 @@ export default function TestAddictiveResults({
     label: 'Huquqiy kazus va amaliy tahlil (36–45)',
     correct_count: questions.slice(35, 45).filter((q) => q.status === 'correct').length,
     total_count: 10,
-    earned_score: questions.slice(35, 45).reduce((sum, q) => sum + (q.status === 'correct' ? Number((q as any).points || 3) : 0), 0),
-    max_score: questions.slice(35, 45).reduce((sum, q) => sum + Number((q as any).points || 3), 0) || 30,
+    earned_score: questions.slice(35, 45).reduce((sum, q) => sum + (q.status === 'correct' ? Number(q.points || 3) : 0), 0),
+    max_score: questions.slice(35, 45).reduce((sum, q) => sum + Number(q.points || 3), 0) || 30,
     percentage: Math.round(
       (questions.slice(35, 45).filter((q) => q.status === 'correct').length / 10) * 100,
     ),

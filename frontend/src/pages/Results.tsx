@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import TestAddictiveResults from '../components/TestAddictiveResults';
+import TestAddictiveResults, {
+  type BranchInfoData,
+  type ShareDataInfo,
+  type SubjectAnalysisData,
+} from '../components/TestAddictiveResults';
 import CefrResultSummary, { type CefrSummary } from './tests/CefrResultSummary';
 import QuestionReview from '../components/QuestionReview';
 import QuestionIssueButton from '../components/QuestionIssueButton';
@@ -94,9 +98,11 @@ interface ResultDetailData extends ResultListItem {
   scoring_version?: string;
   rubric_version?: string;
   section_scores?: SectionScoreItem[];
-  subject_analysis?: any;
-  branch_info?: any;
-  share_data?: any;
+  subject_analysis?: SubjectAnalysisData | null;
+  branch_info?: BranchInfoData | null;
+  share_data?: ShareDataInfo | null;
+  attempt_id?: number | string;
+  test_subject?: string;
   certificate_info?: {
     certificate_number: string;
     status: string;
@@ -587,8 +593,8 @@ function ResultDetailBody({ detail }: { detail: ResultDetailData }) {
         raschGrade={detail.rasch_grade}
         bmbGrade={detail.bmb_grade || bmb.grade}
         courseTitle={detail.test_title}
-        subject={(detail as any).test_subject || ((detail.test_title || '').toLowerCase().includes('english') || (detail.test_title || '').toLowerCase().includes('cefr') || (detail.test_title || '').toLowerCase().includes('ielts') ? 'english' : 'uzbek')}
-        attemptId={String((detail as any).attempt_id || detail.id)}
+        subject={detail.test_subject || ((detail.test_title || '').toLowerCase().includes('english') || (detail.test_title || '').toLowerCase().includes('cefr') || (detail.test_title || '').toLowerCase().includes('ielts') ? 'english' : 'uzbek')}
+        attemptId={String(detail.attempt_id || detail.id)}
         questions={detail.question_details ?? []}
         resultId={detail.id}
         testId={detail.test}
