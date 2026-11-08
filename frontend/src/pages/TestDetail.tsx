@@ -27,6 +27,8 @@ interface Detail {
   show_results_immediately?: boolean;
   subject?: string;
   exam_type?: string;
+  /** Section → part → group layout (CD exam engine), e.g. Teacher Studio tests. */
+  has_cd_structure?: boolean;
   access_type?: 'PUBLIC' | 'PRO_ONLY' | 'STUDENTS_ONLY';
   has_pin?: boolean;
   requires_pin?: boolean;
@@ -102,7 +104,7 @@ export default function TestDetail() {
       setModeModalOpen(false);
       setLimitModalOpen(false);
 
-      const isEnglish = detail?.subject === 'english' ||
+      const isEnglish = detail?.has_cd_structure || detail?.subject === 'english' ||
         detail?.exam_type?.includes('ielts') ||
         detail?.exam_type?.includes('cefr');
 

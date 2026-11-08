@@ -229,7 +229,7 @@ export default function EssayWrite() {
   const submit = async () => {
     if (submissionId === null || busy || timeUp) return;
     if (words < 60) {
-      setErr(`⚠️ Esse juda qisqa (kamida 60 ta so'z bo'lishi shart). Hozirgi so'zlar soni: ${words} ta.`);
+      setErr(t('ew_too_short').replace('{n}', String(words)));
       return;
     }
     if (words < minWords) return;
@@ -239,7 +239,7 @@ export default function EssayWrite() {
     const hasLongWord = text.split(/\s+/).some((w) => w.replace(/['-]/g, '').length > 35);
     const hasSmash = /(?:asdf|qwer|zxcv|asdasd|jkl;|ghjk|qwerty|tyui|dfgh|12345){2,}/i.test(text);
     if (hasCharRepeat || hasLongWord || hasSmash) {
-      setErr('⛔ Matn tushunarsiz yoki safsata deb topildi. Iltimos, haqiqiy esse matnini kiriting.');
+      setErr(t('ew_gibberish'));
       return;
     }
 
@@ -338,6 +338,17 @@ export default function EssayWrite() {
           ? t('essay_js_save_error')
           : t('essay_js_not_saved');
 
+  // Word meter: the track runs a little past the max so "over" is visible.
+  const meterScale = Math.max(maxWords * 1.15, 1);
+  const meterPct = Math.min(100, (words / meterScale) * 100);
+  const wordsHint =
+    words < minWords
+      ? t('ew_words_left').replace('{n}', String(minWords - words))
+      : words > maxWords
+        ? t('ew_words_over').replace('{n}', String(words - maxWords))
+        : t('ew_words_ok');
+  const loadingTopic = !topic && !err && !needPassword && !timeUp;
+
   return (
     <div className="ew">
       <header className="ew-head">
@@ -382,6 +393,14 @@ export default function EssayWrite() {
         </div>
       )}
 
+      {loadingTopic && (
+        <div className="ew-skeleton" aria-busy="true" aria-label={t('loading')}>
+          <div className="dsh-skeleton" style={{ height: 52 }} />
+          <div className="dsh-skeleton" style={{ height: 260 }} />
+          <div className="dsh-skeleton-line" style={{ height: 44 }} />
+        </div>
+      )}
+
       {topic && !timeUp && (
         <>
           <details className="ui-card ew-task">
@@ -416,7 +435,21 @@ export default function EssayWrite() {
               <span className={`ew-count is-${zone}`} aria-live="polite">
                 {words} / {minWords}–{maxWords} {t('cd_words')}
               </span>
-              <span className={`ew-save is-${saveState}`}>{saveLabel}</span>
+              <div
+                className="ew-meter"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={maxWords}
+                aria-valuenow={words}
+                aria-valuetext={wordsHint}
+              >
+                <span className={`ew-meter__fill is-${zone}`} style={{ width: `${meterPct}%` }} />
+                <span className="ew-meter__mark" style={{ left: `${(minWords / meterScale) * 100}%` }} />
+                <span className="ew-meter__mark" style={{ left: `${(maxWords / meterScale) * 100}%` }} />
+              </div>
+              <span className="ew-hint">
+                {wordsHint} · <span className={`ew-save is-${saveState}`}>{saveLabel}</span>
+              </span>
             </div>
             <button className="ui-btn ui-btn--sm" disabled={busy} onClick={saveNow}>
               {t('essay_save_draft')}

@@ -437,6 +437,7 @@ class TestDetailSerializer(serializers.ModelSerializer):
     assigned_group_name = serializers.SerializerMethodField()
     cefr_scale = serializers.SerializerMethodField()
     free_trial = serializers.SerializerMethodField()
+    has_cd_structure = serializers.SerializerMethodField()
 
     class Meta:
         model = Test
@@ -444,6 +445,7 @@ class TestDetailSerializer(serializers.ModelSerializer):
             "id",
             "subject",
             "exam_type",
+            "has_cd_structure",
             "cefr_scale",
             "free_trial",
             "title",
@@ -481,6 +483,12 @@ class TestDetailSerializer(serializers.ModelSerializer):
 
     def get_is_strict_mode(self, obj: Test) -> bool:
         return bool(getattr(obj, "is_strict_mode", False) or getattr(obj, "strict_anti_cheat", False))
+
+    def get_has_cd_structure(self, obj: Test) -> bool:
+        """Section → part → group layout: runs on the CD exam engine (any subject)."""
+        from .models import ExamPart
+
+        return ExamPart.objects.filter(section__test=obj).exists()
 
     def get_has_pin(self, obj: Test) -> bool:
         return bool(obj.access_pin and obj.access_pin.strip())

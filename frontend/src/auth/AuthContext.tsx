@@ -11,6 +11,7 @@ import {
   AuthExpiredError,
   GoogleAuth,
   SessionAuth,
+  TelegramAuth,
   getTokens,
   login as apiLogin,
   logout as apiLogout,
@@ -120,16 +121,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // 2. Zero-friction Telegram Mini App authentication if within Telegram
     if (tmaInitData && !getTokens().access) {
       setLoading(true);
-      fetch('/api/v1/auth/telegram-webapp/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ init_data: tmaInitData }),
-      })
-        .then(async (res) => {
-          if (!res.ok) throw new Error('TMA auth failed');
-          return res.json();
-        })
-        .then((data) => {
+      // Shared single-flight request: Login.tsx signs in with the same
+      // initData on mount, and the backend accepts each initData only once.
+      TelegramAuth.loginWithInitData(tmaInitData)
+        .then((raw) => {
+          const data = raw as typeof raw & { success?: boolean; start_param?: string };
           if (data.success && data.tokens) {
             setTokens(data.tokens.access, data.tokens.refresh);
             const resolved = normalizeUser(data.user);

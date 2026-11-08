@@ -64,6 +64,9 @@
   - Profile: "Telegram Hisobini Bog'lash"; OMR Skaner: "Titul varaqa (Answer Sheet) avto-skaneri".
 - [ ] Dashboard "My Tests" blokidagi "...for Native Language & Literature" matni tanlangan fanga qarab dinamik bo'lsin.
 - [ ] Komponentlarda qolgan hardcoded UI matnlarni qidirib top (grep) va ro'yxatini AUDIT'ga yoz; asosiy sahifalardagilarni ko'chir.
+  - [x] Esse natijasi (`EssayResult.tsx`), esse yozish (`EssayWrite.tsx`), duel xonasi (`DuelRoom.tsx`) — barcha matnlar uz/ru/en i18n'da (2026-11-07). `Arena.tsx` da hardcode qolmagan.
+  - [x] Esse muharriridagi 12 mezon ro'yxati (`crit_short_1..12`) rasmiy BMB mezonlari va maksimal ballariga (2 / 1.5) moslandi — avval boshqa rubrika ko'rsatilardi.
+  - [ ] Landing, mobil profil, Profile, OMR va boshqa sahifalar — hali ko'chirilmagan (yuqoridagi ro'yxat).
 
 ## 6-bosqich — Soxta statistikani olib tashlash
 - [ ] Dashboard'dagi "Tayyorgarlik darajasi: 72%", "Boshlang'ich Diagnostika Topshirildi (88% natija)", "Path to Excellence", "Keyingi Marra", "So'nggi baholangan esselar" (56/60 A+, Band 7.5) — barchasini haqiqiy API ma'lumotiga ula.
@@ -128,3 +131,7 @@ Maqsad: `RECORD MOCK – TEST 1` kabi testlar kodda statik emas, admin/ustoz pan
 - A3: admin `SUPERADMIN_TELEGRAM_IDS` dagi Telegram ID ga avtomatik beriladi; Google/email bilan kirish alohida student akkaunt yaratadi; botdagi "Men o'quvchiman" adminni ham student qiladi. Ustoz FREE kvotaga tushardi — tuzatildi. Preview urinishlarga XP berilmaydi. Prod bazani o'qish — deploy bosqichida.
 - A4: modal fanga mos, Rasch/sertifikat va'dasi yo'q, narxlar `PLAN_*_PRICE` dan (7 000 / 15 000 / 27 000). Bepul sinov: Reading Part 1, bir marta, preview (migratsiya 0017).
 - A5: test #12 arxivlandi (migratsiya 0018, natijalar saqlanadi), asossiz da'volar olib tashlandi; platformadagi qolgan da'volar ro'yxati PR tavsifida.
+
+**Audit va barqarorlik (2026-11-07, commit qilinmagan):** ELO endi nol yig'indili (ikkinchi o'yinchi yangilangan reytingga qarshi hisoblanardi), forfeit ham XP/statistikani yozadi, javob berishda player qatori bloklanadi. IELTS grade endpointi pre-validatsiya xatosida 500 o'rniga 400 qaytaradi va kvotani qaytaradi. Telegram initData login bitta so'rovga birlashtirildi; imzo hash'i loglanmaydi. Butun ilova va duel/esse/TMA sahifalari ErrorBoundary bilan o'raldi (eskirgan chunk bo'lsa bir marta avtomatik reload). `/tests/run/:id` kabi eski redirektlar haqiqiy id'ni saqlaydi.
+
+**5-bosqich, esse/arena qismi (2026-11-07, commit qilinmagan):** `EssayResult.tsx` qayta yozildi: hero (BMB baho yoki IELTS band + CEFR, so'zlar, sarflangan vaqt) + "keyingi esse uchun 3 qadam", so'ng tablar — guruhlangan mezon akkordeonlari, "asl → to'g'ri" tuzatish kartalari, matn ichida tuzatish, AI namuna. Soxta qiymatlar olib tashlandi (CEFR taxmini, ScoreCard'dagi 70%/250 so'z). Backend natija API'siga haqiqiy `time_spent_seconds` qo'shildi. `EssayWrite.tsx`: min/max belgili so'z hisoblagich, skeleton, mobil tugmalar. `DuelRoom.tsx`: tema tokenlari (kunduzgi rejimda o'qiladi), skeleton, 52px variantlar. Baholash promptlari (BMB + IELTS): JSON sxemasi o'zgarmagan holda, `errors` — "essedan iqtibos" → "tuzatilgan variant", `teacher_recommendation` — 3 ta raqamlangan qadam, sodda tildagi sabab + yechim. Testlar: 1627 o'tdi. Ochiq: tizimga kirgan holda brauzerda ko'rib tekshirish; 5-bosqichning qolgan bandlari (til/fan tanlagichini ajratish, Landing va boshqa sahifalar matni).

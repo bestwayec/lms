@@ -412,6 +412,8 @@ def submit_answer(
 
     Returns the scoring breakdown or None (invalid room/index/repeat answer).
     """
+    from django.db import IntegrityError
+
     from .models import ArenaAnswerLog, ArenaPlayer, ArenaQuestion, ArenaRoom
 
     answer = (answer or "").strip().lower()
@@ -419,57 +421,46 @@ def submit_answer(
         return None
 
     try:
-        room = ArenaRoom.objects.get(pk=room.pk)
-        if room.status != ArenaRoom.Status.STARTED:
-            return None
-        question = ArenaQuestion.objects.get(room=room, position=question_index)
-        player = ArenaPlayer.objects.get(room=room, player_id=user_id)
+        time_seconds = float(time_seconds) if time_seconds is not None else 0.0
+    except (TypeError, ValueError):
+        time_seconds = 0.0
+    if time_seconds != time_seconds:  # NaN from a malformed client payload
+        time_seconds = 0.0
 
-        # No double answering
-        if ArenaAnswerLog.objects.filter(
-            player=player, position=question_index
-        ).exists():
-            return None
+    try:
+        with transaction.atomic():
+            room = ArenaRoom.objects.get(pk=room.pk)
+            if room.status != ArenaRoom.Status.STARTED:
+                return None
+            question = ArenaQuestion.objects.get(room=room, position=question_index)
+            # Lock the player row: two answer frames from the same player
+            # (double tap, second tab) must not both read the old score and
+            # overwrite each other's points/streak.
+            player = ArenaPlayer.objects.select_for_update().get(
+                room=room, player_id=user_id
+            )
+
+            # No double answering (re-checked under the lock)
+            if ArenaAnswerLog.objects.filter(
+                player=player, position=question_index
+            ).exists():
+                return None
+
+            time_seconds = max(0.0, min(time_seconds, room.time_per_question))
+            is_correct = answer == question.correct_answer
+            breakdown = score_answer(
+                question.points, player.streak, time_seconds, is_correct
+            )
+            _apply_answer(
+                player, room, question_index, answer, is_correct, time_seconds, breakdown
+            )
     except (
         ArenaRoom.DoesNotExist,
         ArenaQuestion.DoesNotExist,
         ArenaPlayer.DoesNotExist,
+        IntegrityError,  # uq_arena_answer_player_position: answer already logged
     ):
         return None
-
-    if time_seconds is None:
-        time_seconds = 0.0
-    time_seconds = max(0.0, min(float(time_seconds), room.time_per_question))
-
-    is_correct = answer == question.correct_answer
-    breakdown = score_answer(question.points, player.streak, time_seconds, is_correct)
-
-    with transaction.atomic():
-        player.score += breakdown["points"]
-        player.answered_questions += 1
-        player.total_time_seconds += int(time_seconds)
-        if is_correct:
-            player.correct_answers += 1
-            player.streak = breakdown["streak"]
-            if player.streak > player.best_streak:
-                player.best_streak = player.streak
-        else:
-            player.streak = 0
-        player.save()
-
-        ArenaAnswerLog.objects.create(
-            room=room,
-            player=player,
-            position=question_index,
-            answer=answer,
-            is_correct=is_correct,
-            time_taken_seconds=round(time_seconds, 2),
-            points=breakdown["points"],
-            base_points=breakdown["base_points"],
-            combo_bonus=breakdown["combo_bonus"],
-            time_bonus=breakdown["time_bonus"],
-            streak=player.streak,
-        )
 
     return {
         "is_correct": is_correct,
@@ -481,6 +472,39 @@ def submit_answer(
         "streak": player.streak,
         "time_taken_seconds": round(time_seconds, 2),
     }
+
+
+def _apply_answer(
+    player, room, question_index, answer, is_correct, time_seconds, breakdown
+) -> None:
+    """Persist one graded answer; caller holds the player row lock."""
+    from .models import ArenaAnswerLog
+
+    player.score += breakdown["points"]
+    player.answered_questions += 1
+    player.total_time_seconds += int(time_seconds)
+    if is_correct:
+        player.correct_answers += 1
+        player.streak = breakdown["streak"]
+        if player.streak > player.best_streak:
+            player.best_streak = player.streak
+    else:
+        player.streak = 0
+    player.save()
+
+    ArenaAnswerLog.objects.create(
+        room=room,
+        player=player,
+        position=question_index,
+        answer=answer,
+        is_correct=is_correct,
+        time_taken_seconds=round(time_seconds, 2),
+        points=breakdown["points"],
+        base_points=breakdown["base_points"],
+        combo_bonus=breakdown["combo_bonus"],
+        time_bonus=breakdown["time_bonus"],
+        streak=player.streak,
+    )
 
 
 def bot_decide_answer(room, question_index: int, bot_user_id: int) -> dict[str, Any]:
@@ -989,105 +1013,127 @@ def finish_duel(room_code: str) -> dict[str, Any] | None:
         else:
             winner = players[0]
 
-        room.winner = winner.player if winner else None
-        room.status = ArenaRoom.Status.FINISHED
-        room.finished_at = timezone.now()
+        _settle_duel(room, players, winner)
 
-        # --- Rewards & ELO per player ----------------------------------
-        for p in players:
-            profile = get_or_create_profile(p.player)
-            p.rating_before = profile.rating
+    return _duel_summary(room)
 
-            if winner is None:
-                outcome, xp, coins = 0.5, REWARD_DRAW[0], REWARD_DRAW[1]
-            elif winner.pk == p.pk:
-                outcome, xp, coins = 1.0, REWARD_WIN[0], REWARD_WIN[1]
-            else:
-                outcome, xp, coins = 0.0, REWARD_LOSS[0], REWARD_LOSS[1]
 
-            # Performance bonus for long combos
-            if p.best_streak >= 5:
-                xp += PERFORMANCE_BONUS[0]
-                coins += PERFORMANCE_BONUS[1]
+def _settle_duel(room, players: list, winner) -> None:
+    """Apply ELO, rewards, profile stats and badges for a finished duel.
 
-            opponent = (
-                players[0]
-                if p.pk != players[0].pk
-                else (players[1] if len(players) > 1 else None)
+    Must run inside the caller's transaction with ``room`` already locked.
+    Shared by :func:`finish_duel` and :func:`forfeit_duel` so both endings
+    credit players identically.
+
+    ELO is zero-sum: every player's new rating is computed from the ratings
+    snapshotted *before* any update. (Previously the second player was rated
+    against the first player's already-updated rating.) Profiles are locked
+    in pk order so two rooms settling for the same user cannot lose an
+    update or deadlock.
+    """
+    from .models import ArenaProfile, ArenaRoom
+
+    for p in players:
+        get_or_create_profile(p.player)
+    profiles = {
+        prof.user_id: prof
+        for prof in ArenaProfile.objects.select_for_update()
+        .filter(user_id__in=[p.player_id for p in players])
+        .order_by("pk")
+    }
+    ratings_before = {uid: prof.rating for uid, prof in profiles.items()}
+
+    room.winner = winner.player if winner else None
+    room.status = ArenaRoom.Status.FINISHED
+    room.finished_at = timezone.now()
+
+    for p in players:
+        profile = profiles[p.player_id]
+        p.rating_before = ratings_before[p.player_id]
+
+        if winner is None:
+            outcome, xp, coins = 0.5, REWARD_DRAW[0], REWARD_DRAW[1]
+        elif winner.pk == p.pk:
+            outcome, xp, coins = 1.0, REWARD_WIN[0], REWARD_WIN[1]
+        else:
+            outcome, xp, coins = 0.0, REWARD_LOSS[0], REWARD_LOSS[1]
+
+        # Performance bonus for long combos
+        if p.best_streak >= 5:
+            xp += PERFORMANCE_BONUS[0]
+            coins += PERFORMANCE_BONUS[1]
+
+        opponent = next((o for o in players if o.pk != p.pk), None)
+        if opponent is not None:
+            new_rating = compute_elo(
+                p.rating_before, ratings_before[opponent.player_id], outcome
             )
-            opp_rating = (
-                get_or_create_profile(opponent.player).rating
-                if opponent
-                else profile.rating
-            )
-            new_rating = compute_elo(profile.rating, opp_rating, outcome)
-            p.rating_change = new_rating - profile.rating
-            p.xp_earned = xp
-            p.coins_earned = coins
-            p.save(
-                update_fields=[
-                    "rating_before",
-                    "rating_change",
-                    "xp_earned",
-                    "coins_earned",
-                ]
-            )
-
-            # --- ArenaProfile ------------------------------------------
-            profile.duels_played += 1
-            profile.total_correct += p.correct_answers
-            profile.total_answers += p.answered_questions
-            profile.total_time_seconds += p.total_time_seconds
-            if outcome == 1.0:
-                profile.wins += 1
-                profile.current_win_streak += 1
-                profile.best_win_streak = max(
-                    profile.best_win_streak, profile.current_win_streak
-                )
-            elif outcome == 0.0:
-                profile.losses += 1
-                profile.current_win_streak = 0
-            else:
-                profile.draws += 1
-            profile.rating = new_rating
-            profile.save()
-
-            # --- UserGameScore (XP/coins through the games economy) -----
-            if not p.player.is_bot:
-                _award_game_score(
-                    p.player,
-                    xp,
-                    coins,
-                    p.correct_answers,
-                    p.answered_questions - p.correct_answers,
-                    p.best_streak,
-                )
-
-        room.p1_rating_before = players[0].rating_before if players else None
-        room.p2_rating_before = players[1].rating_before if len(players) > 1 else None
-        room.p1_rating_change = players[0].rating_change if players else 0
-        room.p2_rating_change = players[1].rating_change if len(players) > 1 else 0
-        room.save(
+        else:
+            # A room nobody joined is not a rated game.
+            new_rating = p.rating_before
+        p.rating_change = new_rating - p.rating_before
+        p.xp_earned = xp
+        p.coins_earned = coins
+        p.save(
             update_fields=[
-                "winner",
-                "status",
-                "finished_at",
-                "p1_rating_before",
-                "p2_rating_before",
-                "p1_rating_change",
-                "p2_rating_change",
+                "rating_before",
+                "rating_change",
+                "xp_earned",
+                "coins_earned",
             ]
         )
 
-        # --- Badges (real users only) -----------------------------------
-        for p in players:
-            if not p.player.is_bot:
-                try:
-                    award_badges(p.player)
-                except Exception:
-                    logger.exception("Badge award failed: user=%s", p.player_id)
+        profile.duels_played += 1
+        profile.total_correct += p.correct_answers
+        profile.total_answers += p.answered_questions
+        profile.total_time_seconds += p.total_time_seconds
+        if outcome == 1.0:
+            profile.wins += 1
+            profile.current_win_streak += 1
+            profile.best_win_streak = max(
+                profile.best_win_streak, profile.current_win_streak
+            )
+        elif outcome == 0.0:
+            profile.losses += 1
+            profile.current_win_streak = 0
+        else:
+            profile.draws += 1
+        profile.rating = new_rating
+        profile.save()
 
-    return _duel_summary(room)
+        if not p.player.is_bot:
+            _award_game_score(
+                p.player,
+                xp,
+                coins,
+                p.correct_answers,
+                p.answered_questions - p.correct_answers,
+                p.best_streak,
+            )
+
+    room.p1_rating_before = players[0].rating_before if players else None
+    room.p2_rating_before = players[1].rating_before if len(players) > 1 else None
+    room.p1_rating_change = players[0].rating_change if players else 0
+    room.p2_rating_change = players[1].rating_change if len(players) > 1 else 0
+    room.save(
+        update_fields=[
+            "winner",
+            "status",
+            "finished_at",
+            "p1_rating_before",
+            "p2_rating_before",
+            "p1_rating_change",
+            "p2_rating_change",
+        ]
+    )
+
+    for p in players:
+        if not p.player.is_bot:
+            try:
+                with transaction.atomic():
+                    award_badges(p.player)
+            except Exception:
+                logger.exception("Badge award failed: user=%s", p.player_id)
 
 
 def _duel_summary(room) -> dict[str, Any]:
@@ -1276,61 +1322,5 @@ def forfeit_duel(room_code: str, forfeit_user_id: int) -> dict[str, Any] | None:
         remaining_players = [p for p in players if p.player_id != forfeit_user_id]
         winner = remaining_players[0] if remaining_players else players[0]
 
-        room.winner = winner.player
-        room.status = ArenaRoom.Status.FINISHED
-        room.finished_at = timezone.now()
-
-        for p in players:
-            profile = get_or_create_profile(p.player)
-            p.rating_before = profile.rating
-
-            if winner.pk == p.pk:
-                outcome, xp, coins = 1.0, REWARD_WIN[0], REWARD_WIN[1]
-            else:
-                outcome, xp, coins = 0.0, REWARD_LOSS[0], REWARD_LOSS[1]
-
-            if p.best_streak >= 5:
-                xp += PERFORMANCE_BONUS[0]
-                coins += PERFORMANCE_BONUS[1]
-
-            opponent = (
-                players[0]
-                if p.pk != players[0].pk
-                else (players[1] if len(players) > 1 else None)
-            )
-            opp_rating = (
-                get_or_create_profile(opponent.player).rating
-                if opponent
-                else profile.rating
-            )
-            new_rating = compute_elo(profile.rating, opp_rating, outcome)
-            p.rating_change = new_rating - profile.rating
-            p.xp_earned = xp
-            p.coins_earned = coins
-            p.save(
-                update_fields=[
-                    "rating_before",
-                    "rating_change",
-                    "xp_earned",
-                    "coins_earned",
-                ]
-            )
-
-            profile.rating = new_rating
-            profile.duels_played += 1
-            if outcome == 1.0:
-                profile.wins += 1
-                profile.current_win_streak += 1
-                profile.best_win_streak = max(
-                    profile.best_win_streak, profile.current_win_streak
-                )
-            elif outcome == 0.0:
-                profile.losses += 1
-                profile.current_win_streak = 0
-            else:
-                profile.draws += 1
-            profile.rating = new_rating
-            profile.save()
-
-        room.save(update_fields=["winner", "status", "finished_at"])
+        _settle_duel(room, players, winner)
         return _duel_summary(room)

@@ -161,3 +161,34 @@ class BbaValidationTests(SimpleTestCase):
                 EssayCriterionScore.CRITERION_NAMES[criterion["id"]],
             )
             self.assertLessEqual(len(criterion["name"]), 100)
+
+
+class CoachingFeedbackPromptTests(SimpleTestCase):
+    """Feedback fields must ask for quoted before → after rewrites and 3 steps,
+    without touching the JSON contract the validators enforce."""
+
+    def test_full_prompt_requires_quoted_rewrites_and_three_steps(self):
+        p = ESSAY_GRADING_SYSTEM_PROMPT
+        self.assertIn("→", p)
+        self.assertIn("uydirma iqtibos TAQIQLANADI", p)
+        self.assertIn("1) ... 2) ... 3) ...", p)
+
+    def test_simple_prompt_keeps_rewrite_format(self):
+        self.assertIn("→", ESSAY_GRADING_SYSTEM_PROMPT_SIMPLE)
+
+    def test_ielts_prompt_requires_verbatim_quotes(self):
+        from apps.essays.services import IELTS_SYSTEM_PROMPT
+
+        self.assertIn("never invent one", IELTS_SYSTEM_PROMPT)
+        self.assertIn("DEDUCTION", IELTS_SYSTEM_PROMPT)
+
+    def test_prompt_json_example_is_valid_and_schema_complete(self):
+        import json
+
+        from apps.essays.services import ALLOWED_TOP_KEYS
+
+        example = ESSAY_GRADING_SYSTEM_PROMPT.split("JSON formati:", 1)[1].strip()
+        example = example.replace("...12 ta...", "{\"id\":3}")
+        data = json.loads(example)
+        self.assertTrue(set(data) <= set(ALLOWED_TOP_KEYS))
+        self.assertIn("→", data["criteria"][0]["errors"][0])

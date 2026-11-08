@@ -385,6 +385,62 @@ class RewardsTests(LMSBaseTestCase):
         self.assertEqual(pa.draws, 1)
         self.assertEqual(pb.draws, 1)
 
+    def _matched_room(self, a, b):
+        _, room_a = services.join_matchmaking_queue(a)
+        _, room_b = services.join_matchmaking_queue(b)
+        room = room_a or room_b
+        self.assertIsNotNone(room)
+        return room
+
+    def test_elo_is_zero_sum_against_pre_duel_ratings(self):
+        # Regression: the second player used to be rated against the first
+        # player's *already updated* rating (1016 instead of 1000), so a
+        # 1000-vs-1000 win was +16 / -15 instead of +16 / -16.
+        a = self.student
+        b = _make_user("zerosum@test.com", first="Zero")
+        room = self._matched_room(a, b)
+        questions = list(ArenaQuestion.objects.filter(room=room).order_by("position"))
+        for i, q in enumerate(questions):
+            wrong = "a" if q.correct_answer != "a" else "b"
+            services.submit_answer(room, a.id, q.correct_answer, i, time_seconds=1.0)
+            services.submit_answer(room, b.id, wrong, i, time_seconds=1.0)
+
+        services.finish_duel(room.room_code)
+        pa = services.get_or_create_profile(a)
+        pb = services.get_or_create_profile(b)
+        self.assertEqual(pa.rating - 1000, 16)
+        self.assertEqual(pb.rating - 1000, -16)
+
+    def test_forfeit_settles_like_a_finished_duel(self):
+        # Regression: forfeit skipped the games-economy XP, answer totals and
+        # the room's rating snapshot that finish_duel records.
+        a = self.student
+        b = _make_user("quitter@test.com", first="Quit")
+        room = self._matched_room(a, b)
+        q = ArenaQuestion.objects.filter(room=room).order_by("position").first()
+        services.submit_answer(room, a.id, q.correct_answer, 0, time_seconds=1.0)
+
+        summary = services.forfeit_duel(room.room_code, b.id)
+        room.refresh_from_db()
+        self.assertEqual(room.winner_id, a.id)
+        self.assertIsNotNone(summary)
+        self.assertEqual(room.p1_rating_change + room.p2_rating_change, 0)
+        self.assertNotEqual(room.p1_rating_change, 0)
+        pa = services.get_or_create_profile(a)
+        self.assertEqual(pa.total_answers, 1)
+        self.assertEqual(pa.total_correct, 1)
+        score = UserGameScore.objects.get(user=a, game__slug=services.ARENA_GAME_SLUG)
+        self.assertGreaterEqual(score.total_xp, services.REWARD_WIN[0])
+
+    def test_submit_answer_tolerates_malformed_time(self):
+        room = services.create_bot_room(self.student)
+        q = ArenaQuestion.objects.get(room=room, position=0)
+        result = services.submit_answer(
+            room, self.student.id, q.correct_answer, 0, time_seconds="NaN"
+        )
+        self.assertIsNotNone(result)
+        self.assertEqual(result["time_taken_seconds"], 0.0)
+
 
 # ============================================================================
 # 4. ACHIEVEMENTS / BADGES

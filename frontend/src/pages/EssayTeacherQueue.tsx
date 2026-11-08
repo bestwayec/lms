@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useLang } from '../i18n/LangContext';
 import { TeacherEssays, canReviewEssays } from '../lib/api';
 import type { TeacherEssayCard } from '../lib/api';
+import EssayReviewDrawer from '../components/studio/EssayReviewDrawer';
 
 interface Queue {
   student_requested: TeacherEssayCard[];
@@ -20,9 +21,11 @@ interface Queue {
 function Section({
   title,
   items,
+  onQuick,
 }: {
   title: string;
   items: TeacherEssayCard[];
+  onQuick: (id: number) => void;
 }) {
   const { t } = useLang();
   if (items.length === 0) return null;
@@ -51,7 +54,10 @@ function Section({
                 <td className="muted small">
                   {s.submitted_at ? s.submitted_at.slice(0, 16).replace('T', ' ') : '—'}
                 </td>
-                <td>
+                <td className="studio-queue-actions">
+                  <button type="button" className="btn sm primary" onClick={() => onQuick(s.id)}>
+                    {t('studio_quick_review')}
+                  </button>
                   <Link className="btn sm" to={`/teacher/essays/${s.id}/review`}>
                     {t('tr_open_review')} →
                   </Link>
@@ -71,12 +77,17 @@ export default function EssayTeacherQueue() {
   const { user, loading } = useAuth();
   const [queue, setQueue] = useState<Queue | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [reviewId, setReviewId] = useState<number | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     TeacherEssays.queue()
       .then((q) => setQueue(q as Queue))
       .catch((e) => setErr(e instanceof Error ? e.message : t('err_retry_js')));
   }, [t]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   // Essays expose other students' work: teacher/platform-admin only
   // (is_staff alone is NOT enough — mirrors essays teacher_required).
@@ -95,8 +106,11 @@ export default function EssayTeacherQueue() {
       {empty && queue.reviewed.length === 0 && (
         <p className="muted">{t('tr_no_items')}</p>
       )}
-      <Section title={t('tr_requested')} items={queue.student_requested} />
-      <Section title={t('tr_pending')} items={queue.pending} />
+      <Section title={t('tr_requested')} items={queue.student_requested} onQuick={setReviewId} />
+      <Section title={t('tr_pending')} items={queue.pending} onQuick={setReviewId} />
+      {reviewId !== null && (
+        <EssayReviewDrawer submissionId={reviewId} onClose={() => setReviewId(null)} onSaved={load} />
+      )}
       {queue.reviewed.length > 0 && (
         <>
           <h2>{t('tr_reviewed')}</h2>

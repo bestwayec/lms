@@ -427,7 +427,13 @@ def _resume(user, subject: str) -> dict[str, Any] | None:
     )
     if attempt is None or attempt.is_time_expired:
         return None
-    english = attempt.test.subject == "english" or test_kind(attempt.test) in ("cefr", "ielts")
+    from apps.tests.models import ExamPart
+
+    english = (
+        attempt.test.subject == "english"
+        or test_kind(attempt.test) in ("cefr", "ielts")
+        or ExamPart.objects.filter(section__test_id=attempt.test_id).exists()
+    )
     return {
         "attempt_id": attempt.id,
         "test_id": attempt.test_id,

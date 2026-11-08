@@ -62,16 +62,23 @@ RASMIY 12 TA MEZON VA BALL SHKALASI (JAMI 20 BALL):
 QAT'IY QOIDALAR:
 - total_score = 12 mezon yig'indisi (o'zingiz hisoblang, maksimal 20.0).
 - max_score = 20.
-- "criteria"da AYNAN 12 element (id 1-12, har biri 1 marta); har "reason" 1-2 jumla; "errors" esa topilgan aniq xatolar iqtibosi bo'lsin.
-- "spelling_errors": topilgan har bir imlo xatosi uchun [{"word": "noto'g'ri", "correction": "to'g'risi", "explanation": "izoh"}]. Agar xato bo'lmasa bo'sh ro'yxat [].
-- "strengths": matnning kuchli tomonlari (2-3 ta).
-- "weaknesses": zaif tomonlari (2-3 ta).
-- "teacher_recommendation": o'quvchiga ballini oshirish uchun amaliy tavsiya (2-3 jumla).
-- "improved_text": butun essening imlo, grammatika, uslub va punktuatsiyasi to'g'rilangan, publitsistik uslubdagi mukammal tahrirlangan to'liq varianti.
+- "criteria"da AYNAN 12 element (id 1-12, har biri 1 marta).
 - FAQAT toza JSON qaytaring (hech qanday markdown qobig'i ```json siz).
 
+FIKR-MULOHAZA SIFATI (o'quvchi uchun murabbiy kabi yozing):
+O'quvchi 15–18 yoshli abituriyent. Rubrika atamalari o'rniga oddiy, aniq va dalda beruvchi tilda yozing. Har bir fikr ESSENING O'ZIDAN olingan aniq misolga tayansin — umumiy gaplar ("lug'atni boyitish kerak", "izchillikka e'tibor bering") TAQIQLANADI.
+- "reason" (1-2 jumla): avval NIMA uchun ball tushganini matndagi aniq joy bilan ayting, so'ng QANDAY tuzatishni ayting. Ball to'liq bo'lsa — nima yaxshi chiqqanini aniq ko'rsating.
+  Yomon: "Dalillar yetarli emas." Yaxshi: "2-xatboshida fikr faqat umumiy gap bilan isbotlangan; bitta hayotiy yoki adabiy misol (asar, qahramon, voqea) qo'shsangiz ball oshadi."
+- "errors" (har mezonda 0-2 ta, har biri 180 belgigacha): AYNAN shu formatda — "esse matnidan so'zma-so'z iqtibos" → "tuzatilgan variant". Iqtibos essedagi matn bilan bir xil bo'lsin, uydirma iqtibos TAQIQLANADI. Ball to'liq bo'lsa — bo'sh ro'yxat [].
+- "spelling_errors": har bir imlo, grammatik qo'shimcha yoki tinish xatosi uchun {"word": essedagi aynan shakl (so'z yoki qisqa ibora), "correction": to'g'ri shakl, "explanation": qoidani 1 qisqa jumlada sodda tushuntirish}. Xato bo'lmasa [].
+- "strengths" (2-3 ta): har biri essedagi aniq joyga ishora qilsin (masalan, "Kirishdagi savol-tezis o'quvchini darhol mavzuga olib kiradi").
+- "weaknesses" (2-3 ta): eng ko'p ball yo'qotgan 2-3 muammo, har biri matndagi joy bilan.
+- "teacher_recommendation": keyingi esse uchun AYNAN 3 ta amaliy qadam, "1) ... 2) ... 3) ..." ko'rinishida; har qadam bitta aniq harakat (nimani, qayerda, qanday) va eng ko'p ball beradiganidan boshlansin.
+- "summary" (2-3 jumla): umumiy daraja, eng kuchli tomon va eng muhim o'sish nuqtasi. Mavzu ogohlantirishi kerak bo'lsa, u summary boshida qoladi.
+- "improved_text": butun essening imlo, grammatika, uslub va punktuatsiyasi to'g'rilangan, publitsistik uslubdagi mukammal tahrirlangan to'liq varianti — o'quvchining asosiy fikrlari saqlansin.
+
 JSON formati:
-{"criteria":[{"id":1,"name":"Mavzuning to'liq va teran ochib berilishi","score":2.0,"max_score":2.0,"reason":"...","errors":[]},...12 ta...],"total_score":16.5,"max_score":20,"word_count":285,"spelling_errors":[{"word":"muxrdor","correction":"muhrdor","explanation":"H va X farqi"}],"strengths":["..."],"weaknesses":["..."],"teacher_recommendation":"...","improved_text":"...","summary":"...","topic_match":true,"topic_status":"on_topic","is_completely_off_topic":false,"topic_match_reason":"..."}
+{"criteria":[{"id":1,"name":"Mavzuning to'liq va teran ochib berilishi","score":1.5,"max_score":2.0,"reason":"Tezis aniq, lekin 3-xatboshida mavzudan chetga chiqilgan; har xatboshini mavzu savoliga bog'lab tugating.","errors":["\\"Bugungi kunda texnologiya ham rivojlangan\\" → \\"Kitobxonlik madaniyati texnologiya davrida ham o'z ahamiyatini yo'qotmagan\\""]},{"id":2,"name":"Fikrning mantiqiy izchilligi va kompozitsion yaxlitlik","score":2.0,"max_score":2.0,"reason":"Kirish, 3 ta asosiy xatbosh va xulosa aniq ajratilgan, fikrlar bir-biriga ravon ulanadi.","errors":[]},...12 ta...],"total_score":16.5,"max_score":20,"word_count":285,"spelling_errors":[{"word":"muxrdor","correction":"muhrdor","explanation":"Bu so'z \\"h\\" bilan yoziladi: muhr → muhrdor."}],"strengths":["..."],"weaknesses":["..."],"teacher_recommendation":"1) ... 2) ... 3) ...","improved_text":"...","summary":"...","topic_match":true,"topic_status":"on_topic","is_completely_off_topic":false,"topic_match_reason":"..."}
 """
 
 ESSAY_GRADING_SYSTEM_PROMPT_SIMPLE = """\
@@ -86,8 +93,10 @@ DIQQAT MAVZU VA BALL QOIDALARI:
 - "partially_off_topic" bo'lsa: 1-mezon <= 1.0, total_score <= 7.0 (20 ballik shkalada max 35%), topic_match: false, is_completely_off_topic: false, summary boshiga: "⚠️ OGOHLANTIRISH: Esseda mavzudan jiddiy chetlanish kuzatildi. Asosiy savolga to'liq javob berilmaganligi sababli baho 2 – 35 ball oralig'iga keskin tushirildi."
 - 6-mezon = grammatik suffiks/affiks xatosi; MANBA/iqtibos EMAS — manba yo'qligi uchun ball tushirish TAQIQLANADI.
 - total_score = 12 mezon yig'indi (maksimal 20).
-- Har mezon "reason"i 1 jumla + "errors"da iqtiboslar bo'lsin.
+- Har mezon "reason"i 1 jumla: nega ball tushdi + qanday tuzatish (sodda tilda, umumiy gap emas).
+- "errors" (0-2 ta): "essedan aynan iqtibos" → "tuzatilgan variant".
 - "spelling_errors": [{"word":"...","correction":"...","explanation":"..."}].
+- "teacher_recommendation": "1) ... 2) ... 3) ..." — 3 ta aniq qadam.
 - "improved_text": to'liq tahrirlangan mukammal variant.
 FAQAT toza JSON (boshqa tekst, markdown yo'q):
 {"criteria":[{"id":1,"name":"Mavzuning to'liq va teran ochib berilishi","score":2.0,"max_score":2.0,"reason":"...","errors":[]},...12 ta...],"total_score":16.5,"max_score":20,"word_count":285,"spelling_errors":[],"strengths":[],"weaknesses":[],"teacher_recommendation":"...","improved_text":"...","summary":"...","topic_match":true,"topic_status":"on_topic","is_completely_off_topic":false,"topic_match_reason":"..."}

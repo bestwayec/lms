@@ -732,13 +732,24 @@ def student_group_detail_view(request, group_id: int):
     # 3. Assigned tests: ONE query for tests (+question counts), ONE for the
     # student's results and ONE for open attempts (was 2-3 queries per test).
     assigned_tests = list(
-        Test.objects.filter(Q(assigned_group=group) | Q(created_by=group.teacher, subject=group.subject))
+        Test.objects.filter(
+            Q(assigned_group=group)
+            | Q(homework_assignments__group=group)
+            | Q(created_by=group.teacher, subject=group.subject)
+        )
         .filter(is_active=True)
         .distinct()
         .annotate(stat_questions=Count("questions", distinct=True))
         .order_by("-created_at")[:10]
     )
     test_ids = [t.id for t in assigned_tests]
+    # Teacher Studio assignments carry a deadline (courses.Homework).
+    from apps.courses.models import Homework
+
+    due_by_test = {
+        hw.test_id: hw.due_date
+        for hw in Homework.objects.filter(group=group, test_id__in=test_ids).order_by("due_date")
+    }
 
     latest_result: dict[int, Result] = {}
     for res in Result.objects.filter(test_id__in=test_ids, student=user).order_by("test_id", "-calculated_at"):
@@ -782,6 +793,7 @@ def student_group_detail_view(request, group_id: int):
                     else None
                 ),
                 "attempt_id": user_att.id if user_att else (user_res.attempt_id if user_res else None),
+                "due_at": due_by_test[test.id].isoformat() if test.id in due_by_test else None,
             }
         )
 

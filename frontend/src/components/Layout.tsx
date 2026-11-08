@@ -68,6 +68,7 @@ const PAGE_TITLES: [string, string][] = [
   ['/my-subscription', 'pay_current_sub'],
   ['/certificates', 'certificates'],
   ['/games', 'games'],
+  ['/teacher/studio', 'studio_title'],
   ['/teacher', 'teacher_cabinet'],
   ['/panel', 'tb_admin_panel'],
 ];
@@ -143,6 +144,9 @@ export default function Layout() {
               </NavLink>
               <NavLink to="/groups" className={linkClass} onClick={close}>
                 <FolderOpenIcon size={16} className="ico" /> {t('my_groups', 'Mening Guruhlarim')}
+              </NavLink>
+              <NavLink to="/teacher/studio" className={linkClass} onClick={close}>
+                <LayoutDashboardIcon size={16} className="ico" /> {t('studio_title')}
               </NavLink>
               <NavLink to="/tests/create" className={linkClass} onClick={close}>
                 <SparklesIcon size={16} className="ico" /> {t('create_smart_test', 'Yangi Test Yaratish')}
