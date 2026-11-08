@@ -16,8 +16,6 @@ import logging
 from typing import Any
 
 from celery import shared_task
-from django.conf import settings
-from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +57,7 @@ def process_test_result_task(
         {"status": "completed", "certificate_generated": bool, ...}
     """
     try:
-        from apps.results.models import Certificate, Result
+        from apps.results.models import Result
 
         result = Result.objects.select_related(
             "student",

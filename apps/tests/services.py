@@ -21,13 +21,11 @@ Lifecycle:
 from __future__ import annotations
 
 import logging
-import random
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
 from django.db import transaction
-from django.db.models import F
 from django.utils import timezone
 import sys
 from apps.tests import score_converter
@@ -38,16 +36,13 @@ from apps.results.models import Result
 from apps.tests.models import (
     AttemptSectionProgress,
     Choice,
-    ExamSection,
     ExamWrittenBridge,
     GapBlank,
     GapResponse,
     MatchingOption,
-    MatchingPair,
     MatchingPrompt,
     MatchingResponse,
     Question,
-    ReadingPassage,
     StudentAnswer,
     Test,
     TestAttempt,
@@ -61,7 +56,6 @@ from apps.tests.scoring import (
 from apps.tests.scoring import (
     evaluate_text_answer as _evaluate_text_answer,
     grade_matching as _grade_matching,
-    normalize_text as _normalize_text,
     written_earned as _written_earned,
 )
 

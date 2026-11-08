@@ -13,14 +13,10 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from apps.accounts.models import Profile
-from apps.courses.models import Course, Subject
-from apps.essays.models import EssayTopic
+from apps.courses.models import Subject
 from apps.tests.models import (
     Choice,
-    ExamSection,
-    GapBlank,
     Question,
-    ReadingPassage,
     Test,
 )
 

@@ -19,7 +19,6 @@ from typing import Any
 from django.conf import settings
 from django.db import transaction
 
-from apps.courses.models import Course
 from apps.tests.mock_service import (
     _get_or_create_mock_course,
     generate_unique_mock_code,

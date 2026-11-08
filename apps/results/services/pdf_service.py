@@ -16,21 +16,15 @@ Architecture:
 
 from __future__ import annotations
 
-import io
-import os
 from io import BytesIO
 from typing import Any
 
-from django.conf import settings
-from django.utils import timezone
 
 # ReportLab imports
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.lib.units import cm, mm
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.units import cm
 from reportlab.platypus import (
     SimpleDocTemplate,
     Paragraph,

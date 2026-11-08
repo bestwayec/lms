@@ -41,7 +41,7 @@ from django.db import transaction
 from apps.arena.models import Tournament
 from apps.courses.models import Homework
 from apps.results.models import Certificate, Result
-from apps.tests.models import Choice, Question, StudentAnswer, Test, TestAttempt
+from apps.tests.models import StudentAnswer, Test, TestAttempt
 
 logger = logging.getLogger(__name__)
 

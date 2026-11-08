@@ -871,11 +871,9 @@ def branch_retention_risk_view(request: Any, branch_id: int) -> Response:
     if not _can_manage_branch(user, branch):
         return _forbidden()
 
-    from datetime import timedelta
     from django.db.models import Q
     from django.utils import timezone
     from apps.accounts.models import ParentStudentRelation
-    from apps.accounts.gamification import get_user_streak_info
     from apps.results.models import Result
     from apps.tests.models import TestAttempt
 

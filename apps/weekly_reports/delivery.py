@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from django.db import IntegrityError, transaction
+from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 

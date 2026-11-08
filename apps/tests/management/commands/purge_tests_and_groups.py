@@ -82,7 +82,7 @@ except ImportError:
 
 # Preserved models for verification
 from apps.essays.models import EssaySubmission, EssayTopic
-from apps.payments.models import UserSubscription, PaymentReceipt, SubscriptionPlan
+from apps.payments.models import UserSubscription, PaymentReceipt
 
 User = get_user_model()
 

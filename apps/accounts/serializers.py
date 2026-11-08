@@ -23,7 +23,6 @@ from rest_framework_simplejwt.serializers import (
 )
 from rest_framework_simplejwt.tokens import RefreshToken as JWTRefreshToken
 
-from .models import Profile
 
 User = get_user_model()
 

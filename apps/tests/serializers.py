@@ -17,7 +17,7 @@ from typing import Any
 
 from rest_framework import serializers
 
-from .models import Choice, Question, StudentAnswer, Test, TestAttempt
+from .models import Choice, Question, Test, TestAttempt
 
 logger = logging.getLogger(__name__)
 

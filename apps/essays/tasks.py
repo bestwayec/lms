@@ -545,7 +545,6 @@ def auto_submit_expired_essays(self) -> dict:
     from django.utils import timezone
 
     from apps.essays.models import EssaySubmission
-    from apps.essays.services import auto_submit_essay
 
     expired_submissions = list(
         EssaySubmission.objects.filter(

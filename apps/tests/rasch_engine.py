@@ -238,7 +238,7 @@ class RaschEngine:
         2. Re-scores all completed attempts and results with updated weights.
         """
         from apps.results.models import Result
-        from apps.tests.models import Question, StudentAnswer, Test, TestAttempt
+        from apps.tests.models import Question, Test, TestAttempt
 
         test = Test.objects.get(id=test_id)
         stats_result = cls.update_test_question_stats(test_id)

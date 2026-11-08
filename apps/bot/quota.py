@@ -6,7 +6,7 @@ Enforces free 1-essay/day rules and Starter/PRO tier checks for Telegram Bot upd
 from __future__ import annotations
 
 from typing import Any
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from apps.subscriptions.services import QuotaService
 
 

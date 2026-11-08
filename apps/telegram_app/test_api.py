@@ -13,13 +13,9 @@ from __future__ import annotations
 import logging
 import json
 import random
-from decimal import Decimal
-from typing import Any
 
 from django.db import transaction
-from django.db.models import Q
 from django.http import JsonResponse
-from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
@@ -71,7 +67,7 @@ def tma_test_start_view(request, test_id: int) -> JsonResponse:
             status=403,
         )
 
-    from apps.tests.models import Test, TestAttempt, Question, Choice
+    from apps.tests.models import Test, TestAttempt, Question
 
     try:
         test = Test.objects.get(id=test_id, is_active=True)

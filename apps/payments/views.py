@@ -10,10 +10,9 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
-from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from .models import SubscriptionPlan, UserSubscription
+from .models import SubscriptionPlan
 from apps.core.spa import serve_spa_shell
 
 logger = logging.getLogger(__name__)

@@ -22,7 +22,7 @@ from django.views.decorators.http import require_POST
 from apps.core.spa import serve_spa_shell
 
 from . import services
-from .models import ArenaPlayer, ArenaProfile, ArenaRoom
+from .models import ArenaProfile, ArenaRoom
 
 
 def _leaderboard_rows(limit: int = 50):

@@ -9,7 +9,6 @@ import logging
 import re
 
 from django.conf import settings
-from django.core.exceptions import PermissionDenied
 
 logger = logging.getLogger(__name__)
 

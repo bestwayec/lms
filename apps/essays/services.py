@@ -51,7 +51,6 @@ _PROVIDER_KEY_PREFIX = {
 
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured, PermissionDenied
-from django.core.cache import cache as default_cache
 from django.db import IntegrityError, transaction as _db_txn
 from django.db.models import Case, F, IntegerField, Q, Value, When
 from django.utils import timezone as _timezone
@@ -3014,7 +3013,6 @@ def apply_ai_result(submission, result: dict, *, cache_key: str | None = None) -
     say "saqlangan AI baholash natijasi qo'llandi" without ever exposing the
     other account's activity.
     """
-    from django.db import transaction as _txn
 
     from .models import EssayCriterionScore
 
@@ -3562,7 +3560,6 @@ def notify_student_essay_graded(submission) -> None:
     Idempotent: the same submission is never notified twice (NotificationLog
     idempotency key) even if the grade task is retried/redelivered.
     """
-    from django.db import transaction as _txn2
 
     # Idempotency guard — if a SENT log already exists for this submission,
     # do not send again (retry-safe).
@@ -4482,8 +4479,3 @@ def grade_ielts_essay(
 # ---------------------------------------------------------------------------
 # DeepSeek AI Grader Exports
 # ---------------------------------------------------------------------------
-from .deepseek_grader import (  # noqa: E402
-    DeepSeekGrader,
-    grade_bmb_essay_deepseek,
-    grade_ielts_essay_deepseek,
-)

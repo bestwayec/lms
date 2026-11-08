@@ -8,36 +8,24 @@ from __future__ import annotations
 
 import logging
 from urllib.parse import urlsplit
-from typing import Any
 
 from django.conf import settings
-from django.contrib import messages
-from django.contrib.auth import authenticate, get_user_model, login, logout
+from django.contrib.auth import get_user_model, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import (
     PasswordResetView,
-    PasswordResetDoneView,
-    PasswordResetConfirmView,
-    PasswordResetCompleteView,
 )
 from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
 from django.core.exceptions import ImproperlyConfigured
 from django.utils.crypto import salted_hmac
-from django.db.models import Avg, Case, Count, F, FloatField, Max, Q, Sum, Value, When
-from django.db.models.functions import Coalesce, ExtractHour
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, JsonResponse
-from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse
+from django.shortcuts import get_object_or_404, redirect
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_GET, require_POST
-from django.utils.decorators import method_decorator
 from django.views import View
 
-from apps.courses.models import Course, StudentGroup
-from apps.essays.models import EssaySubmission, EssayCriterionScore
-from apps.results.models import Certificate, Result
-from apps.tests.models import Test, TestAttempt
+from apps.results.models import Result
 from apps.core.spa import serve_spa_shell
 
 User = get_user_model()

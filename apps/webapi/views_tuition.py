@@ -16,7 +16,6 @@ from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
 
-from django.utils.dateparse import parse_date
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -43,7 +42,7 @@ from apps.tuition.permissions import (
     can_view_tuition,
 )
 
-from .permissions import IsPanelAdmin, IsTeacherOrAdmin
+from .permissions import IsTeacherOrAdmin
 from .serializers import (
     CourseBillingPolicySerializer,
     InvoiceDueDateSerializer,

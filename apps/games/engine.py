@@ -219,7 +219,7 @@ def _get_leaderboard(limit: int = 10) -> list:
 
 def get_leaderboard_full() -> list:
     """Full leaderboard with level info."""
-    from .models import LEVEL_THRESHOLDS, get_player_level
+    from .models import get_player_level
 
     raw_board = _get_leaderboard(50)
 

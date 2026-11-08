@@ -18,11 +18,9 @@ import signal
 import sys
 import threading
 import time
-from typing import Any
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
-from django.core.management import call_command
 
 logger = logging.getLogger(__name__)
 

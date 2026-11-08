@@ -19,8 +19,8 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from apps.courses.models import Category, Course, Subject
-from apps.tests.models import Choice, ExamSection, Question, Test
+from apps.courses.models import Category, Course
+from apps.tests.models import Choice, Question, Test
 from apps.tests.views_placement import ensure_multi_subject_seed_data
 
 User = get_user_model()

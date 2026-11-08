@@ -19,8 +19,6 @@ from decimal import Decimal
 from typing import Any
 
 from asgiref.sync import sync_to_async
-from django.conf import settings
-from django.db import transaction
 from django.utils import timezone
 from telegram import (
     ChatMember,

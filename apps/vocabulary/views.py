@@ -13,7 +13,7 @@ from apps.core.ai_health import AIUnavailable, record_ai_failure, record_ai_succ
 from apps.courses.models import StudentGroup, Homework
 from apps.payments.ai_quota import consume_feature_cap, refund_feature_cap
 from .models import VocabularyPack, StudentWordMistake
-from .serializers import VocabularyPackSerializer, StudentWordMistakeSerializer
+from .serializers import VocabularyPackSerializer
 from .services.vocab_generator import (
     clean_word_list,
     generate_exercises_with_ai,

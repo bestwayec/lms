@@ -22,9 +22,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from django.http import FileResponse, Http404
-from django.core.exceptions import PermissionDenied
-from django.shortcuts import get_object_or_404, redirect
+from django.http import FileResponse
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
@@ -33,9 +31,9 @@ from rest_framework.views import APIView
 
 from apps.accounts.permissions import IsStudent
 from apps.results.access import can_access_certificate
-from apps.results.models import Certificate, Result
+from apps.results.models import Certificate
 
-from .serializers import CertificateListSerializer, CertificateVerifySerializer
+from .serializers import CertificateListSerializer
 
 logger = logging.getLogger(__name__)
 

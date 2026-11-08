@@ -12,7 +12,6 @@ For backward compatibility with tests and existing behavior:
 
 from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse, HttpResponseBadRequest
-from django.shortcuts import redirect
 
 from apps.core.spa import serve_spa_shell
 

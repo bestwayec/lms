@@ -16,7 +16,7 @@ from typing import Any
 from django.core.cache import cache
 
 from apps.results.models import Result
-from apps.tests.models import Choice, Question
+from apps.tests.models import Question
 
 logger = logging.getLogger(__name__)
 

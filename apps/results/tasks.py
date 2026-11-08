@@ -18,7 +18,6 @@ import logging
 from typing import Any
 
 from celery import shared_task
-from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +48,7 @@ def generate_certificate_task(
             "file_size": int | None,
         }
     """
-    from apps.results.models import Certificate, Result
+    from apps.results.models import Result
 
     try:
         result = Result.objects.select_related(

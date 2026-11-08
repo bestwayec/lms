@@ -11,7 +11,6 @@ import re
 from typing import Any
 
 from django.db import transaction
-from django.utils.text import slugify
 
 from apps.courses.models import Course
 from apps.tests.bmb_grading import calculate_bmb_grade

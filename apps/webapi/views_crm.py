@@ -14,7 +14,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.accounts.models import ParentStudentRelation, User
+from apps.accounts.models import ParentStudentRelation
 from apps.courses.models import StudentGroup, GroupEnrollment
 
 

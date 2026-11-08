@@ -14,13 +14,11 @@ from apps.essays.models import EssaySubmission, EssayTopic
 from apps.payments.models import PaymentRequest, UserSubscription
 from apps.tests.models import (
     Choice,
-    ExamSection,
     GapBlank,
     MatchingOption,
     MatchingPair,
     MatchingPrompt,
     Question,
-    ReadingPassage,
     Test,
     TestAttempt,
 )

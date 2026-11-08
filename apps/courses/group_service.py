@@ -12,7 +12,6 @@ from typing import Any
 from django.db import transaction
 from django.db.models import Avg, Count, Max, OuterRef, Q, Subquery
 from django.db.models.functions import Coalesce
-from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.courses.models import StudentGroup

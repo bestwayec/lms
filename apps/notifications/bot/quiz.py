@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 import random
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from asgiref.sync import sync_to_async
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update

@@ -20,20 +20,18 @@ Two rules are load-bearing:
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.conf import settings
-from django.db import IntegrityError, transaction
+from django.db import transaction
 from django.db.models import Avg, Count, Q
 from django.utils import timezone
 
-from apps.accounts.access import is_platform_admin
 from apps.attendance import services as attendance_services
 from apps.attendance.models import (
     AttendanceRecord,
     AttendanceSession,
-    NotificationPreference,
 )
 from apps.courses.models import Enrollment, StudentGroup
 from apps.essays import group_reports
@@ -42,7 +40,6 @@ from apps.essays.models import EssayAssignment, EssaySubmission
 from .models import (
     ReportPeriodMixin,
     WeeklyGroupReport,
-    WeeklyReportDelivery,
     WeeklyReportSettings,
     WeeklyStudentReport,
 )
@@ -714,7 +711,6 @@ def _students_needing_reports():
     """Students a verified parent is linked to (a private report has a reader)."""
     from apps.accounts.models import ParentStudentLink
 
-    from apps.attendance.models import NotificationPreference
 
     ids = (
         ParentStudentLink.objects.filter(

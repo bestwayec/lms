@@ -13,11 +13,9 @@ from __future__ import annotations
 
 import logging
 import sys
-import time
 from typing import Any
 
 from django.conf import settings
-from django.core.exceptions import ImproperlyConfigured
 
 from apps.core.ai_health import AIUnavailable
 import httpx
@@ -25,7 +23,6 @@ from openai import OpenAI
 
 from .prompts import (
     ESSAY_GRADING_SYSTEM_PROMPT,
-    ESSAY_GRADING_SYSTEM_PROMPT_SIMPLE,
     build_grading_message,
 )
 

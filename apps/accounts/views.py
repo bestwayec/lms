@@ -18,7 +18,6 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from .permissions import IsOwnerOrReadOnly
 from .serializers import (
     ConnectTelegramSerializer,
     CustomTokenObtainPairSerializer,

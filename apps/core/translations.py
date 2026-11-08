@@ -13,9 +13,7 @@ Or in Python:
 
 from __future__ import annotations
 
-import json
 import os
-from typing import Any
 
 # Translation files directory
 TRANSLATIONS_DIR = os.path.join(os.path.dirname(__file__), "locale")

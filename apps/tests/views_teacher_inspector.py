@@ -17,8 +17,6 @@ from decimal import Decimal
 import logging
 from typing import Any
 
-from django.db.models import Count, Q
-from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -27,7 +25,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.access import is_platform_admin
-from apps.tests.models import Choice, Question, StudentAnswer, Test, TestAttempt
+from apps.tests.models import Test, TestAttempt
 
 logger = logging.getLogger(__name__)
 

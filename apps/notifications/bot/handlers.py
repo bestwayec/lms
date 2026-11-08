@@ -34,7 +34,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import secrets
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING
 
@@ -1792,7 +1791,6 @@ async def auth_conversation_handler(
         return
 
     from django.utils import timezone
-    from apps.notifications.models import TelegramAuthToken
 
     auth_state = context.user_data.get("auth_state")
     if not auth_state or auth_state == "idle":
@@ -1921,7 +1919,6 @@ async def auth_conversation_handler(
             TelegramAuthAmbiguous,
             TelegramAuthConflict,
             TelegramIdentityUnverified,
-            find_users_by_phone,
             resolve_bot_auth_user,
         )
 
@@ -5907,7 +5904,6 @@ async def streak_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     def _get_streak_data():
         from apps.games.models import DailyStreak
-        from django.utils import timezone
 
         streak_obj, _ = DailyStreak.objects.get_or_create(user=user)
         result = streak_obj.update_streak()
@@ -5972,8 +5968,7 @@ async def daily_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         from django.utils import timezone
         from apps.results.models import Result
         from apps.essays.models import EssaySubmission
-        from apps.games.models import UserGameScore, DailyStreak
-        from datetime import timedelta
+        from apps.games.models import UserGameScore
 
         today = timezone.now().date()
         today_start = timezone.make_aware(
@@ -6314,7 +6309,6 @@ async def payment_screenshot_handler(
     try:
         from apps.payments.receipt_scanner import scan_receipt_image
         from apps.courses.models import GroupEnrollment
-        from apps.webapi.views_crm import send_telegram_message_safe
 
         ocr_res = scan_receipt_image(bytes(file_bytes))
         if ocr_res.get("is_valid") and ocr_res.get("amount", 0) >= 10000:
@@ -6471,7 +6465,6 @@ async def approve_payment_callback(
         return
 
     def _approve():
-        from datetime import timedelta
 
         from django.db import transaction
         from django.utils import timezone

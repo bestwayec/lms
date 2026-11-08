@@ -19,7 +19,6 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.permissions import IsStudent
 from apps.accounts.access import is_platform_admin
 
 from .models import Result

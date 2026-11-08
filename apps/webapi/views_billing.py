@@ -3,7 +3,6 @@ from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 from django.shortcuts import get_object_or_404
-from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
 from rest_framework.authentication import SessionAuthentication
@@ -41,7 +40,6 @@ from apps.payments.models import (
     PaymentReceipt,
     SubscriptionPlan,
     SubscriptionUsage,
-    UserSubscription,
 )
 
 from .serializers import (

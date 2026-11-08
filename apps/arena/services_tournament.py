@@ -7,10 +7,8 @@ from __future__ import annotations
 import logging
 from decimal import Decimal
 from typing import Any
-from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
-from datetime import timedelta
 
 from apps.arena.models import Tournament, TournamentParticipant
 
