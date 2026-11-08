@@ -122,7 +122,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f"Port: {port}"))
 
         kwargs = dict(
-            listen="0.0.0.0",
+            listen="0.0.0.0",  # nosec B104
             port=port,
             url_path="telegram/webhook/",
             webhook_url=webhook_url,

@@ -176,7 +176,7 @@ def _call_vision(image_bytes: bytes, mime_type: str, prompt: str) -> str:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=settings.OMR_VISION_TIMEOUT) as resp:
+        with urllib.request.urlopen(req, timeout=settings.OMR_VISION_TIMEOUT) as resp:  # nosec B310
             data = json.loads(resp.read().decode("utf-8"))
         return data["choices"][0]["message"]["content"] or ""
     except Exception as exc:

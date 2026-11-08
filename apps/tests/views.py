@@ -1834,8 +1834,29 @@ class TestItemAnalysisView(APIView):
         from apps.tests.models import Choice
         from django.db.models import Count
 
-        questions = test.questions.all().order_by("position")
+        questions = list(test.questions.all().order_by("position"))
         items = []
+
+        question_ids = [q.id for q in questions]
+        distractors_by_q: dict[int, dict[str, Any]] = {}
+        if question_ids:
+            wrong_choices = (
+                Choice.objects.filter(
+                    question_id__in=question_ids,
+                    selected_by__is_correct=False,
+                    is_correct=False,
+                )
+                .annotate(pick_count=Count("selected_by"))
+                .filter(pick_count__gt=0)
+                .order_by("question_id", "-pick_count")
+            )
+            for c in wrong_choices:
+                if c.question_id not in distractors_by_q:
+                    distractors_by_q[c.question_id] = {
+                        "id": c.id,
+                        "text": c.text[:100],
+                        "pick_count": c.pick_count,
+                    }
 
         for idx, q in enumerate(questions, start=1):
             q_num = q.position or idx
@@ -1843,23 +1864,14 @@ class TestItemAnalysisView(APIView):
             correct_ans = q.correct_attempts
             correct_pct = round((correct_ans / total_ans * 100), 1) if total_ans > 0 else 0.0
 
+            distractor_info = distractors_by_q.get(q.id)
             distractor = None
-            wrong_choices_counts = (
-                Choice.objects.filter(
-                    selected_by__question=q,
-                    selected_by__is_correct=False,
-                    is_correct=False,
-                )
-                .annotate(pick_count=Count("selected_by"))
-                .order_by("-pick_count")
-            )
-            top_wrong = wrong_choices_counts.first()
-            if top_wrong and top_wrong.pick_count > 0:
+            if distractor_info:
                 distractor = {
-                    "id": top_wrong.id,
-                    "text": top_wrong.text[:100],
-                    "pick_count": top_wrong.pick_count,
-                    "pick_percentage": round(top_wrong.pick_count / max(1, total_ans) * 100, 1),
+                    "id": distractor_info["id"],
+                    "text": distractor_info["text"],
+                    "pick_count": distractor_info["pick_count"],
+                    "pick_percentage": round(distractor_info["pick_count"] / max(1, total_ans) * 100, 1),
                 }
 
             items.append(

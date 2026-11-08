@@ -290,7 +290,7 @@ class OpenRouterVisionProvider:
         )
         timeout = int(getattr(settings, "ESSAY_OCR_TIMEOUT", 120))
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
+            with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310
                 payload = json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             detail = ""

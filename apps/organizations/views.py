@@ -11,7 +11,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Avg, Count
+from django.db.models import Avg, Count, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -63,6 +63,11 @@ def enterprise_dashboard_view(request):
     else:
         centers_qs = LearningCenter.objects.none()
 
+    centers_qs = centers_qs.annotate(
+        annotated_students_count=Count("users", filter=Q(users__role="student"), distinct=True),
+        annotated_branches_count=Count("branches", distinct=True),
+    )
+
     center_id = request.GET.get("center_id")
     center = None
     if center_id:
@@ -82,9 +87,9 @@ def enterprise_dashboard_view(request):
             "phone": c.phone,
             "address": c.address,
             "student_seat_limit": c.student_seat_limit,
-            "total_students": c.total_students_count,
-            "remaining_seats": c.remaining_seats,
-            "branches_count": c.branches.count(),
+            "total_students": getattr(c, "annotated_students_count", c.total_students_count),
+            "remaining_seats": max(0, c.student_seat_limit - getattr(c, "annotated_students_count", c.total_students_count)),
+            "branches_count": getattr(c, "annotated_branches_count", c.branches.count()),
             "is_active": c.is_active,
         }
         for c in centers_qs
@@ -137,17 +142,24 @@ def enterprise_dashboard_view(request):
     else:
         bmb_grade = "Boshlang'ich"
 
-    # Branch Competition stats
+    # Branch Competition stats (batched)
+    branch_student_counts = dict(
+        students.filter(branch__isnull=False)
+        .values("branch_id")
+        .annotate(cnt=Count("id"))
+        .values_list("branch_id", "cnt")
+    )
+    branch_avg_scores = dict(
+        Result.objects.filter(student__in=students, student__branch__isnull=False)
+        .values("student__branch_id")
+        .annotate(avg=Avg("percentage"))
+        .values_list("student__branch_id", "avg")
+    )
+
     branches_data = []
     for branch in center.branches.all():
-        b_students = students.filter(branch=branch)
-        b_count = b_students.count()
-        b_avg = (
-            Result.objects.filter(student__in=b_students).aggregate(
-                avg=Avg("percentage")
-            )["avg"]
-            or 0.0
-        )
+        b_count = branch_student_counts.get(branch.id, 0)
+        b_avg = branch_avg_scores.get(branch.id, 0.0) or 0.0
         branches_data.append(
             {
                 "id": branch.id,
@@ -159,24 +171,22 @@ def enterprise_dashboard_view(request):
         )
     branches_data.sort(key=lambda x: x["avg_score"], reverse=True)
 
-    # Teachers ranking
-    teachers = center.users.filter(role="teacher")
+    # Teachers ranking (batched)
+    teachers = list(center.users.filter(role="teacher").select_related("branch"))
     teachers_data = []
     for t in teachers:
-        # Teachers might have groups or assigned students
-        t_students = students.filter(branch=t.branch) if t.branch else students
-        t_avg = (
-            Result.objects.filter(student__in=t_students).aggregate(
-                avg=Avg("percentage")
-            )["avg"]
-            or 0.0
-        )
+        if t.branch_id:
+            t_count = branch_student_counts.get(t.branch_id, 0)
+            t_avg = branch_avg_scores.get(t.branch_id, 0.0) or 0.0
+        else:
+            t_count = total_students
+            t_avg = avg_score
         teachers_data.append(
             {
                 "id": t.id,
                 "name": t.get_full_name() or t.email,
                 "email": t.email,
-                "students_count": t_students.count(),
+                "students_count": t_count,
                 "avg_score": round(float(t_avg), 1),
                 "branch_name": t.branch.name if t.branch else "Umumiy",
             }
@@ -652,6 +662,35 @@ def monthly_report_pdf_view(request, group_id: int):
     }
 
     students = list(group.students.all())
+    student_ids = [s.id for s in students]
+
+    result_stats = {
+        row["student_id"]: row
+        for row in Result.objects.filter(student_id__in=student_ids)
+        .values("student_id")
+        .annotate(tests=Count("id"), avg_pct=Avg("percentage"))
+    }
+
+    att_stats = {
+        row["student_id"]: row
+        for row in AttendanceRecord.objects.filter(student_id__in=student_ids, session__group=group)
+        .values("student_id")
+        .annotate(
+            total_sessions=Count("id"),
+            presents=Count("id", filter=Q(status="present")),
+        )
+    }
+
+    essay_stats = {
+        row["student_id"]: row["essays"]
+        for row in EssaySubmission.objects.filter(
+            student_id__in=student_ids,
+            status__in=["graded", "teacher_reviewed"],
+        )
+        .values("student_id")
+        .annotate(essays=Count("id"))
+    }
+
     roster_data = []
     total_tests_taken = 0
     total_percentage_sum = 0.0
@@ -659,29 +698,24 @@ def monthly_report_pdf_view(request, group_id: int):
     total_att_sum = 0.0
 
     for s in students:
-        s_results = Result.objects.filter(student=s)
-        test_count = s_results.count()
+        r_stat = result_stats.get(s.id)
+        test_count = r_stat["tests"] if r_stat else 0
         avg_score = (
-            round(float(s_results.aggregate(avg=Avg("percentage"))["avg"] or 0), 1)
-            if test_count > 0
+            round(float(r_stat["avg_pct"]), 1)
+            if r_stat and r_stat["avg_pct"] is not None
             else 0.0
         )
 
         # Attendance
-        total_sessions = AttendanceRecord.objects.filter(
-            student=s, session__group=group
-        ).count()
-        presents = AttendanceRecord.objects.filter(
-            student=s, session__group=group, status="present"
-        ).count()
+        a_stat = att_stats.get(s.id)
+        total_sessions = a_stat["total_sessions"] if a_stat else 0
+        presents = a_stat["presents"] if a_stat else 0
         att_rate = (
             round((presents / total_sessions * 100), 1) if total_sessions > 0 else 100.0
         )
 
         # Essays
-        essays_done = EssaySubmission.objects.filter(
-            student=s, status__in=["graded", "teacher_reviewed"]
-        ).count()
+        essays_done = essay_stats.get(s.id, 0)
 
         total_tests_taken += test_count
         total_percentage_sum += avg_score

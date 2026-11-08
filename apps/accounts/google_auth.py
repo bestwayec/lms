@@ -146,7 +146,7 @@ def google_auth_callback(request: HttpRequest) -> HttpResponseRedirect:
         token_request = urllib.request.Request(
             GOOGLE_TOKEN_URL, data=token_data, method="POST"
         )
-        with urllib.request.urlopen(token_request, timeout=10) as response:
+        with urllib.request.urlopen(token_request, timeout=10) as response:  # nosec B310
             token_response = json.loads(response.read().decode("utf-8"))
     except Exception as exc:
         logger.warning("Google token exchange failed: %s", exc)

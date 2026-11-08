@@ -881,53 +881,82 @@ def branch_retention_risk_view(request: Any, branch_id: int) -> Response:
 
     now = timezone.now()
 
-    # Find all students associated with this branch directly or via groups
-    students_qs = (
+    from django.db.models import Max
+
+    students_list = list(
         User.objects.filter(
             Q(branch=branch) | Q(student_groups__branch=branch),
             role=User.Role.STUDENT,
             is_active=True,
         )
         .distinct()
+        .select_related("profile")
         .prefetch_related("student_groups", "student_groups__teacher")
     )
 
+    if not students_list:
+        return Response(
+            {
+                "branch": {
+                    "id": branch.id,
+                    "name": branch.name,
+                    "branch_code": branch.branch_code,
+                },
+                "summary": {
+                    "active_count": 0,
+                    "attention_count": 0,
+                    "risk_count": 0,
+                    "total_students": 0,
+                },
+                "students": [],
+            }
+        )
+
+    student_ids = [s.id for s in students_list]
+
+    last_attempts_map: dict[int, Any] = dict(
+        TestAttempt.objects.filter(student_id__in=student_ids)
+        .values("student_id")
+        .annotate(max_dt=Max("started_at"))
+        .values_list("student_id", "max_dt")
+    )
+    last_results_map: dict[int, Any] = dict(
+        Result.objects.filter(student_id__in=student_ids)
+        .values("student_id")
+        .annotate(max_dt=Max("calculated_at"))
+        .values_list("student_id", "max_dt")
+    )
+
+    recent_results_map: dict[int, list[float]] = {sid: [] for sid in student_ids}
+    for sid, pct in (
+        Result.objects.filter(student_id__in=student_ids)
+        .order_by("-calculated_at")
+        .values_list("student_id", "percentage")
+    ):
+        if len(recent_results_map[sid]) < 3:
+            recent_results_map[sid].append(float(pct))
+
+    parents_map: dict[int, Any] = {}
+    for rel in (
+        ParentStudentRelation.objects.filter(student_id__in=student_ids, is_verified=True)
+        .order_by("-updated_at")
+    ):
+        if rel.student_id not in parents_map:
+            parents_map[rel.student_id] = rel
+
+    today_date = timezone.localdate()
     student_items: list[dict[str, Any]] = []
 
-    for s in students_qs:
-        # Determine last activity from attempts, results, or login
-        last_attempt = (
-            TestAttempt.objects.filter(student=s)
-            .order_by("-started_at")
-            .only("started_at")
-            .first()
+    for s in students_list:
+        last_dt = (
+            last_attempts_map.get(s.id)
+            or last_results_map.get(s.id)
+            or s.last_login
+            or s.date_joined
         )
-        last_result = (
-            Result.objects.filter(student=s)
-            .order_by("-calculated_at")
-            .only("calculated_at")
-            .first()
-        )
-
-        last_dt = None
-        if last_attempt and last_attempt.started_at:
-            last_dt = last_attempt.started_at
-        elif last_result and last_result.calculated_at:
-            last_dt = last_result.calculated_at
-        elif s.last_login:
-            last_dt = s.last_login
-        else:
-            last_dt = s.date_joined
-
         days_inactive = (now - last_dt).days if last_dt else 99
 
-        # Recent test score trend (last 3 results)
-        recent_results = list(
-            Result.objects.filter(student=s)
-            .order_by("-calculated_at")
-            .values_list("percentage", flat=True)[:3]
-        )
-
+        recent_results = recent_results_map.get(s.id, [])
         score_drop_pct = 0.0
         if len(recent_results) >= 2:
             newest_pct = float(recent_results[0])
@@ -935,10 +964,15 @@ def branch_retention_risk_view(request: Any, branch_id: int) -> Response:
             if oldest_pct > 0 and newest_pct < oldest_pct:
                 score_drop_pct = ((oldest_pct - newest_pct) / oldest_pct) * 100.0
 
-        # Streak info
-        streak_data = get_user_streak_info(s)
-        streak_days = streak_data.get("streak_days", 0)
-        is_active_today = streak_data.get("is_active_today", False)
+        prof = getattr(s, "profile", None)
+        if prof and prof.last_activity_date:
+            is_active_today = prof.last_activity_date == today_date
+            streak_days = prof.current_streak
+            if (today_date - prof.last_activity_date).days > 1 and prof.streak_freeze_count == 0:
+                streak_days = 0
+        else:
+            is_active_today = False
+            streak_days = 0
 
         # Classification into green, yellow, red
         if days_inactive > 5 or score_drop_pct >= 20.0:
@@ -963,12 +997,7 @@ def branch_retention_risk_view(request: Any, branch_id: int) -> Response:
             else "Biriktirilmagan"
         )
 
-        # Parent info
-        parent_rel = (
-            ParentStudentRelation.objects.filter(student=s, is_verified=True)
-            .order_by("-updated_at")
-            .first()
-        )
+        parent_rel = parents_map.get(s.id)
         has_parent_telegram = bool(parent_rel and parent_rel.parent_telegram_id)
 
         last_active_str = (

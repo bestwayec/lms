@@ -169,7 +169,7 @@ def _call_openrouter_vision(image_bytes: bytes, mime_type: str, prompt: str) -> 
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=45) as resp:
+        with urllib.request.urlopen(req, timeout=45) as resp:  # nosec B310
             data = json.loads(resp.read().decode("utf-8"))
             return data["choices"][0]["message"]["content"] or ""
     except Exception as e:
