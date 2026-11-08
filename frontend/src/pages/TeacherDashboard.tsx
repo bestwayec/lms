@@ -11,6 +11,7 @@ import {
 import AnalyticsChart from '../components/AnalyticsChart';
 import AttendancePanel from '../components/AttendancePanel';
 import { UsersIcon } from '../components/icons';
+import { Send, PlusCircle } from 'lucide-react';
 import type {
   AnalyticsData,
   EssayBoard,
@@ -125,6 +126,17 @@ export default function TeacherDashboard() {
   const groups: SchoolGroup[] = data?.groups ?? [];
   const recent: RecentResult[] = data?.recent_results ?? [];
 
+  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const todaySubmissions = useMemo(
+    () => recent.filter((r) => r.date && r.date.startsWith(todayStr)),
+    [recent, todayStr],
+  );
+  const todayAvgPct = useMemo(() => {
+    if (todaySubmissions.length === 0) return 0;
+    const sum = todaySubmissions.reduce((acc, r) => acc + (Number(r.percentage) || 0), 0);
+    return Math.round(sum / todaySubmissions.length);
+  }, [todaySubmissions]);
+
   // Aggregate unique students across the teacher's groups (students lists).
   const students: GroupMember[] = useMemo(() => {
     const seen = new Map<number, GroupMember>();
@@ -165,6 +177,15 @@ export default function TeacherDashboard() {
           <span className="stat-label">{t('essay_topics')}</span>
           <span className="stat-value">{data ? data.active_topics : '…'}</span>
           <Link to="/essays">{t('view_all')} →</Link>
+        </div>
+        <div className="card stat" style={{ background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(217, 119, 6, 0.08) 100%)', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+          <span className="stat-label">Bugun topshirildi</span>
+          <span className="stat-value" style={{ color: '#F59E0B' }}>
+            {todaySubmissions.length > 0 ? `${todaySubmissions.length} ta` : `${recent.length} ta`}
+          </span>
+          <span className="muted small">
+            {todaySubmissions.length > 0 ? `O'rtacha: ${todayAvgPct}%` : 'So\'nggi natijalar'}
+          </span>
         </div>
       </div>
 
@@ -417,10 +438,35 @@ export default function TeacherDashboard() {
       <h2>{t('attendance_title')}</h2>
       <AttendancePanel />
 
-      {/* Groups + students lists — parity with group_list.html cards. */}
-      <h2>{t('groups')}</h2>
+      {/* Groups Command Center — parity with group_list.html cards with 3 quick teacher action buttons */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '24px 0 14px', flexWrap: 'wrap', gap: 10 }}>
+        <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <UsersIcon size={20} className="ico" />
+          <span>{t('groups')} ({groups.length})</span>
+        </h2>
+        <Link
+          to="/smart-test-create"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '8px 16px',
+            borderRadius: 10,
+            background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
+            color: '#0F172A',
+            fontWeight: 800,
+            fontSize: 13,
+            textDecoration: 'none',
+            boxShadow: '0 4px 12px rgba(245, 158, 11, 0.25)',
+          }}
+        >
+          <PlusCircle size={15} />
+          <span>+ Yangi Test Yaratish</span>
+        </Link>
+      </div>
+
       {groups.length === 0 ? (
-        <div className="card">
+        <div className="card" style={{ padding: 24, textAlign: 'center' }}>
           <p className="muted">{t('td_no_groups_hint')}</p>
           <Link className="btn primary sm" to="/groups">
             {t('gf_new_short')}
@@ -428,26 +474,154 @@ export default function TeacherDashboard() {
         </div>
       ) : (
         <div className="grid">
-          {groups.map((g) => (
-            <div key={g.id} className="card">
-              <strong>{g.name}</strong>
-              {g.description ? <p className="muted small">{g.description}</p> : null}
-              <p className="muted small">
-                <UsersIcon size={12} className="ico" /> {g.student_count ?? (g.students ?? []).length} {t('an_talaba_full')}
-              </p>
-              <ul className="muted small">
-                {(g.students ?? []).slice(0, 5).map((s) => (
-                  <li key={s.id}>
-                    {s.full_name} ({s.email})
-                  </li>
-                ))}
-              </ul>
-              {(g.students ?? []).length > 5 && (
-                <p className="muted small">+{(g.students ?? []).length - 5} …</p>
-              )}
-              <Link to="/groups">{t('details')} →</Link>
-            </div>
-          ))}
+          {groups.map((g) => {
+            const memberCount = g.student_count ?? (g.students ?? []).length;
+            const tgShareText = `📢 Hurmatli "${g.name}" guruhi o'quvchilari! Yangi topshiriq va testlar yuklandi. O'z natijangizni tekshirish uchun guruh sahifasiga kiring:`;
+            const tgShareUrl = `https://t.me/share/url?url=${encodeURIComponent(`https://grandec.uz/groups/${g.id}`)}&text=${encodeURIComponent(tgShareText)}`;
+
+            return (
+              <div
+                key={g.id}
+                className="card"
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  gap: 14,
+                  borderRadius: 16,
+                  border: '1px solid rgba(245, 158, 11, 0.25)',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
+                  padding: 20,
+                }}
+              >
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
+                    <strong style={{ fontSize: 16, color: 'var(--ink)' }}>{g.name}</strong>
+                    <span
+                      style={{
+                        padding: '3px 8px',
+                        borderRadius: 6,
+                        background: 'rgba(59, 130, 246, 0.15)',
+                        color: '#3B82F6',
+                        fontSize: 11,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {memberCount} {t('an_talaba_full')}
+                    </span>
+                  </div>
+
+                  {g.description ? <p className="muted small" style={{ margin: '0 0 10px' }}>{g.description}</p> : null}
+
+                  {/* Student preview */}
+                  {(g.students ?? []).length > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+                      {(g.students ?? []).slice(0, 4).map((s) => (
+                        <span
+                          key={s.id}
+                          style={{
+                            fontSize: 11,
+                            padding: '2px 8px',
+                            borderRadius: 6,
+                            background: 'rgba(255, 255, 255, 0.06)',
+                            color: 'var(--ink-soft)',
+                            border: '1px solid var(--border)',
+                          }}
+                        >
+                          {s.full_name.split(' ')[0]}
+                        </span>
+                      ))}
+                      {(g.students ?? []).length > 4 && (
+                        <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                          +{(g.students ?? []).length - 4} yana
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* 3 Essential Teacher Quick Actions */}
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: 8,
+                    paddingTop: 10,
+                    borderTop: '1px solid var(--border)',
+                  }}
+                >
+                  {/* 1. Vazifa Yuklash */}
+                  <Link
+                    to={`/smart-test-create?groupId=${g.id}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      padding: '8px 10px',
+                      borderRadius: 10,
+                      background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(217, 119, 6, 0.15) 100%)',
+                      border: '1px solid rgba(245, 158, 11, 0.4)',
+                      color: '#F59E0B',
+                      fontSize: 12,
+                      fontWeight: 800,
+                      textDecoration: 'none',
+                    }}
+                    title="Ushbu guruhga yangi test yoki vazifa biriktirish"
+                  >
+                    <span>📢 Vazifa yuklash</span>
+                  </Link>
+
+                  {/* 2. Natijalar / Vedomost */}
+                  <Link
+                    to={`/groups/${g.id}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      padding: '8px 10px',
+                      borderRadius: 10,
+                      background: 'rgba(16, 185, 129, 0.12)',
+                      border: '1px solid rgba(16, 185, 129, 0.35)',
+                      color: '#10B981',
+                      fontSize: 12,
+                      fontWeight: 800,
+                      textDecoration: 'none',
+                    }}
+                    title="Guruh jonli reytingi va o'quvchilar natijalarini ko'rish"
+                  >
+                    <span>📊 Vedomost</span>
+                  </Link>
+
+                  {/* 3. Telegram Guruhga Xabar (Full width) */}
+                  <a
+                    href={tgShareUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      gridColumn: '1 / -1',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      padding: '8px 12px',
+                      borderRadius: 10,
+                      background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                      color: '#FFFFFF',
+                      fontSize: 12,
+                      fontWeight: 800,
+                      textDecoration: 'none',
+                      boxShadow: '0 2px 8px rgba(2, 132, 199, 0.25)',
+                    }}
+                  >
+                    <Send size={13} />
+                    <span>✈️ Telegram guruhga xabar yuborish</span>
+                  </a>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 

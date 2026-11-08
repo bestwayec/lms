@@ -52,8 +52,8 @@ B) 36 soatdan
 C) 48 soatdan
 D) 35 soatdan`;
 
-import { useState, useMemo, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   Check,
@@ -254,6 +254,9 @@ D) Confident`;
 
 export default function SmartTestCreate() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const paramGroupId = searchParams.get('groupId');
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   // Test Settings
   const [subject, setSubject] = useState<SupportedSubject>('uzbek');
@@ -268,18 +271,38 @@ export default function SmartTestCreate() {
   const [accessPin, setAccessPin] = useState('');
   const [customCode, setCustomCode] = useState('');
 
+  const insertAtCursor = (content: string) => {
+    const el = textareaRef.current;
+    if (!el) {
+      setRawText((prev) => (prev ? prev + content : content.trim()));
+      return;
+    }
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? el.value.length;
+    const val = el.value;
+    const nextVal = val.slice(0, start) + content + val.slice(end);
+    setRawText(nextVal);
+    requestAnimationFrame(() => {
+      el.selectionStart = el.selectionEnd = start + content.length;
+      el.focus();
+    });
+  };
+
   useEffect(() => {
     api.get<{ id: number; name: string; student_count?: number }[]>('/api/v1/school/groups/')
       .then((res) => {
         if (Array.isArray(res)) {
           setGroups(res.map((g) => ({ id: g.id, name: g.name, student_count: g.student_count || 0 })));
-          if (res.length > 0) {
+          if (paramGroupId) {
+            setAssignedGroupId(paramGroupId);
+            setAccessType('STUDENTS_ONLY');
+          } else if (res.length > 0) {
             setAssignedGroupId(String(res[0].id));
           }
         }
       })
       .catch(() => {});
-  }, []);
+  }, [paramGroupId]);
 
   // Raw text input & questions
   const [rawText, setRawText] = useState(SAMPLE_15_LITERATURE);
@@ -1203,20 +1226,19 @@ export default function SmartTestCreate() {
 
 
             {/* Quick Question Type Templates & Science Symbol Toolbar */}
-            <div style={{ marginTop: 12, marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ marginTop: 12, marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
               {/* Question Templates */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B' }}>Shablon qo\'shish:</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B' }}>Shablon qo'shish:</span>
                 <button
                   type="button"
                   onClick={() => {
                     const nextNum = questions.length + 1;
-                    const tmpl = `\n\n${nextNum}. Savol matni bu yerga yoziladi?\n*A) To\'g\'ri javob\nB) Noto\'g\'ri javob 1\nC) Noto\'g\'ri javob 2\nD) Noto\'g\'ri javob 3`;
-                    setRawText((prev) => (prev ? prev + tmpl : tmpl.trim()));
+                    insertAtCursor(`\n\n${nextNum}. Savol matni bu yerga yoziladi?\n*A) To'g'ri javob\nB) Noto'g'ri javob 1\nC) Noto'g'ri javob 2\nD) Noto'g'ri javob 3\nJavob: A`);
                   }}
                   style={{
-                    padding: '4px 8px',
-                    borderRadius: 6,
+                    padding: '5px 10px',
+                    borderRadius: 8,
                     border: '1px solid #CBD5E1',
                     background: '#F1F5F9',
                     color: '#334155',
@@ -1225,88 +1247,90 @@ export default function SmartTestCreate() {
                     cursor: 'pointer',
                   }}
                 >
-                  + Oddiy test
+                  📝 + Oddiy test (1–32)
                 </button>
                 <button
                   type="button"
                   onClick={() => {
                     const nextNum = questions.length + 1;
-                    const tmpl = `\n\n${nextNum}. Moslashtirish topshirig\'i:\n1. Birinchi tushuncha\n2. Ikkinchi tushuncha\n3. Uchinchi tushuncha\nVariantlar:\nA) Ta\'rif A\nB) Ta\'rif B\nC) Ta\'rif C\nD) Ta\'rif D\nE) Ta\'rif E\nF) Ta\'rif F\nJavob: 1-A, 2-C, 3-D`;
-                    setRawText((prev) => (prev ? prev + tmpl : tmpl.trim()));
+                    insertAtCursor(`\n\n${nextNum}. Moslikni aniqlang:\n1. Modda A   a. Xususiyat 1\n2. Modda B   b. Xususiyat 2\n3. Modda C   c. Xususiyat 3\nA) 1-a, 2-b, 3-c\n*B) 1-b, 2-c, 3-a\nC) 1-c, 2-a, 3-b\nD) 1-a, 2-c, 3-b\nJavob: B`);
                   }}
                   style={{
-                    padding: '4px 8px',
-                    borderRadius: 6,
+                    padding: '5px 10px',
+                    borderRadius: 8,
                     border: '1px solid #F59E0B',
-                    background: 'rgba(245, 158, 11, 0.1)',
+                    background: 'rgba(245, 158, 11, 0.12)',
                     color: '#B45309',
                     fontSize: 11.5,
                     fontWeight: 700,
                     cursor: 'pointer',
                   }}
                 >
-                  + A-F Moslashtirish
+                  🧩 + 33–35 Moslashtirish Matritsasi
                 </button>
                 <button
                   type="button"
                   onClick={() => {
                     const nextNum = questions.length + 1;
-                    const tmpl = `\n\n${nextNum}. Masala matni bu yerga yoziladi:\na) birinchi qiymatni toping?\nb) ikkinchi qiymatni toping?\nJavob: 12.4|5.8`;
-                    setRawText((prev) => (prev ? prev + tmpl : tmpl.trim()));
+                    insertAtCursor(`\n\n${nextNum}. Masala matni bu yerga yoziladi:\na) birinchi qism hisobi (g)?\nJavob: 12.4\nb) ikkinchi qism hisobi (ml)?\nJavob: 5.8`);
                   }}
                   style={{
-                    padding: '4px 8px',
-                    borderRadius: 6,
+                    padding: '5px 10px',
+                    borderRadius: 8,
                     border: '1px solid #10B981',
-                    background: 'rgba(16, 185, 129, 0.1)',
+                    background: 'rgba(16, 185, 129, 0.12)',
                     color: '#047857',
                     fontSize: 11.5,
                     fontWeight: 700,
                     cursor: 'pointer',
                   }}
                 >
-                  + a/b Ochiq masala
+                  🔢 + 36–45 a/b Ochiq Masala
                 </button>
                 <button
                   type="button"
                   onClick={() => {
                     const nextNum = questions.length + 1;
-                    const tmpl = `\n\n${nextNum}. Huquqiy vaziyat (Kazus):\nFuqaro A fuqaro B bilan shartnoma tuzdi...\nSavol: Ushbu vaziyatda qonun bo\'yicha qanday chora ko\'riladi?\n*A) Shartnoma bekor qilinadi\nB) Zarar qoplanadi\nC) Jarima undiriladi\nD) Da\'vo rad etiladi`;
-                    setRawText((prev) => (prev ? prev + tmpl : tmpl.trim()));
+                    insertAtCursor(`\n\n${nextNum}. Huquqiy vaziyat (Kazus):\nFuqaro A fuqaro B bilan shartnoma tuzdi...\nSavol: Ushbu vaziyatda qonun bo'yicha qanday chora ko'riladi?\n*A) Shartnoma bekor qilinadi\nB) Zarar qoplanadi\nC) Jarima undiriladi\nD) Da'vo rad etiladi\nJavob: A`);
                   }}
                   style={{
-                    padding: '4px 8px',
-                    borderRadius: 6,
+                    padding: '5px 10px',
+                    borderRadius: 8,
                     border: '1px solid #8B5CF6',
-                    background: 'rgba(139, 92, 246, 0.1)',
+                    background: 'rgba(139, 92, 246, 0.12)',
                     color: '#6D28D9',
                     fontSize: 11.5,
                     fontWeight: 700,
                     cursor: 'pointer',
                   }}
                 >
-                  + Huquqiy kazus
+                  ⚖️ + Huquqiy Kazus
                 </button>
               </div>
 
               {/* Science & Math Symbol Toolbar */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', background: '#F8FAFC', padding: '6px 8px', borderRadius: 8, border: '1px solid #E2E8F0' }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginRight: 4 }}>Belgilar:</span>
-                {['₂', '₃', '₄', '⁺', '⁻', '²⁺', '³⁺', '²⁻', '→', '⇌', '°C', 'Δ', '≈', '≠'].map((sym) => (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', background: '#F8FAFC', padding: '8px 10px', borderRadius: 10, border: '1px solid #E2E8F0' }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginRight: 4 }}>
+                  ⚡️ Formulalar & Indekslar:
+                </span>
+                {['₂', '₃', '₄', '⁺', '⁻', '²⁺', '³⁺', '²⁻', '→', '⇌', '√', '°C', 'Δ', '≈', '≠', 'π', 'α', 'β', '±', '¹', '²', '³', '⁵'].map((sym) => (
                   <button
                     key={sym}
                     type="button"
-                    onClick={() => setRawText((prev) => (prev || '') + sym)}
+                    onClick={() => insertAtCursor(sym)}
                     style={{
-                      padding: '3px 7px',
-                      borderRadius: 5,
+                      padding: '4px 8px',
+                      borderRadius: 6,
                       border: '1px solid #CBD5E1',
                       background: '#FFFFFF',
                       color: '#0F172A',
-                      fontSize: 12,
+                      fontSize: 13,
                       fontWeight: 700,
                       cursor: 'pointer',
+                      minWidth: 28,
+                      textAlign: 'center',
                     }}
+                    title={`"${sym}" belgisini kursor turgan joyga qo'yish`}
                   >
                     {sym}
                   </button>
@@ -1315,6 +1339,7 @@ export default function SmartTestCreate() {
             </div>
 
           <textarea
+            ref={textareaRef}
             value={rawText}
             onChange={(e) => setRawText(e.target.value)}
             placeholder="Test matnini bu yerga tashlang (Ctrl+V)..."
