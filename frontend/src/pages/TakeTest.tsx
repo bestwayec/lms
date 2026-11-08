@@ -258,6 +258,8 @@ export default function TakeTest() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
+  const [paletteSheetOpen, setPaletteSheetOpen] = useState(false);
   const [result, setResult] = useState<SubmitResult | null>(null);
   const [savingAll, setSavingAll] = useState(false);
   const [singleMode, setSingleMode] = useState(true);
@@ -797,6 +799,26 @@ export default function TakeTest() {
     return () => window.removeEventListener('beforeunload', warn);
   }, [inProgress]);
 
+  useEffect(() => {
+    if (!inProgress) return;
+    try {
+      window.history.pushState({ inTakeTest: true }, '');
+    } catch {
+      /* ignore */
+    }
+    const handlePop = (e: PopStateEvent) => {
+      e.preventDefault();
+      setExitConfirmOpen(true);
+      try {
+        window.history.pushState({ inTakeTest: true }, '');
+      } catch {
+        /* ignore */
+      }
+    };
+    window.addEventListener('popstate', handlePop);
+    return () => window.removeEventListener('popstate', handlePop);
+  }, [inProgress]);
+
   if (loadError && !attempt) {
     const isNetworkOr502 =
       loadError.includes('502') ||
@@ -844,8 +866,9 @@ export default function TakeTest() {
   const unanswered = attempt.questions.length - answeredCount;
   const flaggedCount = Object.values(flagged).filter(Boolean).length;
   const failedCount = Object.keys(failed).length;
+  const isTimeCritical = remaining !== null && remaining <= 300;
   const timerClass =
-    remaining === null ? '' : remaining <= 60 ? ' low' : '';
+    remaining === null ? '' : remaining <= 60 ? ' low' : isTimeCritical ? ' warn-pulse' : '';
 
   const sections = attempt.sections ?? [];
   const sectionCounts: Record<number, { answered: number; total: number }> = {};
@@ -1000,10 +1023,13 @@ export default function TakeTest() {
                       </label>
                       <input
                         type="text"
+                        inputMode="decimal"
+                        pattern="[0-9]*[.,]?[0-9]*"
                         disabled={finished || submitting}
                         value={twoPart.a}
                         onChange={(e) => {
-                          const next = formatTwoPartAnswer(e.target.value, twoPart.b);
+                          const clean = e.target.value.replace(',', '.');
+                          const next = formatTwoPartAnswer(clean, twoPart.b);
                           editText(q, next);
                         }}
                         onBlur={() => {
@@ -1014,11 +1040,12 @@ export default function TakeTest() {
                         placeholder={t('two_part_placeholder_a')}
                         style={{
                           padding: '10px 14px',
-                          borderRadius: 8,
+                          borderRadius: 10,
                           border: '1px solid var(--border)',
                           background: 'var(--card)',
                           color: 'var(--ink)',
-                          fontSize: '0.95rem',
+                          fontSize: '0.98rem',
+                          minHeight: 46,
                         }}
                       />
                     </div>
@@ -1028,10 +1055,13 @@ export default function TakeTest() {
                       </label>
                       <input
                         type="text"
+                        inputMode="decimal"
+                        pattern="[0-9]*[.,]?[0-9]*"
                         disabled={finished || submitting}
                         value={twoPart.b}
                         onChange={(e) => {
-                          const next = formatTwoPartAnswer(twoPart.a, e.target.value);
+                          const clean = e.target.value.replace(',', '.');
+                          const next = formatTwoPartAnswer(twoPart.a, clean);
                           editText(q, next);
                         }}
                         onBlur={() => {
@@ -1042,11 +1072,12 @@ export default function TakeTest() {
                         placeholder={t('two_part_placeholder_b')}
                         style={{
                           padding: '10px 14px',
-                          borderRadius: 8,
+                          borderRadius: 10,
                           border: '1px solid var(--border)',
                           background: 'var(--card)',
                           color: 'var(--ink)',
-                          fontSize: '0.95rem',
+                          fontSize: '0.98rem',
+                          minHeight: 46,
                         }}
                       />
                     </div>
@@ -1133,7 +1164,7 @@ export default function TakeTest() {
                       <span style={{ fontWeight: 800, minWidth: 60, fontSize: 13.5, color: '#f59e0b' }}>
                         {rowNum}-band:
                       </span>
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         {['A', 'B', 'C', 'D', 'E', 'F'].map((col) => {
                           const isSel = selectedCol === col;
                           return (
@@ -1143,16 +1174,16 @@ export default function TakeTest() {
                               disabled={finished || submitting}
                               onClick={() => onPickCol(col)}
                               style={{
-                                minWidth: 38,
-                                height: 34,
-                                borderRadius: 8,
-                                border: isSel ? '2px solid #f59e0b' : '1px solid rgba(255, 255, 255, 0.12)',
-                                background: isSel ? '#f59e0b' : 'rgba(255, 255, 255, 0.05)',
+                                minWidth: 44,
+                                height: 42,
+                                borderRadius: 10,
+                                border: isSel ? '2px solid #f59e0b' : '1.5px solid rgba(255, 255, 255, 0.15)',
+                                background: isSel ? '#f59e0b' : 'rgba(255, 255, 255, 0.06)',
                                 color: isSel ? '#000' : 'inherit',
                                 fontWeight: 800,
                                 cursor: 'pointer',
-                                fontSize: 13,
-                                boxShadow: isSel ? '0 0 10px rgba(245, 158, 11, 0.45)' : 'none',
+                                fontSize: 15,
+                                boxShadow: isSel ? '0 0 12px rgba(245, 158, 11, 0.5)' : 'none',
                                 transition: 'all 0.15s ease',
                               }}
                             >
@@ -1162,7 +1193,7 @@ export default function TakeTest() {
                         })}
                       </div>
                       {selectedCol && (
-                        <span style={{ fontSize: 12.5, fontWeight: 700, color: '#10b981', marginLeft: 6 }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: '#10b981', marginLeft: 6 }}>
                           ✓ {rowNum} ➔ {selectedCol}
                         </span>
                       )}
@@ -1196,7 +1227,7 @@ export default function TakeTest() {
                     maxWidth: 580,
                     background: 'rgba(255, 255, 255, 0.02)',
                     padding: '16px',
-                    borderRadius: 12,
+                    borderRadius: 14,
                     border: '1px solid rgba(255, 255, 255, 0.08)',
                   }}
                 >
@@ -1209,9 +1240,14 @@ export default function TakeTest() {
                     </label>
                     <input
                       type="text"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]*"
                       disabled={finished || submitting}
                       value={partA}
-                      onChange={(e) => handleDualChange(e.target.value, partB)}
+                      onChange={(e) => {
+                        const clean = e.target.value.replace(',', '.');
+                        handleDualChange(clean, partB);
+                      }}
                       onBlur={() => {
                         if (timers.current[q.id]) clearTimeout(timers.current[q.id]);
                         const cur = answers[q.id] ?? emptyEntry();
@@ -1219,13 +1255,14 @@ export default function TakeTest() {
                       }}
                       placeholder="Masalan: 12.4"
                       style={{
-                        padding: '10px 14px',
-                        borderRadius: 8,
+                        padding: '12px 14px',
+                        borderRadius: 10,
                         border: '1px solid var(--border, rgba(255,255,255,0.15))',
                         background: 'var(--card, rgba(0,0,0,0.25))',
                         color: 'var(--ink, #fff)',
-                        fontSize: '1rem',
-                        fontWeight: 600,
+                        fontSize: '1.05rem',
+                        fontWeight: 700,
+                        minHeight: 48,
                       }}
                     />
                   </div>
@@ -1235,9 +1272,14 @@ export default function TakeTest() {
                     </label>
                     <input
                       type="text"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]*"
                       disabled={finished || submitting}
                       value={partB}
-                      onChange={(e) => handleDualChange(partA, e.target.value)}
+                      onChange={(e) => {
+                        const clean = e.target.value.replace(',', '.');
+                        handleDualChange(partA, clean);
+                      }}
                       onBlur={() => {
                         if (timers.current[q.id]) clearTimeout(timers.current[q.id]);
                         const cur = answers[q.id] ?? emptyEntry();
@@ -1245,13 +1287,14 @@ export default function TakeTest() {
                       }}
                       placeholder="Masalan: 5.8"
                       style={{
-                        padding: '10px 14px',
-                        borderRadius: 8,
+                        padding: '12px 14px',
+                        borderRadius: 10,
                         border: '1px solid var(--border, rgba(255,255,255,0.15))',
                         background: 'var(--card, rgba(0,0,0,0.25))',
                         color: 'var(--ink, #fff)',
-                        fontSize: '1rem',
-                        fontWeight: 600,
+                        fontSize: '1.05rem',
+                        fontWeight: 700,
+                        minHeight: 48,
                       }}
                     />
                   </div>
@@ -1339,7 +1382,7 @@ export default function TakeTest() {
                   display: 'flex',
                   flexDirection: 'column',
                   gap: 10,
-                  paddingBottom: isSingleView && isMobile ? '140px' : undefined,
+                  paddingBottom: isSingleView ? '140px' : undefined,
                 }}
               >
                 {q.choices.map((c, ci) => {
@@ -1354,24 +1397,53 @@ export default function TakeTest() {
                       aria-pressed={on}
                       onClick={() => pick(q, c.id)}
                       style={{
-                        minHeight: 48,
-                        padding: '14px 16px',
+                        minHeight: 52,
+                        padding: '14px 18px',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 12,
+                        gap: 14,
                         width: '100%',
                         textAlign: 'left',
                         transition: 'all 0.15s ease',
-                        boxShadow: on ? '0 0 10px rgba(245, 158, 11, 0.2)' : undefined,
+                        borderRadius: 14,
+                        border: on ? '2px solid #f59e0b' : '1.5px solid rgba(255, 255, 255, 0.12)',
+                        background: on
+                          ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.12))'
+                          : 'rgba(255, 255, 255, 0.03)',
+                        boxShadow: on ? '0 0 16px rgba(245, 158, 11, 0.28)' : 'none',
+                        cursor: 'pointer',
                       }}
                     >
                       <span
                         className="quiz-key"
-                        style={on ? { background: '#f59e0b', color: '#111' } : {}}
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: 10,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: 800,
+                          fontSize: 16,
+                          background: on ? '#f59e0b' : 'rgba(255, 255, 255, 0.08)',
+                          color: on ? '#111' : 'inherit',
+                          border: on ? 'none' : '1px solid rgba(255, 255, 255, 0.15)',
+                          flexShrink: 0,
+                          transition: 'all 0.15s ease',
+                        }}
                       >
                         {on ? '✓' : letter}
                       </span>
-                      <span style={{ fontWeight: on ? 600 : 400, flex: 1, wordBreak: 'break-word' }}>
+                      <span
+                        style={{
+                          fontWeight: on ? 700 : 500,
+                          fontSize: '1.02rem',
+                          lineHeight: 1.5,
+                          flex: 1,
+                          wordBreak: 'break-word',
+                          color: on ? '#fef08a' : 'inherit',
+                        }}
+                      >
                         <FormulaText text={c.text} />
                       </span>
                     </button>
@@ -1458,17 +1530,217 @@ export default function TakeTest() {
 
   return (
     <div className="take-test-page-container">
-      <p className="muted small">
-        <Link
-          to="/tests"
-          onClick={(e) => {
-            if (inProgress && !window.confirm(t('take_leave_confirm'))) e.preventDefault();
+      {/* Sticky Top Bar for Exam Runner */}
+      <div
+        className="take-test-sticky-top"
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 40,
+          background: 'rgba(15, 23, 42, 0.96)',
+          backdropFilter: 'blur(16px)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+          padding: '8px 12px 6px',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.35)',
+          borderRadius: 14,
+          marginBottom: 12,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'nowrap' }}>
+          {/* Back button with safe exit confirmation */}
+          <button
+            type="button"
+            onClick={() => {
+              if (inProgress) {
+                setExitConfirmOpen(true);
+              } else {
+                navigate('/tests');
+              }
+            }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '6px 10px',
+              borderRadius: 10,
+              background: 'rgba(255, 255, 255, 0.06)',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              color: 'var(--ink, #f8fafc)',
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+            title="Imtihondan chiqish (xavfsiz tasdiqlash bilan)"
+          >
+            <ChevronLeft size={16} />
+            <span className="hide-on-phone">Chiqish</span>
+          </button>
+
+          {/* Center: Timer & Network Badges */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap' }}>
+            {remaining !== null && (
+              <span
+                className={`timer${timerClass ? ` ${timerClass}` : ''}`}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  padding: '4px 10px',
+                  borderRadius: 999,
+                  fontWeight: 800,
+                  fontSize: 14,
+                  fontVariantNumeric: 'tabular-nums',
+                  background: isTimeCritical
+                    ? 'rgba(239, 68, 68, 0.2)'
+                    : 'rgba(255, 255, 255, 0.08)',
+                  border: isTimeCritical
+                    ? '1.5px solid #ef4444'
+                    : '1px solid rgba(255, 255, 255, 0.15)',
+                  color: isTimeCritical ? '#ef4444' : '#f59e0b',
+                  animation: isTimeCritical ? 'cd-pulse 1s ease-in-out infinite' : 'none',
+                  boxShadow: isTimeCritical ? '0 0 12px rgba(239, 68, 68, 0.5)' : 'none',
+                }}
+              >
+                <ClockIcon size={14} className="ico" />
+                <span>{formatClock(remaining)}</span>
+              </span>
+            )}
+
+            {/* Offline Badge */}
+            {offline && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 3,
+                  padding: '3px 8px',
+                  borderRadius: 999,
+                  background: 'rgba(245, 158, 11, 0.2)',
+                  border: '1px solid #f59e0b',
+                  color: '#fbbf24',
+                  fontSize: 11.5,
+                  fontWeight: 800,
+                  boxShadow: '0 0 10px rgba(245, 158, 11, 0.35)',
+                }}
+                title="Internet aloqasi yo'q. Javoblar oflayn saqlanmoqda"
+              >
+                <span>⚡</span>
+                <span>Oflayn</span>
+              </span>
+            )}
+
+            {justSynced && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 3,
+                  padding: '3px 8px',
+                  borderRadius: 999,
+                  background: 'rgba(16, 185, 129, 0.2)',
+                  border: '1px solid #10b981',
+                  color: '#34d399',
+                  fontSize: 11.5,
+                  fontWeight: 800,
+                }}
+              >
+                <span>✓</span>
+                <span>Onlayn</span>
+              </span>
+            )}
+
+            {attempt.is_strict_mode && (
+              <span
+                className="badge hide-on-phone"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  fontWeight: 700,
+                  fontSize: 11.5,
+                  padding: '3px 8px',
+                  background: violationCount > 0 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                  color: violationCount > 0 ? '#f87171' : '#fbbf24',
+                  borderColor: violationCount > 0 ? 'rgba(239, 68, 68, 0.4)' : 'rgba(245, 158, 11, 0.4)',
+                }}
+              >
+                <ShieldAlert size={12} /> ({violationCount}/3)
+              </span>
+            )}
+          </div>
+
+          {/* Right: Chemistry Periodic Table Button & Question Counter */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            {(attempt.subject === 'chemistry' || (attempt.test_title || '').toLowerCase().includes('kimyo')) && (
+              <button
+                type="button"
+                onClick={() => setShowPeriodicModal(true)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  background: 'rgba(245, 158, 11, 0.18)',
+                  border: '1.5px solid #f59e0b',
+                  color: '#f59e0b',
+                  fontWeight: 800,
+                  borderRadius: 10,
+                  padding: '5px 9px',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  boxShadow: '0 0 10px rgba(245, 158, 11, 0.3)',
+                }}
+                title="Mendeleyev davriy jadvali va eruvchanlik"
+              >
+                <span>🧪</span>
+                <span className="hide-on-phone">Jadval</span>
+              </button>
+            )}
+
+            <span
+              style={{
+                fontSize: 13,
+                fontWeight: 800,
+                color: '#f8fafc',
+                padding: '4px 8px',
+                borderRadius: 8,
+                background: 'rgba(255, 255, 255, 0.06)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {answeredCount}/{attempt.questions.length} ✓
+            </span>
+          </div>
+        </div>
+
+        {/* Linear Progress Bar */}
+        <div
+          style={{
+            height: 4,
+            width: '100%',
+            background: 'rgba(255, 255, 255, 0.08)',
+            borderRadius: 999,
+            marginTop: 6,
+            overflow: 'hidden',
           }}
         >
-          ← {t('tests')}
-        </Link>
-      </p>
-      <h1 className="take-test-title">{attempt.test_title}</h1>
+          <div
+            style={{
+              height: '100%',
+              width: `${(answeredCount / Math.max(attempt.questions.length, 1)) * 100}%`,
+              background: 'linear-gradient(90deg, #f59e0b, #10b981)',
+              borderRadius: 999,
+              transition: 'width 0.3s ease',
+            }}
+          />
+        </div>
+      </div>
+
+      <h1 className="take-test-title" style={{ fontSize: isMobile ? '1.1rem' : '1.35rem', marginBottom: 12 }}>
+        {attempt.test_title}
+      </h1>
+
       {offline && (
         <div
           role="alert"
@@ -1533,46 +1805,6 @@ export default function TakeTest() {
           </button>
         </p>
       )}
-
-      {/* Sticky Top Bar with 180 min Timer & Progress */}
-      <div className="take-test-sticky-top">
-        <div className="toolbar" style={{ justifyContent: 'space-between', margin: 0 }}>
-          {remaining !== null && (
-            <span className={`timer${timerClass}`}>
-              <ClockIcon size={16} className="ico" /> {formatClock(remaining)}
-            </span>
-          )}
-          {attempt.is_strict_mode && (
-            <span
-              className="badge"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 5,
-                fontWeight: 700,
-                background: violationCount > 0 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                color: violationCount > 0 ? '#f87171' : '#fbbf24',
-                borderColor: violationCount > 0 ? 'rgba(239, 68, 68, 0.4)' : 'rgba(245, 158, 11, 0.4)',
-              }}
-            >
-              <ShieldAlert size={14} /> Strict Mode ({violationCount}/3)
-            </span>
-          )}
-          <span className="badge" style={{ fontWeight: 700 }}>
-            {answeredCount}/{attempt.questions.length} ✓
-          </span>
-          {attempt.status === 'timeout' && (
-            <span className="badge rose">{t('take_time_up')}</span>
-          )}
-        </div>
-        <div className="progress" style={{ marginTop: 6, marginBottom: 0 }}>
-          <div
-            style={{
-              width: `${(answeredCount / Math.max(attempt.questions.length, 1)) * 100}%`,
-            }}
-          />
-        </div>
-      </div>
 
       {/* Audio player for IELTS Listening or multimedia passages */}
       {activeAudioUrl && (
@@ -1670,8 +1902,8 @@ export default function TakeTest() {
         )}
       </div>
 
-      {/* Interactive Question Palette */}
-      <div className="q-palette-container">
+      {/* Interactive Question Palette (Desktop) */}
+      <div className="q-palette-container hide-on-phone">
         <div className="q-palette-header">
           <span style={{ fontWeight: 700, color: 'var(--ink)' }}>
             {t('questions')}: {safeQIndex + 1} / {attempt.questions.length}
@@ -1987,6 +2219,458 @@ export default function TakeTest() {
               {submitting ? t('loading') : t('confirm')}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Safe Exit Confirmation Modal */}
+      {exitConfirmOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.85)',
+            backdropFilter: 'blur(10px)',
+            zIndex: 10000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+          role="alertdialog"
+          aria-modal="true"
+          onClick={() => setExitConfirmOpen(false)}
+        >
+          <div
+            style={{
+              maxWidth: 440,
+              width: '100%',
+              background: '#0f172a',
+              border: '1.5px solid rgba(245, 158, 11, 0.45)',
+              borderRadius: 20,
+              padding: '24px 20px',
+              textAlign: 'center',
+              boxShadow: '0 25px 50px rgba(0, 0, 0, 0.7), 0 0 30px rgba(245, 158, 11, 0.2)',
+              color: '#f8fafc',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: '50%',
+                background: 'rgba(245, 158, 11, 0.15)',
+                border: '1.5px solid rgba(245, 158, 11, 0.4)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 16px',
+                color: '#f59e0b',
+                fontSize: 26,
+              }}
+            >
+              🚪
+            </div>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: 8, color: '#fef08a' }}>
+              Imtihondan chiqmoqchimisiz?
+            </h3>
+            <p style={{ fontSize: '0.92rem', color: '#cbd5e1', lineHeight: 1.55, marginBottom: 20 }}>
+              Barcha belgilangan javoblaringiz saqlangan. Ammo imtihon vaqti to&apos;xtamaydi va vaqt tugasa test avtomatik topshiriladi.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setExitConfirmOpen(false)}
+                className="btn primary"
+                style={{ minHeight: 46, fontWeight: 700, fontSize: '0.95rem' }}
+              >
+                Davom etish
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setExitConfirmOpen(false);
+                  navigate('/tests');
+                }}
+                className="btn ghost"
+                style={{ minHeight: 46, borderColor: 'rgba(239, 68, 68, 0.4)', color: '#f87171', fontWeight: 700, fontSize: '0.95rem' }}
+              >
+                Chiqish
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tactile Bottom Sheet Modal: Question Palette */}
+      {paletteSheetOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.78)',
+            backdropFilter: 'blur(8px)',
+            zIndex: 9000,
+            display: 'flex',
+            alignItems: 'flex-end',
+            justifyContent: 'center',
+          }}
+          onClick={() => setPaletteSheetOpen(false)}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: 640,
+              maxHeight: '84vh',
+              background: 'var(--card-bg, #0f172a)',
+              borderTop: '2px solid rgba(245, 158, 11, 0.4)',
+              borderRadius: '24px 24px 0 0',
+              padding: '16px 16px max(18px, env(safe-area-inset-bottom))',
+              boxShadow: '0 -20px 45px rgba(0, 0, 0, 0.75)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+              overflow: 'hidden',
+              animation: 'slideUp 0.2s ease-out',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Grab handle */}
+            <div
+              style={{
+                width: 44,
+                height: 5,
+                borderRadius: 999,
+                background: 'rgba(255, 255, 255, 0.25)',
+                margin: '0 auto 2px',
+              }}
+            />
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 16.5, fontWeight: 800, color: '#f8fafc' }}>
+                  Savollar Palitrasi ({attempt.questions.length} ta savol)
+                </h3>
+                <p style={{ margin: '2px 0 0', fontSize: 12, opacity: 0.7 }}>
+                  Istalgan savolga bitta teginishda sakrang
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPaletteSheetOpen(false)}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  border: 'none',
+                  borderRadius: 8,
+                  color: 'inherit',
+                  padding: '6px 12px',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                ✕ Yopish
+              </button>
+            </div>
+
+            {/* Quick Status Legend */}
+            <div
+              style={{
+                display: 'flex',
+                gap: 12,
+                flexWrap: 'wrap',
+                background: 'rgba(255, 255, 255, 0.04)',
+                padding: '8px 12px',
+                borderRadius: 12,
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+            >
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#4ade80' }}>
+                <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#10b981' }} />
+                Yechilgan ({answeredCount})
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#fbbf24' }}>
+                <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#f59e0b' }} />
+                ⭐ Shubhali ({flaggedCount})
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#94a3b8' }}>
+                <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#334155' }} />
+                Javobsiz ({unanswered})
+              </span>
+            </div>
+
+            {/* Questions Grid */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(46px, 1fr))',
+                gap: 8,
+                overflowY: 'auto',
+                padding: '4px 2px 14px',
+                maxHeight: '46vh',
+                WebkitOverflowScrolling: 'touch',
+              }}
+            >
+              {attempt.questions.map((q, i) => {
+                const a = answers[q.id];
+                const isDone = Boolean(a && entryHasContent(q, a));
+                const isFlag = Boolean(flagged[q.id]);
+                const isCur = safeQIndex === i;
+
+                let badgeBg = 'rgba(255, 255, 255, 0.06)';
+                let badgeColor = '#cbd5e1';
+                let borderStyle = '1px solid rgba(255, 255, 255, 0.12)';
+
+                if (isDone) {
+                  badgeBg = '#10b981';
+                  badgeColor = '#ffffff';
+                  borderStyle = '1.5px solid #059669';
+                }
+                if (isFlag) {
+                  badgeBg = '#f59e0b';
+                  badgeColor = '#0f172a';
+                  borderStyle = '2px solid #fbbf24';
+                }
+
+                return (
+                  <button
+                    key={q.id}
+                    type="button"
+                    onClick={() => {
+                      setCurrentQIndex(i);
+                      setPaletteSheetOpen(false);
+                      if (!singleMode) {
+                        const el = document.getElementById(`question-${q.id}`);
+                        el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }
+                    }}
+                    style={{
+                      height: 46,
+                      borderRadius: 12,
+                      background: badgeBg,
+                      color: badgeColor,
+                      border: borderStyle,
+                      fontWeight: 800,
+                      fontSize: 14,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      position: 'relative',
+                      boxShadow: isCur
+                        ? '0 0 0 2.5px #38bdf8, 0 0 12px rgba(56, 189, 248, 0.6)'
+                        : isFlag
+                        ? '0 0 10px rgba(245, 158, 11, 0.4)'
+                        : 'none',
+                      transform: isCur ? 'scale(1.05)' : 'none',
+                      transition: 'all 0.12s ease',
+                    }}
+                  >
+                    {i + 1}
+                    {isFlag && (
+                      <span
+                        style={{
+                          position: 'absolute',
+                          top: -4,
+                          right: -3,
+                          fontSize: 10,
+                          lineHeight: 1,
+                        }}
+                      >
+                        ⭐
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Bottom Sheet Action */}
+            <div style={{ display: 'flex', gap: 10, paddingTop: 6, borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setPaletteSheetOpen(false);
+                  setConfirmOpen(true);
+                }}
+                className="btn primary"
+                style={{
+                  width: '100%',
+                  minHeight: 46,
+                  background: '#10b981',
+                  borderColor: '#10b981',
+                  fontWeight: 800,
+                  fontSize: 15,
+                  borderRadius: 12,
+                }}
+              >
+                🏁 Testni yakunlash ({answeredCount}/{attempt.questions.length})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sticky Bottom Bar for Mobile & Compact CBT Experience */}
+      {!finished && !result && (
+        <div
+          className="mobile-exam-bottom-bar"
+          style={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            zIndex: 35,
+            background: 'rgba(15, 23, 42, 0.96)',
+            backdropFilter: 'blur(16px)',
+            borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+            padding: '8px 12px max(8px, env(safe-area-inset-bottom))',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 8,
+            boxShadow: '0 -4px 25px rgba(0, 0, 0, 0.5)',
+          }}
+        >
+          <button
+            type="button"
+            disabled={safeQIndex === 0 || finished || submitting}
+            onClick={() => {
+              setCurrentQIndex((prev) => Math.max(0, prev - 1));
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            className="btn ghost"
+            style={{
+              minWidth: 44,
+              height: 44,
+              borderRadius: 12,
+              padding: '0 8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: 700,
+            }}
+            title="Oldingi savol"
+          >
+            <ChevronLeft size={20} />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setPaletteSheetOpen(true)}
+            style={{
+              flex: 1,
+              minHeight: 44,
+              borderRadius: 12,
+              background: 'rgba(255, 255, 255, 0.08)',
+              border: '1px solid rgba(255, 255, 255, 0.16)',
+              color: '#f8fafc',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              fontSize: 13.5,
+              fontWeight: 800,
+              cursor: 'pointer',
+              transition: 'background 0.15s ease',
+            }}
+            title="Savollar palitrasini ochish"
+          >
+            <span>
+              {safeQIndex + 1}/{attempt.questions.length}-savol
+            </span>
+            <span style={{ opacity: 0.4 }}>|</span>
+            <span style={{ color: '#f59e0b', display: 'flex', alignItems: 'center', gap: 4 }}>
+              Palitra ☰
+            </span>
+            {flaggedCount > 0 && (
+              <span
+                style={{
+                  background: 'rgba(245, 158, 11, 0.25)',
+                  color: '#fbbf24',
+                  borderRadius: 999,
+                  padding: '1px 6px',
+                  fontSize: 11,
+                  fontWeight: 800,
+                }}
+              >
+                ⭐ {flaggedCount}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => currentQuestion && toggleFlag(currentQuestion.id)}
+            style={{
+              minWidth: 44,
+              height: 44,
+              borderRadius: 12,
+              border: (currentQuestion && flagged[currentQuestion.id])
+                ? '2px solid #f59e0b'
+                : '1px solid rgba(255, 255, 255, 0.15)',
+              background: (currentQuestion && flagged[currentQuestion.id])
+                ? 'rgba(245, 158, 11, 0.25)'
+                : 'rgba(255, 255, 255, 0.05)',
+              color: (currentQuestion && flagged[currentQuestion.id]) ? '#f59e0b' : 'var(--muted)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 18,
+            }}
+            title={currentQuestion && flagged[currentQuestion.id] ? 'Belgini olib tashlash' : 'Keyin qaytish uchun belgilash (⭐)'}
+          >
+            {currentQuestion && flagged[currentQuestion.id] ? '⭐' : '☆'}
+          </button>
+
+          {safeQIndex < attempt.questions.length - 1 ? (
+            <button
+              type="button"
+              disabled={finished || submitting}
+              onClick={() => {
+                setCurrentQIndex((prev) => Math.min(attempt.questions.length - 1, prev + 1));
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="btn primary"
+              style={{
+                minWidth: 44,
+                height: 44,
+                borderRadius: 12,
+                padding: '0 8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: 700,
+              }}
+              title="Keyingi savol"
+            >
+              <ChevronRight size={20} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={finished || submitting}
+              onClick={() => setConfirmOpen(true)}
+              className="btn primary"
+              style={{
+                minHeight: 44,
+                borderRadius: 12,
+                padding: '0 12px',
+                background: '#10b981',
+                borderColor: '#10b981',
+                color: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                fontWeight: 800,
+              }}
+              title="Testni yakunlash"
+            >
+              <Check size={18} />
+            </button>
+          )}
         </div>
       )}
 
