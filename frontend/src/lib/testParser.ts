@@ -66,10 +66,10 @@ export function parseSmartTestText(rawText: string, defaultSubject: SupportedSub
 
   // Regex patterns
   // Matches: 1. or 1) or 1 - or Savol 1: or 1-savol: or №1
-  const qStartRe = /^(?:(?:savol\s*|№\s*)?(\d+)[\.\)\-:\s]+|(\d+)\s*[-–—]?\s*savol[\.\):]?\s*)(.*)$/i;
+  const qStartRe = /^(?:(?:savol\s*|№\s*)?(\d+)[.)\-:\s]+|(\d+)\s*[-–—]?\s*savol[.):]?\s*)(.*)$/i;
 
   // Matches choices: A), A., A -, (A), [A], *A), +A)
-  const inlineChoiceRe = /(?:^|\s+)([\*\+]?)\s*(?:\(|\[)?\s*([A-Ea-e])\s*(?:\)|\.|\-|\])\s*(.*?)(?=(?:\s+[\*\+]?\s*(?:\(|\[)?\s*[A-Ea-e]\s*(?:\)|\.|\-|\]))|$)/g;
+  const inlineChoiceRe = /(?:^|\s+)([*+]?)\s*(?:\(|\[)?\s*([A-Ea-e])\s*(?:\)|\.|\-|\])\s*(.*?)(?=(?:\s+[*+]?\s*(?:\(|\[)?\s*[A-Ea-e]\s*(?:\)|\.|\-|\]))|$)/g;
 
   // Matches inline answer: Javob: A, To'g'ri javob: B, Ans: C, Answer: D, Kalit: A
   const inlineAnsRe = /^(?:(?:to['ʼ`]?g['ʼ`]?ri\s+)?(?:javob|kalit|key)|ans(?:wer)?)\s*[:=\-]\s*([A-Ea-e])\b/i;

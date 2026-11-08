@@ -17,7 +17,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: algorithco/lms
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build:

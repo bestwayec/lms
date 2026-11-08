@@ -11,7 +11,7 @@ cd /opt/lms
 
 IMS_IMAGE_TAG="${IMS_IMAGE_TAG:-latest}"
 REGISTRY="${REGISTRY:-ghcr.io}"
-IMAGE_NAME="${IMAGE_NAME:-algorithco/lms}"
+IMAGE_NAME="${IMAGE_NAME:-rozievkomiljon/lms}"
 
 # --- Config install: files above were scp'd DIRECTLY onto their final VPS
 # paths (never via mv/install/new-file-rename). Reason: Docker bind mounts
