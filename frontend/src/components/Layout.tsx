@@ -3,13 +3,11 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import { useAuth } from '../auth/AuthContext';
 import { useLang } from '../i18n/LangContext';
 import { canReviewEssays, canTeach, canViewParent, isPlatformAdmin, GamificationApi, type StreakInfoResponse } from '../lib/api';
-import UserNavDropdown from './UserNavDropdown';
-
 import PlanBadge from './PlanBadge';
-import StreakBadge from './StreakBadge';
 import { useSubject } from '../lib/useSubject';
 import { formatDisplayName, initialsOf } from '../lib/displayName';
-import MobileBottomBar from './MobileBottomBar';
+import BottomNav from './BottomNav';
+import Navbar from './Navbar';
 import MobileNavDrawer from './MobileNavDrawer';
 import MobileProfileDrawer from './MobileProfileDrawer';
 import SubjectSwitcher from './SubjectSwitcher';
@@ -223,54 +221,13 @@ export default function Layout() {
       {open && <div className="overlay" onClick={close} aria-hidden="true" />}
 
       <div className="main">
-        <header className="topbar app-topbar" aria-label={t('topbar_label')}>
-          <div className="topbar-inner">
-            {/* Phones: logo + page title on the left (the sidebar carries the brand on desktop). */}
-            <Link to="/dashboard" className="tb-brand md:hidden">
-              <img src="/logo-mark.png" alt="" width={28} height={28} />
-              <span className="tb-title">{pageTitle}</span>
-            </Link>
-
-            <div className="hidden md:flex">
-              {user?.active_subject && (
-                <span className="tb-tag">{t(activeSubject === 'english' ? 'app_motto_badge_english' : 'app_motto_badge')}</span>
-              )}
-            </div>
-            <div className="spacer" />
-            <div className="tb-right">
-              {streakData && (
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                  <StreakBadge streakData={streakData} compact />
-                  <span className="tb-xp" style={{ padding: '4px 10px', fontSize: '12px' }}>
-                    <span>{streakData.xp_points} XP</span>
-                  </span>
-                </div>
-              )}
-              <div className="hidden md:flex">
-                <SubjectSwitcher size="sm" />
-              </div>
-              <div className="hidden md:flex" style={{ alignItems: 'center', gap: 8 }}>
-                {isAdmin && (
-                  <Link to="/panel" className="ui-btn ui-btn--sm">
-                    <ShieldCheckIcon size={14} />
-                    <span>{t('tb_admin_panel')}</span>
-                  </Link>
-                )}
-                <UserNavDropdown />
-              </div>
-              <button
-                type="button"
-                className="tb-avatar md:hidden"
-                onClick={() => setProfileDrawerOpen(true)}
-                aria-label={t('tb_open_profile')}
-              >
-                {user?.avatar ? <img src={user.avatar} alt="" /> : <span>{initialsOf(user?.full_name, user?.email)}</span>}
-              </button>
-            </div>
-          </div>
-        </header>
-        {/* Phones: subject switcher as a segmented control under the bar (never inside it). */}
-        <div className="tb-subject md:hidden">
+        <Navbar
+          streakData={streakData}
+          onOpenProfile={() => setProfileDrawerOpen(true)}
+          pageTitle={pageTitle}
+        />
+        {/* Phones: subject switcher as a scrollable segmented control under the bar */}
+        <div className="tb-subject md:hidden px-2 py-1.5 bg-slate-900/60 border-b border-slate-800/80">
           <SubjectSwitcher variant="seg" />
         </div>
         <main className="content">
@@ -278,8 +235,8 @@ export default function Layout() {
         </main>
       </div>
 
-      {/* TESTMAKON-STYLE 3D SOFT BOTTOM NAVIGATION & DRAWERS */}
-      <MobileBottomBar onOpenProfile={() => setProfileDrawerOpen(true)} />
+      {/* Modern Glassmorphism Bottom Navigation & Drawers */}
+      <BottomNav onOpenProfile={() => setProfileDrawerOpen(true)} />
       <MobileNavDrawer isOpen={navDrawerOpen} onClose={() => setNavDrawerOpen(false)} />
       <MobileProfileDrawer
         isOpen={profileDrawerOpen}

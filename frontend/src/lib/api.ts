@@ -284,6 +284,7 @@ export interface AuthUser {
   daily_plan_summary?: Record<string, unknown>;
   telegram_chat_id?: number | null;
   telegram_identity_verified_at?: string | null;
+  primary_group_id?: number | null;
   plan?: string;
   is_paid?: boolean;
   tariff?: string;
@@ -397,6 +398,8 @@ export function normalizeUser(raw: Record<string, unknown>): AuthUser {
     telegram_chat_id: typeof raw.telegram_chat_id === 'number' ? raw.telegram_chat_id : null,
     telegram_identity_verified_at:
       typeof raw.telegram_identity_verified_at === 'string' ? raw.telegram_identity_verified_at : null,
+    primary_group_id:
+      typeof raw.primary_group_id === 'number' ? raw.primary_group_id : null,
     plan:
       isAdmin
         ? 'ADMIN_UNLIMITED'

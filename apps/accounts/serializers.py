@@ -317,6 +317,14 @@ class UserProfileSerializer(serializers.ModelSerializer):
     subscription_expires_at = serializers.SerializerMethodField()
     days_until_expiration = serializers.SerializerMethodField()
     is_expiring_soon = serializers.SerializerMethodField()
+    primary_group_id = serializers.SerializerMethodField()
+
+    def get_primary_group_id(self, obj) -> int | None:
+        try:
+            grp = obj.student_groups.only("id").first()
+            return grp.id if grp else None
+        except Exception:
+            return None
 
     class Meta:
         model = User
@@ -360,6 +368,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "subscription_expires_at",
             "days_until_expiration",
             "is_expiring_soon",
+            "primary_group_id",
         ]
         read_only_fields = fields  # Hammasi read-only
 

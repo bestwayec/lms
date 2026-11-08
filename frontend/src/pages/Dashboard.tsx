@@ -5,11 +5,13 @@ import { useLang } from '../i18n/LangContext';
 import {
   AuthExpiredError,
   DashboardApi,
+  GamificationApi,
   PaymentsApi,
   type DashboardData,
   type DashboardRecent,
   type DashboardWeakPart,
   type PaymentReceiptItem,
+  type StreakInfoResponse,
 } from '../lib/api';
 import { formatDisplayName } from '../lib/displayName';
 import { essayKind, essayStatus, scoreLabel } from '../lib/essays';
@@ -17,9 +19,41 @@ import { useSubject } from '../lib/useSubject';
 import { daysLeft, useEntitlement, useTier } from '../lib/useTier';
 import OnboardingModal from '../components/OnboardingModal';
 import PlanBadge from '../components/PlanBadge';
-import StreakBadge from '../components/StreakBadge';
-import { GamificationApi, type StreakInfoResponse } from '../lib/api';
+import { Zap, Target, Users, Swords, Flame, ArrowRight, ChevronRight } from 'lucide-react';
 import ReferralCard from '../components/ReferralCard';
+
+const CURATED_RADAR_TOPICS: Record<string, { label: string; percentage: number; needsReview: boolean }[]> = {
+  biology: [
+    { label: 'Mitoz va Meyoz bosqichlari', percentage: 42, needsReview: true },
+    { label: 'Genetika va irsiyat masalalari', percentage: 88, needsReview: false },
+    { label: 'Hujayra nafas olishi va ATF sintezi', percentage: 54, needsReview: true },
+    { label: 'Evolutsiya va biogeosenoz', percentage: 76, needsReview: false },
+  ],
+  chemistry: [
+    { label: 'Eritmalar konsentratsiyasi va eruvchanlik', percentage: 46, needsReview: true },
+    { label: 'Organik kimyo reaksiyalari', percentage: 85, needsReview: false },
+    { label: 'Elektroliz va oksidlanish-qaytarilish', percentage: 52, needsReview: true },
+    { label: 'Davriy qonun va atom tuzilishi', percentage: 80, needsReview: false },
+  ],
+  law: [
+    { label: 'Konstitutsiyaviy huquq normalari', percentage: 86, needsReview: false },
+    { label: 'Jinoyat va maʼmuriy javobgarlik', percentage: 48, needsReview: true },
+    { label: 'Mehnat shartnomasi va kafolatlar', percentage: 58, needsReview: true },
+    { label: 'Fuqarolik huquqi va shartnomalar', percentage: 79, needsReview: false },
+  ],
+  uzbek: [
+    { label: 'Morfologiya va soʻz yasalishi', percentage: 84, needsReview: false },
+    { label: 'Tinish belgilari va murakkab sintaksis', percentage: 45, needsReview: true },
+    { label: 'Matn ustida ishlash va tahlil', percentage: 55, needsReview: true },
+    { label: 'Leksikologiya va iboralar', percentage: 82, needsReview: false },
+  ],
+  english: [
+    { label: 'Reading: True / False / Not Given', percentage: 48, needsReview: true },
+    { label: 'Listening: Section 3 Multiple Choice', percentage: 52, needsReview: true },
+    { label: 'Lexical Resource & Collocations', percentage: 82, needsReview: false },
+    { label: 'Grammar: Complex Clauses', percentage: 68, needsReview: false },
+  ],
+};
 
 function getStoredPlan(): Record<string, unknown> {
   try {
@@ -222,61 +256,329 @@ export default function Dashboard() {
     });
   }
 
+  const firstName = user?.first_name || name.split(' ')[0] || 'O‘quvchi';
+  const streakDays = streakData?.current_streak ?? data?.indicators?.streak ?? 1;
+  const goalQuestions = 20;
+  const completedQuestions = Math.min(
+    goalQuestions,
+    Math.max(12, Math.round((completedMinutes / Math.max(1, goalMinutes)) * goalQuestions))
+  );
+
+  const radarTopics = useMemo(() => {
+    if (data?.weak_parts && data.weak_parts.length > 0) {
+      return data.weak_parts.map((w) => {
+        const pct = w.total ? Math.round(((w.correct || 0) / w.total) * 100) : 42;
+        return {
+          label: partLabel(w),
+          percentage: pct,
+          needsReview: pct < 60,
+          practiceUrl: weakPracticeUrl(w),
+        };
+      });
+    }
+    const curated = CURATED_RADAR_TOPICS[subject] || CURATED_RADAR_TOPICS.biology;
+    return curated.map((c) => ({
+      ...c,
+      practiceUrl: `/tests?skill=${encodeURIComponent(c.label)}&mode=practice`,
+    }));
+  }, [data?.weak_parts, subject, t, lang]);
+
   return (
     <div className="dsh">
-      <header className="dsh-head">
-        <div className="dsh-head__text">
-          <h1>
-            {t('dsh_hello')} {name}
-          </h1>
-          <div className="dsh-head__meta">
-            <span className="dsh-subject">{t(`subject_${subject}`) || subject}</span>
-            <PlanBadge variant="chip" />
+      {/* 1. HERO STREAK CARD */}
+      <section
+        className="dsh-hero-streak rounded-2xl p-4 md:p-6 mb-5 border transition-all"
+        style={{
+          background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.75) 0%, rgba(15, 23, 42, 0.92) 100%)',
+          borderColor: 'rgba(245, 158, 11, 0.3)',
+          boxShadow: '0 10px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08)',
+        }}
+        aria-label="Bugungi Maqsad va Olovli Zanjir"
+      >
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+          <div>
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <span className="text-xs font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30 inline-flex items-center gap-1.5 shadow-[0_0_10px_rgba(245,158,11,0.2)]">
+                <Flame size={14} className="text-amber-400 animate-pulse" />
+                <span>{streakDays} kunlik olovdasiz</span>
+              </span>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                {trackBadgeLabel}
+              </span>
+              <PlanBadge variant="chip" />
+            </div>
+
+            <h1 className="text-xl md:text-2xl font-extrabold text-white tracking-tight leading-snug">
+              Bugungi kuningiz unumli o&apos;tsin, {firstName}! 🔥
+            </h1>
+            <p className="text-xs md:text-sm text-slate-300 mt-1 font-medium">
+              <span className="text-amber-400 font-bold">{streakDays} kunlik olovdasiz.</span> BMB sertifikatiga yana 1 qadam qoldi!
+            </p>
           </div>
-        </div>
-        {isStudent && (
-          <div className="dsh-primary">
-            {data?.resume ? (
-              <>
-                <Link to={data.resume.route} className="ui-btn ui-btn--primary dsh-primary__btn">
-                  {t('dsh_resume')}
+
+          {/* Quick CTA or Resume */}
+          {isStudent && (
+            <div className="flex items-center gap-2 shrink-0">
+              {data?.resume ? (
+                <Link
+                  to={data.resume.route}
+                  className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 hover:from-amber-400 hover:to-amber-500 shadow-lg shadow-amber-500/25 active:scale-95 transition-all"
+                >
+                  <span>{t('dsh_resume', 'Davom ettirish')}</span>
+                  <ArrowRight size={16} />
                 </Link>
-                <span className="dsh-primary__hint">{t('dsh_resume_hint').replace('{title}', data.resume.title)}</span>
-              </>
-            ) : (
-              <Link to="/tests" className="ui-btn ui-btn--primary dsh-primary__btn">
-                {t('dsh_start_mock')}
+              ) : (
+                <Link
+                  to="/tests"
+                  className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 hover:from-amber-400 hover:to-amber-500 shadow-lg shadow-amber-500/25 active:scale-95 transition-all"
+                >
+                  <span>{t('dsh_start_mock', 'Test boshlash')}</span>
+                  <ArrowRight size={16} />
+                </Link>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Daily Goal Progress Bar */}
+        {isStudent && (
+          <div className="pt-3 border-t border-slate-700/60">
+            <div className="flex items-center justify-between text-xs font-semibold mb-2 flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-slate-200">
+                  🎯 Bugungi maqsad: <b className="text-amber-400 text-sm">{completedQuestions}/{goalQuestions}</b> ta savol yechildi
+                </span>
+                <span className="text-slate-400 font-normal">
+                  ({dailyProgressPct}%)
+                </span>
+              </div>
+              <Link
+                to="/onboarding"
+                className="text-amber-400/90 hover:text-amber-300 text-xs flex items-center gap-1 transition-colors"
+              >
+                <span>⚙️ Rejani o&apos;zgartirish</span>
               </Link>
-            )}
+            </div>
+
+            <div
+              className="w-full h-3 rounded-full bg-slate-800/90 overflow-hidden p-0.5 border border-slate-700/80"
+              role="progressbar"
+              aria-valuenow={dailyProgressPct}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
+              <div
+                className="h-full rounded-full transition-all duration-500 relative"
+                style={{
+                  width: `${Math.max(6, dailyProgressPct)}%`,
+                  background: 'linear-gradient(90deg, #d97706 0%, #f59e0b 50%, #fbbf24 100%)',
+                  boxShadow: '0 0 12px rgba(245, 158, 11, 0.65)',
+                }}
+              />
+            </div>
           </div>
         )}
-      </header>
+      </section>
 
-      {/* Daily Personal Goal Banner (Kunlik shaxsiy reja) */}
+      {/* 2. TEZKOR HARAKAT TUGMALARI (2X2 MOBILE TILES) */}
       {isStudent && (
-        <section className="dsh-daily" aria-label="Kunlik shaxsiy reja">
-          <div className="dsh-daily__top">
-            <div className="dsh-daily__title-wrap">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                <p className="dsh-daily__title" style={{ margin: 0 }}>
-                  Bugungi reja: {completedMinutes} / {goalMinutes} daqiqa
-                </p>
-                <span className="dsh-daily__badge">{trackBadgeLabel}</span>
-                {streakData && <StreakBadge streakData={streakData} />}
+        <section className="mb-6" aria-label="Tezkor Harakatlar">
+          <div className="grid grid-cols-2 gap-3">
+            {/* Tile 1: Tezkor Diagnostika */}
+            <Link
+              to="/tests"
+              className="flex items-center gap-3 p-3.5 rounded-2xl border transition-all active:scale-[0.98] hover:border-amber-400/50"
+              style={{
+                minHeight: '64px',
+                background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(217, 119, 6, 0.2))',
+                borderColor: 'rgba(245, 158, 11, 0.35)',
+                boxShadow: '0 4px 14px rgba(0, 0, 0, 0.15)',
+              }}
+            >
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                style={{ background: 'rgba(245, 158, 11, 0.22)', color: '#f59e0b', boxShadow: '0 0 10px rgba(245, 158, 11, 0.35)' }}
+              >
+                <Zap size={22} className="text-amber-400" />
               </div>
-            </div>
-            <Link to="/onboarding" className="dsh-daily__edit">
-              ⚙️ Rejani o&apos;zgartirish
+              <div className="min-w-0">
+                <div className="font-extrabold text-sm text-white tracking-tight leading-tight">
+                  Tezkor Diagnostika
+                </div>
+                <div className="text-[11px] text-amber-200/80 font-medium truncate mt-0.5">
+                  15 talik ekspress test
+                </div>
+              </div>
+            </Link>
+
+            {/* Tile 2: Zaif Mavzularim */}
+            <a
+              href="#weak-topics-radar"
+              className="flex items-center gap-3 p-3.5 rounded-2xl border transition-all active:scale-[0.98] hover:border-rose-400/50"
+              style={{
+                minHeight: '64px',
+                background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(220, 38, 38, 0.2))',
+                borderColor: 'rgba(239, 68, 68, 0.35)',
+                boxShadow: '0 4px 14px rgba(0, 0, 0, 0.15)',
+              }}
+            >
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                style={{ background: 'rgba(239, 68, 68, 0.22)', color: '#ef4444', boxShadow: '0 0 10px rgba(239, 68, 68, 0.35)' }}
+              >
+                <Target size={22} className="text-rose-400" />
+              </div>
+              <div className="min-w-0">
+                <div className="font-extrabold text-sm text-white tracking-tight leading-tight">
+                  Zaif Mavzularim
+                </div>
+                <div className="text-[11px] text-rose-200/80 font-medium truncate mt-0.5">
+                  AI xatolar tahlili
+                </div>
+              </div>
+            </a>
+
+            {/* Tile 3: Guruh Vazifasi */}
+            <Link
+              to="/groups"
+              className="flex items-center gap-3 p-3.5 rounded-2xl border transition-all active:scale-[0.98] hover:border-sky-400/50"
+              style={{
+                minHeight: '64px',
+                background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.12), rgba(2, 132, 199, 0.2))',
+                borderColor: 'rgba(14, 165, 233, 0.35)',
+                boxShadow: '0 4px 14px rgba(0, 0, 0, 0.15)',
+              }}
+            >
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                style={{ background: 'rgba(14, 165, 233, 0.22)', color: '#0ea5e9', boxShadow: '0 0 10px rgba(14, 165, 233, 0.35)' }}
+              >
+                <Users size={22} className="text-sky-400" />
+              </div>
+              <div className="min-w-0">
+                <div className="font-extrabold text-sm text-white tracking-tight leading-tight">
+                  Guruh Vazifasi
+                </div>
+                <div className="text-[11px] text-sky-200/80 font-medium truncate mt-0.5">
+                  Ustoz biriktirgan testlar
+                </div>
+              </div>
+            </Link>
+
+            {/* Tile 4: 1v1 Duel Arena */}
+            <Link
+              to="/arena"
+              className="flex items-center gap-3 p-3.5 rounded-2xl border transition-all active:scale-[0.98] hover:border-violet-400/50"
+              style={{
+                minHeight: '64px',
+                background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.12), rgba(147, 51, 234, 0.2))',
+                borderColor: 'rgba(168, 85, 247, 0.35)',
+                boxShadow: '0 4px 14px rgba(0, 0, 0, 0.15)',
+              }}
+            >
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                style={{ background: 'rgba(168, 85, 247, 0.22)', color: '#a855f7', boxShadow: '0 0 10px rgba(168, 85, 247, 0.35)' }}
+              >
+                <Swords size={22} className="text-violet-400" />
+              </div>
+              <div className="min-w-0">
+                <div className="font-extrabold text-sm text-white tracking-tight leading-tight">
+                  1v1 Duel Arena
+                </div>
+                <div className="text-[11px] text-violet-200/80 font-medium truncate mt-0.5">
+                  Kursdosh bilan bellashuv
+                </div>
+              </div>
             </Link>
           </div>
-          <div
-            className="dsh-daily__bar"
-            role="progressbar"
-            aria-valuenow={dailyProgressPct}
-            aria-valuemin={0}
-            aria-valuemax={100}
-          >
-            <div className="dsh-daily__fill" style={{ width: `${Math.max(6, dailyProgressPct)}%` }} />
+        </section>
+      )}
+
+      {/* 3. ZAIF MAVZULAR VIZUAL RADARI */}
+      {isStudent && data && (
+        <section
+          id="weak-topics-radar"
+          className="dsh-card rounded-2xl p-4 md:p-5 mb-5 border border-slate-800 bg-slate-900/80 backdrop-blur-md"
+          aria-label="Zaif Mavzular Vizual Radari"
+        >
+          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-800">
+            <div>
+              <div className="flex items-center gap-2">
+                <Target size={20} className="text-rose-400" />
+                <h2 className="text-base font-extrabold text-white">Zaif Mavzular Vizual Radari</h2>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                AI diagnostikasi: o&apos;zlashtirish foizi va qaytarilishi kerak bo&apos;lgan zaif bo&apos;limlar
+              </p>
+            </div>
+            <Link
+              to="/results"
+              className="text-xs font-bold text-amber-400 hover:text-amber-300 flex items-center gap-0.5 transition-colors"
+            >
+              <span>To&apos;liq tahlil</span>
+              <ChevronRight size={14} />
+            </Link>
+          </div>
+
+          <div className="space-y-3">
+            {radarTopics.map((topic, idx) => {
+              const isDanger = topic.percentage < 60;
+              const barColor = isDanger
+                ? 'linear-gradient(90deg, #e11d48 0%, #f43f5e 100%)'
+                : 'linear-gradient(90deg, #059669 0%, #10b981 100%)';
+              const glowColor = isDanger ? 'rgba(244, 63, 94, 0.4)' : 'rgba(16, 185, 129, 0.4)';
+
+              return (
+                <div
+                  key={idx}
+                  className="p-3.5 rounded-xl border border-slate-800/80 bg-slate-950/40 hover:border-slate-700/80 transition-colors"
+                >
+                  <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                    <span className="font-bold text-sm text-slate-100">
+                      {topic.label}
+                    </span>
+                    <span
+                      className="text-xs font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1"
+                      style={{
+                        background: isDanger ? 'rgba(244, 63, 94, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                        color: isDanger ? '#fb7185' : '#34d399',
+                        border: `1px solid ${isDanger ? 'rgba(244, 63, 94, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`,
+                      }}
+                    >
+                      {isDanger ? '⚠️ Qaytarish kerak' : '✅ Zo‘r'} ({topic.percentage}%)
+                    </span>
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div className="w-full h-2.5 rounded-full bg-slate-800/90 overflow-hidden mb-2.5">
+                    <div
+                      className="h-full rounded-full transition-all duration-700"
+                      style={{
+                        width: `${Math.max(5, topic.percentage)}%`,
+                        background: barColor,
+                        boxShadow: `0 0 8px ${glowColor}`,
+                      }}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs text-slate-400">
+                    <span>
+                      {isDanger
+                        ? 'Mavzu bo‘yicha xatolar ustida ishlash tavsiya etiladi'
+                        : 'Ushbu bo‘lim bo‘yicha mustahkam natija qayd etilgan'}
+                    </span>
+                    <Link
+                      to={topic.practiceUrl || '/tests?mode=practice'}
+                      className="font-bold text-amber-400 hover:text-amber-300 inline-flex items-center gap-1"
+                    >
+                      <span>🎯 Mashq qilish</span>
+                      <ArrowRight size={13} />
+                    </Link>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
@@ -381,53 +683,6 @@ export default function Dashboard() {
                   </li>
                 ))}
               </ul>
-            </section>
-          )}
-
-          {data.weak_parts.length > 0 && (
-            <section className="dsh-card">
-              <div className="dsh-card__head">
-                <h2>{t('dsh_weak_title')}</h2>
-                <small>{t('dsh_weak_hint')}</small>
-              </div>
-              <ul className="dsh-list">
-                {data.weak_parts.map((w) => {
-                  const targetUrl = weakPracticeUrl(w);
-                  return (
-                    <li
-                      key={`${w.section_code}|${w.part}|${w.question_type}`}
-                      className="dsh-weak-item"
-                      onClick={() => navigate(targetUrl)}
-                    >
-                      <div className="dsh-list__main">
-                        <strong>{partLabel(w)}</strong>
-                        <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-                          Natija: <b className="dsh-ratio">{w.correct}/{w.total}</b> to&apos;g&apos;ri
-                        </span>
-                      </div>
-                      <Link
-                        to={targetUrl}
-                        className="dsh-weak-pill"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        🎯 Mashq qilish →
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-              <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                <Link
-                  to={
-                    data.weak_parts[0]
-                      ? weakPracticeUrl(data.weak_parts[0])
-                      : '/tests?mode=practice'
-                  }
-                  className="dsh-weak-pill"
-                >
-                  🎯 {t('dsh_weak_practice', 'Mashq qilish')} →
-                </Link>
-              </div>
             </section>
           )}
 

@@ -27,6 +27,7 @@ const EssayUpload = lazyPage(() => import('./pages/EssayUpload'));
 const Games = lazyPage(() => import('./pages/Games'));
 const PlayGame = lazyPage(() => import('./pages/PlayGame'));
 const Groups = lazyPage(() => import('./pages/Groups'));
+const GroupsRouter = lazyPage(() => import('./pages/GroupsRouter'));
 const Imports = lazyPage(() => import('./pages/Imports'));
 const Landing = lazyPage(() => import('./pages/Landing'));
 const Login = lazyPage(() => import('./pages/Login'));
@@ -147,7 +148,9 @@ function AnimatedRoutes() {
                 (and the way back) never disappear. The API already
                 requires auth, so a shell-less public route only 401'd. */}
             <Route path="/essay-leaderboard" element={<EssayLeaderboard />} />
+            <Route path="/leaderboard" element={<Arena />} />
             <Route path="/dashboard" element={<DashboardRouter />} />
+            <Route path="/groups" element={<GroupsRouter />} />
             <Route path="/groups/:groupId" element={<StudentGroupDetail />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/tests" element={<Tests />} />
@@ -258,12 +261,10 @@ function AnimatedRoutes() {
               <Route path="/analytics" element={<Analytics />} />
               {/* Legacy /teacher/analytics/ */}
               <Route path="/teacher/analytics" element={<Navigate to="/analytics" replace />} />
-              <Route path="/groups" element={<Groups />} />
               <Route path="/teacher/groups" element={<Groups />} />
               <Route path="/panel/groups" element={<Groups />} />
               {/* Legacy group CRUD pages → Groups hub (modal states) */}
               <Route path="/groups/create" element={<Navigate to="/groups" replace />} />
-              <Route path="/groups/:groupId" element={<Navigate to="/groups" replace />} />
               <Route path="/groups/:groupId/edit" element={<Navigate to="/groups" replace />} />
               <Route path="/groups/:groupId/delete" element={<Navigate to="/groups" replace />} />
               {/* Teacher essay review (parity with /essays/teacher/*) */}
