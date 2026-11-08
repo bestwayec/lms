@@ -2911,7 +2911,9 @@
     "group_no_one_tested": "Hozircha hech kim test topshirmagan.",
     "group_you": "(Siz)",
     "group_tests_taken": "{n} ta test",
-    "group_load_err": "Guruh ma‘lumotlarini yuklab bo‘lmadi"
+    "group_load_err": "Guruh ma‘lumotlarini yuklab bo‘lmadi",
+    "copy": "Nusxa olish",
+    "copied": "Nusxalandi!"
   },
   "ru": {
     "main": "Главное",
@@ -5825,7 +5827,9 @@
     "group_no_one_tested": "Пока никто не сдавал тест.",
     "group_you": "(Вы)",
     "group_tests_taken": "{n} тестов",
-    "group_load_err": "Не удалось загрузить данные группы"
+    "group_load_err": "Не удалось загрузить данные группы",
+    "copy": "Скопировать",
+    "copied": "Скопировано!"
   },
   "en": {
     "main": "Main",
@@ -8739,6 +8743,8 @@
     "group_no_one_tested": "No one has taken the test yet.",
     "group_you": "(You)",
     "group_tests_taken": "{n} tests",
-    "group_load_err": "Failed to load group details"
+    "group_load_err": "Failed to load group details",
+    "copy": "Copy",
+    "copied": "Copied!"
   }
 }

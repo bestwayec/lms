@@ -5,9 +5,16 @@ Environment-specific overrides live in development.py and production.py.
 Uses django-environ for secure .env-based configuration.
 """
 
+import os
 import environ
 from pathlib import Path
 from celery.schedules import crontab
+
+# Normalize NO_PROXY / no_proxy: httpx raises InvalidURL if '[::1]' is present in no_proxy
+for _proxy_var in ("no_proxy", "NO_PROXY"):
+    _val = os.environ.get(_proxy_var)
+    if _val and "[::1]" in _val:
+        os.environ[_proxy_var] = ",".join(p for p in _val.split(",") if p != "[::1]")
 
 # ---------------------------------------------------------------------------
 # django-environ setup
