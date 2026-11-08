@@ -1495,10 +1495,17 @@ class CertificateCardView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        if attempt.student_id != request.user.id and request.user.role not in [
-            "admin",
-            "teacher",
-        ]:
+        user = request.user
+        is_admin = is_platform_admin(user) or getattr(user, "is_superuser", False) or getattr(user, "role", "") == "admin"
+        can_view = (
+            attempt.student_id == user.id
+            or is_admin
+            or (attempt.test.created_by_id == user.id)
+            or bool(attempt.test.course and attempt.test.course.teacher_id == user.id)
+            or (hasattr(user, "managed_groups") and user.managed_groups.filter(students=attempt.student).exists())
+            or (getattr(user, "role", "") == "center_admin" and getattr(user, "branch_id", None) and attempt.student.branch_id == user.branch_id)
+        )
+        if not can_view:
             return Response(
                 {"error": "Ruxsat berilmagan."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -1635,12 +1642,17 @@ class TestGradebookView(APIView):
         user = request.user
         from apps.accounts.access import is_platform_admin
 
-        is_admin = is_platform_admin(user) or user.is_superuser
-        is_teacher = getattr(user, "role", "") in ("teacher", "admin", "center_admin") or bool(
-            test.course and test.course.teacher_id == user.id
+        is_admin = is_platform_admin(user) or user.is_superuser or getattr(user, "role", "") == "admin"
+        can_access = (
+            is_admin
+            or (test.created_by_id == user.id)
+            or bool(test.course and test.course.teacher_id == user.id)
+            or (hasattr(user, "teacher_groups") and user.teacher_groups.filter(id=getattr(test, "group_id", None)).exists())
+            or test.group_assignments.filter(group__teacher=user).exists()
+            or (getattr(user, "role", "") == "center_admin" and getattr(user, "branch_id", None) and (getattr(test, "branch_id", None) == user.branch_id or (test.course and getattr(test.course, "branch_id", None) == user.branch_id)))
         )
 
-        if not (is_admin or is_teacher):
+        if not can_access:
             return Response(
                 {"error": "Ushbu vedomost faqat o'qituvchilar va ma'murlar uchun ochiq."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -1803,12 +1815,17 @@ class TestItemAnalysisView(APIView):
         user = request.user
         from apps.accounts.access import is_platform_admin
 
-        is_admin = is_platform_admin(user) or user.is_superuser
-        is_teacher = getattr(user, "role", "") in ("teacher", "admin", "center_admin") or bool(
-            test.course and test.course.teacher_id == user.id
+        is_admin = is_platform_admin(user) or user.is_superuser or getattr(user, "role", "") == "admin"
+        can_access = (
+            is_admin
+            or (test.created_by_id == user.id)
+            or bool(test.course and test.course.teacher_id == user.id)
+            or (hasattr(user, "teacher_groups") and user.teacher_groups.filter(id=getattr(test, "group_id", None)).exists())
+            or test.group_assignments.filter(group__teacher=user).exists()
+            or (getattr(user, "role", "") == "center_admin" and getattr(user, "branch_id", None) and (getattr(test, "branch_id", None) == user.branch_id or (test.course and getattr(test.course, "branch_id", None) == user.branch_id)))
         )
 
-        if not (is_admin or is_teacher):
+        if not can_access:
             return Response(
                 {"error": "Ushbu tahlil faqat o'qituvchilar va ma'murlar uchun ochiq."},
                 status=status.HTTP_403_FORBIDDEN,

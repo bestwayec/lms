@@ -6978,9 +6978,10 @@ async def arena_join_handler(
         return
 
     if room is None:
+        err_msg = error or "Kod xato yoki xona to'la."
         await send_reply(
             update,
-            f"❌ *Xonaga qo'shib bo'lmadi*\n\n{error or "Kod xato yoki xona to'la."}\n\n"
+            f"❌ *Xonaga qo'shib bo'lmadi*\n\n{err_msg}\n\n"
             f"To'g'ri kod bilan qayta urinib ko'ring: `/arena_join KOD`",
             parse_mode="Markdown",
             reply_markup=_error_keyboard(),
@@ -8092,13 +8093,14 @@ async def role_select_teacher_callback(
     admin_id = int(getattr(_settings, "ADMIN_TELEGRAM_ID", SUPERADMIN_TELEGRAM_ID))
     # Notify admin
     try:
+        tg_uname = tg_user.username or "yo'q"
         await context.bot.send_message(
             chat_id=admin_id,
             text=(
                 f"👨‍🏫 <b>Yangi o'qituvchi arizasi!</b>\n\n"
                 f"👤 Ism: <b>{tg_user.first_name} {tg_user.last_name or ''}</b>\n"
                 f"🆔 Telegram ID: <code>{tg_user.id}</code>\n"
-                f"📱 Username: @{tg_user.username or "yo'q"}\n\n"
+                f"📱 Username: @{tg_uname}\n\n"
                 f"Ushbu foydalanuvchini o'qituvchi sifatida tasdiqlaysizmi?"
             ),
             parse_mode="HTML",

@@ -1056,6 +1056,11 @@ def branch_send_reminder_view(request: Any, branch_id: int) -> Response:
         )
 
     student = get_object_or_404(User, pk=student_id, role=User.Role.STUDENT)
+    if student.branch_id != branch.id and not student.student_groups.filter(branch=branch).exists():
+        return Response(
+            {"error": "Ushbu o'quvchi ushbu filialga tegishli emas."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
     reminder_type = str(request.data.get("reminder_type", "both")).lower()
     custom_msg = str(request.data.get("message", "")).strip()
 

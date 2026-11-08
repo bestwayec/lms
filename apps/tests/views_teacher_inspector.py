@@ -37,19 +37,38 @@ def _can_inspect_test_or_attempt(user: Any, test: Test, attempt: TestAttempt | N
     if not user or not user.is_authenticated:
         return False
 
-    # Platform Admins, Superusers, and Staff have global root inspection rights
-    if is_platform_admin(user) or user.is_superuser or getattr(user, "role", "") in ("admin", "center_admin"):
+    # Platform Admins and Superusers have global root inspection rights
+    if is_platform_admin(user) or user.is_superuser or getattr(user, "role", "") == "admin":
         return True
+
+    # Center Admin can inspect tests/attempts within their learning center / branch
+    if getattr(user, "role", "") == "center_admin":
+        if user.branch_id and (getattr(test, "branch_id", None) == user.branch_id or (test.course and getattr(test.course, "branch_id", None) == user.branch_id)):
+            return True
+        if hasattr(user, "owned_centers") and user.owned_centers.filter(branches__groups__assigned_tests=test).exists():
+            return True
+        if attempt and (attempt.student.branch_id == user.branch_id or (getattr(user, "learning_center_id", None) and attempt.student.learning_center_id == user.learning_center_id)):
+            return True
+        if test.created_by and test.created_by.branch_id == user.branch_id:
+            return True
+        return False
 
     # Teachers can inspect tests they authored or tests linked to their courses/groups
     if getattr(user, "role", "") == "teacher":
+        if test.created_by_id == user.id:
+            return True
         if test.course and test.course.teacher_id == user.id:
             return True
-        # If the test belongs to a group taught by this teacher
         if hasattr(user, "teacher_groups") and user.teacher_groups.filter(id=getattr(test, "group_id", None)).exists():
             return True
-        # If the teacher authored the test or is an instructor
-        return True
+        if test.group_assignments.filter(group__teacher=user).exists():
+            return True
+        if attempt:
+            if hasattr(user, "managed_groups") and user.managed_groups.filter(students=attempt.student).exists():
+                return True
+            if hasattr(user, "teacher_groups") and user.teacher_groups.filter(students=attempt.student).exists():
+                return True
+        return False
 
     # Student viewing their own attempt
     if attempt and attempt.student_id == user.id:

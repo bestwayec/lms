@@ -236,6 +236,11 @@ def enterprise_create_center_view(request):
     - GET: foydalanuvchiga tegishli markazlar ro'yxati
     """
     user = request.user
+    if getattr(user, "role", None) == "student" and not user.is_superuser:
+        return Response(
+            {"error": "O'quvchilar uchun markaz boshqaruvi ruxsat etilmagan."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
     if request.method == "GET":
         if user.is_superuser or user.role == "admin":
             qs = LearningCenter.objects.all().order_by("-created_at")
@@ -311,7 +316,7 @@ def enterprise_create_center_view(request):
                 address=address,
             )
 
-        if getattr(user, "role", None) == "student" and not user.is_superuser:
+        if getattr(user, "role", None) not in ("admin", "center_admin") and not user.is_superuser:
             user.role = "center_admin"
         if not user.learning_center:
             user.learning_center = center

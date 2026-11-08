@@ -12,8 +12,18 @@ def is_platform_admin(user) -> bool:
         and user.is_active
         and (
             getattr(user, "is_superuser", False)
-            or getattr(user, "role", None) in ("admin", "center_admin")
+            or getattr(user, "role", None) == "admin"
         )
+    )
+
+
+def is_center_admin(user) -> bool:
+    """True if user is specifically a branch / learning center admin."""
+    return bool(
+        user
+        and user.is_authenticated
+        and user.is_active
+        and getattr(user, "role", None) == "center_admin"
     )
 
 

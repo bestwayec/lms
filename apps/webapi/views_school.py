@@ -29,6 +29,13 @@ from .serializers import GroupMemberSerializer, StudentGroupSerializer
 def _teacher_groups(user):
     if is_platform_admin(user):
         return StudentGroup.objects.all()
+    if getattr(user, "role", None) == "center_admin":
+        scope = Q(branch__director=user) | Q(branch__center__owner=user)
+        if getattr(user, "branch_id", None):
+            scope |= Q(branch_id=user.branch_id)
+        if getattr(user, "learning_center_id", None):
+            scope |= Q(branch__center_id=user.learning_center_id)
+        return StudentGroup.objects.filter(scope).distinct()
     return StudentGroup.objects.filter(teacher=user)
 
 
@@ -48,8 +55,10 @@ def groups_view(request):
         subject = str(request.data.get("subject", "uzbek") or "uzbek").strip().lower()
         if subject not in ("uzbek", "english"):
             subject = "uzbek"
+        branch = getattr(request.user, "branch", None)
         group = StudentGroup.objects.create(
             teacher=teacher,
+            branch=branch,
             name=name,
             subject=subject,
             description=str(request.data.get("description", "")),
