@@ -13,7 +13,14 @@ export default function Essays({
 }) {
   const { t } = useLang();
   const [view, setView] = useState<View>('topics');
-  const [topics, setTopics] = useState<TmaEssayTopic[] | null>(null);
+  const [topics, setTopics] = useState<TmaEssayTopic[] | null>(() => {
+    try {
+      const raw = localStorage.getItem('tma_cached_topics');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
   const [error, setError] = useState<string | null>(null);
   const [passwordFor, setPasswordFor] = useState<number | null>(null);
   const [password, setPassword] = useState('');
@@ -45,9 +52,15 @@ export default function Essays({
     setError(null);
     try {
       const data = await TmaApi.essayTopics();
-      setTopics(data.topics ?? []);
+      const newTopics = data.topics ?? [];
+      setTopics(newTopics);
+      try {
+        localStorage.setItem('tma_cached_topics', JSON.stringify(newTopics));
+      } catch {
+        /* ignore storage quota */
+      }
     } catch (e) {
-      setError(tmaErrorMessage(e, t('tma_loading_error')));
+      if (!topics) setError(tmaErrorMessage(e, t('tma_loading_error')));
     }
   };
 

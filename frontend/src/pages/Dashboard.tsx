@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useLang } from '../i18n/LangContext';
@@ -18,12 +18,13 @@ import { formatDisplayName } from '../lib/displayName';
 import { essayKind, essayStatus, scoreLabel } from '../lib/essays';
 import { useSubject } from '../lib/useSubject';
 import { daysLeft, useEntitlement, useTier } from '../lib/useTier';
-import OnboardingModal from '../components/OnboardingModal';
 import PlanBadge from '../components/PlanBadge';
 import { Zap, Target, Flame, ArrowRight, ChevronRight, KeyRound, Award, Trophy } from 'lucide-react';
 import { hapticSelect, hapticImpact, hapticNotify } from '../lib/haptics';
 import ReferralCard from '../components/ReferralCard';
-import DailyBlitzModal from '../components/DailyBlitzModal';
+
+const OnboardingModal = lazy(() => import('../components/OnboardingModal'));
+const DailyBlitzModal = lazy(() => import('../components/DailyBlitzModal'));
 
 const CURATED_RADAR_TOPICS: Record<string, { label: string; percentage: number; needsReview: boolean }[]> = {
   biology: [
@@ -907,17 +908,25 @@ export default function Dashboard() {
 
       {isStudent && <ReferralCard variant="compact" />}
 
-      <OnboardingModal isOpen={onboardingOpen} onClose={() => setOnboardingOpen(false)} onSuccess={() => setOnboardingOpen(false)} />
+      {onboardingOpen && (
+        <Suspense fallback={null}>
+          <OnboardingModal isOpen={onboardingOpen} onClose={() => setOnboardingOpen(false)} onSuccess={() => setOnboardingOpen(false)} />
+        </Suspense>
+      )}
 
-      <DailyBlitzModal
-        isOpen={blitzModalOpen}
-        onClose={() => setBlitzModalOpen(false)}
-        subject={subject}
-        onCompleted={() => {
-          GamificationApi.streak().then(setStreakData).catch(() => {});
-          load();
-        }}
-      />
+      {blitzModalOpen && (
+        <Suspense fallback={null}>
+          <DailyBlitzModal
+            isOpen={blitzModalOpen}
+            onClose={() => setBlitzModalOpen(false)}
+            subject={subject}
+            onCompleted={() => {
+              GamificationApi.streak().then(setStreakData).catch(() => {});
+              load();
+            }}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

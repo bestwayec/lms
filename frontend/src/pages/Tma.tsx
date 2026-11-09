@@ -27,7 +27,14 @@ export default function Tma() {
   const { t, setLang } = useLang();
   const [boot, setBoot] = useState<Boot>('boot');
   const [error, setError] = useState<string | null>(null);
-  const [profile, setProfile] = useState<TmaProfile | null>(null);
+  const [profile, setProfile] = useState<TmaProfile | null>(() => {
+    try {
+      const raw = localStorage.getItem('tma_cached_profile');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
   const [tab, setTab] = useState<Tab>('home');
   const [activeTestId, setActiveTestId] = useState<number | null>(null);
   const backHandlerRef = useRef<(() => void) | null>(null);
@@ -95,11 +102,38 @@ export default function Tma() {
         if (cancelled) return;
         if (!data.tokens || !data.user) throw new Error('Telegram auth failed');
         loginWithTelegram(data.tokens, data.user);
-        const prof = await TmaApi.profile();
-        if (cancelled) return;
         clearTimeout(timeoutId);
-        setProfile(prof);
+
+        // Immediate responsive transition: construct baseline profile so UI renders with 0 delay
+        const u = data.user as { id?: number | string; email?: string; full_name?: string; role?: string };
+        setProfile((prev) => prev ?? {
+          user: {
+            id: Number(u.id) || 0,
+            email: String(u.email || ''),
+            full_name: String(u.full_name || ''),
+            role: String(u.role || 'student'),
+          },
+          stats: {
+            tests_taken: 0,
+            tests_passed: 0,
+            certificates: 0,
+            total_xp: 0,
+            essays_written: 0,
+          },
+        });
         setBoot('ready');
+
+        // Refresh stats concurrently in background without blocking screen render
+        TmaApi.profile().then((prof) => {
+          if (!cancelled && prof) {
+            setProfile(prof);
+            try {
+              localStorage.setItem('tma_cached_profile', JSON.stringify(prof));
+            } catch {
+              /* ignore storage quota */
+            }
+          }
+        }).catch(() => undefined);
       } catch (e) {
         if (cancelled) return;
         clearTimeout(timeoutId);

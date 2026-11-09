@@ -325,33 +325,36 @@ class DailyBlitzView(APIView):
         if subject not in FALLBACK_BLITZ_QUESTIONS:
             subject = "uzbek"
 
-        # Attempt to sample 5 random single choice questions from DB
-        db_questions = list(
-            Question.objects.filter(
-                test__subject=subject,
-                question_type=Question.QuestionType.SINGLE_CHOICE,
+        # Attempt to sample 5 random single choice questions from DB (cached candidate pool)
+        from django.core.cache import cache
+
+        cache_key = f"blitz_cand_pool_v1:{subject}"
+        cand_pool = cache.get(cache_key)
+        if cand_pool is None:
+            db_questions = list(
+                Question.objects.filter(
+                    test__subject=subject,
+                    question_type=Question.QuestionType.SINGLE_CHOICE,
+                )
+                .prefetch_related("choices")
+                .filter(choices__isnull=False)
+                .distinct()[:50]
             )
-            .prefetch_related("choices")
-            .filter(choices__isnull=False)
-            .distinct()[:25]
-        )
+            cand_pool = [
+                {
+                    "id": q.id,
+                    "text": q.text,
+                    "choices": [{"id": c.id, "text": c.text} for c in q.choices.all()],
+                    "subject": subject,
+                }
+                for q in db_questions
+                if q.choices.exists()
+            ]
+            cache.set(cache_key, cand_pool, timeout=300)
 
         formatted_questions = []
-        if len(db_questions) >= 5:
-            sampled = random.sample(db_questions, 5)
-            for q in sampled:
-                choices = [
-                    {"id": c.id, "text": c.text}
-                    for c in q.choices.all()
-                ]
-                formatted_questions.append(
-                    {
-                        "id": q.id,
-                        "text": q.text,
-                        "choices": choices,
-                        "subject": subject,
-                    }
-                )
+        if len(cand_pool) >= 5:
+            formatted_questions = random.sample(cand_pool, 5)
         else:
             # Use curated fallback express questions
             pool = FALLBACK_BLITZ_QUESTIONS.get(subject, FALLBACK_BLITZ_QUESTIONS["uzbek"])

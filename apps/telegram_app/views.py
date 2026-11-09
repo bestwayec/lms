@@ -226,15 +226,30 @@ def tma_index_view(request: HttpRequest) -> HttpResponse:
 def tma_profile_view(request: Request) -> Response:
     """GET /api/telegram/profile/ — Current user profile for TMA."""
     user = request.user
-    from apps.results.models import Result, Certificate
-    from apps.games.models import UserGameScore
-    from apps.essays.models import EssaySubmission
+    from django.core.cache import cache
 
-    # Quick stats
-    results = Result.objects.filter(student=user)
-    game_scores = UserGameScore.objects.filter(user=user)
-    certificates = Certificate.objects.filter(student=user)
-    essays = EssaySubmission.objects.filter(student=user)
+    cache_key = f"tma_prof_stats:{user.id}"
+    cached_stats = cache.get(cache_key)
+
+    if cached_stats is None:
+        from apps.results.models import Result, Certificate
+        from apps.games.models import UserGameScore
+        from apps.essays.models import EssaySubmission
+        from django.db.models import Sum
+
+        results = Result.objects.filter(student=user)
+        total_xp = (
+            UserGameScore.objects.filter(user=user).aggregate(total=Sum("total_xp"))["total"]
+            or 0
+        )
+        cached_stats = {
+            "tests_taken": results.count(),
+            "tests_passed": results.filter(is_passed=True).count(),
+            "certificates": Certificate.objects.filter(student=user).count(),
+            "total_xp": total_xp,
+            "essays_written": EssaySubmission.objects.filter(student=user).count(),
+        }
+        cache.set(cache_key, cached_stats, timeout=60)
 
     return Response(
         {
@@ -244,13 +259,7 @@ def tma_profile_view(request: Request) -> Response:
                 "full_name": user.get_full_name(),
                 "role": user.role,
             },
-            "stats": {
-                "tests_taken": results.count(),
-                "tests_passed": results.filter(is_passed=True).count(),
-                "certificates": certificates.count(),
-                "total_xp": sum(gs.total_xp for gs in game_scores),
-                "essays_written": essays.count(),
-            },
+            "stats": cached_stats,
         }
     )
 
@@ -352,30 +361,34 @@ def tma_arena_view(request: Request) -> Response:
 @permission_classes([IsAuthenticated])
 def tma_tests_view(request: Request) -> Response:
     """GET /api/telegram/tests/ — Available tests for TMA."""
-    from apps.tests.models import Test
+    from django.core.cache import cache
 
-    tests = (
-        Test.objects.filter(is_active=True)
-        .select_related("course")
-        .order_by("-created_at")[:20]
-    )
+    cache_key = "tma_tests_active_v1"
+    tests_payload = cache.get(cache_key)
 
-    return Response(
-        {
-            "tests": [
-                {
-                    "id": t.id,
-                    "title": t.title,
-                    "description": t.description,
-                    "course": t.course.title if t.course else "",
-                    "time_limit_minutes": t.time_limit_minutes,
-                    "total_questions": t.total_questions,
-                    "difficulty": t.difficulty,
-                }
-                for t in tests
-            ],
-        }
-    )
+    if tests_payload is None:
+        from apps.tests.models import Test
+
+        tests = (
+            Test.objects.filter(is_active=True)
+            .select_related("course")
+            .order_by("-created_at")[:20]
+        )
+        tests_payload = [
+            {
+                "id": t.id,
+                "title": t.title,
+                "description": t.description,
+                "course": t.course.title if t.course else "",
+                "time_limit_minutes": t.time_limit_minutes,
+                "total_questions": t.total_questions,
+                "difficulty": t.difficulty,
+            }
+            for t in tests
+        ]
+        cache.set(cache_key, tests_payload, timeout=60)
+
+    return Response({"tests": tests_payload})
 
 
 # -----------------------------------------------------------------------

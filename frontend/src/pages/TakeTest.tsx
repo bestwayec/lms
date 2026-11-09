@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -14,8 +14,12 @@ import {
 import { useLang } from '../i18n/LangContext';
 import FeedbackPrompt from '../components/FeedbackPrompt';
 import FormulaText from '../components/FormulaText';
-import PeriodicTableModal from '../components/PeriodicTableModal';
 import { Tests as TestsApi } from '../lib/api';
+
+const PeriodicTableModal = lazy(() => import('../components/PeriodicTableModal'));
+const StreakCelebrationModal = lazy(() =>
+  import('../components/StreakBadge').then((m) => ({ default: m.StreakCelebrationModal }))
+);
 import AudioPlayerBar from '../components/AudioPlayerBar';
 import {
   GapFillInput,
@@ -37,7 +41,6 @@ import { hapticImpact, hapticNotify } from '../lib/haptics';
 import { ClockIcon } from '../components/icons';
 import TiltCard from '../components/TiltCard';
 import confetti from 'canvas-confetti';
-import { StreakCelebrationModal } from '../components/StreakBadge';
 import { getTokens } from '../lib/api';
 import {
   cacheExamData,
@@ -1900,10 +1903,14 @@ export default function TakeTest() {
       )}
 
       {/* Chemistry Periodic Table Modal */}
-      <PeriodicTableModal
-        isOpen={showPeriodicModal}
-        onClose={() => setShowPeriodicModal(false)}
-      />
+      {showPeriodicModal && (
+        <Suspense fallback={null}>
+          <PeriodicTableModal
+            isOpen={showPeriodicModal}
+            onClose={() => setShowPeriodicModal(false)}
+          />
+        </Suspense>
+      )}
 
       {/* Mode switch, hotkey hints, quick finish button */}
       <div className="test-top-bar">
@@ -2963,10 +2970,12 @@ export default function TakeTest() {
         </div>
       )}
       {streakCelebration !== null && (
-        <StreakCelebrationModal
-          streakCount={streakCelebration}
-          onClose={() => setStreakCelebration(null)}
-        />
+        <Suspense fallback={null}>
+          <StreakCelebrationModal
+            streakCount={streakCelebration}
+            onClose={() => setStreakCelebration(null)}
+          />
+        </Suspense>
       )}
     </div>
   );

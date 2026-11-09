@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   GraduationCap,
@@ -20,7 +20,8 @@ import {
 import { StudentGroupDetailApi, type StudentGroupViewData } from '../lib/api';
 import { useToast } from '../context/ToastContext';
 import { useLang } from '../i18n/LangContext';
-import ClassroomQrModal from '../components/ClassroomQrModal';
+
+const ClassroomQrModal = lazy(() => import('../components/ClassroomQrModal'));
 
 function getInitials(name: string): string {
   if (!name) return 'S';
@@ -989,15 +990,19 @@ export default function StudentGroupDetail() {
       </div>
 
       {/* Classroom Projector QR Modal */}
-      <ClassroomQrModal
-        isOpen={qrOpen}
-        onClose={() => setQrOpen(false)}
-        title={group.name}
-        code={group.invite_code}
-        webUrl={`${window.location.origin}/groups/${group.id}`}
-        tmaUrl={`https://t.me/grandec_bot/app?startapp=group_${group.id}`}
-        subtitle="Sinfxona proyektorida yoki telefonda o'quvchilarga ko'rsating — guruhga qo'shilish va vazifalarni ochish uchun"
-      />
+      {qrOpen && (
+        <Suspense fallback={null}>
+          <ClassroomQrModal
+            isOpen={qrOpen}
+            onClose={() => setQrOpen(false)}
+            title={group.name}
+            code={group.invite_code}
+            webUrl={`${window.location.origin}/groups/${group.id}`}
+            tmaUrl={`https://t.me/grandec_bot/app?startapp=group_${group.id}`}
+            subtitle="Sinfxona proyektorida yoki telefonda o'quvchilarga ko'rsating — guruhga qo'shilish va vazifalarni ochish uchun"
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

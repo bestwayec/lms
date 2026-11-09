@@ -20,8 +20,22 @@ export default function Home({
   onOpenTest: (testId: number) => void;
 }) {
   const { t } = useLang();
-  const [tests, setTests] = useState<TmaTestSummary[] | null>(null);
-  const [results, setResults] = useState<TmaResultItem[] | null>(null);
+  const [tests, setTests] = useState<TmaTestSummary[] | null>(() => {
+    try {
+      const raw = localStorage.getItem('tma_cached_tests');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [results, setResults] = useState<TmaResultItem[] | null>(() => {
+    try {
+      const raw = localStorage.getItem('tma_cached_results');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -35,10 +49,18 @@ export default function Home({
         ]);
         if (!alive) return;
         if (!profile) onProfileLoaded(p);
-        setTests(ts.tests ?? []);
-        setResults(rs.results ?? []);
+        const newTests = ts.tests ?? [];
+        const newResults = rs.results ?? [];
+        setTests(newTests);
+        setResults(newResults);
+        try {
+          localStorage.setItem('tma_cached_tests', JSON.stringify(newTests));
+          localStorage.setItem('tma_cached_results', JSON.stringify(newResults));
+        } catch {
+          /* ignore storage quota */
+        }
       } catch (e) {
-        if (alive) setError(tmaErrorMessage(e, t('tma_loading_error')));
+        if (alive && !tests) setError(tmaErrorMessage(e, t('tma_loading_error')));
       }
     })();
     return () => {
