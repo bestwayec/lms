@@ -7,6 +7,7 @@ import {
   DashboardApi,
   GamificationApi,
   PaymentsApi,
+  MockTests,
   type DashboardData,
   type DashboardRecent,
   type DashboardWeakPart,
@@ -19,7 +20,8 @@ import { useSubject } from '../lib/useSubject';
 import { daysLeft, useEntitlement, useTier } from '../lib/useTier';
 import OnboardingModal from '../components/OnboardingModal';
 import PlanBadge from '../components/PlanBadge';
-import { Zap, Target, Users, Swords, Flame, ArrowRight, ChevronRight } from 'lucide-react';
+import { Zap, Target, Flame, ArrowRight, ChevronRight, KeyRound, Award, Trophy } from 'lucide-react';
+import { hapticSelect, hapticImpact, hapticNotify } from '../lib/haptics';
 import ReferralCard from '../components/ReferralCard';
 
 const CURATED_RADAR_TOPICS: Record<string, { label: string; percentage: number; needsReview: boolean }[]> = {
@@ -101,6 +103,40 @@ export default function Dashboard() {
   const [pendingReceipt, setPendingReceipt] = useState<PaymentReceiptItem | null>(null);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [streakData, setStreakData] = useState<StreakInfoResponse | null>(null);
+  const [pinCode, setPinCode] = useState('');
+  const [pinBusy, setPinBusy] = useState(false);
+  const [pinErr, setPinErr] = useState<string | null>(null);
+
+  const handleJoinByPin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = pinCode.trim();
+    if (!clean) return;
+    setPinBusy(true);
+    setPinErr(null);
+    hapticImpact('light');
+    try {
+      if (clean.toLowerCase().startsWith('group_')) {
+        navigate(`/groups/${clean.replace(/group_/i, '')}`);
+        return;
+      }
+      if (/^\d+$/.test(clean)) {
+        navigate(`/tests/${clean}`);
+        return;
+      }
+      const res = await MockTests.join(clean);
+      if (res && res.attempt_id) {
+        hapticNotify('success');
+        navigate(`/take/${res.attempt_id}`);
+        return;
+      }
+      navigate(`/tests?code=${encodeURIComponent(clean)}`);
+    } catch (err: unknown) {
+      setPinErr(err instanceof Error ? err.message : "Kiritilgan kod bo'yicha test topilmadi");
+      hapticNotify('error');
+    } finally {
+      setPinBusy(false);
+    }
+  };
 
   const role = (user?.role || '').toLowerCase();
   const isStudent = !(role === 'teacher' || role === 'admin' || role === 'superadmin' || role === 'center_admin' || user?.is_superuser);
@@ -380,117 +416,202 @@ export default function Dashboard() {
         )}
       </section>
 
-      {/* 2. TEZKOR HARAKAT TUGMALARI (2X2 MOBILE TILES) */}
+      {/* 2. O'QUVCHI UCHUN 3 TA ASOSIY TOP BLOK (ZERO-CLUTTER) */}
       {isStudent && (
-        <section className="mb-6" aria-label="Tezkor Harakatlar">
-          <div className="grid grid-cols-2 gap-3">
-            {/* Tile 1: Tezkor Diagnostika */}
-            <Link
-              to="/tests"
-              className="flex items-center gap-3 p-3.5 rounded-2xl border transition-all active:scale-[0.98] hover:border-amber-400/50"
-              style={{
-                minHeight: '64px',
-                background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(217, 119, 6, 0.2))',
-                borderColor: 'rgba(245, 158, 11, 0.35)',
-                boxShadow: '0 4px 14px rgba(0, 0, 0, 0.15)',
-              }}
-            >
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                style={{ background: 'rgba(245, 158, 11, 0.22)', color: '#f59e0b', boxShadow: '0 0 10px rgba(245, 158, 11, 0.35)' }}
+        <section className="mb-6 space-y-4" aria-label="Asosiy Harakatlar">
+          {/* BLOK 1: TEZKOR KOD BILAN TESTGA KIRISH */}
+          <div
+            className="rounded-2xl p-4 md:p-5 border transition-all"
+            style={{
+              background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%)',
+              borderColor: 'rgba(56, 189, 248, 0.3)',
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.25)',
+            }}
+          >
+            <div className="flex items-center gap-2.5 mb-2">
+              <div className="w-8 h-8 rounded-lg bg-sky-500/15 text-sky-400 flex items-center justify-center border border-sky-500/25 shrink-0">
+                <KeyRound size={18} />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-white tracking-tight">
+                  Tezkor kod bilan testga kirish
+                </h2>
+                <p className="text-xs text-slate-400">
+                  Ustoz bergan 4-6 xonali test yoki mock kodini kiriting
+                </p>
+              </div>
+            </div>
+            <form onSubmit={handleJoinByPin} className="mt-3 flex items-center gap-2">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={pinCode}
+                  onChange={(e) => {
+                    setPinCode(e.target.value);
+                    if (pinErr) setPinErr(null);
+                  }}
+                  placeholder="Masalan: MOCK-42 yoki 105"
+                  className="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-400 font-mono tracking-wider transition-colors"
+                  disabled={pinBusy}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={pinBusy || !pinCode.trim()}
+                className="px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider bg-gradient-to-r from-sky-500 to-sky-600 text-slate-950 hover:from-sky-400 hover:to-sky-500 active:scale-95 disabled:opacity-50 transition-all flex items-center gap-1.5 shrink-0 shadow-lg shadow-sky-500/20"
               >
-                <Zap size={22} className="text-amber-400" />
+                <span>{pinBusy ? 'Tekshirilmoqda…' : '🚀 Kirish'}</span>
+              </button>
+            </form>
+            {pinErr && (
+              <div className="text-xs text-rose-400 font-medium mt-2 flex items-center gap-1">
+                <span>⚠️ {pinErr}</span>
               </div>
-              <div className="min-w-0">
-                <div className="font-extrabold text-sm text-white tracking-tight leading-tight">
-                  Tezkor Diagnostika
-                </div>
-                <div className="text-[11px] text-amber-200/80 font-medium truncate mt-0.5">
-                  15 talik ekspress test
-                </div>
-              </div>
-            </Link>
+            )}
+          </div>
 
-            {/* Tile 2: Zaif Mavzularim */}
-            <a
-              href="#weak-topics-radar"
-              className="flex items-center gap-3 p-3.5 rounded-2xl border transition-all active:scale-[0.98] hover:border-rose-400/50"
-              style={{
-                minHeight: '64px',
-                background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(220, 38, 38, 0.2))',
-                borderColor: 'rgba(239, 68, 68, 0.35)',
-                boxShadow: '0 4px 14px rgba(0, 0, 0, 0.15)',
-              }}
-            >
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                style={{ background: 'rgba(239, 68, 68, 0.22)', color: '#ef4444', boxShadow: '0 0 10px rgba(239, 68, 68, 0.35)' }}
+          {/* BLOK 2: KUNLIK 5 TALIK BLITS-TEST */}
+          <div
+            className="rounded-2xl p-4 md:p-5 border transition-all relative overflow-hidden"
+            style={{
+              background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(217, 119, 6, 0.22) 100%)',
+              borderColor: 'rgba(245, 158, 11, 0.4)',
+              boxShadow: '0 8px 24px rgba(245, 158, 11, 0.12)',
+            }}
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/35 shrink-0 shadow-[0_0_12px_rgba(245,158,11,0.3)]">
+                  <Zap size={22} className="text-amber-400 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30 inline-flex items-center gap-1">
+                      <Flame size={12} className="text-amber-400" /> +25 XP Olov
+                    </span>
+                    <span className="text-[11px] font-semibold text-slate-300">
+                      5 daqiqa • 5 ta savol
+                    </span>
+                  </div>
+                  <h2 className="text-base font-extrabold text-white tracking-tight">
+                    Kunlik 5 talik Blits-test
+                  </h2>
+                  <p className="text-xs text-slate-300 mt-0.5">
+                    {subject === 'biology' ? '🧬 Biologiya' : subject === 'chemistry' ? '🧪 Kimyo' : subject === 'law' ? '⚖️ Huquq' : subject === 'english' ? '🇬🇧 English' : '🇺🇿 Ona tili'} bo'yicha bugungi ekspress sinov
+                  </p>
+                </div>
+              </div>
+              <Link
+                to="/tests?mode=blitz"
+                onClick={() => hapticImpact('medium')}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-xs uppercase tracking-wider bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 hover:from-amber-400 hover:to-amber-500 active:scale-95 transition-all shadow-lg shadow-amber-500/25 shrink-0"
               >
-                <Target size={22} className="text-rose-400" />
-              </div>
-              <div className="min-w-0">
-                <div className="font-extrabold text-sm text-white tracking-tight leading-tight">
-                  Zaif Mavzularim
-                </div>
-                <div className="text-[11px] text-rose-200/80 font-medium truncate mt-0.5">
-                  AI xatolar tahlili
-                </div>
-              </div>
-            </a>
+                <span>⚡️ Blits-testni boshlash</span>
+                <ArrowRight size={14} />
+              </Link>
+            </div>
+          </div>
 
-            {/* Tile 3: Guruh Vazifasi */}
-            <Link
-              to="/groups"
-              className="flex items-center gap-3 p-3.5 rounded-2xl border transition-all active:scale-[0.98] hover:border-sky-400/50"
+          {/* BLOK 3: OXIRGI NATIJAM VA GURUHIM REYTINGI */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            {/* Sub-card A: Oxirgi natijam */}
+            <div
+              className="rounded-2xl p-4 border transition-all flex flex-col justify-between"
               style={{
-                minHeight: '64px',
-                background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.12), rgba(2, 132, 199, 0.2))',
-                borderColor: 'rgba(14, 165, 233, 0.35)',
-                boxShadow: '0 4px 14px rgba(0, 0, 0, 0.15)',
+                background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.85) 100%)',
+                borderColor: 'rgba(16, 185, 129, 0.3)',
+                boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
               }}
             >
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                style={{ background: 'rgba(14, 165, 233, 0.22)', color: '#0ea5e9', boxShadow: '0 0 10px rgba(14, 165, 233, 0.35)' }}
-              >
-                <Users size={22} className="text-sky-400" />
-              </div>
-              <div className="min-w-0">
-                <div className="font-extrabold text-sm text-white tracking-tight leading-tight">
-                  Guruh Vazifasi
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center border border-emerald-500/25">
+                    <Award size={16} />
+                  </div>
+                  <span className="text-xs font-bold text-slate-200">Oxirgi natijam</span>
                 </div>
-                <div className="text-[11px] text-sky-200/80 font-medium truncate mt-0.5">
-                  Ustoz biriktirgan testlar
-                </div>
+                {data?.recent?.[0] && (
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    {recentSummary(data.recent[0])}
+                  </span>
+                )}
               </div>
-            </Link>
+              {data?.recent?.[0] ? (
+                <div>
+                  <p className="text-sm font-bold text-white truncate mb-2">
+                    {data.recent[0].title || 'Test sinovi'}
+                  </p>
+                  <Link
+                    to={`/results/${data.recent[0].result_id}`}
+                    onClick={() => hapticSelect()}
+                    className="text-xs font-bold text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1 transition-colors"
+                  >
+                    <span>Tahlil va xatolarni ko&apos;rish</span>
+                    <ChevronRight size={14} />
+                  </Link>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-xs text-slate-400 mb-2">
+                    Hali test topshirmadingiz. Bugungi birinchi testingizni yeching!
+                  </p>
+                  <Link
+                    to="/tests"
+                    onClick={() => hapticSelect()}
+                    className="text-xs font-bold text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1 transition-colors"
+                  >
+                    <span>Testlar ro&apos;yxatiga o&apos;tish</span>
+                    <ChevronRight size={14} />
+                  </Link>
+                </div>
+              )}
+            </div>
 
-            {/* Tile 4: 1v1 Duel Arena */}
-            <Link
-              to="/arena"
-              className="flex items-center gap-3 p-3.5 rounded-2xl border transition-all active:scale-[0.98] hover:border-violet-400/50"
+            {/* Sub-card B: Guruhim reytingi */}
+            <div
+              className="rounded-2xl p-4 border transition-all flex flex-col justify-between"
               style={{
-                minHeight: '64px',
-                background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.12), rgba(147, 51, 234, 0.2))',
-                borderColor: 'rgba(168, 85, 247, 0.35)',
-                boxShadow: '0 4px 14px rgba(0, 0, 0, 0.15)',
+                background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.85) 100%)',
+                borderColor: 'rgba(168, 85, 247, 0.3)',
+                boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
               }}
             >
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                style={{ background: 'rgba(168, 85, 247, 0.22)', color: '#a855f7', boxShadow: '0 0 10px rgba(168, 85, 247, 0.35)' }}
-              >
-                <Swords size={22} className="text-violet-400" />
-              </div>
-              <div className="min-w-0">
-                <div className="font-extrabold text-sm text-white tracking-tight leading-tight">
-                  1v1 Duel Arena
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-purple-500/15 text-purple-400 flex items-center justify-center border border-purple-500/25">
+                    <Trophy size={16} />
+                  </div>
+                  <span className="text-xs font-bold text-slate-200">Guruhim reytingi</span>
                 </div>
-                <div className="text-[11px] text-violet-200/80 font-medium truncate mt-0.5">
-                  Kursdosh bilan bellashuv
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                  Podium &amp; Reyting
+                </span>
+              </div>
+              <div>
+                <p className="text-xs text-slate-300 mb-2">
+                  Guruhdoshlaringiz orasidagi o&apos;rningiz va haftalik ballarni kuzatib boring.
+                </p>
+                <div className="flex items-center gap-3">
+                  <Link
+                    to="/groups"
+                    onClick={() => hapticSelect()}
+                    className="text-xs font-bold text-purple-400 hover:text-purple-300 inline-flex items-center gap-1 transition-colors"
+                  >
+                    <span>Guruhim vedomosti</span>
+                    <ChevronRight size={14} />
+                  </Link>
+                  <span className="text-slate-600">·</span>
+                  <Link
+                    to="/leaderboard"
+                    onClick={() => hapticSelect()}
+                    className="text-xs font-bold text-amber-400 hover:text-amber-300 inline-flex items-center gap-1 transition-colors"
+                  >
+                    <span>Umumiy reyting</span>
+                    <ChevronRight size={14} />
+                  </Link>
                 </div>
               </div>
-            </Link>
+            </div>
           </div>
         </section>
       )}

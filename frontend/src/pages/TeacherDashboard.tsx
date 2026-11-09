@@ -155,6 +155,100 @@ export default function TeacherDashboard() {
       </h1>
       {err && <p className="error" role="alert">{err}</p>}
 
+      {/* 🌟 USTOZ BOSHQARUV PANELINING ASOSIY 2 TA FOKUSI */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))', gap: '16px', marginBottom: '20px', marginTop: '16px' }}>
+        {/* FOKUS 1: YANGI TEST YARATISH */}
+        <div
+          className="card"
+          style={{
+            margin: 0,
+            background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(217, 119, 6, 0.2) 100%)',
+            border: '1.5px solid rgba(245, 158, 11, 0.4)',
+            borderRadius: '16px',
+            padding: '20px',
+            boxShadow: '0 8px 24px rgba(245, 158, 11, 0.12)',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <span style={{ fontSize: 24 }}>✨</span>
+              <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800 }}>Yangi Test Yaratish</h2>
+            </div>
+            <p className="muted small" style={{ margin: '0 0 16px', lineHeight: 1.5 }}>
+              Qog&apos;oz/PDF rasmidan 1 soniyada AI yordamida test tuzing yoki Smart Konstruktorda erkin yarating.
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <Link
+              to="/teacher/ai-converter"
+              className="btn primary sm"
+              style={{ fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <span>✨</span> AI Vision Konvertor
+            </Link>
+            <Link
+              to="/smart-create"
+              className="btn sm"
+              style={{ fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <span>🛠</span> Test Konstruktori
+            </Link>
+          </div>
+        </div>
+
+        {/* FOKUS 2: GURUHLARIM NATIJASI (VEDOMOST) */}
+        <div
+          className="card"
+          style={{
+            margin: 0,
+            background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.12) 0%, rgba(2, 132, 199, 0.2))',
+            border: '1.5px solid rgba(14, 165, 233, 0.4)',
+            borderRadius: '16px',
+            padding: '20px',
+            boxShadow: '0 8px 24px rgba(14, 165, 233, 0.12)',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <span style={{ fontSize: 24 }}>📊</span>
+              <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800 }}>Guruhlarim Natijasi (Vedomost)</h2>
+            </div>
+            <p className="muted small" style={{ margin: '0 0 16px', lineHeight: 1.5 }}>
+              O&apos;quvchilar natijalari, BMB foizlari va interaktiv davomat jurnali (Vedomost).
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <Link
+              to="/groups"
+              className="btn primary sm"
+              style={{
+                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                background: 'linear-gradient(135deg, #0ea5e9, #0284c7)',
+                borderColor: '#0284c7',
+              }}
+            >
+              <span>📊</span> Guruhlar Vedomosti
+            </Link>
+            <Link
+              to="/tests"
+              className="btn sm"
+              style={{ fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <span>📑</span> Testlar Ro&apos;yxati
+            </Link>
+          </div>
+        </div>
+      </div>
+
       {/* Stat cards — parity with teacher_dashboard.html stat cards that the
           /teacher/ endpoint exposes (students, published tests, essay topics). */}
       <div className="grid">

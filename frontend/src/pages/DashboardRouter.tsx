@@ -8,7 +8,19 @@ export default function DashboardRouter() {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return <p className="route-loading" role="status">Yuklanmoqda…</p>;
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        className="flex flex-col items-center justify-center min-h-[50vh] py-16 px-4"
+      >
+        <div className="relative flex items-center justify-center w-12 h-12 mb-3">
+          <div className="absolute inset-0 rounded-full bg-amber-500/20 blur-xl animate-pulse" />
+          <div className="w-10 h-10 rounded-full border-2 border-amber-500/20 border-t-amber-500 animate-spin" />
+        </div>
+        <span className="text-xs font-semibold text-slate-400">Yuklanmoqda...</span>
+      </div>
+    );
   }
 
   // 1. Admins & Center Admins route directly to the Admin Control Panel

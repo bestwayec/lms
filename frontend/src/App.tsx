@@ -105,7 +105,7 @@ function RouteLoadingFallback() {
     <div
       role="status"
       aria-live="polite"
-      className="flex flex-col items-center justify-center min-h-[50vh] py-16 px-4"
+      className="flex flex-col items-center justify-center min-h-[55vh] py-16 px-4 animate-in fade-in duration-300"
     >
       <div className="relative flex items-center justify-center w-14 h-14 mb-4">
         <div className="absolute inset-0 rounded-full bg-amber-500/20 blur-xl animate-pulse" />

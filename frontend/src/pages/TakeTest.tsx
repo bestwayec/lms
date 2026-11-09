@@ -33,6 +33,7 @@ import {
   type DraftMap,
 } from '../lib/testing';
 import { cleanChoiceText } from '../lib/testParser';
+import { hapticImpact, hapticNotify } from '../lib/haptics';
 import { ClockIcon } from '../components/icons';
 import TiltCard from '../components/TiltCard';
 import confetti from 'canvas-confetti';
@@ -443,6 +444,7 @@ export default function TakeTest() {
           result?: SubmitResult;
         } & SubmitResult;
         const r: SubmitResult = (out.result ?? out) as SubmitResult;
+        hapticNotify('success');
         setResult(r);
         clearDraft(attemptId);
         const streakInfo = (r as any)?.streak_info;
@@ -630,6 +632,7 @@ export default function TakeTest() {
 
   const pick = useCallback(
     (q: Question, choiceId: number) => {
+      hapticImpact('light');
       const cur = answers[q.id] ?? emptyEntry();
       const has = cur.choices.includes(choiceId);
       const chosen =

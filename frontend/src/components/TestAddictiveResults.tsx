@@ -10,6 +10,7 @@ import ScoreCardModal from './ScoreCardModal';
 import QuestionReview from './QuestionReview';
 import QuestionIssueButton from './QuestionIssueButton';
 import { Send, FileText, Share2, Sparkles, AlertTriangle, Crown } from 'lucide-react';
+import { hapticNotify, hapticImpact } from '../lib/haptics';
 
 export interface SubjectAnalysisData {
   kind: 'science_bmb' | 'law_jurisprudence' | string;
@@ -150,6 +151,8 @@ export default function TestAddictiveResults({
   // 1. Dopamine celebration burst on result page mount
   useEffect(() => {
     try {
+      hapticNotify('success');
+      hapticImpact('heavy');
       confetti({
         particleCount: 110,
         spread: 80,

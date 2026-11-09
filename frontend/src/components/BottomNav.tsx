@@ -3,6 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { Home, FileText, Users, Trophy, User } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useLang } from '../i18n/LangContext';
+import { hapticSelect } from '../lib/haptics';
 
 interface BottomNavProps {
   onOpenProfile?: () => void;
@@ -137,7 +138,10 @@ export default function BottomNav({ onOpenProfile }: BottomNavProps) {
           <NavLink
             key={to}
             to={to}
-            onClick={onClick}
+            onClick={(e) => {
+              hapticSelect();
+              if (onClick) onClick(e);
+            }}
             className={`bnav__item ${isActive ? 'is-on is-active' : ''}`}
             aria-current={isActive ? 'page' : undefined}
             style={{

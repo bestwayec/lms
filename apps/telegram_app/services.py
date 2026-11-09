@@ -130,9 +130,20 @@ class TelegramMiniAppService:
     @classmethod
     def _parse_init_data(cls, init_data: str) -> dict[str, str]:
         """Parse URL-encoded initData into dict (Telegram uses x-www-form-urlencoded)."""
-        # parse_qsl handles unquote_plus and duplicate keys (last wins) correctly
+        s = (init_data or "").strip()
+        if s.startswith("?") or s.startswith("#"):
+            s = s[1:]
+        if "tgWebAppData=" in s:
+            from urllib.parse import unquote
+            for part in s.split("&"):
+                if part.startswith("tgWebAppData="):
+                    s = unquote(part[len("tgWebAppData="):])
+                    break
+        if "&" not in s and ("%26" in s or "%3D" in s or "%3d" in s):
+            from urllib.parse import unquote
+            s = unquote(s)
         try:
-            pairs = parse_qsl(init_data, keep_blank_values=True, strict_parsing=False)
+            pairs = parse_qsl(s, keep_blank_values=True, strict_parsing=False)
         except ValueError:
             logger.warning("Failed to parse init_data")
             return {}

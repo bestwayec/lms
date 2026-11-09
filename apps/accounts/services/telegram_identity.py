@@ -82,6 +82,8 @@ def get_or_create_telegram_user(
     User = get_user_model()
     telegram_id = _numeric_telegram_id(telegram_user.get("id"))
 
+    telegram_username = str(telegram_user.get("username", "") or "").lstrip("@")[:64] or None
+
     with transaction.atomic():
         user = (
             User.objects.select_for_update()
@@ -93,6 +95,9 @@ def get_or_create_telegram_user(
                 raise TelegramIdentityUnverified(
                     "Telegram hisobining eski bog'lanishi qayta tasdiqlanishi kerak."
                 )
+            if telegram_username and getattr(user, "telegram_username", None) != telegram_username:
+                user.telegram_username = telegram_username
+                user.save(update_fields=["telegram_username"])
             check_and_promote_superadmin_telegram(user, telegram_id)
             return user, False
 
@@ -118,6 +123,7 @@ def get_or_create_telegram_user(
                     last_name=str(telegram_user.get("last_name", ""))[:150],
                     role=User.Role.STUDENT,
                     telegram_chat_id=telegram_id,
+                    telegram_username=telegram_username,
                     telegram_identity_verified_at=timezone.now(),
                 )
         except IntegrityError:
@@ -129,6 +135,9 @@ def get_or_create_telegram_user(
                 raise TelegramIdentityUnverified(
                     "Telegram hisobining eski bog'lanishi qayta tasdiqlanishi kerak."
                 )
+            if telegram_username and getattr(user, "telegram_username", None) != telegram_username:
+                user.telegram_username = telegram_username
+                user.save(update_fields=["telegram_username"])
             check_and_promote_superadmin_telegram(user, telegram_id)
             return user, False
 

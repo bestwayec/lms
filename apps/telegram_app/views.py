@@ -114,6 +114,7 @@ def tma_auth_view(request: Request) -> Response:
     tg_id = telegram_user["id"]
     first_name = telegram_user.get("first_name", "")
     last_name = telegram_user.get("last_name", "")
+    username = telegram_user.get("username", "")
 
     try:
         user, is_new_user = get_or_create_telegram_user(
@@ -121,6 +122,7 @@ def tma_auth_view(request: Request) -> Response:
                 "id": tg_id,
                 "first_name": first_name,
                 "last_name": last_name,
+                "username": username,
             }
         )
     except TelegramIdentityUnverified as exc:

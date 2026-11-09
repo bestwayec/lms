@@ -3,6 +3,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useLang } from '../i18n/LangContext';
 import { ProfileApi } from '../lib/api';
 import { isValidSubject, type Subject } from '../lib/useSubject';
+import { hapticImpact } from '../lib/haptics';
 
 interface SubjectSwitcherProps {
   className?: string;
@@ -109,6 +110,7 @@ export default function SubjectSwitcher({
 
   const handleSelect = async (nextSubject: Subject) => {
     if (nextSubject === currentSubject || loading) return;
+    hapticImpact('light');
 
     setLoading(true);
     try {

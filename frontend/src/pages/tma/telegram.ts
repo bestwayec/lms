@@ -10,6 +10,7 @@ export interface TelegramBackButton {
 export interface TelegramHaptics {
   impactOccurred: (style: 'light' | 'medium' | 'heavy') => void;
   notificationOccurred: (type: 'error' | 'success' | 'warning') => void;
+  selectionChanged: () => void;
 }
 
 export interface TelegramThemeParams {

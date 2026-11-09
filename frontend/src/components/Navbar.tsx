@@ -46,8 +46,8 @@ export default function Navbar({ streakData, onOpenProfile, pageTitle = 'GRANDEC
       className="topbar app-topbar px-3 md:px-6"
       aria-label={t('topbar_label', 'Yuqori panel')}
       style={{
-        paddingTop: 'max(env(safe-area-inset-top, 0px), 8px)',
-        height: 'calc(56px + max(env(safe-area-inset-top, 0px), 8px))',
+        paddingTop: 'max(env(safe-area-inset-top, 0px), 12px)',
+        height: 'calc(56px + max(env(safe-area-inset-top, 0px), 12px))',
         display: 'flex',
         alignItems: 'center',
         position: 'sticky',
