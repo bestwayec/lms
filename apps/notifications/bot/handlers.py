@@ -6095,9 +6095,9 @@ async def buy_plan_callback(
 
     price = int(plan.price_monthly)
     if not PAYMENT_CARD or not PAYMENT_CARD_BANK or not PAYMENT_CARD_HOLDER:
-        from apps.payments.card import UNAVAILABLE_MESSAGE
+        from apps.payments.card import BOT_UNAVAILABLE_MESSAGE
 
-        await query.edit_message_text(UNAVAILABLE_MESSAGE)
+        await query.edit_message_text(BOT_UNAVAILABLE_MESSAGE)
         return
 
     # Store selected plan in context for screenshot verification
