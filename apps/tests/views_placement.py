@@ -23,18 +23,9 @@ from apps.tests.models import (
 User = get_user_model()
 
 
-_multi_subject_seeded = False
-
-
 def ensure_multi_subject_seed_data() -> None:
     """Idempotently seed Subject rows and default English (IELTS & Multi-level) content."""
-    global _multi_subject_seeded
-    if _multi_subject_seeded:
-        return
-    from django.core.cache import cache
-
-    if cache.get("multi_subject_seeded_v1"):
-        _multi_subject_seeded = True
+    if Subject.objects.filter(slug__in=["uzbek", "english", "biology", "chemistry", "law"]).count() >= 5:
         return
     Subject.objects.update_or_create(
         slug="uzbek",
@@ -86,11 +77,6 @@ def ensure_multi_subject_seed_data() -> None:
             "position": 5,
         },
     )
-
-    # Subject seeding completed (user/teachers create their own tests and essays)
-    cache.set("multi_subject_seeded_v1", True, timeout=86400)
-    _multi_subject_seeded = True
-    return
 
 
 def _resolve_placement_questions(
