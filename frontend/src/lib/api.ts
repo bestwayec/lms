@@ -570,6 +570,14 @@ export interface Attempt {
 
 export const Auth = {
   me: async () => normalizeUser((await api<Record<string, unknown>>('/api/auth/me/'))),
+  updateProfile: async (data: Record<string, unknown>) =>
+    normalizeUser(await api.patch<Record<string, unknown>>('/api/auth/me/', data)),
+  saveOnboarding: async (data: Record<string, unknown>) =>
+    api<Record<string, unknown>>('/api/auth/onboarding/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+      headers: { 'Content-Type': 'application/json' },
+    }),
   requestPasswordReset: async (email: string) => {
     const res = await fetch(`${API_BASE}/api/auth/password-reset/`, {
       method: 'POST',
@@ -2962,6 +2970,9 @@ export interface DashboardDailyGoal {
   reminder_slot?: string;
   level?: string;
   target_exam?: string;
+  target_grade?: string;
+  goal_questions?: number;
+  completed_questions?: number;
   daily_plan_summary?: string;
 }
 

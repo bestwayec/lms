@@ -11,59 +11,22 @@ export interface OnboardingProps {
 }
 
 type ActiveSubject = 'uzbek' | 'english' | 'biology' | 'chemistry' | 'law';
-type TargetExam = 'milliy_sertifikat' | 'cefr' | 'ielts' | 'attestatsiya' | 'other';
+type TargetExam = 'milliy_sertifikat' | 'cefr' | 'ielts' | 'attestatsiya' | 'bmba' | 'biology' | 'chemistry' | 'law' | 'other';
 type PrepLevel = 'zero' | 'beginner' | 'intermediate';
 type ReminderSlot = 'morning' | 'afternoon' | 'evening';
 
-const SUB_SUBJECTS = ['Matematika', 'Huquq', 'Tarix', 'Kimyo/Biologiya'] as const;
-
-const STEP1_OPTIONS = [
-  { id: 'tiktok_instagram', icon: '📱', title: 'TikTok / Instagram', subtitle: 'Ijtimoiy tarmoqlardagi videolar orqali' },
-  { id: 'telegram', icon: '✈️', title: 'Telegram kanal yoki guruhdan', subtitle: 'Rasmiy kanallar va taʼlim guruhlaridan' },
-  { id: 'google', icon: '🔍', title: 'Google Qidiruv', subtitle: 'Internet orqali qidirib topdim' },
-  { id: 'friends', icon: '🤝', title: "Do'stlarim va tanishlarimdan", subtitle: 'Ustoz yoki kursdoshlarim tavsiya qildi' },
-  { id: 'other', icon: '🌐', title: 'Boshqa manbadan', subtitle: "O'quv markazi, reklama yoki boshqa joydan" },
-] as const;
-
-const STEP2_OPTIONS = [
-  {
-    id: 'certificate',
-    icon: '🏆',
-    title: 'Davlat va xalqaro sertifikat olish (BMB / IELTS / CEFR)',
-    subtitle: 'Rasmiy imtihondan yuqori daraja (A+, C1, Band 7.5+) olish',
-  },
-  {
-    id: 'university_grant',
-    icon: '🎓',
-    title: 'Oliygohga grantga kirish va imtiyoz olish',
-    subtitle: 'Maksimal ball va muddatidan oldin 100% imtiyozga ega boʻlish',
-  },
-  {
-    id: 'attestation_bonus',
-    icon: '📜',
-    title: 'Attestatsiya va ustama (Pedagoglar uchun)',
-    subtitle: 'Oliy toifa va 70% vazir jamgʻarmasi ustamasini qoʻlga kiritish',
-  },
-  {
-    id: 'self_development',
-    icon: '💡',
-    title: 'Yangi bilim va shaxsiy rivojlanish',
-    subtitle: 'Savodxonlik, nutq va akademik koʻnikmalarni oshirish',
-  },
-] as const;
-
-const STEP3_OPTIONS: Array<{
+const EXAM_TRACKS: Array<{
   id: TargetExam;
   icon: string;
   title: string;
   subtitle: string;
   active_subject: ActiveSubject;
-  target_exam: TargetExam;
+  target_exam: string;
 }> = [
   {
     id: 'milliy_sertifikat',
     icon: '🇺🇿',
-    title: '🇺🇿 Ona tili va Adabiyot (Milliy sertifikat)',
+    title: 'Ona tili va Adabiyot (Milliy sertifikat)',
     subtitle: 'BMB 45 talik test va 12 mezonli AI Esse tahlili',
     active_subject: 'uzbek',
     target_exam: 'milliy_sertifikat',
@@ -71,7 +34,7 @@ const STEP3_OPTIONS: Array<{
   {
     id: 'cefr',
     icon: '🇬🇧',
-    title: '🇬🇧 Ingliz tili (CEFR Multi-level)',
+    title: 'Ingliz tili (CEFR Multi-level)',
     subtitle: 'B1, B2, C1 darajali CBT Mock, Writing va Speaking',
     active_subject: 'english',
     target_exam: 'cefr',
@@ -79,30 +42,67 @@ const STEP3_OPTIONS: Array<{
   {
     id: 'ielts',
     icon: '🎓',
-    title: '🎓 IELTS Academic / General',
-    subtitle: 'Band 1.0–9.0 CD-IELTS simulyatori, Writing Task 1/2 va Speaking',
+    title: 'IELTS Academic / General',
+    subtitle: 'Band 1.0–9.0 simulyatori, Writing va Speaking baholash',
     active_subject: 'english',
     target_exam: 'ielts',
   },
   {
-    id: 'attestatsiya',
-    icon: '📜',
-    title: '📜 Pedagoglar Attestatsiyasi',
-    subtitle: '50 talik sinov, kasbiy standart va pedagogik mahorat testlari',
-    active_subject: 'uzbek',
-    target_exam: 'attestatsiya',
+    id: 'biology',
+    icon: '🧬',
+    title: 'Biologiya (Milliy sertifikat & DTM)',
+    subtitle: 'Sitologiya, genetika, anatomiya va masalalar tahlili',
+    active_subject: 'biology',
+    target_exam: 'biology',
   },
   {
-    id: 'other',
-    icon: '📚',
-    title: '📚 Boshqa fanlar (Matematika, Huquq, Tarix va b.)',
-    subtitle: 'Qoʻshimcha majburiy va mutaxassislik fanlaridan tayyorgarlik',
+    id: 'chemistry',
+    icon: '🧪',
+    title: 'Kimyo (Milliy sertifikat & DTM)',
+    subtitle: 'Umumiy, anorganik, eritmalar va organik kimyo',
+    active_subject: 'chemistry',
+    target_exam: 'chemistry',
+  },
+  {
+    id: 'law',
+    icon: '⚖️',
+    title: 'Huquqshunoslik (Yurisprudensiya & DTM)',
+    subtitle: 'Konstitutsiya, davlat va huquq nazariyasi, kazus tahlili',
+    active_subject: 'law',
+    target_exam: 'law',
+  },
+  {
+    id: 'bmba',
+    icon: '🏛️',
+    title: 'BMBA (DTM) Davlat Imtihonlari',
+    subtitle: 'Majburiy va mutaxassislik bloklar bo‘yicha to‘liq tayyorgarlik',
     active_subject: 'uzbek',
-    target_exam: 'other',
+    target_exam: 'bmba',
   },
 ];
 
-const STEP4_OPTIONS: Array<{
+const GOAL_OPTIONS = [
+  {
+    id: 'certificate',
+    icon: '🏆',
+    title: 'Davlat yoki xalqaro sertifikat olish',
+    subtitle: 'Rasmiy imtihonda yuqori daraja (A+, C1, Band 7.5+) qo‘lga kiritish',
+  },
+  {
+    id: 'university_grant',
+    icon: '🎓',
+    title: 'Oliygohga davlat granti bilan kirish',
+    subtitle: 'Maksimal ball va muddatidan oldin 100% imtiyozga ega bo‘lish',
+  },
+  {
+    id: 'attestation_bonus',
+    icon: '📜',
+    title: 'Pedagoglar attestatsiyasi va ustama',
+    subtitle: 'Oliy toifa va 70% vazir jamg‘armasi ustamasiga erishish',
+  },
+];
+
+const LEVEL_OPTIONS: Array<{
   id: PrepLevel;
   icon: string;
   title: string;
@@ -111,83 +111,90 @@ const STEP4_OPTIONS: Array<{
   {
     id: 'zero',
     icon: '🌱',
-    title: '🌱 Nol darajadaman (Yangi boshlovchi)',
-    subtitle: 'Endi boshlayapman, tartibli poydevor va tushuntirish kerak',
+    title: 'Nol darajadaman (Yangi boshlovchi)',
+    subtitle: 'Tartibli poydevor, qoidalar va sodda tushuntirish kerak',
   },
   {
     id: 'beginner',
     icon: '⚡',
-    title: "⚡ Boshlang'ich tushuncham bor",
-    subtitle: 'Qoidalarni bilaman, lekin test va inshoda amaliyot kam',
+    title: 'Boshlang‘ich tushuncham bor',
+    subtitle: 'Asoslarni bilaman, mashqlar va xatolar ustida ishlash zarur',
   },
   {
     id: 'intermediate',
     icon: '🔥',
-    title: "🔥 O'rta darajadaman (Mock ishlaganman)",
-    subtitle: 'Zaif mavzularimni aniqlab, natijamni A+ / C1 darajaga koʻtarmoqchiman',
+    title: 'O‘rta va yuqori darajadaman',
+    subtitle: 'Muntazam mock testlar, tezlik va yuqori ball uchun sprint',
   },
 ];
 
-const STEP5_OPTIONS: Array<{
-  minutes: number;
-  icon: string;
-  title: string;
-  subtitle: string;
-}> = [
-  { minutes: 5, icon: '⏱', title: '⏱ Kuniga 5 daqiqa (Oson)', subtitle: 'Har kuni bitta tezkor mashq' },
-  { minutes: 15, icon: '⚡', title: "⚡ Kuniga 15 daqiqa (O'rtacha)", subtitle: 'Barqaror oʻsish uchun tavsiya etiladi' },
-  { minutes: 30, icon: '🔥', title: '🔥 Kuniga 30 daqiqa (Jiddiy)', subtitle: 'Tezkor natija va toʻliq boʻlim tahlili' },
-  { minutes: 60, icon: '🚀', title: '🚀 Kuniga 1 soat (Intensiv)', subtitle: 'Maksimal sprint va toʻliq Mock imtihonlar' },
+const QUESTION_GOALS = [
+  { count: 15, minutes: 15, icon: '🌱', title: '15 ta savol (Yengil)', subtitle: 'Kuniga 15–20 daqiqa yengil mashq' },
+  { count: 30, minutes: 30, icon: '⭐', title: '30 ta savol (Tavsiya etiladi)', subtitle: 'Kuniga 30–40 daqiqa barqaror rivojlanish' },
+  { count: 50, minutes: 50, icon: '🔥', title: '50 ta savol (Intensiv)', subtitle: 'Kuniga 50–60 daqiqa chuqur tayyorgarlik' },
 ];
 
-const STEP6_OPTIONS: Array<{
+const REMINDER_OPTIONS: Array<{
   id: ReminderSlot;
   icon: string;
   title: string;
   subtitle: string;
 }> = [
-  { id: 'morning', icon: '🌅', title: '🌅 Ertalab (08:00 - 12:00)', subtitle: 'Kunni tetik va samarali mashq bilan boshlash' },
-  { id: 'afternoon', icon: '☀️', title: '☀️ Tushdan keyin (12:00 - 18:00)', subtitle: 'Darsdan soʻng tanaffus paytida shugʻullanish' },
-  { id: 'evening', icon: '🌙', title: '🌙 Kechqurun (18:00 - 22:00)', subtitle: 'Kechki sokin vaqtda tahlil va insho yozish' },
+  { id: 'morning', icon: '🌅', title: 'Ertalab (09:00)', subtitle: 'Kunni tetik mashq bilan boshlash' },
+  { id: 'afternoon', icon: '☀️', title: 'Tushdan so‘ng (14:00)', subtitle: 'Tushlik tanaffusida shug‘ullanish' },
+  { id: 'evening', icon: '🌙', title: 'Kechqurun (19:00)', subtitle: 'Kechki sokin vaqtda tahlil qilish' },
 ];
-
-const STEP_TITLES: Record<number, string> = {
-  1: 'Biz haqimizda qayerdan eshitdingiz?',
-  2: 'Asosiy maqsadingiz nima?',
-  3: "Qaysi yo'nalishga tayyorlanmoqchisiz?",
-  4: 'Tayyorgarlik darajangiz qanday?',
-  5: 'Kuniga qancha vaqt ajrata olasiz?',
-  6: 'Eslatmalarni qaysi vaqtda olishni xohlaysiz?',
-};
 
 export default function Onboarding({ isModal = false, onClose, onSuccess }: OnboardingProps) {
   const navigate = useNavigate();
   const { user, updateUser } = useAuth();
 
+  // 3-step streamlined flow:
+  // Step 1: Fan va Imtihon yo'nalishi
+  // Step 2: Asosiy maqsad va Tayyorgarlik darajasi
+  // Step 3: Kunlik reja (savollar soni) va Eslatma vaqti
   const [step, setStep] = useState<number>(1);
-  const [referralSource, setReferralSource] = useState<string>('');
-  const [mainGoal, setMainGoal] = useState<string>('');
-  const [targetExam, setTargetExam] = useState<TargetExam | ''>('');
-  const [activeSubject, setActiveSubject] = useState<ActiveSubject>('uzbek');
-  const [subSubject, setSubSubject] = useState<string>('Matematika');
-  const [level, setLevel] = useState<PrepLevel | ''>('');
-  const [dailyGoalMinutes, setDailyGoalMinutes] = useState<number | null>(null);
-  const [reminderSlot, setReminderSlot] = useState<ReminderSlot | ''>('');
+  const [selectedTrack, setSelectedTrack] = useState<string>('milliy_sertifikat');
+  const [mainGoal, setMainGoal] = useState<string>('certificate');
+  const [level, setLevel] = useState<PrepLevel>('beginner');
+  const [goalQuestions, setGoalQuestions] = useState<number>(30);
+  const [reminderSlot, setReminderSlot] = useState<ReminderSlot>('evening');
   const [celebrating, setCelebrating] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
 
-  const isStepValid = (): boolean => {
-    if (step === 1) return Boolean(referralSource);
-    if (step === 2) return Boolean(mainGoal);
-    if (step === 3) {
-      if (!targetExam) return false;
-      if (targetExam === 'other') return Boolean(subSubject);
-      return true;
+  const trackObj = EXAM_TRACKS.find((t) => t.id === selectedTrack) || EXAM_TRACKS[0];
+
+  const handleSkip = async () => {
+    try {
+      localStorage.setItem('onboarding_dismissed', 'true');
+      localStorage.setItem('grandec_onboarding_done', 'true');
+      localStorage.setItem('grand_ed_onboarding_done', 'true');
+    } catch {
+      /* ignore */
     }
-    if (step === 4) return Boolean(level);
-    if (step === 5) return dailyGoalMinutes !== null;
-    if (step === 6) return Boolean(reminderSlot);
-    return false;
+
+    updateUser({
+      ...(user || {}),
+      onboarding_completed: true,
+    });
+
+    try {
+      await api.post('/api/auth/onboarding/', {
+        onboarding_completed: true,
+        target_exam: selectedTrack || 'milliy_sertifikat',
+        active_subject: trackObj.active_subject || 'uzbek',
+        goal_questions: goalQuestions,
+        daily_goal_minutes: goalQuestions,
+      });
+    } catch {
+      /* ignore */
+    }
+
+    if (onClose) onClose();
+    if (onSuccess) onSuccess();
+    if (!isModal) {
+      navigate('/dashboard', { replace: true });
+    }
   };
 
   const handleBack = () => {
@@ -196,11 +203,7 @@ export default function Onboarding({ isModal = false, onClose, onSuccess }: Onbo
       setStep((s) => s - 1);
       return;
     }
-    if (isModal && onClose) {
-      onClose();
-    } else {
-      navigate('/dashboard', { replace: true });
-    }
+    handleSkip();
   };
 
   const submitOnboardingPayload = async (payload: Record<string, unknown>) => {
@@ -215,20 +218,20 @@ export default function Onboarding({ isModal = false, onClose, onSuccess }: Onbo
         await api.post(ep, payload);
         return;
       } catch {
-        // try next fallback endpoint
+        /* try fallback */
       }
     }
   };
 
   const handleNextOrFinish = async () => {
-    if (!isStepValid() || submitting || celebrating) return;
+    if (submitting || celebrating) return;
 
-    if (step < 6) {
+    if (step < 3) {
       setStep((s) => s + 1);
       return;
     }
 
-    // Step 6 -> Finish & Celebrate
+    // Step 3 -> Finish & Celebrate
     setSubmitting(true);
     setCelebrating(true);
 
@@ -240,27 +243,22 @@ export default function Onboarding({ isModal = false, onClose, onSuccess }: Onbo
         colors: ['#C8922A', '#F59E0B', '#10B981', '#FBBF24'],
       });
     } catch {
-      /* ignore confetti error */
+      /* ignore */
     }
 
-    const finalExam: TargetExam = (targetExam as TargetExam) || 'milliy_sertifikat';
-    let finalSubject: ActiveSubject = activeSubject || 'uzbek';
-    if (finalExam === 'other') {
-      if (subSubject === 'Huquq') finalSubject = 'law';
-      else if (subSubject === 'Kimyo/Biologiya') finalSubject = 'biology';
-    }
-    const finalMinutes = dailyGoalMinutes ?? 15;
-    const finalSubSubject = finalExam === 'other' ? subSubject || 'Matematika' : '';
+    const finalSubject: ActiveSubject = trackObj.active_subject;
+    const finalExam: string = trackObj.target_exam;
+    const selectedGoalObj = QUESTION_GOALS.find((q) => q.count === goalQuestions) || QUESTION_GOALS[1];
 
     const payload = {
-      referral_source: referralSource,
       main_goal: mainGoal,
       active_subject: finalSubject,
       target_exam: finalExam,
       exam_target: finalExam,
-      sub_subject: finalSubSubject,
       level: level || 'beginner',
-      daily_goal_minutes: finalMinutes,
+      daily_goal_minutes: selectedGoalObj.minutes,
+      goal_questions: goalQuestions,
+      daily_goal_questions: goalQuestions,
       reminder_slot: reminderSlot || 'evening',
     };
 
@@ -281,7 +279,7 @@ export default function Onboarding({ isModal = false, onClose, onSuccess }: Onbo
       );
       window.dispatchEvent(new CustomEvent('subject-changed', { detail: finalSubject }));
     } catch {
-      /* ignore storage errors */
+      /* ignore */
     }
 
     void submitOnboardingPayload(payload);
@@ -292,21 +290,20 @@ export default function Onboarding({ isModal = false, onClose, onSuccess }: Onbo
       active_subject: finalSubject,
       exam_target: finalExam,
       target_exam: finalExam,
-      sub_subject: finalSubSubject,
       level: level || 'beginner',
-      daily_goal_minutes: finalMinutes,
+      daily_goal_minutes: selectedGoalObj.minutes,
       reminder_slot: reminderSlot || 'evening',
       daily_plan_summary: {
-        ...(user?.daily_plan_summary || {}),
-        daily_minutes: finalMinutes,
+        ...((user?.daily_plan_summary as Record<string, unknown>) || {}),
+        goal_questions: goalQuestions,
+        daily_minutes: selectedGoalObj.minutes,
         target_exam: finalExam,
-        sub_subject: finalSubSubject,
         level: level || 'beginner',
         reminder_slot: reminderSlot || 'evening',
       },
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 1200));
+    await new Promise((resolve) => setTimeout(resolve, 900));
 
     setSubmitting(false);
     if (onSuccess) onSuccess();
@@ -314,7 +311,7 @@ export default function Onboarding({ isModal = false, onClose, onSuccess }: Onbo
     navigate('/dashboard', { replace: true });
   };
 
-  const progressPercent = celebrating ? 100 : Math.round((step / 6) * 100);
+  const progressPercent = celebrating ? 100 : Math.round((step / 3) * 100);
 
   return (
     <div
@@ -339,44 +336,24 @@ export default function Onboarding({ isModal = false, onClose, onSuccess }: Onbo
           align-items: center;
           justify-content: space-between;
           gap: 14px;
-          padding: 15px 18px;
-          border-radius: 16px;
+          padding: 14px 16px;
+          border-radius: 14px;
           background: var(--bg-card, var(--card));
           border: 1.5px solid var(--border-default, var(--border));
           color: var(--text-primary, var(--ink));
           text-align: left;
           cursor: pointer;
-          transition: transform 0.18s ease, border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
-          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+          transition: transform 0.15s ease, border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
         }
         .onb-card:hover {
           transform: translateY(-1px);
           border-color: rgba(200, 146, 42, 0.65);
         }
-        .onb-card:active {
-          transform: translateY(0);
-        }
         .onb-card.is-selected {
           border: 2px solid #C8922A;
           background: rgba(200, 146, 42, 0.12);
-          box-shadow: 0 8px 24px -6px rgba(200, 146, 42, 0.28);
-        }
-        .onb-subpill {
-          padding: 8px 14px;
-          border-radius: 999px;
-          font-size: 13px;
-          font-weight: 800;
-          cursor: pointer;
-          transition: all 0.15s ease;
-          border: 1.5px solid rgba(200, 146, 42, 0.45);
-          background: var(--bg-card, var(--card));
-          color: var(--text-primary, var(--ink));
-        }
-        .onb-subpill.is-active {
-          background: linear-gradient(135deg, #C8922A 0%, #F59E0B 100%);
-          border-color: #C8922A;
-          color: #FFFFFF;
-          box-shadow: 0 4px 12px rgba(200, 146, 42, 0.35);
+          box-shadow: 0 6px 20px -6px rgba(200, 146, 42, 0.28);
         }
       `}</style>
 
@@ -398,29 +375,33 @@ export default function Onboarding({ isModal = false, onClose, onSuccess }: Onbo
             gap: 12,
           }}
         >
-          <button
-            type="button"
-            onClick={handleBack}
-            aria-label="Orqaga"
-            title="Orqaga"
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 12,
-              border: '1.5px solid var(--border-default, var(--border))',
-              background: 'var(--bg-card, var(--card))',
-              color: 'var(--text-primary, var(--ink))',
-              fontSize: 18,
-              fontWeight: 800,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              flexShrink: 0,
-            }}
-          >
-            &lt;
-          </button>
+          {step > 1 ? (
+            <button
+              type="button"
+              onClick={handleBack}
+              aria-label="Orqaga"
+              title="Orqaga"
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                border: '1.5px solid var(--border-default, var(--border))',
+                background: 'var(--bg-card, var(--card))',
+                color: 'var(--text-primary, var(--ink))',
+                fontSize: 18,
+                fontWeight: 800,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+            >
+              &lt;
+            </button>
+          ) : (
+            <div style={{ width: 40 }} />
+          )}
 
           <div
             style={{
@@ -440,7 +421,7 @@ export default function Onboarding({ isModal = false, onClose, onSuccess }: Onbo
                 textTransform: 'uppercase',
               }}
             >
-              {step}-SAVOL / 6
+              {step}-QADAM / 3
             </span>
             <span
               style={{
@@ -450,19 +431,40 @@ export default function Onboarding({ isModal = false, onClose, onSuccess }: Onbo
                 padding: '4px 10px',
                 borderRadius: 999,
                 background: 'rgba(200, 146, 42, 0.15)',
-                border: '1px solid rgba(200, 146, 42, 0.45)',
                 color: '#C8922A',
-                textTransform: 'uppercase',
+                border: '1px solid rgba(200, 146, 42, 0.35)',
               }}
             >
-              SO&apos;ROVNOMA
+              GRANDEC LMS
             </span>
           </div>
 
-          <div style={{ width: 40, height: 40, flexShrink: 0 }} aria-hidden="true" />
+          {/* O'tkazib yuborish (Skip) Button */}
+          <button
+            type="button"
+            onClick={handleSkip}
+            aria-label="O‘tkazib yuborish"
+            title="O‘tkazib yuborish"
+            style={{
+              padding: '6px 12px',
+              borderRadius: 10,
+              border: '1px solid var(--border-default, var(--border))',
+              background: 'transparent',
+              color: 'var(--text-secondary, var(--muted))',
+              fontSize: 12.5,
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              transition: 'all 0.15s ease',
+            }}
+          >
+            O‘tkazib yuborish ✕
+          </button>
         </div>
 
-        {/* 60fps Gold Progress Bar */}
+        {/* PROGRESS BAR */}
         <div
           role="progressbar"
           aria-valuenow={progressPercent}
@@ -470,10 +472,9 @@ export default function Onboarding({ isModal = false, onClose, onSuccess }: Onbo
           aria-valuemax={100}
           style={{
             width: '100%',
-            height: 10,
+            height: 8,
             borderRadius: 999,
-            background: 'var(--bg-card-2, var(--card-2))',
-            border: '1px solid var(--border-default, var(--border))',
+            background: 'var(--bg-card-2, rgba(148, 163, 184, 0.2))',
             overflow: 'hidden',
           }}
         >
@@ -482,452 +483,237 @@ export default function Onboarding({ isModal = false, onClose, onSuccess }: Onbo
               width: `${progressPercent}%`,
               height: '100%',
               borderRadius: 999,
-              background: 'linear-gradient(90deg, #C8922A, #F59E0B)',
+              background: 'linear-gradient(90deg, #C8922A 0%, #F59E0B 70%, #10B981 100%)',
               transition: 'width 0.35s cubic-bezier(0.22, 1, 0.36, 1)',
             }}
           />
         </div>
       </header>
 
-      {/* MAIN QUESTION / CELEBRATION BODY */}
+      {/* MAIN CONTENT AREA */}
       <main
         style={{
           width: '100%',
           maxWidth: 620,
-          flex: 1,
+          margin: '20px 0',
           display: 'flex',
           flexDirection: 'column',
-          justifyContent: 'center',
-          padding: '24px 0',
+          alignItems: 'center',
+          gap: 18,
+          flex: 1,
         }}
       >
-        {celebrating ? (
-          <div
-            role="status"
-            aria-live="polite"
-            style={{
-              background: 'var(--bg-card, var(--card))',
-              border: '2px solid #C8922A',
-              borderRadius: 24,
-              padding: '44px 28px',
-              textAlign: 'center',
-              boxShadow: '0 20px 50px -12px rgba(200, 146, 42, 0.25)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 16,
-            }}
-          >
-            <div
-              style={{
-                width: 76,
-                height: 76,
-                borderRadius: '50%',
-                background: 'rgba(200, 146, 42, 0.16)',
-                border: '2px solid #C8922A',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 38,
-              }}
-            >
-              🎉
+        {/* STEP 1: FAN VA IMTIHON */}
+        {step === 1 && (
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ textAlign: 'center', marginBottom: 4 }}>
+              <h1 style={{ margin: '0 0 6px 0', fontSize: '22px', fontWeight: 800 }}>
+                Qaysi yo‘nalishga tayyorlanmoqchisiz?
+              </h1>
+              <p style={{ margin: 0, fontSize: '13.5px', color: 'var(--text-secondary, var(--muted))' }}>
+                O‘zingiz topshiradigan asosiy imtihon yoki fanni tanlang
+              </p>
             </div>
-            <h2
-              style={{
-                margin: 0,
-                fontSize: 'clamp(1.35rem, 3.5vw, 1.75rem)',
-                fontWeight: 900,
-                color: 'var(--text-primary, var(--ink))',
-                lineHeight: 1.3,
-              }}
-            >
-              Ajoyib! Hammasi tayyor. Siz uchun shaxsiy reja tayyorlanmoqda...
-            </h2>
-            <p
-              style={{
-                margin: 0,
-                fontSize: 14,
-                color: 'var(--text-secondary, var(--muted))',
-              }}
-            >
-              Tanlangan yoʻnalish va kunlik maqsadingiz asosida mashqlar moslashtirildi.
-            </p>
-          </div>
-        ) : (
-          <div>
-            <h1
-              style={{
-                margin: '0 0 22px',
-                fontSize: 'clamp(1.4rem, 4vw, 1.95rem)',
-                fontWeight: 900,
-                letterSpacing: '-0.02em',
-                color: 'var(--text-primary, var(--ink))',
-                lineHeight: 1.25,
-              }}
-            >
-              {STEP_TITLES[step]}
-            </h1>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {/* STEP 1 */}
-              {step === 1 &&
-                STEP1_OPTIONS.map((opt) => {
-                  const selected = referralSource === opt.id;
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      className={`onb-card${selected ? ' is-selected' : ''}`}
-                      onClick={() => setReferralSource(opt.id)}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
-                        <span
-                          style={{
-                            width: 44,
-                            height: 44,
-                            borderRadius: 12,
-                            background: selected ? 'rgba(200, 146, 42, 0.2)' : 'var(--bg-card-2, var(--card-2))',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: 22,
-                            flexShrink: 0,
-                          }}
-                        >
-                          {opt.icon}
-                        </span>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary, var(--ink))' }}>
-                            {opt.title}
-                          </div>
-                          <div style={{ fontSize: 12.5, color: 'var(--text-secondary, var(--muted))', marginTop: 2 }}>
-                            {opt.subtitle}
-                          </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {EXAM_TRACKS.map((t) => {
+                const isSelected = selectedTrack === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setSelectedTrack(t.id)}
+                    className={`onb-card ${isSelected ? 'is-selected' : ''}`}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <span style={{ fontSize: 24 }}>{t.icon}</span>
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: 14.5 }}>{t.title}</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary, var(--muted))', marginTop: 2 }}>
+                          {t.subtitle}
                         </div>
                       </div>
-                      <RadioIndicator selected={selected} />
-                    </button>
-                  );
-                })}
-
-              {/* STEP 2 */}
-              {step === 2 &&
-                STEP2_OPTIONS.map((opt) => {
-                  const selected = mainGoal === opt.id;
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      className={`onb-card${selected ? ' is-selected' : ''}`}
-                      onClick={() => setMainGoal(opt.id)}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
-                        <span
-                          style={{
-                            width: 44,
-                            height: 44,
-                            borderRadius: 12,
-                            background: selected ? 'rgba(200, 146, 42, 0.2)' : 'var(--bg-card-2, var(--card-2))',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: 22,
-                            flexShrink: 0,
-                          }}
-                        >
-                          {opt.icon}
-                        </span>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary, var(--ink))' }}>
-                            {opt.title}
-                          </div>
-                          <div style={{ fontSize: 12.5, color: 'var(--text-secondary, var(--muted))', marginTop: 2 }}>
-                            {opt.subtitle}
-                          </div>
-                        </div>
-                      </div>
-                      <RadioIndicator selected={selected} />
-                    </button>
-                  );
-                })}
-
-              {/* STEP 3 */}
-              {step === 3 &&
-                STEP3_OPTIONS.map((opt) => {
-                  const selected = targetExam === opt.id;
-                  return (
-                    <div key={opt.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <button
-                        type="button"
-                        className={`onb-card${selected ? ' is-selected' : ''}`}
-                        onClick={() => {
-                          setTargetExam(opt.target_exam);
-                          setActiveSubject(opt.active_subject);
-                          if (opt.target_exam === 'other' && !subSubject) {
-                            setSubSubject('Matematika');
-                          }
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
-                          <span
-                            style={{
-                              width: 44,
-                              height: 44,
-                              borderRadius: 12,
-                              background: selected ? 'rgba(200, 146, 42, 0.2)' : 'var(--bg-card-2, var(--card-2))',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontSize: 22,
-                              flexShrink: 0,
-                            }}
-                          >
-                            {opt.icon}
-                          </span>
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary, var(--ink))' }}>
-                              {opt.title}
-                            </div>
-                            <div style={{ fontSize: 12.5, color: 'var(--text-secondary, var(--muted))', marginTop: 2 }}>
-                              {opt.subtitle}
-                            </div>
-                          </div>
-                        </div>
-                        <RadioIndicator selected={selected} />
-                      </button>
-
-                      {/* Nested Sub-Subject Gold Pills when "Boshqa fanlar..." is selected */}
-                      {opt.id === 'other' && selected && (
-                        <div
-                          style={{
-                            padding: '12px 16px',
-                            borderRadius: 14,
-                            background: 'rgba(200, 146, 42, 0.08)',
-                            border: '1.5px dashed #C8922A',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: 8,
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontSize: 12,
-                              fontWeight: 800,
-                              color: '#C8922A',
-                            }}
-                          >
-                            Fan yoʻnalishini tanlang:
-                          </span>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                            {SUB_SUBJECTS.map((sub) => {
-                              const isSubActive = subSubject === sub;
-                              return (
-                                <button
-                                  key={sub}
-                                  type="button"
-                                  className={`onb-subpill${isSubActive ? ' is-active' : ''}`}
-                                  onClick={() => setSubSubject(sub)}
-                                >
-                                  {isSubActive ? `✓ ${sub}` : sub}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
                     </div>
-                  );
-                })}
+                    {isSelected && <span style={{ color: '#C8922A', fontWeight: 800 }}>✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
-              {/* STEP 4 */}
-              {step === 4 &&
-                STEP4_OPTIONS.map((opt) => {
-                  const selected = level === opt.id;
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      className={`onb-card${selected ? ' is-selected' : ''}`}
-                      onClick={() => setLevel(opt.id)}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
-                        <span
-                          style={{
-                            width: 44,
-                            height: 44,
-                            borderRadius: 12,
-                            background: selected ? 'rgba(200, 146, 42, 0.2)' : 'var(--bg-card-2, var(--card-2))',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: 22,
-                            flexShrink: 0,
-                          }}
-                        >
-                          {opt.icon}
-                        </span>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary, var(--ink))' }}>
-                            {opt.title}
-                          </div>
-                          <div style={{ fontSize: 12.5, color: 'var(--text-secondary, var(--muted))', marginTop: 2 }}>
-                            {opt.subtitle}
-                          </div>
+        {/* STEP 2: MAQSAD VA DARAJA */}
+        {step === 2 && (
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 18 }}>
+            <div style={{ textAlign: 'center', marginBottom: 2 }}>
+              <h1 style={{ margin: '0 0 6px 0', fontSize: '22px', fontWeight: 800 }}>
+                Maqsadingiz va joriy bilim darajangiz
+              </h1>
+              <p style={{ margin: 0, fontSize: '13.5px', color: 'var(--text-secondary, var(--muted))' }}>
+                {trackObj.title} bo‘yicha shaxsiy reja tuzish uchun belgilang
+              </p>
+            </div>
+
+            {/* Asosiy maqsad */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <label style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink, #0f172a)' }}>
+                Asosiy maqsad
+              </label>
+              {GOAL_OPTIONS.map((g) => {
+                const isSelected = mainGoal === g.id;
+                return (
+                  <button
+                    key={g.id}
+                    type="button"
+                    onClick={() => setMainGoal(g.id)}
+                    className={`onb-card ${isSelected ? 'is-selected' : ''}`}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <span style={{ fontSize: 22 }}>{g.icon}</span>
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: 14 }}>{g.title}</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary, var(--muted))', marginTop: 2 }}>
+                          {g.subtitle}
                         </div>
                       </div>
-                      <RadioIndicator selected={selected} />
+                    </div>
+                    {isSelected && <span style={{ color: '#C8922A', fontWeight: 800 }}>✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Tayyorgarlik darajasi */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <label style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink, #0f172a)' }}>
+                Joriy tayyorgarlik darajangiz
+              </label>
+              {LEVEL_OPTIONS.map((l) => {
+                const isSelected = level === l.id;
+                return (
+                  <button
+                    key={l.id}
+                    type="button"
+                    onClick={() => setLevel(l.id)}
+                    className={`onb-card ${isSelected ? 'is-selected' : ''}`}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <span style={{ fontSize: 22 }}>{l.icon}</span>
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: 14 }}>{l.title}</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary, var(--muted))', marginTop: 2 }}>
+                          {l.subtitle}
+                        </div>
+                      </div>
+                    </div>
+                    {isSelected && <span style={{ color: '#C8922A', fontWeight: 800 }}>✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* STEP 3: KUNLIK REJA VA ESLATMA */}
+        {step === 3 && (
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 18 }}>
+            <div style={{ textAlign: 'center', marginBottom: 2 }}>
+              <h1 style={{ margin: '0 0 6px 0', fontSize: '22px', fontWeight: 800 }}>
+                Kunlik maqsad va shug‘ullanish vaqti
+              </h1>
+              <p style={{ margin: 0, fontSize: '13.5px', color: 'var(--text-secondary, var(--muted))' }}>
+                Muntazamlik — muvaffaqiyat garovi! Har kuni nechta savol yechmoqchisiz?
+              </p>
+            </div>
+
+            {/* Kunlik savollar */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <label style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink, #0f172a)' }}>
+                Kunlik maqsad
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+                {QUESTION_GOALS.map((q) => {
+                  const isSelected = goalQuestions === q.count;
+                  return (
+                    <button
+                      key={q.count}
+                      type="button"
+                      onClick={() => setGoalQuestions(q.count)}
+                      className={`onb-card ${isSelected ? 'is-selected' : ''}`}
+                      style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, fontSize: 14 }}>
+                        <span>{q.icon}</span>
+                        <span>{q.title}</span>
+                      </div>
+                      <div style={{ fontSize: 11.5, color: 'var(--text-secondary, var(--muted))' }}>
+                        {q.subtitle}
+                      </div>
                     </button>
                   );
                 })}
+              </div>
+            </div>
 
-              {/* STEP 5 */}
-              {step === 5 &&
-                STEP5_OPTIONS.map((opt) => {
-                  const selected = dailyGoalMinutes === opt.minutes;
-                  return (
-                    <button
-                      key={opt.minutes}
-                      type="button"
-                      className={`onb-card${selected ? ' is-selected' : ''}`}
-                      onClick={() => setDailyGoalMinutes(opt.minutes)}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
-                        <span
-                          style={{
-                            width: 44,
-                            height: 44,
-                            borderRadius: 12,
-                            background: selected ? 'rgba(200, 146, 42, 0.2)' : 'var(--bg-card-2, var(--card-2))',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: 22,
-                            flexShrink: 0,
-                          }}
-                        >
-                          {opt.icon}
-                        </span>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary, var(--ink))' }}>
-                            {opt.title}
-                          </div>
-                          <div style={{ fontSize: 12.5, color: 'var(--text-secondary, var(--muted))', marginTop: 2 }}>
-                            {opt.subtitle}
-                          </div>
+            {/* Eslatma vaqti */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <label style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink, #0f172a)' }}>
+                Eslatma vaqti
+              </label>
+              {REMINDER_OPTIONS.map((r) => {
+                const isSelected = reminderSlot === r.id;
+                return (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => setReminderSlot(r.id)}
+                    className={`onb-card ${isSelected ? 'is-selected' : ''}`}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <span style={{ fontSize: 22 }}>{r.icon}</span>
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: 14 }}>{r.title}</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary, var(--muted))', marginTop: 2 }}>
+                          {r.subtitle}
                         </div>
                       </div>
-                      <RadioIndicator selected={selected} />
-                    </button>
-                  );
-                })}
-
-              {/* STEP 6 */}
-              {step === 6 &&
-                STEP6_OPTIONS.map((opt) => {
-                  const selected = reminderSlot === opt.id;
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      className={`onb-card${selected ? ' is-selected' : ''}`}
-                      onClick={() => setReminderSlot(opt.id)}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
-                        <span
-                          style={{
-                            width: 44,
-                            height: 44,
-                            borderRadius: 12,
-                            background: selected ? 'rgba(200, 146, 42, 0.2)' : 'var(--bg-card-2, var(--card-2))',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: 22,
-                            flexShrink: 0,
-                          }}
-                        >
-                          {opt.icon}
-                        </span>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary, var(--ink))' }}>
-                            {opt.title}
-                          </div>
-                          <div style={{ fontSize: 12.5, color: 'var(--text-secondary, var(--muted))', marginTop: 2 }}>
-                            {opt.subtitle}
-                          </div>
-                        </div>
-                      </div>
-                      <RadioIndicator selected={selected} />
-                    </button>
-                  );
-                })}
+                    </div>
+                    {isSelected && <span style={{ color: '#C8922A', fontWeight: 800 }}>✓</span>}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
       </main>
 
-      {/* BOTTOM CTA BUTTON */}
-      {!celebrating && (
-        <footer
+      {/* BOTTOM ACTION BUTTON */}
+      <footer style={{ width: '100%', maxWidth: 620, display: 'flex', justifyContent: 'center' }}>
+        <button
+          type="button"
+          onClick={handleNextOrFinish}
+          disabled={submitting}
           style={{
             width: '100%',
-            maxWidth: 620,
-            paddingTop: 12,
+            height: 50,
+            borderRadius: 14,
+            border: 'none',
+            background: 'linear-gradient(135deg, #C8922A 0%, #F59E0B 100%)',
+            color: '#FFFFFF',
+            fontSize: 15,
+            fontWeight: 800,
+            cursor: submitting ? 'not-allowed' : 'pointer',
+            opacity: submitting ? 0.75 : 1,
+            boxShadow: '0 8px 24px -4px rgba(200, 146, 42, 0.4)',
+            transition: 'all 0.15s ease',
           }}
         >
-          <button
-            type="button"
-            disabled={!isStepValid() || submitting}
-            onClick={() => void handleNextOrFinish()}
-            style={{
-              width: '100%',
-              minHeight: 54,
-              borderRadius: 16,
-              border: 'none',
-              fontSize: 15,
-              fontWeight: 900,
-              letterSpacing: '0.06em',
-              textTransform: 'uppercase',
-              cursor: isStepValid() && !submitting ? 'pointer' : 'not-allowed',
-              background: isStepValid()
-                ? 'linear-gradient(135deg, #C8922A 0%, #F59E0B 100%)'
-                : 'var(--bg-card-2, var(--card-2))',
-              color: isStepValid() ? '#FFFFFF' : 'var(--text-secondary, var(--muted))',
-              boxShadow: isStepValid() ? '0 10px 26px -6px rgba(200, 146, 42, 0.5)' : 'none',
-              opacity: isStepValid() ? 1 : 0.65,
-              transition: 'all 0.2s ease',
-            }}
-          >
-            {step < 6 ? 'DAVOM ETISH' : 'YAKUNLASH'}
-          </button>
-        </footer>
-      )}
+          {submitting
+            ? 'Reja tayyorlanmoqda...'
+            : step < 3
+            ? 'Davom etish →'
+            : '🎉 Tayyor! LMS Dashboardga o‘tish'}
+        </button>
+      </footer>
     </div>
-  );
-}
-
-function RadioIndicator({ selected }: { selected: boolean }) {
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        width: 26,
-        height: 26,
-        borderRadius: '50%',
-        border: selected ? '2px solid #C8922A' : '2px solid var(--border-default, var(--border))',
-        background: selected ? '#C8922A' : 'transparent',
-        color: '#FFFFFF',
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: 14,
-        fontWeight: 900,
-        flexShrink: 0,
-        transition: 'all 0.18s ease',
-      }}
-    >
-      {selected ? '✓' : ''}
-    </span>
   );
 }

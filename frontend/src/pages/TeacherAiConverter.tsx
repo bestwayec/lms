@@ -41,7 +41,19 @@ export default function TeacherAiConverter() {
   // Handle file select
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
+      const selected = e.target.files[0];
+      const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+      if (!allowedTypes.includes(selected.type) && !selected.name.toLowerCase().endsWith('.pdf')) {
+        setError('Faqat PDF yoki JPEG/PNG/WEBP rasm yuklashingiz mumkin.');
+        setFile(null);
+        return;
+      }
+      if (selected.size > 15 * 1024 * 1024) {
+        setError('Fayl hajmi 15 MB dan oshmasligi kerak.');
+        setFile(null);
+        return;
+      }
+      setFile(selected);
       setError(null);
     }
   };

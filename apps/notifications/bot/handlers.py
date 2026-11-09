@@ -319,7 +319,7 @@ def require_role(*roles: str):
     return decorator
 
 
-def _persistent_menu_keyboard(role: str = "student") -> ReplyKeyboardMarkup:
+def _persistent_menu_keyboard(role: str = "student", is_admin: bool = False) -> ReplyKeyboardMarkup:
     """Fixed reply keyboard buttons shown at the bottom of the screen according to role."""
     norm_role = (role or "student").lower()
     if norm_role in ("admin", "superadmin"):
@@ -341,133 +341,134 @@ def _persistent_menu_keyboard(role: str = "student") -> ReplyKeyboardMarkup:
             resize_keyboard=True,
         )
     elif norm_role == "teacher":
-        return ReplyKeyboardMarkup(
+        rows = [
             [
-                [
-                    KeyboardButton("📝 Yangi test yaratish (Smart Paste)"),
-                    KeyboardButton("📷 Titul varaqni tekshirish (OMR)"),
-                ],
-                [
-                    KeyboardButton("👥 Mening guruhlarim va davomat"),
-                    KeyboardButton("📊 O'quvchilar natijalari (Excel)"),
-                ],
-                [
-                    KeyboardButton("🌐 Web kabinetga kirish"),
-
-                ],
+                KeyboardButton("📝 Yangi test yaratish (Smart Paste)"),
+                KeyboardButton("📷 Titul varaqni tekshirish (OMR)"),
             ],
-            resize_keyboard=True,
-        )
+            [
+                KeyboardButton("👥 Mening guruhlarim va davomat"),
+                KeyboardButton("📊 O'quvchilar natijalari (Excel)"),
+            ],
+            [
+                KeyboardButton("🌐 Web kabinetga kirish"),
+            ],
+        ]
+        if is_admin:
+            rows.append([KeyboardButton("👑 Admin paneli")])
+        return ReplyKeyboardMarkup(rows, resize_keyboard=True)
     else:
         # Default: STUDENT
-        return ReplyKeyboardMarkup(
+        rows = [
+            [KeyboardButton("✍️ Esse yozish"), KeyboardButton("📚 Test ishlash")],
             [
-                [KeyboardButton("✍️ Esse yozish"), KeyboardButton("📚 Test ishlash")],
-                [
-                    KeyboardButton("📝 Mock Test (#kod)"),
-                    KeyboardButton("⚔️ Arena (1v1)"),
-                ],
-                [
-                    KeyboardButton("👤 Natijalar / Profil"),
-                    KeyboardButton("💳 Obunani yangilash / To'lov qilish"),
-                ],
+                KeyboardButton("📝 Mock Test (#kod)"),
+                KeyboardButton("⚔️ Arena (1v1)"),
             ],
-            resize_keyboard=True,
-        )
+            [
+                KeyboardButton("👤 Natijalar / Profil"),
+                KeyboardButton("💳 Obunani yangilash / To'lov qilish"),
+            ],
+        ]
+        if is_admin:
+            rows.append([KeyboardButton("👑 Admin paneli")])
+        return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
 
-def _student_main_menu_keyboard() -> InlineKeyboardMarkup:
+def _student_main_menu_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
     """Main menu inline keyboard for students."""
     from django.conf import settings as _settings
 
     _site_url = getattr(_settings, "SITE_URL", "https://grandec.uz").rstrip("/")
-    return InlineKeyboardMarkup(
+    buttons = [
         [
-            [
-                InlineKeyboardButton(
-                    "📝 Mock Test (#kod)", callback_data="menu_mock_join"
-                ),
-                InlineKeyboardButton(
-                    "📱 Fast CBT Test", web_app={"url": f"{_site_url}/tma/#/tests"}
-                ),
-            ],
-            [
-                InlineKeyboardButton("✍️ Esse yozish", callback_data="menu_essays"),
-                InlineKeyboardButton("⚔️ Arena (1v1)", callback_data="menu_arena"),
-            ],
-            [
-                InlineKeyboardButton("🧠 Telegram Quiz", callback_data="menu_quiz"),
-                InlineKeyboardButton(
-                    "📜 Sertifikatlarim (PDF)", callback_data="menu_certificates"
-                ),
-            ],
-            [
-                InlineKeyboardButton("📊 Natijalarim", callback_data="menu_results"),
-                InlineKeyboardButton("👤 Profilim", callback_data="menu_profile"),
-            ],
-            [
-                InlineKeyboardButton("💳 Tarif / To'lov", callback_data="cb_myplan"),
-                InlineKeyboardButton(
-                    "🏆 ELO Reyting", callback_data="menu_leaderboard"
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    "🏆 Yakshanba Turniri", callback_data="menu_tournament"
-                ),
-                InlineKeyboardButton(
-                    "👨‍👩‍👧 Ota-onalar nazorati", callback_data="menu_parents"
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    "🌐 Web Platformaga o'tish", url=f"{_site_url}/dashboard/"
-                ),
-            ],
-        ]
-    )
+            InlineKeyboardButton(
+                "📝 Mock Test (#kod)", callback_data="menu_mock_join"
+            ),
+            InlineKeyboardButton(
+                "📱 Fast CBT Test", web_app={"url": f"{_site_url}/tma/#/tests"}
+            ),
+        ],
+        [
+            InlineKeyboardButton("✍️ Esse yozish", callback_data="menu_essays"),
+            InlineKeyboardButton("⚔️ Arena (1v1)", callback_data="menu_arena"),
+        ],
+        [
+            InlineKeyboardButton("🧠 Telegram Quiz", callback_data="menu_quiz"),
+            InlineKeyboardButton(
+                "📜 Sertifikatlarim (PDF)", callback_data="menu_certificates"
+            ),
+        ],
+        [
+            InlineKeyboardButton("📊 Natijalarim", callback_data="menu_results"),
+            InlineKeyboardButton("👤 Profilim", callback_data="menu_profile"),
+        ],
+        [
+            InlineKeyboardButton("💳 Tarif / To'lov", callback_data="cb_myplan"),
+            InlineKeyboardButton(
+                "🏆 ELO Reyting", callback_data="menu_leaderboard"
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "🏆 Yakshanba Turniri", callback_data="menu_tournament"
+            ),
+            InlineKeyboardButton(
+                "👨‍👩‍👧 Ota-onalar nazorati", callback_data="menu_parents"
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "🌐 Web Platformaga o'tish", url=f"{_site_url}/dashboard/"
+            ),
+        ],
+    ]
+    if is_admin:
+        buttons.append([InlineKeyboardButton("👑 Admin panelga qaytish", callback_data="menu_admin")])
+    return InlineKeyboardMarkup(buttons)
 
 
-def _teacher_main_menu_keyboard() -> InlineKeyboardMarkup:
+def _teacher_main_menu_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
     """Main menu inline keyboard for teachers."""
     from django.conf import settings as _settings
 
     _site_url = getattr(_settings, "SITE_URL", "https://grandec.uz").rstrip("/")
-    return InlineKeyboardMarkup(
+    buttons = [
         [
-            [
-                InlineKeyboardButton(
-                    "📝 Yangi test yaratish (Smart Paste)",
-                    callback_data="menu_teacher_newmock",
-                ),
-                InlineKeyboardButton("👥 Mening guruhlarim va davomat", callback_data="tgrplist"),
-            ],
-            [
-                InlineKeyboardButton(
-                    "📊 O'quvchilar natijalari (Excel)", callback_data="menu_teacher_excel"
-                ),
-                InlineKeyboardButton(
-                    "📷 Titul varaqni tekshirish (OMR)", callback_data="menu_omr_scan"
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    "🗓 Bugungi davomat", callback_data="menu_teacher_attendance"
-                ),
-                InlineKeyboardButton(
-                    "📈 Guruh hisobotlari", callback_data="menu_teacher_reports"
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    "👤 Shaxsiy kabinet", callback_data="menu_teacher_profile"
-                ),
-                InlineKeyboardButton(
-                    "🌐 Web kabinetga kirish", url=f"{_site_url}/login"
-                ),
-            ],
-        ]
-    )
+            InlineKeyboardButton(
+                "📝 Yangi test yaratish (Smart Paste)",
+                callback_data="menu_teacher_newmock",
+            ),
+            InlineKeyboardButton("👥 Mening guruhlarim va davomat", callback_data="tgrplist"),
+        ],
+        [
+            InlineKeyboardButton(
+                "📊 O'quvchilar natijalari (Excel)", callback_data="menu_teacher_excel"
+            ),
+            InlineKeyboardButton(
+                "📷 Titul varaqni tekshirish (OMR)", callback_data="menu_omr_scan"
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "🗓 Bugungi davomat", callback_data="menu_teacher_attendance"
+            ),
+            InlineKeyboardButton(
+                "📈 Guruh hisobotlari", callback_data="menu_teacher_reports"
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "👤 Shaxsiy kabinet", callback_data="menu_teacher_profile"
+            ),
+            InlineKeyboardButton(
+                "🌐 Web kabinetga kirish", url=f"{_site_url}/login"
+            ),
+        ],
+    ]
+    if is_admin:
+        buttons.append([InlineKeyboardButton("👑 Admin panelga qaytish", callback_data="menu_admin")])
+    return InlineKeyboardMarkup(buttons)
 
 
 def _admin_main_menu_keyboard() -> InlineKeyboardMarkup:
@@ -510,14 +511,14 @@ def _admin_main_menu_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def _main_menu_keyboard(role: str = "student") -> InlineKeyboardMarkup:
+def _main_menu_keyboard(role: str = "student", is_admin: bool = False) -> InlineKeyboardMarkup:
     """Main menu inline keyboard dispatcher by role."""
     norm_role = (role or "student").lower()
     if norm_role in ("admin", "superadmin"):
         return _admin_main_menu_keyboard()
     elif norm_role == "teacher":
-        return _teacher_main_menu_keyboard()
-    return _student_main_menu_keyboard()
+        return _teacher_main_menu_keyboard(is_admin=is_admin)
+    return _student_main_menu_keyboard(is_admin=is_admin)
 
 
 # ---------------------------------------------------------------------------
@@ -1458,12 +1459,12 @@ async def auth_conversation_handler(
             return
         await update.message.reply_text(
             "🎓 O'quvchi rejimi ko'rinishi faollashtirildi 👇",
-            reply_markup=_persistent_menu_keyboard("student"),
+            reply_markup=_persistent_menu_keyboard("student", is_admin=True),
         )
         await update.message.reply_text(
             "🎓 *Ona Tili & Adabiyot* — O'quvchi boshqaruv paneli:",
             parse_mode="Markdown",
-            reply_markup=_student_main_menu_keyboard(),
+            reply_markup=_student_main_menu_keyboard(is_admin=True),
         )
         return
     elif raw_text in ("👨‍🏫 O'qituvchi menyusi", "👨‍🏫 O'qituvchi rejimi"):
@@ -1478,15 +1479,15 @@ async def auth_conversation_handler(
             return
         await update.message.reply_text(
             "👨‍🏫 O'qituvchi rejimi ko'rinishi faollashtirildi 👇",
-            reply_markup=_persistent_menu_keyboard("teacher"),
+            reply_markup=_persistent_menu_keyboard("teacher", is_admin=True),
         )
         await update.message.reply_text(
             "👨‍🏫 *GRAND EDUCATION* — O'qituvchi boshqaruv paneli:",
             parse_mode="Markdown",
-            reply_markup=_teacher_main_menu_keyboard(),
+            reply_markup=_teacher_main_menu_keyboard(is_admin=True),
         )
         return
-    elif raw_text in ("👑 Admin menyusi", "👑 Admin paneli"):
+    elif raw_text in ("👑 Admin menyusi", "👑 Admin paneli", "👑 Admin panel"):
         user = await _get_or_create_user_async(update)
         role = _get_user_role(
             user, update.effective_user.id if update.effective_user else None
@@ -5411,6 +5412,11 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             fb_id = int(data.removeprefix("reject_feedback_"))
             await admin_reject_feedback_callback(update, context, fb_id)
         elif data in ("menu_admin", "adm_main"):
+            if query.message:
+                await query.message.reply_text(
+                    "👑 Admin boshqaruv paneli:",
+                    reply_markup=_persistent_menu_keyboard("admin"),
+                )
             await admin_panel_handler(update, context)
         elif data == "adm_pending_receipts":
             await admin_pending_receipts_handler(update, context)
@@ -5433,12 +5439,12 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             if query.message:
                 await query.message.reply_text(
                     "🎓 O'quvchi rejimi ko'rinishi faollashtirildi 👇",
-                    reply_markup=_persistent_menu_keyboard("student"),
+                    reply_markup=_persistent_menu_keyboard("student", is_admin=True),
                 )
                 await query.message.reply_text(
                     "🎓 *Ona Tili & Adabiyot* — O'quvchi boshqaruv paneli:",
                     parse_mode="Markdown",
-                    reply_markup=_student_main_menu_keyboard(),
+                    reply_markup=_student_main_menu_keyboard(is_admin=True),
                 )
         elif data == "adm_switch_teacher":
             user = await _get_or_create_user_async(update)
@@ -5453,12 +5459,12 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             if query.message:
                 await query.message.reply_text(
                     "👨‍🏫 O'qituvchi rejimi ko'rinishi faollashtirildi 👇",
-                    reply_markup=_persistent_menu_keyboard("teacher"),
+                    reply_markup=_persistent_menu_keyboard("teacher", is_admin=True),
                 )
                 await query.message.reply_text(
                     "👨‍🏫 *GRAND EDUCATION* — O'qituvchi boshqaruv paneli:",
                     parse_mode="Markdown",
-                    reply_markup=_teacher_main_menu_keyboard(),
+                    reply_markup=_teacher_main_menu_keyboard(is_admin=True),
                 )
         elif data == "menu_teacher_newmock":
             await newmock_handler(update, context)

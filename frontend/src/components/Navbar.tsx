@@ -91,21 +91,8 @@ export default function Navbar({ streakData, onOpenProfile, pageTitle = 'GRANDEC
           </Link>
         </div>
 
-        {/* Desktop Left: Brand & Motto */}
+        {/* Desktop Left: Active Track / Motto (Redundant desktop logo hidden next to sidebar) */}
         <div className="hidden md:flex items-center gap-3">
-          <Link to="/dashboard" className="tb-brand flex items-center gap-2">
-            <img
-              src="/logo-mark.png"
-              alt=""
-              onError={(e) => {
-                e.currentTarget.style.display = 'none';
-              }}
-              className="w-6 h-6 shrink-0 object-contain overflow-hidden rounded"
-              width={24}
-              height={24}
-            />
-            <span className="font-bold text-sm tracking-tight text-slate-100">GRANDEC</span>
-          </Link>
           {user?.active_subject && (
             <span className="tb-tag text-xs font-semibold px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20">
               {t(activeSubject === 'english' ? 'app_motto_badge_english' : 'app_motto_badge', 'Grand Education')}

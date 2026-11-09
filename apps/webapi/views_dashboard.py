@@ -465,9 +465,30 @@ class StudentDashboardView(APIView):
         percentages = [float(r.percentage) for r in real]
         cefr = _best_cefr(real)
         best_pct = max(percentages) if percentages else None
+        today = timezone.localdate()
         today_minutes = _today_study_minutes(user)
         goal_minutes = getattr(profile, "daily_goal_minutes", 15) or 15
         weaks = weak_parts(user, subject)
+
+        today_questions = StudentAnswer.objects.filter(
+            attempt__student=user,
+            attempt__is_preview=False,
+        ).filter(
+            Q(answered_at__date=today) | Q(attempt__completed_at__date=today)
+        ).count()
+
+        plan_summary = getattr(profile, "daily_plan_summary", {}) or {}
+        goal_questions = 30
+        if isinstance(plan_summary, dict) and plan_summary.get("goal_questions"):
+            try:
+                goal_questions = int(plan_summary["goal_questions"])
+            except (ValueError, TypeError):
+                goal_questions = 30
+        elif getattr(profile, "daily_goal_minutes", None):
+            goal_questions = int(profile.daily_goal_minutes)
+        goal_questions = max(5, goal_questions)
+
+        progress_pct = min(100, int(round((today_questions / max(1, goal_questions)) * 100)))
 
         return Response(
             {
@@ -488,11 +509,14 @@ class StudentDashboardView(APIView):
                 "daily_goal": {
                     "goal_minutes": goal_minutes,
                     "completed_minutes": today_minutes,
-                    "progress_pct": min(100, int(round((today_minutes / max(1, goal_minutes)) * 100))),
+                    "goal_questions": goal_questions,
+                    "completed_questions": today_questions,
+                    "progress_pct": progress_pct,
                     "reminder_slot": getattr(profile, "reminder_slot", "evening") or "evening",
                     "level": getattr(profile, "level", "beginner") or "beginner",
                     "target_exam": getattr(profile, "target_exam", "") or getattr(profile, "exam_target", ""),
-                    "daily_plan_summary": getattr(profile, "daily_plan_summary", ""),
+                    "target_grade": getattr(profile, "target_grade", "") or "",
+                    "daily_plan_summary": plan_summary,
                 },
                 "recent": _recent(rows),
                 "weak_parts": weaks,
@@ -500,3 +524,4 @@ class StudentDashboardView(APIView):
                 "goal": goal_for(profile, subject, real) if profile else None,
             }
         )
+

@@ -357,15 +357,44 @@ export function GapFillInput({
         </span>
       ))}
       {parts.length === 1 &&
-        positions.map((pos) => (
-          <span key={pos} style={{ display: 'block', marginTop: 8 }}>
+        (positions.length > 0 ? (
+          positions.map((pos) => (
+            <span key={pos} style={{ display: 'block', marginTop: 8 }}>
+              <input
+                aria-label={`gap-${pos}`}
+                disabled={disabled}
+                value={values[String(pos)] ?? ''}
+                onChange={(e) => onChange(pos, e.target.value)}
+                placeholder={`Javobingizni kiriting... (${pos + 1})`}
+                style={{
+                  width: '100%',
+                  minHeight: 44,
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  border: '1px solid var(--border)',
+                  background: 'var(--card)',
+                  color: 'var(--ink)',
+                }}
+              />
+            </span>
+          ))
+        ) : (
+          <span style={{ display: 'block', marginTop: 8 }}>
             <input
-              aria-label={`gap-${pos}`}
+              aria-label="gap-0"
               disabled={disabled}
-              value={values[String(pos)] ?? ''}
-              onChange={(e) => onChange(pos, e.target.value)}
-              placeholder={`…${pos + 1}`}
-              style={{ width: '100%' }}
+              value={values['0'] ?? values['1'] ?? ''}
+              onChange={(e) => onChange(0, e.target.value)}
+              placeholder="Javobingizni kiriting..."
+              style={{
+                width: '100%',
+                minHeight: 44,
+                padding: '10px 14px',
+                borderRadius: 10,
+                border: '1px solid var(--border)',
+                background: 'var(--card)',
+                color: 'var(--ink)',
+              }}
             />
           </span>
         ))}

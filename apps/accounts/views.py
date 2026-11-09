@@ -897,13 +897,29 @@ def complete_onboarding_view(request: Request) -> Response:
         mapped_exam_target = "ielts"
         derived_subject = "english"
         track_label = "IELTS Academic / General"
+    elif "bmba" in norm_exam or "dtm" in norm_exam:
+        mapped_exam_target = "bmba"
+        derived_subject = "uzbek"
+        track_label = "BMBA (DTM)"
+    elif "biolog" in norm_exam:
+        mapped_exam_target = "milliy_sertifikat"
+        derived_subject = "biology"
+        track_label = "Biologiya (Milliy Sertifikat)"
+    elif "kimyo" in norm_exam or "chem" in norm_exam:
+        mapped_exam_target = "milliy_sertifikat"
+        derived_subject = "chemistry"
+        track_label = "Kimyo (Milliy Sertifikat)"
+    elif "huquq" in norm_exam or "law" in norm_exam:
+        mapped_exam_target = "milliy_sertifikat"
+        derived_subject = "law"
+        track_label = "Huquqshunoslik (Milliy Sertifikat)"
     else:
         mapped_exam_target = "general"
         derived_subject = "uzbek"
         track_label = raw_target_exam or "Umumiy tayyorgarlik"
 
     explicit_subject = str(data.get("active_subject") or "").strip().lower()
-    if explicit_subject in ("uzbek", "english"):
+    if explicit_subject in ("uzbek", "english", "biology", "chemistry", "law"):
         active_subject = explicit_subject
     elif raw_target_exam:
         active_subject = derived_subject
@@ -919,10 +935,19 @@ def complete_onboarding_view(request: Request) -> Response:
     if "target_grade" in data:
         profile.target_grade = str(data.get("target_grade") or "")[:32]
 
+    goal_questions = 30
+    if "goal_questions" in data or "daily_goal_questions" in data:
+        try:
+            goal_questions = int(data.get("goal_questions") or data.get("daily_goal_questions") or 30)
+        except (TypeError, ValueError):
+            goal_questions = 30
+    elif daily_goal_minutes > 0:
+        goal_questions = daily_goal_minutes
+
     level_labels = {
         "zero": "Noldan boshlovchi",
         "beginner": "Boshlang'ich bilimga ega",
-        "intermediate": "O'rta daraja (mock yechib юrgan)",
+        "intermediate": "O'rta daraja (mock yechib yurgan)",
     }
     slot_labels = {
         "morning": "Ertalab (09:00)",
@@ -934,10 +959,15 @@ def complete_onboarding_view(request: Request) -> Response:
 
     sub_part = f" + {sub_subject}" if sub_subject else ""
     goal_part = f" Maqsad: {main_goal}." if main_goal else ""
-    daily_plan_summary = (
+    summary_text = (
         f"Yo'nalish: {track_label}{sub_part} | Daraja: {level_display} | "
-        f"Kunlik reja: {daily_goal_minutes} daqiqa ({slot_display}).{goal_part}"
+        f"Kunlik reja: {goal_questions} ta savol / {daily_goal_minutes} daqiqa ({slot_display}).{goal_part}"
     )[:500]
+
+    if "goal_questions" in data or "daily_goal_questions" in data:
+        daily_goal_minutes = goal_questions
+
+    daily_plan_summary = summary_text
 
     profile.referral_source = referral_source
     profile.main_goal = main_goal

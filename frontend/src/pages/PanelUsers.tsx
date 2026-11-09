@@ -52,8 +52,14 @@ export default function PanelUsers() {
       .finally(() => setLoading(false));
   }, [q, role, status, joined]);
 
+  const [isDebouncing, setIsDebouncing] = useState(false);
+
   useEffect(() => {
-    const id = setTimeout(load, 300);
+    setIsDebouncing(true);
+    const id = setTimeout(() => {
+      setIsDebouncing(false);
+      load();
+    }, 250);
     return () => clearTimeout(id);
   }, [load]);
 
@@ -95,8 +101,15 @@ export default function PanelUsers() {
     }
   };
 
+  const isBusy = loading || isDebouncing;
+
   return (
     <div>
+      <style>{`
+        @media (min-width: 768px) {
+          .panel-mobile-cards { display: none !important; }
+        }
+      `}</style>
       <h1>{t('users')}</h1>
       <p className="muted">{t('panel_users_by_role')}</p>
       {err && <p className="error">{err}</p>}
@@ -105,9 +118,14 @@ export default function PanelUsers() {
           ✓ {successMsg}
         </div>
       )}
-      <div className="toolbar">
-        <input placeholder={t('panel_search_users')} value={q} onChange={(e) => setQ(e.target.value)} />
-        <select value={role} onChange={(e) => setRole(e.target.value)}>
+      <div className="toolbar" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+        <input
+          placeholder={t('panel_search_users')}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          style={{ flex: '1 1 200px', width: '100%', fontSize: '16px', minHeight: '42px', boxSizing: 'border-box' }}
+        />
+        <select value={role} onChange={(e) => setRole(e.target.value)} style={{ minHeight: '42px' }}>
           <option value="">
             {t('all')} · {t('role')}
           </option>
@@ -117,14 +135,14 @@ export default function PanelUsers() {
             </option>
           ))}
         </select>
-        <select value={status} onChange={(e) => setStatus(e.target.value)}>
+        <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ minHeight: '42px' }}>
           <option value="">
             {t('all')} · {t('status_header')}
           </option>
           <option value="active">{t('panel_active')}</option>
           <option value="blocked">{t('panel_blocked')}</option>
         </select>
-        <select value={joined} onChange={(e) => setJoined(e.target.value)}>
+        <select value={joined} onChange={(e) => setJoined(e.target.value)} style={{ minHeight: '42px' }}>
           <option value="">{t('panel_joined')}</option>
           <option value="today">{t('panel_joined_today')}</option>
           <option value="7d">{t('panel_joined_7d')}</option>
@@ -132,7 +150,7 @@ export default function PanelUsers() {
         </select>
       </div>
 
-      {loading ? (
+      {isBusy ? (
         <div style={{ display: 'grid', gap: 12, padding: '24px 0' }}>
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="card animate-pulse" style={{ padding: 16, borderRadius: 14, background: 'var(--card)' }}>
@@ -150,7 +168,7 @@ export default function PanelUsers() {
       ) : (
         <>
           {/* Mobile User Cards (< 768px) */}
-          <div className="block md:hidden" style={{ display: 'grid', gap: 12 }}>
+          <div className="panel-mobile-cards block md:hidden" style={{ gap: 12 }}>
             {users.map((u) => {
               const isMe = meId !== null && Number(u.id) === meId;
               const blocked = !u.is_active;

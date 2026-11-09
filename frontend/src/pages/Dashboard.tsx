@@ -19,10 +19,11 @@ import { essayKind, essayStatus, scoreLabel } from '../lib/essays';
 import { useSubject } from '../lib/useSubject';
 import { daysLeft, useEntitlement, useTier } from '../lib/useTier';
 import PlanBadge from '../components/PlanBadge';
-import { Zap, Target, Flame, ArrowRight, ChevronRight, KeyRound, Award, Trophy } from 'lucide-react';
+import { Target, Flame, ArrowRight, ChevronRight, KeyRound, Award, Trophy } from 'lucide-react';
 import { hapticSelect, hapticImpact, hapticNotify } from '../lib/haptics';
 import ReferralCard from '../components/ReferralCard';
 
+const GoalModal = lazy(() => import('../components/GoalModal'));
 const OnboardingModal = lazy(() => import('../components/OnboardingModal'));
 const DailyBlitzModal = lazy(() => import('../components/DailyBlitzModal'));
 
@@ -106,6 +107,7 @@ export default function Dashboard() {
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [streakData, setStreakData] = useState<StreakInfoResponse | null>(null);
   const [blitzModalOpen, setBlitzModalOpen] = useState(false);
+  const [goalModalOpen, setGoalModalOpen] = useState(false);
   const [pinCode, setPinCode] = useState('');
   const [pinBusy, setPinBusy] = useState(false);
   const [pinErr, setPinErr] = useState<string | null>(null);
@@ -196,43 +198,6 @@ export default function Dashboard() {
 
   // Daily Goal calculation
   const storedPlan = useMemo(() => getStoredPlan(), [user?.onboarding_completed, user?.daily_goal_minutes]);
-  const goalMinutes = useMemo(() => {
-    const fromApi = Number(data?.daily_goal?.goal_minutes);
-    if (Number.isFinite(fromApi) && fromApi > 0) return fromApi;
-    const fromUser = Number(user?.daily_goal_minutes || (user?.daily_plan_summary as Record<string, unknown> | undefined)?.daily_minutes);
-    if (Number.isFinite(fromUser) && fromUser > 0) return fromUser;
-    const fromLocal = Number(storedPlan.daily_goal_minutes || storedPlan.daily_minutes);
-    if (Number.isFinite(fromLocal) && fromLocal > 0) return fromLocal;
-    return 15;
-  }, [data?.daily_goal?.goal_minutes, user?.daily_goal_minutes, user?.daily_plan_summary, storedPlan]);
-
-  const completedMinutes = useMemo(() => {
-    const fromApi = Number(data?.daily_goal?.completed_minutes);
-    const todayStr = new Date().toDateString();
-    let mins = 0;
-    if (data?.recent) {
-      for (const r of data.recent) {
-        if (r.finished_at && new Date(r.finished_at).toDateString() === todayStr) {
-          mins += 15;
-        }
-      }
-    }
-    if (data?.indicators?.essays?.recent) {
-      for (const e of data.indicators.essays.recent) {
-        if (e.updated_at && new Date(e.updated_at).toDateString() === todayStr) {
-          mins += 10;
-        }
-      }
-    }
-    const fromSummary = Number((user?.daily_plan_summary as Record<string, unknown> | undefined)?.completed_minutes || storedPlan.completed_minutes || 0);
-    return Math.max(
-      Number.isFinite(fromApi) ? fromApi : 0,
-      mins,
-      Number.isFinite(fromSummary) ? fromSummary : 0,
-    );
-  }, [data, user?.daily_plan_summary, storedPlan]);
-
-  const dailyProgressPct = Math.min(100, Math.round((completedMinutes / Math.max(1, goalMinutes)) * 100));
   const trackBadgeLabel = resolveTrackBadge(data?.daily_goal?.target_exam || user?.exam_target || user?.target_exam, storedPlan, subject);
 
   const dateOf = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(lang) : '');
@@ -295,13 +260,33 @@ export default function Dashboard() {
     });
   }
 
-  const firstName = user?.first_name || name.split(' ')[0] || 'O‘quvchi';
+  const rawFirstName = user?.first_name || name.split(' ')[0] || 'O‘quvchi';
+  const firstName = rawFirstName.charAt(0).toUpperCase() + rawFirstName.slice(1);
   const streakDays = streakData?.current_streak ?? data?.indicators?.streak ?? 1;
-  const goalQuestions = 20;
-  const completedQuestions = Math.min(
-    goalQuestions,
-    Math.max(12, Math.round((completedMinutes / Math.max(1, goalMinutes)) * goalQuestions))
+
+  const goalQuestions = useMemo(() => {
+    const fromApi = Number(data?.daily_goal?.goal_questions);
+    if (Number.isFinite(fromApi) && fromApi > 0) return fromApi;
+    const fromSummary = (user?.daily_plan_summary as Record<string, unknown> | undefined)?.goal_questions;
+    if (Number.isFinite(Number(fromSummary)) && Number(fromSummary) > 0) return Number(fromSummary);
+    const fromStored = Number(storedPlan.goal_questions || storedPlan.daily_goal_questions);
+    if (Number.isFinite(fromStored) && fromStored > 0) return fromStored;
+    const fromMins = Number(user?.daily_goal_minutes);
+    if (Number.isFinite(fromMins) && fromMins > 0) return fromMins;
+    return 30;
+  }, [data?.daily_goal?.goal_questions, user?.daily_plan_summary, storedPlan, user?.daily_goal_minutes]);
+
+  const completedQuestions = useMemo(() => {
+    const fromApi = Number(data?.daily_goal?.completed_questions);
+    if (Number.isFinite(fromApi)) return fromApi;
+    return 0;
+  }, [data?.daily_goal?.completed_questions]);
+
+  const questionsProgressPct = Math.min(
+    100,
+    Math.round((completedQuestions / Math.max(1, goalQuestions)) * 100)
   );
+
 
   const radarTopics = useMemo(() => {
     if (data?.weak_parts && data.weak_parts.length > 0) {
@@ -336,12 +321,12 @@ export default function Dashboard() {
       >
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
           <div>
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <span className="text-xs font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30 inline-flex items-center gap-1.5 shadow-[0_0_10px_rgba(245,158,11,0.2)]">
+            <div className="flex items-center gap-2.5 mb-2.5 flex-wrap">
+              <span className="text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30 inline-flex items-center gap-1.5 shadow-[0_0_10px_rgba(245,158,11,0.2)]">
                 <Flame size={14} className="text-amber-400 animate-pulse" />
-                <span>{streakDays} kunlik olovdasiz</span>
+                <span>🔥 {streakDays} kunlik olovdasiz</span>
               </span>
-              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+              <span className="text-xs font-semibold px-3 py-1 rounded-full bg-slate-800 text-slate-200 border border-slate-700">
                 {trackBadgeLabel}
               </span>
               <PlanBadge variant="chip" />
@@ -351,7 +336,7 @@ export default function Dashboard() {
               Bugungi kuningiz unumli o&apos;tsin, {firstName}! 🔥
             </h1>
             <p className="text-xs md:text-sm text-slate-300 mt-1 font-medium">
-              <span className="text-amber-400 font-bold">{streakDays} kunlik olovdasiz.</span> BMB sertifikatiga yana 1 qadam qoldi!
+              <span className="text-amber-400 font-bold">{streakDays} kunlik olovdasiz.</span> Maqsad sari yana bir mustahkam qadam!
             </p>
           </div>
 
@@ -361,7 +346,7 @@ export default function Dashboard() {
               {data?.resume ? (
                 <Link
                   to={data.resume.route}
-                  className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 hover:from-amber-400 hover:to-amber-500 shadow-lg shadow-amber-500/25 active:scale-95 transition-all"
+                  className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 hover:from-amber-400 hover:to-amber-500 shadow-lg shadow-amber-500/25 active:scale-95 transition-all"
                 >
                   <span>{t('dsh_resume', 'Davom ettirish')}</span>
                   <ArrowRight size={16} />
@@ -369,10 +354,9 @@ export default function Dashboard() {
               ) : (
                 <Link
                   to="/tests"
-                  className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 hover:from-amber-400 hover:to-amber-500 shadow-lg shadow-amber-500/25 active:scale-95 transition-all"
+                  className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 hover:from-amber-400 hover:to-amber-500 shadow-lg shadow-amber-500/25 active:scale-95 transition-all"
                 >
-                  <span>{t('dsh_start_mock', 'Test boshlash')}</span>
-                  <ArrowRight size={16} />
+                  <span>Mock topshirish →</span>
                 </Link>
               )}
             </div>
@@ -388,28 +372,32 @@ export default function Dashboard() {
                   🎯 Bugungi maqsad: <b className="text-amber-400 text-sm">{completedQuestions}/{goalQuestions}</b> ta savol yechildi
                 </span>
                 <span className="text-slate-400 font-normal">
-                  ({dailyProgressPct}%)
+                  ({questionsProgressPct}%)
                 </span>
               </div>
-              <Link
-                to="/onboarding"
-                className="text-amber-400/90 hover:text-amber-300 text-xs flex items-center gap-1 transition-colors"
+              <button
+                type="button"
+                onClick={() => {
+                  hapticImpact('light');
+                  setGoalModalOpen(true);
+                }}
+                className="text-amber-400 hover:text-amber-300 text-xs font-bold inline-flex items-center gap-1 transition-colors bg-transparent border-0 cursor-pointer p-0"
               >
                 <span>⚙️ Rejani o&apos;zgartirish</span>
-              </Link>
+              </button>
             </div>
 
             <div
               className="w-full h-3 rounded-full bg-slate-800/90 overflow-hidden p-0.5 border border-slate-700/80"
               role="progressbar"
-              aria-valuenow={dailyProgressPct}
+              aria-valuenow={questionsProgressPct}
               aria-valuemin={0}
               aria-valuemax={100}
             >
               <div
                 className="h-full rounded-full transition-all duration-500 relative"
                 style={{
-                  width: `${Math.max(6, dailyProgressPct)}%`,
+                  width: `${Math.max(4, questionsProgressPct)}%`,
                   background: 'linear-gradient(90deg, #d97706 0%, #f59e0b 50%, #fbbf24 100%)',
                   boxShadow: '0 0 12px rgba(245, 158, 11, 0.65)',
                 }}
@@ -419,155 +407,212 @@ export default function Dashboard() {
         )}
       </section>
 
-      {/* 2. O'QUVCHI UCHUN 3 TA ASOSIY TOP BLOK (ZERO-CLUTTER) */}
+      {/* 2. O'QUVCHI UCHUN 3 TA ASOSIY TOP BLOK: IKKI USTUN VA REYTING */}
       {isStudent && (
         <section className="mb-6 space-y-4" aria-label="Asosiy Harakatlar">
-          {/* BLOK 1: TEZKOR KOD BILAN TESTGA KIRISH */}
-          <div
-            className="rounded-2xl p-4 md:p-5 border transition-all"
-            style={{
-              background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%)',
-              borderColor: 'rgba(56, 189, 248, 0.3)',
-              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.25)',
-            }}
-          >
-            <div className="flex items-center gap-2.5 mb-2">
-              <div className="w-8 h-8 rounded-lg bg-sky-500/15 text-sky-400 flex items-center justify-center border border-sky-500/25 shrink-0">
-                <KeyRound size={18} />
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-white tracking-tight">
-                  Tezkor kod bilan testga kirish
-                </h2>
-                <p className="text-xs text-slate-400">
-                  Ustoz bergan 4-6 xonali test yoki mock kodini kiriting
-                </p>
-              </div>
-            </div>
-            <form onSubmit={handleJoinByPin} className="mt-3 flex items-center gap-2">
-              <div className="relative flex-1">
-                <input
-                  type="text"
-                  value={pinCode}
-                  onChange={(e) => {
-                    setPinCode(e.target.value);
-                    if (pinErr) setPinErr(null);
-                  }}
-                  placeholder="Masalan: MOCK-42 yoki 105"
-                  className="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-400 font-mono tracking-wider transition-colors"
-                  disabled={pinBusy}
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={pinBusy || !pinCode.trim()}
-                className="px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider bg-gradient-to-r from-sky-500 to-sky-600 text-slate-950 hover:from-sky-400 hover:to-sky-500 active:scale-95 disabled:opacity-50 transition-all flex items-center gap-1.5 shrink-0 shadow-lg shadow-sky-500/20"
-              >
-                <span>{pinBusy ? 'Tekshirilmoqda…' : '🚀 Kirish'}</span>
-              </button>
-            </form>
-            {pinErr && (
-              <div className="text-xs text-rose-400 font-medium mt-2 flex items-center gap-1">
-                <span>⚠️ {pinErr}</span>
-              </div>
-            )}
-          </div>
-
-          {/* BLOK 2: KUNLIK 5 TALIK BLITS-TEST */}
-          <div
-            className="rounded-2xl p-4 md:p-5 border transition-all relative overflow-hidden"
-            style={{
-              background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(217, 119, 6, 0.22) 100%)',
-              borderColor: 'rgba(245, 158, 11, 0.4)',
-              boxShadow: '0 8px 24px rgba(245, 158, 11, 0.12)',
-            }}
-          >
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/35 shrink-0 shadow-[0_0_12px_rgba(245,158,11,0.3)]">
-                  <Zap size={22} className="text-amber-400 animate-pulse" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap mb-1">
-                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30 inline-flex items-center gap-1">
-                      <Flame size={12} className="text-amber-400" /> +25 XP Olov
-                    </span>
-                    <span className="text-[11px] font-semibold text-slate-300">
-                      ⚡ 60 soniya • 5 savol
-                    </span>
-                  </div>
-                  <h2 className="text-base font-extrabold text-white tracking-tight">
-                    ⚡ Kunlik Blits (60 soniya • 5 savol)
-                  </h2>
-                  <p className="text-xs text-slate-300 mt-0.5">
-                    {subject === 'biology' ? '🧬 Biologiya' : subject === 'chemistry' ? '🧪 Kimyo' : subject === 'law' ? '⚖️ Huquq' : subject === 'english' ? '🇬🇧 English' : '🇺🇿 Ona tili'} bo'yicha bugungi ekspress sinov
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  hapticImpact('medium');
-                  setBlitzModalOpen(true);
-                }}
-                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-xs uppercase tracking-wider bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 hover:from-amber-400 hover:to-amber-500 active:scale-95 transition-all shadow-lg shadow-amber-500/25 shrink-0 border-0 cursor-pointer"
-              >
-                <span>⚡️ Blits-testni boshlash</span>
-                <ArrowRight size={14} />
-              </button>
-            </div>
-          </div>
-
-          {/* BLOK 3: OXIRGI NATIJAM VA GURUHIM REYTINGI */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            {/* Sub-card A: Oxirgi natijam */}
+          {/* IKKI USTUN: TEZKOR KOD VA KUNLIK BLITS */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* USTUN 1: TEZKOR KOD BILAN TESTGA KIRISH */}
             <div
-              className="rounded-2xl p-4 border transition-all flex flex-col justify-between"
+              className="rounded-2xl p-5 border transition-all flex flex-col justify-between"
               style={{
-                background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.85) 100%)',
-                borderColor: 'rgba(16, 185, 129, 0.3)',
-                boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
+                background: 'var(--bg-card, var(--card))',
+                border: '1.5px solid var(--border)',
+                boxShadow: 'var(--card-shadow)',
               }}
             >
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center border border-emerald-500/25">
-                    <Award size={16} />
+              <div>
+                <div className="flex items-center gap-2.5 mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-sky-500/15 text-sky-500 flex items-center justify-center border border-sky-500/25 shrink-0">
+                    <KeyRound size={18} />
                   </div>
-                  <span className="text-xs font-bold text-slate-200">Oxirgi natijam</span>
+                  <div>
+                    <h2 className="text-base font-bold tracking-tight" style={{ color: 'var(--ink, #0f172a)' }}>
+                      🔑 Tezkor kod bilan testga kirish
+                    </h2>
+                    <p className="text-xs" style={{ color: 'var(--muted, #64748b)' }}>
+                      Ustoz bergan 4-6 xonali test yoki mock kodini kiriting
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <form onSubmit={handleJoinByPin} className="mt-4 flex items-center gap-2.5">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    value={pinCode}
+                    onChange={(e) => {
+                      setPinCode(e.target.value);
+                      if (pinErr) setPinErr(null);
+                    }}
+                    placeholder="Masalan: MOCK-42 yoki 105"
+                    style={{
+                      height: '44px',
+                      padding: '0 16px',
+                      borderRadius: '12px',
+                      border: '1.5px solid var(--border)',
+                      backgroundColor: 'var(--card-2, #f8fafc)',
+                      color: 'var(--ink, #0f172a)',
+                    }}
+                    className="w-full text-sm font-mono tracking-wider transition-colors"
+                    disabled={pinBusy}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={pinBusy || !pinCode.trim()}
+                  style={{
+                    height: '44px',
+                    padding: '0 24px',
+                    borderRadius: '12px',
+                    background: 'linear-gradient(135deg, #C8922A 0%, #F59E0B 100%)',
+                    color: '#ffffff',
+                    fontWeight: 800,
+                    fontSize: '14px',
+                    border: 'none',
+                    boxShadow: '0 4px 12px rgba(200, 146, 42, 0.3)',
+                    cursor: pinBusy || !pinCode.trim() ? 'not-allowed' : 'pointer',
+                    opacity: pinBusy || !pinCode.trim() ? 0.6 : 1,
+                  }}
+                  className="flex items-center justify-center shrink-0 transition-all active:scale-95"
+                >
+                  <span>{pinBusy ? 'Tekshirilmoqda…' : '🚀 Kirish'}</span>
+                </button>
+              </form>
+              {pinErr && (
+                <div className="text-xs text-rose-500 font-medium mt-2 flex items-center gap-1">
+                  <span>⚠️ {pinErr}</span>
+                </div>
+              )}
+            </div>
+
+            {/* USTUN 2: KUNLIK 5 TALIK BLITS-TEST */}
+            <div
+              className="rounded-2xl p-5 border transition-all flex flex-col justify-between"
+              style={{
+                background: 'var(--bg-card, var(--card))',
+                border: '1.5px solid rgba(245, 158, 11, 0.35)',
+                boxShadow: 'var(--card-shadow)',
+              }}
+            >
+              <div>
+                <div className="flex items-center gap-2 flex-wrap mb-2">
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '4px 10px',
+                      borderRadius: '999px',
+                      fontSize: '11px',
+                      fontWeight: 800,
+                      background: 'rgba(245, 158, 11, 0.15)',
+                      color: '#d97706',
+                      border: '1px solid rgba(245, 158, 11, 0.35)',
+                    }}
+                  >
+                    <Flame size={13} className="text-amber-500" />
+                    🔥 +25 XP Olov
+                  </span>
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '4px 10px',
+                      borderRadius: '999px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      background: 'var(--card-2, #f1f5f9)',
+                      color: 'var(--text-secondary, #475569)',
+                      border: '1px solid var(--border)',
+                    }}
+                  >
+                    ⏱ 60 soniya • 5 savol
+                  </span>
+                </div>
+                <h2 className="text-base font-extrabold" style={{ color: 'var(--ink, #0f172a)' }}>
+                  ⚡ Kunlik Blits (60 soniya • 5 savol)
+                </h2>
+                <p className="text-xs mt-1" style={{ color: 'var(--muted, #64748b)' }}>
+                  {subject === 'biology' ? '🧬 Biologiya' : subject === 'chemistry' ? '🧪 Kimyo' : subject === 'law' ? '⚖️ Huquq' : subject === 'english' ? '🇬🇧 English' : '🇺🇿 Ona tili'} bo‘yicha bugungi ekspress sinov
+                </p>
+              </div>
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    hapticImpact('medium');
+                    setBlitzModalOpen(true);
+                  }}
+                  style={{
+                    height: '44px',
+                    padding: '0 20px',
+                    borderRadius: '12px',
+                    background: 'linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)',
+                    color: '#ffffff',
+                    fontWeight: 800,
+                    fontSize: '13.5px',
+                    border: 'none',
+                    boxShadow: '0 4px 14px rgba(234, 88, 12, 0.3)',
+                    cursor: 'pointer',
+                  }}
+                  className="inline-flex items-center gap-2 active:scale-95 transition-all"
+                >
+                  <span>⚡️ Blits-testni boshlash →</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* OXIRGI NATIJAM VA GURUHIM REYTINGI */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Sub-card A: Oxirgi natijam */}
+            <div
+              className="rounded-2xl p-5 md:p-6 border transition-all flex flex-col justify-between"
+              style={{
+                background: 'var(--bg-card, var(--card))',
+                border: '1.5px solid var(--border)',
+                boxShadow: 'var(--card-shadow)',
+              }}
+            >
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/15 text-emerald-500 flex items-center justify-center border border-emerald-500/25">
+                    <Award size={18} />
+                  </div>
+                  <span className="text-sm font-bold" style={{ color: 'var(--ink, #0f172a)' }}>Oxirgi natijam</span>
                 </div>
                 {data?.recent?.[0] && (
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
                     {recentSummary(data.recent[0])}
                   </span>
                 )}
               </div>
               {data?.recent?.[0] ? (
                 <div>
-                  <p className="text-sm font-bold text-white truncate mb-2">
+                  <p className="text-sm font-bold truncate mb-3" style={{ color: 'var(--ink, #0f172a)' }}>
                     {data.recent[0].title || 'Test sinovi'}
                   </p>
                   <Link
                     to={`/results/${data.recent[0].result_id}`}
                     onClick={() => hapticSelect()}
-                    className="text-xs font-bold text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1 transition-colors"
+                    className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline inline-flex items-center gap-1 transition-colors"
                   >
-                    <span>Tahlil va xatolarni ko&apos;rish</span>
-                    <ChevronRight size={14} />
+                    <span>Tahlil va xatolarni ko&apos;rish →</span>
                   </Link>
                 </div>
               ) : (
                 <div>
-                  <p className="text-xs text-slate-400 mb-2">
+                  <p className="text-xs mb-3" style={{ color: 'var(--muted, #64748b)' }}>
                     Hali test topshirmadingiz. Bugungi birinchi testingizni yeching!
                   </p>
                   <Link
                     to="/tests"
                     onClick={() => hapticSelect()}
-                    className="text-xs font-bold text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1 transition-colors"
+                    className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline inline-flex items-center gap-1 transition-colors"
                   >
-                    <span>Testlar ro&apos;yxatiga o&apos;tish</span>
-                    <ChevronRight size={14} />
+                    <span>Testlar ro&apos;yxatiga o&apos;tish →</span>
                   </Link>
                 </div>
               )}
@@ -575,45 +620,43 @@ export default function Dashboard() {
 
             {/* Sub-card B: Guruhim reytingi */}
             <div
-              className="rounded-2xl p-4 border transition-all flex flex-col justify-between"
+              className="rounded-2xl p-5 md:p-6 border transition-all flex flex-col justify-between"
               style={{
-                background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.85) 100%)',
-                borderColor: 'rgba(168, 85, 247, 0.3)',
-                boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
+                background: 'var(--bg-card, var(--card))',
+                border: '1.5px solid var(--border)',
+                boxShadow: 'var(--card-shadow)',
               }}
             >
-              <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="flex items-center justify-between gap-2 mb-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-purple-500/15 text-purple-400 flex items-center justify-center border border-purple-500/25">
-                    <Trophy size={16} />
+                  <div className="w-8 h-8 rounded-lg bg-purple-500/15 text-purple-500 flex items-center justify-center border border-purple-500/25">
+                    <Trophy size={18} />
                   </div>
-                  <span className="text-xs font-bold text-slate-200">Guruhim reytingi</span>
+                  <span className="text-sm font-bold" style={{ color: 'var(--ink, #0f172a)' }}>Guruhim reytingi</span>
                 </div>
-                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30">
                   Podium &amp; Reyting
                 </span>
               </div>
               <div>
-                <p className="text-xs text-slate-300 mb-2">
+                <p className="text-xs mb-3" style={{ color: 'var(--muted, #64748b)' }}>
                   Guruhdoshlaringiz orasidagi o&apos;rningiz va haftalik ballarni kuzatib boring.
                 </p>
                 <div className="flex items-center gap-3">
                   <Link
                     to="/groups"
                     onClick={() => hapticSelect()}
-                    className="text-xs font-bold text-purple-400 hover:text-purple-300 inline-flex items-center gap-1 transition-colors"
+                    className="text-xs font-bold text-purple-600 dark:text-purple-400 hover:underline inline-flex items-center gap-1 transition-colors"
                   >
-                    <span>Guruhim vedomosti</span>
-                    <ChevronRight size={14} />
+                    <span>Guruhim vedomosti →</span>
                   </Link>
-                  <span className="text-slate-600">·</span>
+                  <span style={{ color: 'var(--border)' }}>·</span>
                   <Link
                     to="/leaderboard"
                     onClick={() => hapticSelect()}
-                    className="text-xs font-bold text-amber-400 hover:text-amber-300 inline-flex items-center gap-1 transition-colors"
+                    className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline inline-flex items-center gap-1 transition-colors"
                   >
-                    <span>Umumiy reyting</span>
-                    <ChevronRight size={14} />
+                    <span>Umumiy reyting →</span>
                   </Link>
                 </div>
               </div>
@@ -621,6 +664,7 @@ export default function Dashboard() {
           </div>
         </section>
       )}
+
 
       {/* 3. ZAIF MAVZULAR VIZUAL RADARI */}
       {isStudent && data && (
@@ -924,6 +968,19 @@ export default function Dashboard() {
               GamificationApi.streak().then(setStreakData).catch(() => {});
               load();
             }}
+          />
+        </Suspense>
+      )}
+
+      {goalModalOpen && (
+        <Suspense fallback={null}>
+          <GoalModal
+            isOpen={goalModalOpen}
+            onClose={() => setGoalModalOpen(false)}
+            onSaved={() => load()}
+            currentExam={data?.daily_goal?.target_exam || user?.target_exam || user?.exam_target}
+            currentGrade={data?.daily_goal?.target_grade || user?.target_grade}
+            currentQuestions={goalQuestions}
           />
         </Suspense>
       )}

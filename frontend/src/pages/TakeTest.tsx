@@ -1418,6 +1418,32 @@ export default function TakeTest() {
                 if (cur.written.trim()) save(q, cur);
               }}
             />
+          ) : q.choices.length === 0 ? (
+            <div style={{ marginTop: 12 }}>
+              <input
+                type="text"
+                disabled={finished || submitting}
+                value={a.text || ''}
+                onChange={(e) => editText(q, e.target.value)}
+                onBlur={() => {
+                  if (timers.current[q.id]) clearTimeout(timers.current[q.id]);
+                  const cur = answers[q.id] ?? emptyEntry();
+                  if (cur.text.trim()) save(q, cur);
+                }}
+                placeholder="Javobingizni kiriting..."
+                style={{
+                  width: '100%',
+                  minHeight: 48,
+                  padding: '12px 16px',
+                  borderRadius: 12,
+                  border: '1.5px solid var(--border, rgba(255,255,255,0.15))',
+                  background: 'var(--card, rgba(0,0,0,0.25))',
+                  color: 'var(--ink, #fff)',
+                  fontSize: '1.05rem',
+                  fontWeight: 600,
+                }}
+              />
+            </div>
           ) : (
             <div style={{ marginTop: 10 }}>
               {/* Quick selector pill bar for matching or multi-choice items (Q33-Q35) */}

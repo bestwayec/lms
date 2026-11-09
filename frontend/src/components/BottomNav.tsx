@@ -23,6 +23,17 @@ export default function BottomNav({ onOpenProfile }: BottomNavProps) {
   const { t } = useLang();
   const { pathname } = useLocation();
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(
+    typeof window !== 'undefined' ? window.innerWidth >= 768 : false
+  );
+
+  useEffect(() => {
+    const handleWinResize = () => {
+      setIsDesktop(window.innerWidth >= 768);
+    };
+    window.addEventListener('resize', handleWinResize);
+    return () => window.removeEventListener('resize', handleWinResize);
+  }, []);
 
   useEffect(() => {
     const handleFocusIn = (e: FocusEvent) => {
@@ -60,6 +71,22 @@ export default function BottomNav({ onOpenProfile }: BottomNavProps) {
     };
   }, []);
 
+  const isExamRoute =
+    pathname.startsWith('/take-test') ||
+    pathname.startsWith('/take/') ||
+    pathname.startsWith('/english-exam') ||
+    pathname.includes('/test-run');
+
+  const isGuestOnLanding = !user && (pathname === '/' || pathname === '/landing');
+  const isAuthRoute =
+    pathname === '/login' ||
+    pathname === '/register' ||
+    pathname.startsWith('/password-reset');
+
+  if (isDesktop || isExamRoute || isGuestOnLanding || isAuthRoute || isKeyboardOpen) {
+    return null;
+  }
+
   const handleProfileClick = (e: React.MouseEvent) => {
     if (onOpenProfile) {
       e.preventDefault();
@@ -83,7 +110,7 @@ export default function BottomNav({ onOpenProfile }: BottomNavProps) {
       to: '/tests',
       label: t('bnav_tests', 'Testlar'),
       Icon: FileText,
-      isActive: pathname.startsWith('/tests') || pathname.startsWith('/take'),
+      isActive: pathname.startsWith('/tests'),
     },
     {
       to: '/groups',
@@ -107,32 +134,38 @@ export default function BottomNav({ onOpenProfile }: BottomNavProps) {
   ];
 
   return (
-    <nav
-      className="bnav bnav--glass"
-      aria-label={t('bnav_label', 'Asosiy navigatsiya')}
-      style={{
-        position: 'fixed',
-        left: 0,
-        right: 0,
-        bottom: 0,
-        zIndex: 60,
-        backdropFilter: 'blur(20px) saturate(190%)',
-        WebkitBackdropFilter: 'blur(20px) saturate(190%)',
-        backgroundColor: 'var(--bnav-bg, rgba(15, 23, 42, 0.88))',
-        borderTop: '1px solid var(--bnav-border, rgba(255, 255, 255, 0.08))',
-        paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 12px))',
-        paddingTop: '6px',
-        paddingLeft: '6px',
-        paddingRight: '6px',
-        display: 'grid',
-        gridTemplateColumns: 'repeat(5, 1fr)',
-        boxShadow: '0 -4px 20px rgba(0, 0, 0, 0.25)',
-        transform: isKeyboardOpen ? 'translateY(100%)' : 'translateY(0)',
-        opacity: isKeyboardOpen ? 0 : 1,
-        pointerEvents: isKeyboardOpen ? 'none' : 'auto',
-        transition: 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease',
-      }}
-    >
+    <>
+      <style>{`
+        @media (min-width: 768px) {
+          .bnav { display: none !important; }
+        }
+      `}</style>
+      <nav
+        className="bnav bnav--glass md:hidden"
+        aria-label={t('bnav_label', 'Asosiy navigatsiya')}
+        style={{
+          position: 'fixed',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 60,
+          backdropFilter: 'blur(20px) saturate(190%)',
+          WebkitBackdropFilter: 'blur(20px) saturate(190%)',
+          backgroundColor: 'var(--bnav-bg, rgba(15, 23, 42, 0.88))',
+          borderTop: '1px solid var(--bnav-border, rgba(255, 255, 255, 0.08))',
+          paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 12px))',
+          paddingTop: '6px',
+          paddingLeft: '6px',
+          paddingRight: '6px',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(5, 1fr)',
+          boxShadow: '0 -4px 20px rgba(0, 0, 0, 0.25)',
+          transform: isKeyboardOpen ? 'translateY(100%)' : 'translateY(0)',
+          opacity: isKeyboardOpen ? 0 : 1,
+          pointerEvents: isKeyboardOpen ? 'none' : 'auto',
+          transition: 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease',
+        }}
+      >
       {navItems.map(({ to, label, Icon, isActive, onClick }) => {
         return (
           <NavLink
@@ -216,6 +249,7 @@ export default function BottomNav({ onOpenProfile }: BottomNavProps) {
           </NavLink>
         );
       })}
-    </nav>
+      </nav>
+    </>
   );
 }

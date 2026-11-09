@@ -75,7 +75,9 @@ class AiConvertDocumentView(APIView):
                 status=status.HTTP_429_TOO_MANY_REQUESTS,
             )
 
-        subject = request.data.get("subject", "uzbek")
+        allowed_subjects = {"uzbek", "english", "biology", "chemistry", "law"}
+        raw_subject = str(request.data.get("subject", "uzbek") or "").lower().strip()
+        subject = raw_subject if raw_subject in allowed_subjects else "uzbek"
         file_bytes = upload_file.read()
         content_type = (
             getattr(upload_file, "content_type", "") or "application/octet-stream"
