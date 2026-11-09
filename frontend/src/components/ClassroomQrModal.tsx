@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { Copy, Check, X, Maximize2, Minimize2, Smartphone, Globe } from 'lucide-react';
-import { useLang } from '../i18n/LangContext';
 
 interface ClassroomQrModalProps {
   isOpen: boolean;
@@ -22,7 +21,6 @@ export default function ClassroomQrModal({
   tmaUrl,
   subtitle = "Sinfxona proyektorida yoki telefonda o'quvchilarga ko'rsating",
 }: ClassroomQrModalProps) {
-  const { t } = useLang();
   const [activeTab, setActiveTab] = useState<'tma' | 'web'>(tmaUrl ? 'tma' : 'web');
   const [svgContent, setSvgContent] = useState<string>('');
   const [copiedLink, setCopiedLink] = useState(false);
@@ -97,7 +95,7 @@ export default function ClassroomQrModal({
         <div className="w-full flex items-center justify-between pb-3 border-b border-slate-800">
           <div className="min-w-0 pr-3">
             <span className="text-xs font-bold uppercase tracking-wider text-amber-400">
-              📱 {t('classroom_qr_badge', 'Sinfxona QR-Kodi')}
+              📱 Sinfxona QR-Kodi
             </span>
             <h2 className="text-lg sm:text-xl font-black text-white truncate">{title}</h2>
           </div>
