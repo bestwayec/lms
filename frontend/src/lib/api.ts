@@ -1340,14 +1340,19 @@ export const TelegramAuth = {
   loginWithInitData: (initData: string): Promise<TelegramAuthLogin> => {
     if (inflightInitData && inflightInitData.key === initData) return inflightInitData.promise;
     const promise = (async () => {
-      const res = await fetch(`${API_BASE}/tma/api/auth/`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ init_data: initData }),
-      });
-      if (!res.ok) await throwForResponse(res, 'Telegram WebApp avtorizatsiyasida xatolik.');
-      return (await res.json()) as TelegramAuthLogin;
+      try {
+        const res = await fetch(`${API_BASE}/tma/api/auth/`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ init_data: initData }),
+        });
+        if (!res.ok) await throwForResponse(res, 'Telegram WebApp avtorizatsiyasida xatolik.');
+        return (await res.json()) as TelegramAuthLogin;
+      } catch (err) {
+        inflightInitData = null;
+        throw err;
+      }
     })();
     inflightInitData = { key: initData, promise };
     return promise;

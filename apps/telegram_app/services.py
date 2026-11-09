@@ -25,10 +25,9 @@ from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 
-# TMA data validity period — 10 minutes (Telegram recommends 24h max, but 10m
-# limits replay window for stolen initData). Must match cache replay TTL.
-TMA_DATA_MAX_AGE = 600
-TMA_REPLAY_CACHE_PREFIX = "tma:hash:"
+# TMA data validity period — 24 hours per official Telegram WebApp specification
+# (Telegram client does not refresh initData during an active webview session).
+TMA_DATA_MAX_AGE = 86400
 
 
 class TelegramMiniAppService:
@@ -104,30 +103,26 @@ class TelegramMiniAppService:
             logger.warning("TMA initData hash mismatch")
             return None
 
-        # Check auth_date (not too old, not from future)
+        # Check auth_date (allow up to 5m clock skew and up to 24h freshness)
         try:
             auth_date = int(parsed.get("auth_date", 0))
         except (ValueError, TypeError):
             logger.warning("Invalid auth_date in init_data")
             return None
         age = time.time() - auth_date
-        if auth_date <= 0 or age < -60 or age > TMA_DATA_MAX_AGE:
+        if auth_date <= 0 or age < -300 or age > TMA_DATA_MAX_AGE:
             logger.warning(
-                "initData expired: auth_date=%d, now=%d", auth_date, time.time()
+                "initData expired or invalid clock: auth_date=%d, now=%d, age=%d",
+                auth_date,
+                int(time.time()),
+                int(age),
             )
-            return None
-
-        # Replay protection — hash may be reused only once per TTL window (atomic)
-        replay_key = f"{TMA_REPLAY_CACHE_PREFIX}{received_hash}"
-        if not cache.add(replay_key, 1, timeout=TMA_DATA_MAX_AGE):
-            logger.warning("Replay detected for initData hash=%s", received_hash[:8])
             return None
 
         # Parse user data
         user_data = cls._parse_user(parsed)
         if not user_data.get("id"):
             logger.warning("Missing user id in init_data")
-            cache.delete(replay_key)
             return None
         logger.info("TMA validated: user_id=%s", user_data.get("id"))
         return user_data

@@ -25,9 +25,15 @@ from apps.tests.models import Choice, Question, Test, TestAttempt
 User = get_user_model()
 
 
-def _make_tma_init_data(user_dict: dict, bot_token: str = "test-bot-token-12345", start_param: str = "") -> str:
+def _make_tma_init_data(
+    user_dict: dict,
+    bot_token: str = "test-bot-token-12345",
+    start_param: str = "",
+    auth_date: int | None = None,
+) -> str:
     """Generate valid Telegram initData with HMAC-SHA256 signature."""
-    auth_date = int(time.time())
+    if auth_date is None:
+        auth_date = int(time.time())
     data = {
         "auth_date": str(auth_date),
         "user": json.dumps(user_dict, separators=(",", ":")),
@@ -78,6 +84,92 @@ class TestTelegramMiniAppAuth:
         assert u is not None
         assert u.first_name == "Sardor"
         assert u.role == User.Role.STUDENT
+
+    def test_tma_auth_multiple_requests_same_init_data_allowed(self):
+        """Telegram Mini App reuses the exact same initData across page reloads / concurrent mounts."""
+        client = APIClient()
+        tg_id = 8877665544
+        init_data = _make_tma_init_data(
+            {"id": tg_id, "first_name": "Dilshod", "last_name": "Rahimov"},
+        )
+
+        with override_settings(TELEGRAM_BOT_TOKEN="test-bot-token-12345"):
+            # First request (AuthContext mount)
+            resp1 = client.post(
+                "/api/v1/auth/telegram-webapp/",
+                {"init_data": init_data},
+                format="json",
+            )
+            assert resp1.status_code == status.HTTP_200_OK
+            assert resp1.json()["success"] is True
+
+            # Second request with same initData (e.g. user reloads page or Tma.tsx mounts)
+            resp2 = client.post(
+                "/api/v1/auth/telegram-webapp/",
+                {"init_data": init_data},
+                format="json",
+            )
+            assert resp2.status_code == status.HTTP_200_OK
+            assert resp2.json()["success"] is True
+            assert resp2.json()["user"]["id"] == resp1.json()["user"]["id"]
+
+    def test_tma_auth_clock_drift_allowed(self):
+        """Phones with up to 4 minutes ahead time drift must authenticate successfully."""
+        client = APIClient()
+        tg_id = 7766554433
+        # Clock is 120 seconds in the future
+        future_time = int(time.time()) + 120
+        init_data = _make_tma_init_data(
+            {"id": tg_id, "first_name": "Nodir"},
+            auth_date=future_time,
+        )
+
+        with override_settings(TELEGRAM_BOT_TOKEN="test-bot-token-12345"):
+            resp = client.post(
+                "/api/v1/auth/telegram-webapp/",
+                {"init_data": init_data},
+                format="json",
+            )
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.json()["success"] is True
+
+    def test_tma_auth_valid_within_24_hours(self):
+        """Telegram initData generated 2 hours ago is valid during an active session."""
+        client = APIClient()
+        tg_id = 6655443322
+        past_time = int(time.time()) - 7200  # 2 hours old
+        init_data = _make_tma_init_data(
+            {"id": tg_id, "first_name": "Malika"},
+            auth_date=past_time,
+        )
+
+        with override_settings(TELEGRAM_BOT_TOKEN="test-bot-token-12345"):
+            resp = client.post(
+                "/api/v1/auth/telegram-webapp/",
+                {"init_data": init_data},
+                format="json",
+            )
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.json()["success"] is True
+
+    def test_tma_auth_expired_over_24_hours_rejected(self):
+        """Telegram initData older than 24 hours must be rejected."""
+        client = APIClient()
+        tg_id = 5544332211
+        too_old_time = int(time.time()) - 90000  # 25 hours old
+        init_data = _make_tma_init_data(
+            {"id": tg_id, "first_name": "Eski"},
+            auth_date=too_old_time,
+        )
+
+        with override_settings(TELEGRAM_BOT_TOKEN="test-bot-token-12345"):
+            resp = client.post(
+                "/api/v1/auth/telegram-webapp/",
+                {"init_data": init_data},
+                format="json",
+            )
+        assert resp.status_code == status.HTTP_401_UNAUTHORIZED
+        assert resp.json()["success"] is False
 
     def test_tma_auth_invalid_hash_rejected(self):
         client = APIClient()

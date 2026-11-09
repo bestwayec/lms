@@ -78,11 +78,11 @@ def tma_auth_view(request: Request) -> Response:
     """
     from django.core.cache import cache
 
-    # Throttle credential issuance: 10/min per IP + 20/min per init hash prefix
+    # Throttle credential issuance: 60/min per IP
     ip = _get_client_ip(request)
     tkey = f"tma-auth:{ip}"
     cnt = cache.get(tkey, 0)
-    if cnt >= 10:
+    if cnt >= 60:
         return Response(
             {
                 "success": False,
@@ -90,7 +90,10 @@ def tma_auth_view(request: Request) -> Response:
             },
             status=status.HTTP_429_TOO_MANY_REQUESTS,
         )
-    cache.set(tkey, cnt + 1, timeout=60)
+    try:
+        cache.incr(tkey)
+    except ValueError:
+        cache.set(tkey, 1, timeout=60)
 
     init_data = request.data.get("init_data") or request.data.get("initData") or ""
     if len(init_data) > 8192:
