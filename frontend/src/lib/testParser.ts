@@ -32,6 +32,20 @@ export interface SmartParseResult {
 
 export type SupportedSubject = 'uzbek' | 'adabiyot' | 'milliy' | 'english' | 'biology' | 'chemistry' | 'law';
 
+/**
+ * Strips duplicate leading letter identifiers from choice text, e.g. "A) Toshkent", "A. Toshkent", "A: Toshkent", "(A) Toshkent"
+ * to prevent duplicate "A A..." rendering when the UI also shows the choice letter badge.
+ */
+export function cleanChoiceText(text: string, letter?: string): string {
+  if (!text) return '';
+  const trimmed = text.trim();
+  const prefixRegex = letter
+    ? new RegExp(`^(?:\\(?[${letter}]\\)?|[${letter}])[\\.\\)\\:\\-\\s]+\\s*`, 'i')
+    : /^(\(?[A-Za-z]\)?|[A-Za-z])[\.\)\:\-\s]+\s*/;
+  const cleaned = trimmed.replace(prefixRegex, '').trim();
+  return cleaned || trimmed;
+}
+
 export function parseSmartTestText(rawText: string, defaultSubject: SupportedSubject = 'uzbek'): SmartParseResult {
   const text = (rawText || '').trim();
   if (!text) {
@@ -143,7 +157,7 @@ export function parseSmartTestText(rawText: string, defaultSubject: SupportedSub
 
         currQ.choices.push({
           code: item.code,
-          text: cText,
+          text: cleanChoiceText(cText, item.code),
         });
       }
       continue;

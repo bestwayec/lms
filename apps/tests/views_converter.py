@@ -62,9 +62,10 @@ class AiConvertDocumentView(APIView):
                 status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             )
         ctype = str(getattr(upload_file, "content_type", "") or "").lower()
-        if not (ctype == "application/pdf" or ctype.startswith("image/")):
+        allowed_mimes = {"application/pdf", "image/jpeg", "image/png", "image/webp"}
+        if ctype not in allowed_mimes:
             return Response(
-                {"error": "Faqat PDF yoki rasm yuklang.", "code": "bad_file_type"},
+                {"error": "Faqat PDF yoki JPEG/PNG/WEBP rasm yuklang.", "code": "bad_file_type"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         allowed, limit = consume_feature_cap(request.user, "converter")

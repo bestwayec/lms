@@ -241,19 +241,32 @@ export default function TestAddictiveResults({
     english: { label: 'Ingliz tili (CEFR / IELTS)', icon: '🇬🇧' },
   };
 
-  const subjInfo = subjMap[subject.toLowerCase()] || {
-    label: subject ? subject.toUpperCase() : 'Umumiy fan',
-    icon: '📚',
-  };
+  const normalizedSubject = (subject || '').trim().toLowerCase();
+  const subjInfo =
+    subjMap[normalizedSubject] ||
+    (normalizedSubject.includes('bio')
+      ? subjMap.biology
+      : normalizedSubject.includes('kim') || normalizedSubject.includes('chem')
+      ? subjMap.chemistry
+      : normalizedSubject.includes('huq') || normalizedSubject.includes('law')
+      ? subjMap.law
+      : normalizedSubject.includes('ing') || normalizedSubject.includes('eng')
+      ? subjMap.english
+      : normalizedSubject.includes('ona') || normalizedSubject.includes('uzb')
+      ? subjMap.uzbek
+      : {
+          label: subject ? subject.toUpperCase() : 'Umumiy fan',
+          icon: '📚',
+        });
 
-  const telegramShareText = `Men Grand Education'da ${subjInfo.icon} ${subjInfo.label} fanidan ${pct}% ball (${grade || 'Sertifikat'}) oldim! Sen ham o'z bilimingni sinab ko'r:`;
+  const telegramShareText = `Men Grand Education'da ${subjInfo.icon} ${subjInfo.label} fanidan ${Math.round(pct)}% ball (${grade || 'Sertifikat'}) oldim! Sen ham o'z bilimingni sinab ko'r:`;
   const effectiveTgShareUrl =
     shareData?.telegram_share_url ||
     `https://t.me/share/url?url=${encodeURIComponent(effectiveRefUrl)}&text=${encodeURIComponent(telegramShareText)}`;
 
   // Subject-specific breakdown data (either from backend API or calculated locally from questions)
-  const isScience = subject === 'biology' || subject === 'chemistry' || subjectAnalysis?.kind === 'science_bmb';
-  const isLaw = subject === 'law' || subjectAnalysis?.kind === 'law_jurisprudence';
+  const isScience = normalizedSubject === 'biology' || normalizedSubject === 'chemistry' || subjectAnalysis?.kind === 'science_bmb';
+  const isLaw = normalizedSubject === 'law' || subjectAnalysis?.kind === 'law_jurisprudence';
 
   // Compute local fallback for Science if not supplied from server
   const closedStats = subjectAnalysis?.closed_questions || {
@@ -337,27 +350,29 @@ export default function TestAddictiveResults({
 
         {courseTitle && <p className="res-hero__title" style={{ fontSize: 18, fontWeight: 700, marginBottom: 16 }}>{courseTitle}</p>}
 
-        <div className="res-hero__score" aria-label={`${pct}%`}>
-          <strong>{pct}%</strong>
-          <span>{score} / {maxScore} {t('res_score')}</span>
+        <div className="res-hero__score flex flex-wrap items-baseline gap-2 mb-4" aria-label={`${Math.round(pct)}%`}>
+          <strong className="text-4xl md:text-5xl font-black text-white tracking-tight">{Math.round(pct)}%</strong>
+          <span className="text-slate-300 text-sm md:text-base font-semibold">
+            • {score}/{maxScore} {t('res_score', 'ball')}
+          </span>
         </div>
 
-        <div className="res-metrics">
-          <div>
-            <b>{correctCount}</b>
-            <span>{t('rv_status_correct')}</span>
+        <div className="res-metrics grid grid-cols-2 sm:grid-cols-4 gap-3 my-4">
+          <div className="flex flex-col items-center justify-center p-3.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-center">
+            <b className="text-lg md:text-xl font-black text-emerald-400">{correctCount} ta</b>
+            <span className="text-xs text-slate-300 font-medium">{t('rv_status_correct', "to'g'ri")}</span>
           </div>
-          <div>
-            <b>{wrongCount}</b>
-            <span>{t('rv_status_wrong')}</span>
+          <div className="flex flex-col items-center justify-center p-3.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-center">
+            <b className="text-lg md:text-xl font-black text-rose-400">{wrongCount} ta</b>
+            <span className="text-xs text-slate-300 font-medium">{t('rv_status_wrong', 'xato')}</span>
           </div>
-          <div>
-            <b>{unansweredCount}</b>
-            <span>{t('rv_status_blank')}</span>
+          <div className="flex flex-col items-center justify-center p-3.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-center">
+            <b className="text-lg md:text-xl font-black text-amber-400">{unansweredCount} ta</b>
+            <span className="text-xs text-slate-300 font-medium">{t('rv_status_blank', 'javobsiz')}</span>
           </div>
-          <div>
-            <b>{formatTime(timeSpentSeconds)}</b>
-            <span>{t('res_time')}</span>
+          <div className="flex flex-col items-center justify-center p-3.5 rounded-xl bg-sky-500/15 border border-sky-500/30 text-center">
+            <b className="text-lg md:text-xl font-black text-sky-400">{formatTime(timeSpentSeconds)}</b>
+            <span className="text-xs text-slate-300 font-medium">{t('res_time', 'sarflangan vaqt')}</span>
           </div>
         </div>
 

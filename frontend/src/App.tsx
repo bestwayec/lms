@@ -99,17 +99,36 @@ export default function App() {
   );
 }
 
+function RouteLoadingFallback() {
+  const { t } = useLang();
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex flex-col items-center justify-center min-h-[50vh] py-16 px-4"
+    >
+      <div className="relative flex items-center justify-center w-14 h-14 mb-4">
+        <div className="absolute inset-0 rounded-full bg-amber-500/20 blur-xl animate-pulse" />
+        <div className="w-12 h-12 rounded-full border-2 border-amber-500/20 border-t-amber-500 animate-spin" />
+        <div className="absolute w-5 h-5 rounded-full bg-gradient-to-tr from-amber-500 to-amber-300 opacity-80" />
+      </div>
+      <span className="text-xs font-semibold text-slate-400 tracking-wide">
+        {t('route_loading', 'Yuklanmoqda...')}
+      </span>
+    </div>
+  );
+}
+
 /** Remounts the route tree on every navigation so .page-enter replays. */
 function AnimatedRoutes() {
   const { pathname } = useLocation();
-  const { t } = useLang();
   return (
     <div key={pathname} className="page-enter">
       {/* Last-resort boundary: any page crash (or a stale lazy chunk after a
           deploy) shows a recoverable screen instead of a blank page. The
           keyed parent remounts it on navigation, which resets it. */}
       <ErrorBoundary backTo="/" backKey="error_boundary_home">
-      <Suspense fallback={<p className="route-loading" role="status">{t('route_loading')}</p>}>
+      <Suspense fallback={<RouteLoadingFallback />}>
         <Routes>
         {/* Public */}
         <Route path="/" element={<Landing />} />

@@ -14,6 +14,7 @@ export default function PanelUsers() {
   const { t } = useLang();
   const [users, setUsers] = useState<Record<string, unknown>[]>([]);
   const [roles, setRoles] = useState<{ value: string; label: string }[]>([]);
+  const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [role, setRole] = useState('');
   const [status, setStatus] = useState('');
@@ -35,6 +36,7 @@ export default function PanelUsers() {
   }, []);
 
   const load = useCallback(() => {
+    setLoading(true);
     const params: Record<string, string> = {};
     if (q) params.q = q;
     if (role) params.role = role;
@@ -46,7 +48,8 @@ export default function PanelUsers() {
         setRoles(r.roles);
         setErr(null);
       })
-      .catch((e: unknown) => setErr(e instanceof Error ? e.message : 'Failed.'));
+      .catch((e: unknown) => setErr(e instanceof Error ? e.message : 'Failed.'))
+      .finally(() => setLoading(false));
   }, [q, role, status, joined]);
 
   useEffect(() => {
@@ -129,48 +132,63 @@ export default function PanelUsers() {
         </select>
       </div>
 
-      {users.length === 0 ? (
+      {loading && users.length === 0 ? (
+        <div style={{ display: 'grid', gap: 12, padding: '24px 0' }}>
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="card" style={{ padding: 16, opacity: 0.6 }}>
+              <div style={{ height: 18, width: '40%', background: 'rgba(255,255,255,0.08)', borderRadius: 6, marginBottom: 8 }} />
+              <div style={{ height: 14, width: '70%', background: 'rgba(255,255,255,0.05)', borderRadius: 4 }} />
+            </div>
+          ))}
+        </div>
+      ) : users.length === 0 ? (
         <p className="muted">{t('panel_no_users')}</p>
       ) : (
-        <div className="table-wrap">
-          <table className="data">
-            <thead>
-              <tr>
-                <th>{t('th_student')}</th>
-                <th>{t('email')}</th>
-                <th>{t('role')}</th>
-                <th>Obuna (Tarif)</th>
-                <th>{t('status_header')}</th>
-                <th>{t('date')}</th>
-                <th>{t('actions')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((u) => {
-                const isMe = meId !== null && Number(u.id) === meId;
-                const blocked = !u.is_active;
-                const planStr = str(u.plan || 'free').toLowerCase();
-                const hasPro = Boolean(u.has_pro || planStr === 'pro' || planStr === 'premium');
-                const expDate = str(u.subscription_expires_at);
+        <>
+          {/* Mobile User Cards (< 768px) */}
+          <div className="block md:hidden" style={{ display: 'grid', gap: 12 }}>
+            {users.map((u) => {
+              const isMe = meId !== null && Number(u.id) === meId;
+              const blocked = !u.is_active;
+              const planStr = str(u.plan || 'free').toLowerCase();
+              const hasPro = Boolean(u.has_pro || planStr === 'pro' || planStr === 'premium');
+              const expDate = str(u.subscription_expires_at);
+              const displayName = (() => {
+                const fn = str(u.full_name).trim();
+                const em = str(u.email).trim();
+                if (fn && fn !== em) return fn;
+                if (em.startsWith('tg_') || em.includes('@tma')) return `Foydalanuvchi #${u.id}`;
+                return em || `Foydalanuvchi #${u.id}`;
+              })();
 
-                return (
-                  <tr key={str(u.id)}>
-                    <td>
-                      {(() => {
-                        const fn = str(u.full_name).trim();
-                        const em = str(u.email).trim();
-                        if (fn && fn !== em) return fn;
-                        if (em.startsWith('tg_') || em.includes('@tma')) return `Foydalanuvchi #${u.id}`;
-                        return em || `Foydalanuvchi #${u.id}`;
-                      })()}
-                      {isMe && (
-                        <>
-                          {' '}
-                          <span className="badge">{t('panel_you')}</span>
-                        </>
-                      )}
-                    </td>
-                    <td>
+              return (
+                <div
+                  key={`card-${str(u.id)}`}
+                  className="card"
+                  style={{
+                    padding: '14px 16px',
+                    borderRadius: 14,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 10,
+                  }}
+                >
+                  {/* Card Header: Name, You badge, Status */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flex: 1 }}>
+                      <strong style={{ fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {displayName}
+                      </strong>
+                      {isMe && <span className="badge">{t('panel_you')}</span>}
+                    </div>
+                    <span className={`badge ${u.is_active ? 'green' : 'rose'}`} style={{ flexShrink: 0 }}>
+                      {u.is_active ? t('panel_active') : t('panel_blocked')}
+                    </span>
+                  </div>
+
+                  {/* Card Meta: Email/Telegram SSO & Date */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--muted)' }}>
+                    <div>
                       {str(u.email).startsWith('tg_') || str(u.email).includes('@tma') ? (
                         <span
                           className="badge"
@@ -178,21 +196,28 @@ export default function PanelUsers() {
                             background: 'rgba(56, 189, 248, 0.12)',
                             color: '#0284c7',
                             border: '1px solid rgba(56, 189, 248, 0.3)',
-                            fontSize: '0.75rem',
+                            fontSize: '0.72rem',
                             fontWeight: 700,
                           }}
                         >
                           📱 Telegram SSO
                         </span>
                       ) : (
-                        <small className="muted">{str(u.email)}</small>
+                        <span>{str(u.email)}</span>
                       )}
-                    </td>
-                    <td>
+                    </div>
+                    <span>{formatDate(u.date_joined)}</span>
+                  </div>
+
+                  {/* Card Controls: Role & Subscription */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingTop: 4, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>Rol:</span>
                       <select
                         value={str(u.role)}
                         onChange={(e) => setR(u.id as number, e.target.value)}
                         aria-label="role"
+                        style={{ padding: '3px 8px', fontSize: '0.82rem', borderRadius: 6 }}
                       >
                         {roles.map((r) => (
                           <option key={r.value} value={r.value}>
@@ -200,68 +225,197 @@ export default function PanelUsers() {
                           </option>
                         ))}
                       </select>
-                    </td>
-                    <td>
+                    </div>
+
+                    <div>
                       {str(u.role) === 'admin' ? (
                         <span className="badge" style={{ background: '#fef3c7', color: '#b45309', fontWeight: 700 }}>
                           👑 Admin
                         </span>
                       ) : hasPro ? (
-                        <div>
-                          <span className="badge" style={{ background: '#dcfce7', color: '#15803d', fontWeight: 700 }}>
-                            ⭐ {planStr.toUpperCase()}
-                          </span>
-                          {expDate && (
-                            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-                              {expDate} gacha
-                            </div>
-                          )}
-                        </div>
+                        <span className="badge" style={{ background: '#dcfce7', color: '#15803d', fontWeight: 700 }} title={expDate ? `${expDate} gacha` : undefined}>
+                          ⭐ {planStr.toUpperCase()}
+                        </span>
                       ) : (
                         <span className="badge muted">Free</span>
                       )}
-                    </td>
-                    <td>
-                      <span className={`badge ${u.is_active ? 'green' : 'rose'}`}>
-                        {u.is_active ? t('panel_active') : t('panel_blocked')}
-                      </span>
-                    </td>
-                    <td>
-                      <small className="muted">{formatDate(u.date_joined)}</small>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                        <button
-                          className="btn sm"
-                          style={{ background: '#f59e0b', color: '#fff', border: 'none', fontWeight: 600, fontSize: '11px', padding: '4px 8px', borderRadius: '6px', cursor: 'pointer' }}
-                          onClick={() => {
-                            setGrantModalUser(u);
-                            setGrantPlanType('pro');
-                            setGrantDays(30);
-                            setErr(null);
-                          }}
-                          title="Foydalanuvchiga bepul obuna berish"
-                        >
-                          ⭐ PRO Berish
-                        </button>
-                        {isMe ? (
-                          <span className="muted small">—</span>
-                        ) : (
-                          <button
-                            className="btn sm danger"
-                            onClick={() => toggle(u.id as number, blocked)}
-                          >
-                            {blocked ? t('panel_unblock') : t('panel_block')}
-                          </button>
+                    </div>
+                  </div>
+
+                  {/* Card Actions: PRO Grant & Block */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                    <button
+                      type="button"
+                      className="btn sm"
+                      style={{
+                        flex: 1,
+                        background: '#f59e0b',
+                        color: '#fff',
+                        border: 'none',
+                        fontWeight: 700,
+                        fontSize: '12px',
+                        padding: '6px 10px',
+                        borderRadius: 8,
+                        cursor: 'pointer',
+                        textAlign: 'center',
+                      }}
+                      onClick={() => {
+                        setGrantModalUser(u);
+                        setGrantPlanType('pro');
+                        setGrantDays(30);
+                        setErr(null);
+                      }}
+                    >
+                      ⭐ PRO Berish
+                    </button>
+                    {!isMe && (
+                      <button
+                        type="button"
+                        className={`btn sm ${blocked ? 'ghost' : 'danger'}`}
+                        style={{ flexShrink: 0, padding: '6px 12px', fontSize: '12px', borderRadius: 8 }}
+                        onClick={() => toggle(u.id as number, blocked)}
+                      >
+                        {blocked ? t('panel_unblock') : t('panel_block')}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Desktop Table (>= 768px) */}
+          <div className="table-wrap hidden md:block">
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>{t('th_student')}</th>
+                  <th>{t('email')}</th>
+                  <th>{t('role')}</th>
+                  <th>Obuna (Tarif)</th>
+                  <th>{t('status_header')}</th>
+                  <th>{t('date')}</th>
+                  <th>{t('actions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((u) => {
+                  const isMe = meId !== null && Number(u.id) === meId;
+                  const blocked = !u.is_active;
+                  const planStr = str(u.plan || 'free').toLowerCase();
+                  const hasPro = Boolean(u.has_pro || planStr === 'pro' || planStr === 'premium');
+                  const expDate = str(u.subscription_expires_at);
+
+                  return (
+                    <tr key={str(u.id)}>
+                      <td>
+                        {(() => {
+                          const fn = str(u.full_name).trim();
+                          const em = str(u.email).trim();
+                          if (fn && fn !== em) return fn;
+                          if (em.startsWith('tg_') || em.includes('@tma')) return `Foydalanuvchi #${u.id}`;
+                          return em || `Foydalanuvchi #${u.id}`;
+                        })()}
+                        {isMe && (
+                          <>
+                            {' '}
+                            <span className="badge">{t('panel_you')}</span>
+                          </>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                      </td>
+                      <td>
+                        {str(u.email).startsWith('tg_') || str(u.email).includes('@tma') ? (
+                          <span
+                            className="badge"
+                            style={{
+                              background: 'rgba(56, 189, 248, 0.12)',
+                              color: '#0284c7',
+                              border: '1px solid rgba(56, 189, 248, 0.3)',
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                            }}
+                          >
+                            📱 Telegram SSO
+                          </span>
+                        ) : (
+                          <small className="muted">{str(u.email)}</small>
+                        )}
+                      </td>
+                      <td>
+                        <select
+                          value={str(u.role)}
+                          onChange={(e) => setR(u.id as number, e.target.value)}
+                          aria-label="role"
+                        >
+                          {roles.map((r) => (
+                            <option key={r.value} value={r.value}>
+                              {r.label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        {str(u.role) === 'admin' ? (
+                          <span className="badge" style={{ background: '#fef3c7', color: '#b45309', fontWeight: 700 }}>
+                            👑 Admin
+                          </span>
+                        ) : hasPro ? (
+                          <div>
+                            <span className="badge" style={{ background: '#dcfce7', color: '#15803d', fontWeight: 700 }}>
+                              ⭐ {planStr.toUpperCase()}
+                            </span>
+                            {expDate && (
+                              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                                {expDate} gacha
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="badge muted">Free</span>
+                        )}
+                      </td>
+                      <td>
+                        <span className={`badge ${u.is_active ? 'green' : 'rose'}`}>
+                          {u.is_active ? t('panel_active') : t('panel_blocked')}
+                        </span>
+                      </td>
+                      <td>
+                        <small className="muted">{formatDate(u.date_joined)}</small>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                          <button
+                            className="btn sm"
+                            style={{ background: '#f59e0b', color: '#fff', border: 'none', fontWeight: 600, fontSize: '11px', padding: '4px 8px', borderRadius: '6px', cursor: 'pointer' }}
+                            onClick={() => {
+                              setGrantModalUser(u);
+                              setGrantPlanType('pro');
+                              setGrantDays(30);
+                              setErr(null);
+                            }}
+                            title="Foydalanuvchiga bepul obuna berish"
+                          >
+                            ⭐ PRO Berish
+                          </button>
+                          {isMe ? (
+                            <span className="muted small">—</span>
+                          ) : (
+                            <button
+                              className="btn sm danger"
+                              onClick={() => toggle(u.id as number, blocked)}
+                            >
+                              {blocked ? t('panel_unblock') : t('panel_block')}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {/* Grant Subscription Modal */}

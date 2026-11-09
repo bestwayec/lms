@@ -18,7 +18,7 @@ export default function TeacherAiConverter() {
   const { t } = useLang();
   // Step 1: Upload state
   const [file, setFile] = useState<File | null>(null);
-  const [subject, setSubject] = useState<'uzbek' | 'english'>('uzbek');
+  const [subject, setSubject] = useState<'uzbek' | 'english' | 'biology' | 'chemistry' | 'law'>('uzbek');
   const [converting, setConverting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -242,14 +242,38 @@ export default function TeacherAiConverter() {
             <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: 8 }}>
               1. Fan yo'nalishini tanlang:
             </label>
-            <div style={{ display: 'inline-flex', gap: 8, padding: 4, background: 'var(--bg)', borderRadius: 12, border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 4, background: 'var(--bg)', borderRadius: 12, border: '1px solid var(--border)' }}>
+              <button
+                type="button"
+                className={`btn sm ${subject === 'biology' ? 'primary' : 'ghost'}`}
+                onClick={() => setSubject('biology')}
+                style={{ borderRadius: 8 }}
+              >
+                🧬 Biologiya (Milliy sertifikat)
+              </button>
+              <button
+                type="button"
+                className={`btn sm ${subject === 'chemistry' ? 'primary' : 'ghost'}`}
+                onClick={() => setSubject('chemistry')}
+                style={{ borderRadius: 8 }}
+              >
+                🧪 Kimyo (Milliy sertifikat)
+              </button>
+              <button
+                type="button"
+                className={`btn sm ${subject === 'law' ? 'primary' : 'ghost'}`}
+                onClick={() => setSubject('law')}
+                style={{ borderRadius: 8 }}
+              >
+                ⚖️ Huquqshunoslik (Yurisprudensiya)
+              </button>
               <button
                 type="button"
                 className={`btn sm ${subject === 'uzbek' ? 'primary' : 'ghost'}`}
                 onClick={() => setSubject('uzbek')}
                 style={{ borderRadius: 8 }}
               >
-                Ona tili va Adabiyot (Milliy sertifikat)
+                🇺🇿 Ona tili va Adabiyot
               </button>
               <button
                 type="button"
@@ -257,7 +281,7 @@ export default function TeacherAiConverter() {
                 onClick={() => setSubject('english')}
                 style={{ borderRadius: 8 }}
               >
-                English (IELTS & CEFR)
+                🇬🇧 English (IELTS & CEFR)
               </button>
             </div>
           </div>

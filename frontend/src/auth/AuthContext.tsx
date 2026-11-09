@@ -121,6 +121,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // 2. Zero-friction Telegram Mini App authentication if within Telegram
     if (tmaInitData && !getTokens().access) {
       setLoading(true);
+      const safetyTimer = setTimeout(() => {
+        setLoading(false);
+      }, 5000);
+
       // Shared single-flight request: Login.tsx signs in with the same
       // initData on mount, and the backend accepts each initData only once.
       TelegramAuth.loginWithInitData(tmaInitData)
@@ -141,7 +145,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         })
         .catch(() => undefined)
-        .finally(() => setLoading(false));
+        .finally(() => {
+          clearTimeout(safetyTimer);
+          setLoading(false);
+        });
       return;
     }
 

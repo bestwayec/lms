@@ -494,10 +494,10 @@ def _admin_main_menu_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
-                    "🎓 O'quvchi menyusiga o'tish", callback_data="adm_switch_student"
+                    "👨‍🎓 O'quvchi rejimi", callback_data="adm_switch_student"
                 ),
                 InlineKeyboardButton(
-                    "👨‍🏫 O'qituvchi menyusiga o'tish",
+                    "👨‍🏫 O'qituvchi rejimi",
                     callback_data="adm_switch_teacher",
                 ),
             ],
@@ -2049,27 +2049,27 @@ async def _finish_new_account(
 
 
 async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /help command."""
+    """Handle /help command safely."""
     text = (
-        "📋 *Bot buyruqlari:*\n\n"
+        "📋 <b>Bot buyruqlari:</b>\n\n"
         "/start — Botni qayta ishga tushirish\n"
         "/help — Yordam\n"
-        "/quiz — 🧠 *Telegram Quiz* — test topshirish\n"
-        "/arena — ⚔️ *1v1 Arena* — ELO reyting, duellar\n"
+        "/quiz — 🧠 <b>Telegram Quiz</b> — test topshirish\n"
+        "/arena — ⚔️ <b>1v1 Arena</b> — ELO reyting, duellar\n"
         "/arena_join KOD — 🔗 invite kod bilan xonaga qo'shilish\n"
-        "/results — *Barcha natijalar* (test + esse + tahlil)\n"
+        "/results — <b>Barcha natijalar</b> (test + esse + tahlil)\n"
         "/profile — Shaxsiy profilingiz\n"
         "/tests — Mavjud testlar\n"
         "/essays — Esse mavzulari\n"
-        "/leaderboard — *Reyting* (eng yaxshilar)\n"
-        "/streak — *Kunlik streak* (kirishlar)\n"
-        "/daily — *Kunlik vazifalar*\n"
+        "/leaderboard — <b>Reyting</b> (eng yaxshilar)\n"
+        "/streak — <b>Kunlik streak</b> (kirishlar)\n"
+        "/daily — <b>Kunlik vazifalar</b>\n"
         "/mytuition — Kurs to'lovlari (o'quvchi / tasdiqlangan ota-ona)\n\n"
-        "🌐 *Web platforma:*\n"
+        "🌐 <b>Web platforma:</b>\n"
         "Barcha funksiyalar to'liq ishlashi uchun "
         "veb-saytda tizimga kiring."
     )
-    await update.message.reply_text(text, parse_mode="Markdown")
+    await send_reply(update, text, parse_mode="HTML")
 
 
 # ---------------------------------------------------------------------------
@@ -6095,9 +6095,9 @@ async def buy_plan_callback(
 
     price = int(plan.price_monthly)
     if not PAYMENT_CARD or not PAYMENT_CARD_BANK or not PAYMENT_CARD_HOLDER:
-        await query.edit_message_text(
-            "To'lov vaqtincha mavjud emas. Administrator bilan bog'laning."
-        )
+        from apps.payments.card import UNAVAILABLE_MESSAGE
+
+        await query.edit_message_text(UNAVAILABLE_MESSAGE)
         return
 
     # Store selected plan in context for screenshot verification

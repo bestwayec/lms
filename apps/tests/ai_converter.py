@@ -29,7 +29,8 @@ logger = logging.getLogger(__name__)
 
 
 PROMPT_SYSTEM = (
-    "Sen O'zbekistondagi eng tajribali Milliy sertifikat va IELTS/CEFR test tuzuvchi ekspertisan. "
+    "Sen O'zbekistondagi eng tajribali test ekspertisan (Ona tili va adabiyot, Biologiya, Kimyo, "
+    "Huquqshunoslik, Ingliz tili — Milliy sertifikat, BMB va IELTS/CEFR). "
     "Sening vazifang berilgan test hujjati, rasmi yoki matnidan barcha savollar, variantlar va to'g'ri javoblarni "
     "aniq ajratib olib, qat'iy JSON formatida qaytarishdir."
 )
@@ -38,10 +39,12 @@ PROMPT_JSON_INSTRUCTIONS = """
 Qoidalar:
 1. Agar hujjatda bir nechta savolga tegishli umumiy matn (Reading passage) bo'lsa, uni "reading_passage"ga kirit.
 2. Har bir savol matnini "text" maydoniga yoz.
-3. Variantlarni A, B, C, D harflari bilan "choices" massivida qaytar. Format: [{"code": "A", "text": "..."}, {"code": "B", "text": "..."}].
-4. To'g'ri javob kaliti ko'rsatilgan bo'lsa (masalan: 1-B yoki belgilangan bo'lsa), "correct_answer": "B" qilib belgilang.
+3. Kimyo va Biologiyadagi formulalar (H₂O, CO₂, reaksiya tenglamalari) va lotincha atamalarni buzmasdan aynan saqla.
+4. Huquqshunoslikdagi moddalar, qonun matnlari va vaziyatli kazuslarni to'liq ajratib ol.
+5. Variantlarni A, B, C, D harflari bilan "choices" massivida qaytar. Format: [{"code": "A", "text": "..."}, {"code": "B", "text": "..."}]. Variant matnida A), B) kabi takroriy harflarni qoldirma, faqat toza variant matnini yoz.
+6. To'g'ri javob kaliti ko'rsatilgan bo'lsa (masalan: 1-B yoki belgilangan bo'lsa), "correct_answer": "B" qilib belgilang.
    Agar hujjatda to'g'ri javob belgilanmagan bo'lsa, o'zing to'g'ri javobni aniqlab "correct_answer"ga yoz va "explanation"ga qisqa qoidani kirit.
-5. Savol turini ("single_choice", "multiple_choice", "text") belgilang.
+7. Savol turini ("single_choice", "multiple_choice", "text") belgilang.
 
 Faqat va faqat quyidagi toza JSON formatni qaytar (hech qanday markdown prefikslarsiz):
 {

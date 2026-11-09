@@ -15,7 +15,9 @@ from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 
-UNAVAILABLE_MESSAGE = "To'lov ma'lumoti hozircha mavjud emas."
+UNAVAILABLE_MESSAGE = (
+    "💳 Onlayn to'lov rekvizitlari yangilanmoqda. PRO tarifni faollashtirish uchun administratorga murojaat qiling"
+)
 _ALERT_KEY = "payment_card:missing_alerted"
 _ALERT_EVERY = 6 * 60 * 60
 

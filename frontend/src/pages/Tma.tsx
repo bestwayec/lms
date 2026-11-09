@@ -55,6 +55,13 @@ export default function Tma() {
 
   useEffect(() => {
     let cancelled = false;
+    const timeoutId = setTimeout(() => {
+      if (!cancelled) {
+        setError("Telegram Mini App ma'lumotlari yuklanmadi yoki tarmoq javob bermadi.");
+        setBoot((current) => (current === 'boot' || current === 'authing' ? 'error' : current));
+      }
+    }, 5000);
+
     (async () => {
       await loadTelegramScript();
       if (cancelled) return;
@@ -66,6 +73,7 @@ export default function Tma() {
       }
       const initData = wa?.initData ?? '';
       if (!wa || !initData) {
+        clearTimeout(timeoutId);
         setBoot(user ? 'ready' : 'outside');
         return;
       }
@@ -89,16 +97,19 @@ export default function Tma() {
         loginWithTelegram(data.tokens, data.user);
         const prof = await TmaApi.profile();
         if (cancelled) return;
+        clearTimeout(timeoutId);
         setProfile(prof);
         setBoot('ready');
       } catch (e) {
         if (cancelled) return;
+        clearTimeout(timeoutId);
         setError(e instanceof Error ? e.message : 'Telegram auth failed');
         setBoot('error');
       }
     })();
     return () => {
       cancelled = true;
+      clearTimeout(timeoutId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -143,19 +154,37 @@ export default function Tma() {
     return (
       <div className="tma-root">
         <div className="tma-auth">
-          <div className="tma-auth-card">
-            <div className="tma-auth-logo">📚</div>
+          <div className="tma-auth-card" style={{ maxWidth: 360, textAlign: 'center', padding: '24px 20px' }}>
+            <div className="tma-auth-logo" style={{ fontSize: 36, marginBottom: 8 }}>📚</div>
             <h1 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 8px' }}>Ona Tili &amp; Adabiyot</h1>
-            <p className="tma-muted" style={{ marginBottom: 24 }}>{t('tma_open_in_telegram')}</p>
-            <a
-              className="tma-btn tma-btn-hl"
-              href={`https://t.me/${BOT_USERNAME}`}
-              target="_blank"
-              rel="noreferrer"
-              style={{ display: 'block', textDecoration: 'none' }}
-            >
-              Telegram bot
-            </a>
+            <p className="tma-muted" style={{ marginBottom: 20 }}>{t('tma_open_in_telegram')}</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <a
+                className="tma-btn tma-btn-hl"
+                href={`https://t.me/${BOT_USERNAME}`}
+                target="_blank"
+                rel="noreferrer"
+                style={{ display: 'block', textDecoration: 'none' }}
+              >
+                Telegram botda ochish
+              </a>
+              <button
+                type="button"
+                className="tma-btn tma-btn-card"
+                onClick={() => window.open(window.location.origin, '_blank')}
+                style={{ width: '100%' }}
+              >
+                🌐 Brauzerda ochish
+              </button>
+              <button
+                type="button"
+                className="tma-btn tma-btn-card"
+                onClick={() => window.location.reload()}
+                style={{ width: '100%' }}
+              >
+                🔄 Qayta urinish
+              </button>
+            </div>
             <p className="tma-muted" style={{ marginTop: 16 }}>
               <Link to="/login" style={{ color: 'var(--tma-hl)' }}>{t('login_with_telegram')}</Link>
             </p>
@@ -169,12 +198,30 @@ export default function Tma() {
     return (
       <div className="tma-root">
         <div className="tma-auth">
-          <div className="tma-auth-card">
-            <h1 style={{ fontSize: 20, fontWeight: 800 }}>{t('login')}</h1>
-            <p style={{ color: '#f87171' }}>{error}</p>
-            <button className="tma-btn tma-btn-card" onClick={() => window.location.reload()}>
-              {t('tma_submit')}
-            </button>
+          <div className="tma-auth-card" style={{ maxWidth: 360, textAlign: 'center', padding: '24px 20px' }}>
+            <div style={{ fontSize: 36, marginBottom: 8 }}>⚠️</div>
+            <h1 style={{ fontSize: 20, fontWeight: 800, margin: '0 0 8px' }}>Xatolik yuz berdi</h1>
+            <p style={{ color: '#f87171', fontSize: '0.9rem', marginBottom: 20, lineHeight: 1.5 }}>
+              {error || "Telegram orqali tizimga kirishda nosozlik yuz berdi."}
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button
+                type="button"
+                className="tma-btn tma-btn-hl"
+                onClick={() => window.location.reload()}
+                style={{ width: '100%' }}
+              >
+                🔄 Qayta urinish
+              </button>
+              <button
+                type="button"
+                className="tma-btn tma-btn-card"
+                onClick={() => window.open(window.location.origin, '_blank')}
+                style={{ width: '100%' }}
+              >
+                🌐 Brauzerda ochish
+              </button>
+            </div>
           </div>
         </div>
       </div>

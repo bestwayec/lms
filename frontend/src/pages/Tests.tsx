@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { AlertTriangle, BarChart3, Clock, FileText, Lock, PlayCircle, Plus, RotateCcw, Search, SlidersHorizontal } from 'lucide-react';
+import { AlertTriangle, BarChart3, Clock, Lock, PlayCircle, Plus, RotateCcw, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
 import LimitExceededModal from '../components/LimitExceededModal';
 import MockCodeCard from '../components/MockCodeCard';
 import { useAuth } from '../auth/AuthContext';
@@ -407,12 +407,22 @@ export default function Tests() {
       )}
 
       {view === 'empty' && (
-        <div className="ui-state">
-          <span className="ic-chip ic-chip--muted">
-            <FileText size={24} aria-hidden="true" />
-          </span>
-          <h3>{t('tl_empty_title')}</h3>
-          <p>{t(subject === 'english' ? 'tl_empty_english' : 'tl_empty_uzbek')}</p>
+        <div className="flex flex-col items-center justify-center p-8 sm:p-12 text-center rounded-2xl bg-gradient-to-b from-slate-900/60 to-slate-950/80 border border-slate-800/80 shadow-xl my-6">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-500/20 to-amber-300/10 border border-amber-500/30 flex items-center justify-center mb-4 text-3xl shadow-lg shadow-amber-500/10">
+            ✨
+          </div>
+          <h3 className="text-xl font-bold text-slate-100 mb-2">Hozircha testlar mavjud emas</h3>
+          <p className="text-sm text-slate-400 max-w-md mb-6 leading-relaxed">
+            Yangi va rasmiy sertifikat testlari tayyorlanmoqda. Agar siz ustoz bo'lsangiz, qog'oz yoki PDF testni Vision AI orqali bir soniyada yuklashingiz mumkin!
+          </p>
+          <Link
+            to="/teacher/ai-converter"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 shadow-lg shadow-amber-500/25 transition-all active:scale-95"
+            style={{ textDecoration: 'none' }}
+          >
+            <Sparkles size={16} />
+            <span>AI Konvertor orqali test qo'shish</span>
+          </Link>
         </div>
       )}
 

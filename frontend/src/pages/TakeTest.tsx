@@ -32,6 +32,7 @@ import {
   storeDraft,
   type DraftMap,
 } from '../lib/testing';
+import { cleanChoiceText } from '../lib/testParser';
 import { ClockIcon } from '../components/icons';
 import TiltCard from '../components/TiltCard';
 import confetti from 'canvas-confetti';
@@ -1085,19 +1086,32 @@ export default function TakeTest() {
                 );
               }
               return (
-                <textarea
-                  rows={isSingleView ? 4 : 3}
-                  value={a.text}
-                  disabled={finished || submitting}
-                  onChange={(e) => editText(q, e.target.value)}
-                  onBlur={() => {
-                    if (timers.current[q.id]) clearTimeout(timers.current[q.id]);
-                    const cur = answers[q.id] ?? emptyEntry();
-                    if (cur.text.trim()) save(q, cur);
-                  }}
-                  placeholder={t('take_text_ph')}
-                  style={{ width: '100%', marginTop: 8 }}
-                />
+                <div style={{ marginTop: 12 }}>
+                  <input
+                    type="text"
+                    className="w-full px-4 py-3 rounded-xl border border-slate-700 bg-slate-900/80 text-white placeholder-slate-500 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-base font-medium"
+                    value={a.text}
+                    disabled={finished || submitting}
+                    onChange={(e) => editText(q, e.target.value)}
+                    onBlur={() => {
+                      if (timers.current[q.id]) clearTimeout(timers.current[q.id]);
+                      const cur = answers[q.id] ?? emptyEntry();
+                      if (cur.text.trim()) save(q, cur);
+                    }}
+                    placeholder={t('take_text_ph', 'Javobingizni kiriting...')}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      borderRadius: 12,
+                      border: '1.5px solid rgba(255, 255, 255, 0.15)',
+                      background: 'rgba(15, 23, 42, 0.85)',
+                      color: 'var(--ink, #FFFFFF)',
+                      fontSize: '1rem',
+                      fontWeight: 500,
+                      outline: 'none',
+                    }}
+                  />
+                </div>
               );
             })()
           ) : q.question_type === 'matching_matrix' ? (
@@ -1444,7 +1458,7 @@ export default function TakeTest() {
                           color: on ? '#fef08a' : 'inherit',
                         }}
                       >
-                        <FormulaText text={c.text} />
+                        <FormulaText text={cleanChoiceText(c.text, letter)} />
                       </span>
                     </button>
                   );

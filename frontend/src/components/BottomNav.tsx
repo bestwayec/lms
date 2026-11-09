@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { Home, FileText, Users, Trophy, User } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
@@ -14,11 +15,49 @@ interface BottomNavProps {
  * - Safe area support (pb-[max(1rem,env(safe-area-inset-bottom))])
  * - Frosted glass backdrop (glassmorphism blur)
  * - Vibrant gradient active state with glowing indicator dot
+ * - Auto-hide when mobile virtual keyboard is open
  */
 export default function BottomNav({ onOpenProfile }: BottomNavProps) {
   const { user, openAuthModal } = useAuth();
   const { t } = useLang();
   const { pathname } = useLocation();
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+
+  useEffect(() => {
+    const handleFocusIn = (e: FocusEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        setIsKeyboardOpen(true);
+      }
+    };
+
+    const handleFocusOut = () => {
+      setIsKeyboardOpen(false);
+    };
+
+    const handleResize = () => {
+      if (window.visualViewport) {
+        const diff = window.innerHeight - window.visualViewport.height;
+        setIsKeyboardOpen(diff > 120);
+      }
+    };
+
+    window.addEventListener('focusin', handleFocusIn);
+    window.addEventListener('focusout', handleFocusOut);
+    window.visualViewport?.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('focusin', handleFocusIn);
+      window.removeEventListener('focusout', handleFocusOut);
+      window.visualViewport?.removeEventListener('resize', handleResize);
+    };
+  }, []);
 
   const handleProfileClick = (e: React.MouseEvent) => {
     if (onOpenProfile) {
@@ -87,6 +126,10 @@ export default function BottomNav({ onOpenProfile }: BottomNavProps) {
         display: 'grid',
         gridTemplateColumns: 'repeat(5, 1fr)',
         boxShadow: '0 -4px 20px rgba(0, 0, 0, 0.25)',
+        transform: isKeyboardOpen ? 'translateY(100%)' : 'translateY(0)',
+        opacity: isKeyboardOpen ? 0 : 1,
+        pointerEvents: isKeyboardOpen ? 'none' : 'auto',
+        transition: 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease',
       }}
     >
       {navItems.map(({ to, label, Icon, isActive, onClick }) => {
