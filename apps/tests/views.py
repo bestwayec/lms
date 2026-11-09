@@ -1662,9 +1662,14 @@ class TestGradebookView(APIView):
             TestAttempt.objects.filter(
                 test=test,
                 is_preview=False,
-                status__in=[TestAttempt.Status.COMPLETED, TestAttempt.Status.TIMEOUT],
+                status__in=[
+                    TestAttempt.Status.COMPLETED,
+                    TestAttempt.Status.TIMEOUT,
+                    TestAttempt.Status.IN_PROGRESS,
+                ],
             )
             .select_related("student")
+            .prefetch_related("answers")
             .order_by("-score", "-rasch_score", "completed_at")
         )
 
@@ -1675,6 +1680,8 @@ class TestGradebookView(APIView):
         total_raw_sum = 0
         total_rasch_sum = 0
         total_pct_sum = 0
+        completed_count = 0
+        in_progress_count = 0
 
         from apps.tests.bmb_grading import calculate_bmb_grade
 
@@ -1684,25 +1691,46 @@ class TestGradebookView(APIView):
                 continue
             seen_students.add(student.id)
 
-            raw = att.raw_score
-            rasch = float(att.rasch_score) if att.rasch_score else float(att.score)
-            pct = float(att.percentage)
+            is_in_progress = att.status == TestAttempt.Status.IN_PROGRESS
+            if is_in_progress:
+                in_progress_count += 1
+                answers_cnt = att.answers.count()
+                progress_pct = round((answers_cnt / total_questions) * 100, 1) if total_questions > 0 else 0.0
+                status_label = "Yechmoqda..."
+                raw = att.raw_score
+                rasch = 0.0
+                pct = progress_pct
+                grade = "-"
+                badge_class = "badge-blue"
+            else:
+                completed_count += 1
+                answers_cnt = total_questions
+                progress_pct = 100.0
+                raw = att.raw_score
+                rasch = float(att.rasch_score) if att.rasch_score else float(att.score)
+                pct = float(att.percentage)
+                status_label = f"Yakunladi — {round(pct)}%"
+
+                grade_info = calculate_bmb_grade(pct)
+                grade = att.rasch_grade or grade_info["grade"]
+                badge_class = grade_info.get("badge_class", "badge-gold")
+
+                total_raw_sum += raw
+                total_rasch_sum += rasch
+                total_pct_sum += pct
 
             time_spent_secs = 0
             if att.completed_at and att.started_at:
                 delta = (att.completed_at - att.started_at).total_seconds()
                 time_spent_secs = max(0, int(delta))
+            elif is_in_progress and att.started_at:
+                from django.utils import timezone
+                delta = (timezone.now() - att.started_at).total_seconds()
+                time_spent_secs = max(0, int(delta))
 
             m = time_spent_secs // 60
             s = time_spent_secs % 60
             time_formatted = f"{m} daq {s} son" if m > 0 else f"{s} son"
-
-            grade_info = calculate_bmb_grade(pct)
-            grade = att.rasch_grade or grade_info["grade"]
-
-            total_raw_sum += raw
-            total_rasch_sum += rasch
-            total_pct_sum += pct
 
             student_name = student.get_full_name() or student.username
 
@@ -1714,13 +1742,13 @@ class TestGradebookView(APIView):
                     "student_name": student_name,
                     "username": student.username,
                     "avatar": getattr(student, "avatar", None),
-                    "raw_score": f"{raw} / {total_questions}",
+                    "raw_score": f"{raw} / {total_questions}" if not is_in_progress else f"{answers_cnt} / {total_questions}",
                     "raw_score_num": raw,
                     "total_questions": total_questions,
                     "percentage": round(pct, 1),
                     "rasch_score": round(rasch, 2),
                     "rasch_grade": grade,
-                    "badge_class": grade_info.get("badge_class", "badge-gold"),
+                    "badge_class": badge_class,
                     "time_spent_seconds": time_spent_secs,
                     "time_spent_formatted": time_formatted,
                     "completed_at": (
@@ -1729,14 +1757,18 @@ class TestGradebookView(APIView):
                         else (att.started_at.strftime("%d.%m.%Y %H:%M") if att.started_at else "-")
                     ),
                     "status": att.status,
+                    "is_in_progress": is_in_progress,
+                    "status_label": status_label,
+                    "answers_count": answers_cnt,
+                    "progress_percentage": progress_pct,
                 }
             )
             rank_idx += 1
 
         total_students = len(ranking)
-        avg_raw = round(total_raw_sum / total_students, 1) if total_students > 0 else 0.0
-        avg_rasch = round(total_rasch_sum / total_students, 2) if total_students > 0 else 0.0
-        avg_pct = round(total_pct_sum / total_students, 1) if total_students > 0 else 0.0
+        avg_raw = round(total_raw_sum / completed_count, 1) if completed_count > 0 else 0.0
+        avg_rasch = round(total_rasch_sum / completed_count, 2) if completed_count > 0 else 0.0
+        avg_pct = round(total_pct_sum / completed_count, 1) if completed_count > 0 else 0.0
 
         hardest_q_data = None
         questions = test.questions.all().order_by("position")

@@ -15,10 +15,12 @@ import {
   AlertCircle,
   Clock,
   Trophy,
+  QrCode,
 } from 'lucide-react';
 import { StudentGroupDetailApi, type StudentGroupViewData } from '../lib/api';
 import { useToast } from '../context/ToastContext';
 import { useLang } from '../i18n/LangContext';
+import ClassroomQrModal from '../components/ClassroomQrModal';
 
 function getInitials(name: string): string {
   if (!name) return 'S';
@@ -55,6 +57,7 @@ export default function StudentGroupDetail() {
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [qrOpen, setQrOpen] = useState(false);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const toast = useToast();
@@ -286,25 +289,49 @@ export default function StudentGroupDetail() {
 
           {/* Quick Code Share Action */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 10 }}>
-            <button
-              onClick={copyCode}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '9px 16px',
-                borderRadius: 10,
-                background: 'rgba(255,255,255,0.08)',
-                border: '1px solid rgba(255,255,255,0.15)',
-                color: '#fff',
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              {copied ? <Check size={16} color="#10B981" /> : <Copy size={16} />}
-              {copied ? (t('copied') || 'Nusxalandi!') : t('group_share_code')}
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                onClick={copyCode}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '9px 16px',
+                  borderRadius: 10,
+                  background: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  color: '#fff',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                {copied ? <Check size={16} color="#10B981" /> : <Copy size={16} />}
+                {copied ? (t('copied') || 'Nusxalandi!') : t('group_share_code')}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setQrOpen(true)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '9px 16px',
+                  borderRadius: 10,
+                  background: 'rgba(245, 158, 11, 0.15)',
+                  border: '1px solid rgba(245, 158, 11, 0.35)',
+                  color: '#F59E0B',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+                title="Sinfxona proyektorida QR-kodni ko'rsatish"
+              >
+                <QrCode size={16} />
+                <span>📱 Katta QR-Kod</span>
+              </button>
+            </div>
 
             {my_rank && (
               <div
@@ -930,6 +957,17 @@ export default function StudentGroupDetail() {
           )}
         </div>
       </div>
+
+      {/* Classroom Projector QR Modal */}
+      <ClassroomQrModal
+        isOpen={qrOpen}
+        onClose={() => setQrOpen(false)}
+        title={group.name}
+        code={group.invite_code}
+        webUrl={`${window.location.origin}/groups/${group.id}`}
+        tmaUrl={`https://t.me/grandec_bot/app?startapp=group_${group.id}`}
+        subtitle="Sinfxona proyektorida yoki telefonda o'quvchilarga ko'rsating — guruhga qo'shilish va vazifalarni ochish uchun"
+      />
     </div>
   );
 }

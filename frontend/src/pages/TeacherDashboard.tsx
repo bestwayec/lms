@@ -11,7 +11,8 @@ import {
 import AnalyticsChart from '../components/AnalyticsChart';
 import AttendancePanel from '../components/AttendancePanel';
 import { UsersIcon } from '../components/icons';
-import { Send, PlusCircle } from 'lucide-react';
+import { Send, PlusCircle, QrCode } from 'lucide-react';
+import ClassroomQrModal from '../components/ClassroomQrModal';
 import type {
   AnalyticsData,
   EssayBoard,
@@ -45,6 +46,16 @@ export default function TeacherDashboard() {
   const [leaderboardData, setLeaderboardData] = useState<MockLeaderboardResponse | null>(null);
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [leaderboardErr, setLeaderboardErr] = useState<string | null>(null);
+
+  // Classroom QR Modal state
+  const [qrModalData, setQrModalData] = useState<{
+    isOpen: boolean;
+    title: string;
+    code?: string;
+    webUrl: string;
+    tmaUrl?: string;
+    subtitle?: string;
+  } | null>(null);
 
   const createQuickMock = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -397,6 +408,34 @@ export default function TeacherDashboard() {
                 </button>
                 <button
                   type="button"
+                  className="btn sm"
+                  style={{
+                    background: 'rgba(245, 158, 11, 0.15)',
+                    border: '1px solid rgba(245, 158, 11, 0.4)',
+                    color: '#F59E0B',
+                    fontWeight: 800,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                  }}
+                  onClick={() => {
+                    const webUrl = `${window.location.origin}/test/${mockCreated.test_id}?code=${mockCreated.mock_code}`;
+                    const tmaUrl = `https://t.me/grandec_bot/app?startapp=mock_${mockCreated.mock_code}`;
+                    setQrModalData({
+                      isOpen: true,
+                      title: mockCreated.title,
+                      code: mockCreated.mock_code,
+                      webUrl,
+                      tmaUrl,
+                      subtitle: "O'quvchilar proyektor orqali skanerlab darhol imtihonni boshlashlari mumkin",
+                    });
+                  }}
+                >
+                  <QrCode size={14} />
+                  <span>📱 Katta QR-Kod</span>
+                </button>
+                <button
+                  type="button"
                   className="btn sm ghost"
                   onClick={() => viewMockLeaderboard(mockCreated.test_id)}
                 >
@@ -688,7 +727,43 @@ export default function TeacherDashboard() {
                     <span>📊 Vedomost</span>
                   </Link>
 
-                  {/* 3. Telegram Guruhga Xabar (Full width) */}
+                  {/* 3. Katta QR-Kod */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const webUrl = `${window.location.origin}/groups/${g.id}`;
+                      const tmaUrl = `https://t.me/grandec_bot/app?startapp=group_${g.id}`;
+                      setQrModalData({
+                        isOpen: true,
+                        title: g.name,
+                        code: g.invite_code || g.group_code || `GRP-${g.id}`,
+                        webUrl,
+                        tmaUrl,
+                        subtitle: `"${g.name}" guruhi dars xonasiga qo'shilish va vazifalarni ochish uchun QR-kod`,
+                      });
+                    }}
+                    style={{
+                      gridColumn: '1 / -1',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      padding: '8px 12px',
+                      borderRadius: 10,
+                      background: 'rgba(99, 102, 241, 0.12)',
+                      border: '1px solid rgba(99, 102, 241, 0.35)',
+                      color: '#818cf8',
+                      fontSize: 12,
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                    }}
+                    title="Sinfxonada proyektor yoki telefonda ko'rsatish"
+                  >
+                    <QrCode size={14} />
+                    <span>📱 Sinfxona QR-Kodi</span>
+                  </button>
+
+                  {/* 4. Telegram Guruhga Xabar (Full width) */}
                   <a
                     href={tgShareUrl}
                     target="_blank"
@@ -843,6 +918,19 @@ export default function TeacherDashboard() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* Classroom Projector QR Modal */}
+      {qrModalData && (
+        <ClassroomQrModal
+          isOpen={qrModalData.isOpen}
+          onClose={() => setQrModalData(null)}
+          title={qrModalData.title}
+          code={qrModalData.code}
+          webUrl={qrModalData.webUrl}
+          tmaUrl={qrModalData.tmaUrl}
+          subtitle={qrModalData.subtitle}
+        />
       )}
     </div>
   );

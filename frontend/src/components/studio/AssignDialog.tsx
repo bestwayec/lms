@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Copy, Send, X } from 'lucide-react';
+import { Check, Copy, QrCode, Send, X } from 'lucide-react';
 import { useLang } from '../../i18n/LangContext';
 import { api } from '../../lib/api';
 import { StudioApi, type StudioAssignment, type StudioLinks } from '../../lib/studio';
+import ClassroomQrModal from '../ClassroomQrModal';
 
 interface Group {
   id: number;
@@ -65,6 +66,7 @@ export default function AssignDialog({ testId, testTitle, links, assignments, on
   const [err, setErr] = useState<string | null>(null);
   const [list, setList] = useState<StudioAssignment[]>(assignments);
   const [current, setCurrent] = useState<StudioLinks>(links);
+  const [qrOpen, setQrOpen] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -176,10 +178,38 @@ export default function AssignDialog({ testId, testTitle, links, assignments, on
           {current.access_pin && <CopyField label={t('studio_pin')} value={current.access_pin} />}
           <CopyField label={t('studio_tma_link')} value={current.tma_link} />
           <CopyField label={t('studio_web_link')} value={webLink} />
-          <a className="btn sm" href={current.tma_link} target="_blank" rel="noreferrer">
-            {t('studio_open_telegram')}
-          </a>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+            <button
+              type="button"
+              className="btn sm primary"
+              onClick={() => setQrOpen(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                fontWeight: 700,
+                background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                color: '#fff',
+                border: 'none',
+              }}
+            >
+              <QrCode size={15} aria-hidden="true" />
+              <span>📱 Katta QR-Kod</span>
+            </button>
+            <a className="btn sm" href={current.tma_link} target="_blank" rel="noreferrer">
+              {t('studio_open_telegram')}
+            </a>
+          </div>
         </div>
+
+        <ClassroomQrModal
+          isOpen={qrOpen}
+          onClose={() => setQrOpen(false)}
+          title={testTitle}
+          code={current.join_code || current.access_pin}
+          webUrl={webLink}
+          tmaUrl={current.tma_link}
+        />
       </div>
     </div>
   );

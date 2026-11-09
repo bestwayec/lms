@@ -39,12 +39,15 @@ PROMPT_JSON_INSTRUCTIONS = """
 Qoidalar:
 1. Agar hujjatda bir nechta savolga tegishli umumiy matn (Reading passage) bo'lsa, uni "reading_passage"ga kirit.
 2. Har bir savol matnini "text" maydoniga yoz.
-3. Kimyo va Biologiyadagi formulalar (H₂O, CO₂, reaksiya tenglamalari) va lotincha atamalarni buzmasdan aynan saqla.
-4. Huquqshunoslikdagi moddalar, qonun matnlari va vaziyatli kazuslarni to'liq ajratib ol.
-5. Variantlarni A, B, C, D harflari bilan "choices" massivida qaytar. Format: [{"code": "A", "text": "..."}, {"code": "B", "text": "..."}]. Variant matnida A), B) kabi takroriy harflarni qoldirma, faqat toza variant matnini yoz.
-6. To'g'ri javob kaliti ko'rsatilgan bo'lsa (masalan: 1-B yoki belgilangan bo'lsa), "correct_answer": "B" qilib belgilang.
+3. KIMYO: Kimyoviy formulalar (masalan, H₂SO₄, KMnO₄, reaksiya tenglamalari, indekslar, zaryadlar, konsentratsiya va molyar hisoblashlar) aynan saqlansin, hecham qisqartirilmasin.
+4. BIOLOGIYA: Biologik sxemalar, genetik krossingover masalalari, xromosoma to'plamlari, lotincha taksonomik nomlar va biologik qonuniyatlar to'liq saqlansin.
+5. HUQUQSHUNOSLIK: Huquqiy moddalar, qonunchilik normalari (Konstitutsiya, JK, FK, MK, Mehnat kodeksi), vaziyatli kazuslar va yuridik tahlil savollari to'liq ajratib olinsin.
+6. ONA TILI VA ADABIYOT: Grammatik tahlil, orfografiya, morfologik va sintaktik qoidalar, matnli tahlillar aynan o'z holida saqlansin.
+7. INGLIZ TILI: Reading passage, grammar context, sentence completion va vocabulary savollari buzilmasdan saqlansin.
+8. Variantlarni A, B, C, D harflari bilan "choices" massivida qaytar. Format: [{"code": "A", "text": "..."}, {"code": "B", "text": "..."}]. Variant matnida A), B) kabi takroriy harflarni qoldirma, faqat toza variant matnini yoz.
+9. To'g'ri javob kaliti ko'rsatilgan bo'lsa (masalan: 1-B yoki belgilangan bo'lsa), "correct_answer": "B" qilib belgilang.
    Agar hujjatda to'g'ri javob belgilanmagan bo'lsa, o'zing to'g'ri javobni aniqlab "correct_answer"ga yoz va "explanation"ga qisqa qoidani kirit.
-7. Savol turini ("single_choice", "multiple_choice", "text") belgilang.
+10. Savol turini ("single_choice", "multiple_choice", "text") belgilang.
 
 Faqat va faqat quyidagi toza JSON formatni qaytar (hech qanday markdown prefikslarsiz):
 {
@@ -331,13 +334,15 @@ def _parse_raw_text_regex(raw_text: str, subject: str = "uzbek") -> dict[str, An
     if not questions:
         raise ConverterError(ConverterError.user_message)
 
-    subject_label = "Ona tili va adabiyot"
-    if subject == "english":
-        subject_label = "Ingliz tili (CBT)"
-    elif subject == "adabiyot":
-        subject_label = "Adabiyot oraliq nazorat"
-    elif subject == "milliy":
-        subject_label = "Milliy sertifikat diagnostika"
+    subject_labels = {
+        "biology": "Biologiya (Milliy sertifikat)",
+        "chemistry": "Kimyo (Milliy sertifikat)",
+        "law": "Huquqshunoslik (Yurisprudensiya)",
+        "uzbek": "Ona tili va adabiyot",
+        "english": "Ingliz tili (CBT)",
+    }
+    raw_s = str(subject or "uzbek").strip().lower()
+    subject_label = subject_labels.get(raw_s, "Ona tili va adabiyot")
 
     return {
         "test_title": f"{subject_label} — Smart Paste testi ({len(questions)} ta savol)",
@@ -408,12 +413,16 @@ def convert_document_to_test_data(
         (".png", ".jpg", ".jpeg", ".webp", ".heic")
     )
 
-    norm_subject = subject if subject in ("uzbek", "english") else "uzbek"
-    subject_label = (
-        "Ona tili va adabiyot (Milliy sertifikat)"
-        if norm_subject == "uzbek"
-        else "Ingliz tili (IELTS / CEFR)"
-    )
+    subject_labels = {
+        "biology": "Biologiya (Milliy sertifikat va DTM)",
+        "chemistry": "Kimyo (Milliy sertifikat va DTM)",
+        "law": "Huquqshunoslik (Yurisprudensiya va Konstitutsiya)",
+        "uzbek": "Ona tili va adabiyot (Milliy sertifikat)",
+        "english": "Ingliz tili (IELTS / CEFR)",
+    }
+    raw_s = str(subject or "uzbek").strip().lower()
+    norm_subject = raw_s if raw_s in subject_labels else "uzbek"
+    subject_label = subject_labels[norm_subject]
 
     parsed_result: dict[str, Any] | None = None
 
@@ -482,7 +491,13 @@ def save_converted_test(
     """
     title = str(payload.get("test_title") or payload.get("title") or "").strip() or "Yangi Test"
     raw_subject = str(payload.get("subject") or "uzbek").strip().lower()
-    norm_subject = "english" if raw_subject in ("english", "ielts", "cefr") else "uzbek"
+    valid_subjects = {"biology", "chemistry", "law", "english", "uzbek"}
+    if raw_subject in valid_subjects:
+        norm_subject = raw_subject
+    elif raw_subject in ("ielts", "cefr"):
+        norm_subject = "english"
+    else:
+        norm_subject = "uzbek"
     
     try:
         time_limit = int(payload.get("time_limit_minutes", 60) or 0)

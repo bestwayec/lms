@@ -851,6 +851,10 @@ export interface GradebookStudent {
   time_spent_formatted: string;
   completed_at: string;
   status: string;
+  is_in_progress?: boolean;
+  status_label?: string;
+  answers_count?: number;
+  progress_percentage?: number;
 }
 
 export interface GradebookHardestQuestion {

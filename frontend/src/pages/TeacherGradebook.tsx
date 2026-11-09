@@ -10,6 +10,8 @@ import {
 } from '../components/icons';
 import SEO from '../components/SEO';
 import StudentAttemptReviewModal from '../components/StudentAttemptReviewModal';
+import ClassroomQrModal from '../components/ClassroomQrModal';
+import { QrCode } from 'lucide-react';
 import {
   type GradebookResponse,
   type ItemAnalysisResponse,
@@ -27,6 +29,7 @@ export default function TeacherGradebook() {
   const [err, setErr] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAttemptId, setSelectedAttemptId] = useState<number | null>(null);
+  const [qrOpen, setQrOpen] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
@@ -186,8 +189,30 @@ export default function TeacherGradebook() {
               }}
               title="Yangilash"
             >
-              <RefreshIcon size={14} />
-              <span>Yangilash</span>
+              <RefreshIcon size={14} className={loading ? 'animate-spin' : ''} />
+              <span>{loading ? 'Yangilanmoqda…' : 'Yangilash'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setQrOpen(true)}
+              className="btn sm"
+              style={{
+                background: 'rgba(99, 102, 241, 0.15)',
+                border: '1px solid rgba(99, 102, 241, 0.4)',
+                color: '#818cf8',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '7px 14px',
+                borderRadius: 10,
+                cursor: 'pointer',
+                fontWeight: 800,
+              }}
+              title="Sinfxona proyektorida QR-kodni ko'rsatish"
+            >
+              <QrCode size={14} />
+              <span>📱 Sinfxona QR-Kodi</span>
             </button>
 
             <button
@@ -633,72 +658,130 @@ export default function TeacherGradebook() {
                         </div>
                       </td>
 
-                      {/* Raw Score */}
+                      {/* Raw Score / Status */}
                       <td style={{ padding: '14px 16px', textAlign: 'center' }}>
-                        <strong style={{ color: 'var(--ink)', fontSize: 14 }}>{st.raw_score}</strong>
-                        <div style={{ fontSize: 11, color: '#10B981', fontWeight: 700 }}>{st.percentage}%</div>
+                        {st.is_in_progress ? (
+                          <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                            <span
+                              style={{
+                                padding: '3px 8px',
+                                borderRadius: 999,
+                                background: 'rgba(245, 158, 11, 0.15)',
+                                color: '#D97706',
+                                fontWeight: 800,
+                                fontSize: 11.5,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4,
+                              }}
+                              className="animate-pulse"
+                            >
+                              <span>⏳</span>
+                              <span>{st.status_label || 'Yechmoqda...'}</span>
+                            </span>
+                            <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>
+                              {st.answers_count || 0}/{st.total_questions} ({st.progress_percentage || 0}%)
+                            </span>
+                            <div style={{ width: 64, height: 4, background: 'rgba(0,0,0,0.1)', borderRadius: 2, overflow: 'hidden' }}>
+                              <div
+                                style={{
+                                  width: `${st.progress_percentage || 0}%`,
+                                  height: '100%',
+                                  background: '#F59E0B',
+                                  borderRadius: 2,
+                                }}
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <strong style={{ color: 'var(--ink)', fontSize: 14 }}>{st.raw_score}</strong>
+                            <div style={{ fontSize: 11, color: '#10B981', fontWeight: 700 }}>
+                              {st.status_label || `✓ Yakunladi — ${st.percentage}%`}
+                            </div>
+                          </div>
+                        )}
                       </td>
 
                       {/* Rasch Score */}
                       <td style={{ padding: '14px 16px', textAlign: 'center' }}>
-                        <span
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 4,
-                            padding: '4px 10px',
-                            borderRadius: 20,
-                            background: 'rgba(245, 158, 11, 0.12)',
-                            color: '#D97706',
-                            fontWeight: 800,
-                            fontSize: 13,
-                          }}
-                        >
-                          ⭐️ {st.rasch_score} ball
-                        </span>
+                        {st.is_in_progress ? (
+                          <span style={{ color: 'var(--muted)', fontSize: 12 }}>—</span>
+                        ) : (
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              padding: '4px 10px',
+                              borderRadius: 20,
+                              background: 'rgba(245, 158, 11, 0.12)',
+                              color: '#D97706',
+                              fontWeight: 800,
+                              fontSize: 13,
+                            }}
+                          >
+                            ⭐️ {st.rasch_score} ball
+                          </span>
+                        )}
                       </td>
 
                       {/* Grade */}
                       <td style={{ padding: '14px 16px', textAlign: 'center' }}>
-                        <span
-                          style={{
-                            padding: '3px 10px',
-                            borderRadius: 999,
-                            fontWeight: 900,
-                            fontSize: 12,
-                            background:
-                              st.rasch_grade === 'A+' || st.rasch_grade === 'A'
-                                ? 'rgba(16, 185, 129, 0.15)'
-                                : st.rasch_grade.startsWith('B')
-                                ? 'rgba(59, 130, 246, 0.15)'
-                                : st.rasch_grade.startsWith('C')
-                                ? 'rgba(245, 158, 11, 0.15)'
-                                : 'rgba(239, 68, 68, 0.15)',
-                            color:
-                              st.rasch_grade === 'A+' || st.rasch_grade === 'A'
-                                ? '#059669'
-                                : st.rasch_grade.startsWith('B')
-                                ? '#2563EB'
-                                : st.rasch_grade.startsWith('C')
-                                ? '#D97706'
-                                : '#DC2626',
-                          }}
-                        >
-                          {st.rasch_grade}
-                        </span>
+                        {st.is_in_progress ? (
+                          <span
+                            style={{
+                              padding: '3px 8px',
+                              borderRadius: 999,
+                              fontWeight: 700,
+                              fontSize: 11,
+                              background: 'rgba(148, 163, 184, 0.15)',
+                              color: 'var(--muted)',
+                            }}
+                          >
+                            Jarayonda
+                          </span>
+                        ) : (
+                          <span
+                            style={{
+                              padding: '3px 10px',
+                              borderRadius: 999,
+                              fontWeight: 900,
+                              fontSize: 12,
+                              background:
+                                st.rasch_grade === 'A+' || st.rasch_grade === 'A'
+                                  ? 'rgba(16, 185, 129, 0.15)'
+                                  : st.rasch_grade.startsWith('B')
+                                  ? 'rgba(59, 130, 246, 0.15)'
+                                  : st.rasch_grade.startsWith('C')
+                                  ? 'rgba(245, 158, 11, 0.15)'
+                                  : 'rgba(239, 68, 68, 0.15)',
+                              color:
+                                st.rasch_grade === 'A+' || st.rasch_grade === 'A'
+                                  ? '#059669'
+                                  : st.rasch_grade.startsWith('B')
+                                  ? '#2563EB'
+                                  : st.rasch_grade.startsWith('C')
+                                  ? '#D97706'
+                                  : '#DC2626',
+                            }}
+                          >
+                            {st.rasch_grade}
+                          </span>
+                        )}
                       </td>
 
                       {/* Time Spent */}
                       <td style={{ padding: '14px 16px', textAlign: 'center', color: 'var(--muted)', fontWeight: 600 }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                           <ClockIcon size={12} />
-                          <span>{st.time_spent_formatted}</span>
+                          <span>{st.is_in_progress ? '⏳ Davom etmoqda' : st.time_spent_formatted}</span>
                         </div>
                       </td>
 
                       {/* Completed At */}
                       <td style={{ padding: '14px 16px', textAlign: 'right', color: 'var(--muted)', fontSize: 12.5 }}>
-                        {st.completed_at}
+                        {st.is_in_progress ? 'Hozir yechmoqda' : st.completed_at}
                       </td>
 
                       {/* Mistake Inspector Action */}
@@ -706,16 +789,17 @@ export default function TeacherGradebook() {
                         <button
                           type="button"
                           onClick={() => setSelectedAttemptId(st.attempt_id)}
+                          disabled={st.is_in_progress}
                           className="btn sm"
                           style={{
                             padding: '5px 12px',
                             borderRadius: 8,
                             fontSize: 12,
                             fontWeight: 700,
-                            background: 'rgba(245, 158, 11, 0.12)',
-                            color: '#D97706',
-                            border: '1px solid rgba(245, 158, 11, 0.35)',
-                            cursor: 'pointer',
+                            background: st.is_in_progress ? 'rgba(148, 163, 184, 0.1)' : 'rgba(245, 158, 11, 0.12)',
+                            color: st.is_in_progress ? 'var(--muted)' : '#D97706',
+                            border: '1px solid ' + (st.is_in_progress ? 'rgba(148, 163, 184, 0.2)' : 'rgba(245, 158, 11, 0.35)'),
+                            cursor: st.is_in_progress ? 'not-allowed' : 'pointer',
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: 5,
@@ -944,6 +1028,17 @@ export default function TeacherGradebook() {
         isOpen={Boolean(selectedAttemptId)}
         attemptId={selectedAttemptId}
         onClose={() => setSelectedAttemptId(null)}
+      />
+
+      {/* Classroom Projector QR Modal */}
+      <ClassroomQrModal
+        isOpen={qrOpen}
+        onClose={() => setQrOpen(false)}
+        title={data?.test_title || `Test #${id}`}
+        code={data?.mock_code}
+        webUrl={`${window.location.origin}/test/${id}${data?.mock_code ? `?code=${data.mock_code}` : ''}`}
+        tmaUrl={data?.mock_code ? `https://t.me/grandec_bot/app?startapp=mock_${data.mock_code}` : undefined}
+        subtitle="Sinfxona proyektorida yoki telefonda o'quvchilarga ko'rsating — jonli imtihonni boshlash uchun"
       />
     </div>
   );

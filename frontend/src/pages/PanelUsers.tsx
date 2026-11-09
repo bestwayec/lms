@@ -132,17 +132,21 @@ export default function PanelUsers() {
         </select>
       </div>
 
-      {loading && users.length === 0 ? (
+      {loading ? (
         <div style={{ display: 'grid', gap: 12, padding: '24px 0' }}>
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="card" style={{ padding: 16, opacity: 0.6 }}>
-              <div style={{ height: 18, width: '40%', background: 'rgba(255,255,255,0.08)', borderRadius: 6, marginBottom: 8 }} />
-              <div style={{ height: 14, width: '70%', background: 'rgba(255,255,255,0.05)', borderRadius: 4 }} />
+            <div key={i} className="card animate-pulse" style={{ padding: 16, borderRadius: 14, background: 'var(--card)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+                <div style={{ height: 18, width: '45%', background: 'rgba(255,255,255,0.08)', borderRadius: 6 }} />
+                <div style={{ height: 18, width: '20%', background: 'rgba(255,255,255,0.08)', borderRadius: 6 }} />
+              </div>
+              <div style={{ height: 14, width: '65%', background: 'rgba(255,255,255,0.05)', borderRadius: 4, marginBottom: 12 }} />
+              <div style={{ height: 32, width: '100%', background: 'rgba(255,255,255,0.04)', borderRadius: 8 }} />
             </div>
           ))}
         </div>
       ) : users.length === 0 ? (
-        <p className="muted">{t('panel_no_users')}</p>
+        <p className="muted" style={{ padding: '24px 0', textAlign: 'center' }}>{t('panel_no_users')}</p>
       ) : (
         <>
           {/* Mobile User Cards (< 768px) */}
@@ -171,24 +175,27 @@ export default function PanelUsers() {
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 10,
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    overflow: 'hidden',
                   }}
                 >
                   {/* Card Header: Name, You badge, Status */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flex: 1 }}>
                       <strong style={{ fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {displayName}
                       </strong>
                       {isMe && <span className="badge">{t('panel_you')}</span>}
                     </div>
-                    <span className={`badge ${u.is_active ? 'green' : 'rose'}`} style={{ flexShrink: 0 }}>
+                    <span className={`badge ${u.is_active ? 'green' : 'rose'}`} style={{ flexShrink: 0, fontSize: '0.72rem' }}>
                       {u.is_active ? t('panel_active') : t('panel_blocked')}
                     </span>
                   </div>
 
                   {/* Card Meta: Email/Telegram SSO & Date */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--muted)' }}>
-                    <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--muted)', minWidth: 0 }}>
+                    <div style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {str(u.email).startsWith('tg_') || str(u.email).includes('@tma') ? (
                         <span
                           className="badge"
@@ -203,21 +210,21 @@ export default function PanelUsers() {
                           📱 Telegram SSO
                         </span>
                       ) : (
-                        <span>{str(u.email)}</span>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{str(u.email)}</span>
                       )}
                     </div>
-                    <span>{formatDate(u.date_joined)}</span>
+                    <span style={{ flexShrink: 0, marginLeft: 8 }}>{formatDate(u.date_joined)}</span>
                   </div>
 
                   {/* Card Controls: Role & Subscription */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingTop: 4, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>Rol:</span>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>Roli:</span>
                       <select
                         value={str(u.role)}
                         onChange={(e) => setR(u.id as number, e.target.value)}
                         aria-label="role"
-                        style={{ padding: '3px 8px', fontSize: '0.82rem', borderRadius: 6 }}
+                        style={{ padding: '3px 8px', fontSize: '0.82rem', borderRadius: 6, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--ink)' }}
                       >
                         {roles.map((r) => (
                           <option key={r.value} value={r.value}>
@@ -229,15 +236,15 @@ export default function PanelUsers() {
 
                     <div>
                       {str(u.role) === 'admin' ? (
-                        <span className="badge" style={{ background: '#fef3c7', color: '#b45309', fontWeight: 700 }}>
+                        <span className="badge" style={{ background: '#fef3c7', color: '#b45309', fontWeight: 700, fontSize: '0.75rem' }}>
                           👑 Admin
                         </span>
                       ) : hasPro ? (
-                        <span className="badge" style={{ background: '#dcfce7', color: '#15803d', fontWeight: 700 }} title={expDate ? `${expDate} gacha` : undefined}>
+                        <span className="badge" style={{ background: '#dcfce7', color: '#15803d', fontWeight: 700, fontSize: '0.75rem' }} title={expDate ? `${expDate} gacha` : undefined}>
                           ⭐ {planStr.toUpperCase()}
                         </span>
                       ) : (
-                        <span className="badge muted">Free</span>
+                        <span className="badge muted" style={{ fontSize: '0.75rem' }}>Free</span>
                       )}
                     </div>
                   </div>
@@ -249,15 +256,19 @@ export default function PanelUsers() {
                       className="btn sm"
                       style={{
                         flex: 1,
-                        background: '#f59e0b',
+                        background: 'linear-gradient(135deg, #f59e0b, #d97706)',
                         color: '#fff',
                         border: 'none',
                         fontWeight: 700,
                         fontSize: '12px',
-                        padding: '6px 10px',
+                        padding: '7px 12px',
                         borderRadius: 8,
                         cursor: 'pointer',
                         textAlign: 'center',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 4,
                       }}
                       onClick={() => {
                         setGrantModalUser(u);
@@ -266,16 +277,16 @@ export default function PanelUsers() {
                         setErr(null);
                       }}
                     >
-                      ⭐ PRO Berish
+                      <span>⚡</span> PRO Berish
                     </button>
                     {!isMe && (
                       <button
                         type="button"
                         className={`btn sm ${blocked ? 'ghost' : 'danger'}`}
-                        style={{ flexShrink: 0, padding: '6px 12px', fontSize: '12px', borderRadius: 8 }}
+                        style={{ flexShrink: 0, padding: '7px 12px', fontSize: '12px', borderRadius: 8 }}
                         onClick={() => toggle(u.id as number, blocked)}
                       >
-                        {blocked ? t('panel_unblock') : t('panel_block')}
+                        {blocked ? `✓ ${t('panel_unblock')}` : `🚫 ${t('panel_block')}`}
                       </button>
                     )}
                   </div>

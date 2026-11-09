@@ -7,7 +7,7 @@ import { initialsOf } from '../lib/displayName';
 import { useSubject } from '../lib/useSubject';
 import { ShieldCheckIcon } from './icons';
 import StreakBadge from './StreakBadge';
-import SubjectSwitcher, { SUBJECT_CONFIGS } from './SubjectSwitcher';
+import SubjectSwitcher from './SubjectSwitcher';
 import UserNavDropdown from './UserNavDropdown';
 
 interface NavbarProps {
@@ -21,7 +21,6 @@ interface NavbarProps {
  * Mobile:
  * - Back button (when not on dashboard/home)
  * - Brand logo + dynamic section title
- * - Current subject badge indicator
  * - Profile avatar toggle button
  * Desktop:
  * - Brand motto badge
@@ -39,7 +38,6 @@ export default function Navbar({ streakData, onOpenProfile, pageTitle = 'GRANDEC
   const isAdmin = isPlatformAdmin(user);
 
   const isRootOrDashboard = pathname === '/' || pathname === '/dashboard';
-  const currentSubjectConfig = SUBJECT_CONFIGS.find((s) => s.id === activeSubject) || SUBJECT_CONFIGS[0];
 
   return (
     <header
@@ -76,30 +74,21 @@ export default function Navbar({ streakData, onOpenProfile, pageTitle = 'GRANDEC
           <Link to="/dashboard" className="tb-brand flex items-center gap-2 min-w-0 shrink">
             <img
               src="/logo-mark.png"
-              alt="GRANDEC"
+              alt=""
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
               className="w-6 h-6 shrink-0 object-contain overflow-hidden rounded"
               width={24}
               height={24}
             />
             <span
               className="tb-title font-bold text-sm tracking-tight text-slate-100 truncate min-w-0"
-              style={{ maxWidth: '140px' }}
+              style={{ maxWidth: '180px' }}
             >
               {pageTitle}
             </span>
           </Link>
-
-          {/* Active Subject Pill on Mobile */}
-          <span
-            className="text-[11px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0"
-            style={{
-              background: currentSubjectConfig.gradient,
-              border: `1px solid ${currentSubjectConfig.borderColor}`,
-              color: currentSubjectConfig.activeTextColor,
-            }}
-          >
-            <span>{currentSubjectConfig.icon}</span>
-          </span>
         </div>
 
         {/* Desktop Left: Brand & Motto */}
@@ -107,7 +96,10 @@ export default function Navbar({ streakData, onOpenProfile, pageTitle = 'GRANDEC
           <Link to="/dashboard" className="tb-brand flex items-center gap-2">
             <img
               src="/logo-mark.png"
-              alt="GRANDEC"
+              alt=""
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
               className="w-6 h-6 shrink-0 object-contain overflow-hidden rounded"
               width={24}
               height={24}
