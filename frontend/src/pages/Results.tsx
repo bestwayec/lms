@@ -390,7 +390,7 @@ export default function Results() {
                     className="stat-value small"
                     style={{ color: r.is_passed || !bmbScale ? undefined : 'var(--danger)' }}
                   >
-                    {pct}%
+                    {Math.round(pct)}%
                     {bmbScale && r.certificate_status === 'rules_unverified' && (
                       <span className="muted small"> {t('raw_score_not_official')}</span>
                     )}
@@ -411,7 +411,7 @@ export default function Results() {
               </div>
               <div className="toolbar">
                 <span className="muted small">
-                  {t('score')}: {String(r.score ?? '—')}/{String(r.max_score ?? '—')}
+                  {t('score')}: {String(r.score ?? '0')}/{String(r.max_score ?? '0')} ball
                   {' · '}
                   {t('rd_time_spent')}: {formatDuration(r.time_taken_seconds)}
                 </span>

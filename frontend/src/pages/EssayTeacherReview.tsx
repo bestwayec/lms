@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useLang } from '../i18n/LangContext';
 import { TeacherEssays, canReviewEssays, isPlatformAdmin } from '../lib/api';
 import { PencilIcon } from '../components/icons';
+import InlineEssayHighlighter from '../components/InlineEssayHighlighter';
 import type { TeacherEssayDetail } from '../lib/api';
 
 const isScoreMissing = (val: any) => val === undefined || val === null || val === '';
@@ -156,7 +157,13 @@ export default function EssayTeacherReview() {
         <strong>{t('tr_essay_text')}</strong>
         {!editingText ? (
           <>
-            <p style={{ whiteSpace: 'pre-wrap' }}>{submission.essay_text}</p>
+            <div style={{ margin: '10px 0' }}>
+              <InlineEssayHighlighter
+                essayText={submission.essay_text}
+                readOnly={true}
+                title="Talaba Essesi (Rangli Tahlil)"
+              />
+            </div>
             {isAdmin && (
               <button className="btn sm ghost" onClick={startTextEdit}>
                 <PencilIcon size={13} className="ico" /> {t('tr_edit_text')}

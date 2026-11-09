@@ -200,10 +200,10 @@ export default function TestAddictiveResults({
   }, [pct, subject]);
 
   const formatTime = (secs: number) => {
-    if (!secs || secs <= 0) return `0 ${t('res_unit_sec')}`;
+    if (!secs || secs <= 0) return '0 soniya';
     const m = Math.floor(secs / 60);
     const s = secs % 60;
-    return m === 0 ? `${s} ${t('res_unit_sec')}` : `${m} ${t('res_unit_min')} ${s} ${t('res_unit_sec')}`;
+    return m === 0 ? `${s} soniya` : `${m} daqiqa ${s} soniya`;
   };
 
   const handleRetestClick = async () => {
@@ -211,14 +211,15 @@ export default function TestAddictiveResults({
       onRetest();
       return;
     }
-    if (!attemptId) {
+    const targetAttemptId = attemptId || resultId;
+    if (!targetAttemptId) {
       navigate('/tests');
       return;
     }
     setRetesting(true);
     setRetestMsg(null);
     try {
-      const res = await TestsApi.generateRetest(String(attemptId));
+      const res = await TestsApi.generateRetest(String(targetAttemptId));
       if (res.has_mistakes && res.attempt_id) {
         window.location.href = `/take/${res.attempt_id}`;
       } else {
@@ -245,24 +246,43 @@ export default function TestAddictiveResults({
   };
 
   const normalizedSubject = (subject || '').trim().toLowerCase();
+  const subjectSource = ((subject || '') + ' ' + (courseTitle || '')).trim().toLowerCase();
+  const isUzbekSubj = subjectSource.includes('ona') || subjectSource.includes('uzb') || subjectSource.includes('adab');
+  const isEnglishSubj = subjectSource.includes('ing') || subjectSource.includes('eng') || subjectSource.includes('ielts') || subjectSource.includes('cefr');
+  const isBioSubj = subjectSource.includes('bio');
+  const isChemSubj = subjectSource.includes('kim') || subjectSource.includes('chem');
+  const isLawSubj = subjectSource.includes('huq') || subjectSource.includes('law');
+
   const subjInfo =
     subjMap[normalizedSubject] ||
-    (normalizedSubject.includes('bio')
+    (isBioSubj
       ? subjMap.biology
-      : normalizedSubject.includes('kim') || normalizedSubject.includes('chem')
+      : isChemSubj
       ? subjMap.chemistry
-      : normalizedSubject.includes('huq') || normalizedSubject.includes('law')
+      : isLawSubj
       ? subjMap.law
-      : normalizedSubject.includes('ing') || normalizedSubject.includes('eng')
+      : isEnglishSubj
       ? subjMap.english
-      : normalizedSubject.includes('ona') || normalizedSubject.includes('uzb')
+      : isUzbekSubj
       ? subjMap.uzbek
       : {
-          label: subject ? subject.toUpperCase() : 'Umumiy fan',
+          label: courseTitle ? courseTitle : 'Umumiy fan',
           icon: '📚',
         });
 
-  const telegramShareText = `Men Grand Education'da ${subjInfo.icon} ${subjInfo.label} fanidan ${Math.round(pct)}% ball (${grade || 'Sertifikat'}) oldim! Sen ham o'z bilimingni sinab ko'r:`;
+  let telegramShareText = `Men Grand Education'da ${subjInfo.icon} ${subjInfo.label} fanidan ${Math.round(pct)}% ball (${grade || 'Sertifikat'}) oldim! Sen ham o'z bilimingni sinab ko'r:`;
+  if (isUzbekSubj) {
+    telegramShareText = `Men Grand Education'da 🇺🇿 Ona tili va Adabiyot fanidan ${Math.round(pct)}% (${grade || 'Sertifikat'}) natija ko'rsatdim! 📖 Siz ham o'z bilimingizni sinab ko'ring:`;
+  } else if (isEnglishSubj) {
+    telegramShareText = `Men Grand Education'da 🇬🇧 Ingliz tili (CEFR / IELTS) testidan ${Math.round(pct)}% (${grade || 'Natija'}) to'pladim! 🎯 O'z darajangizni sinab ko'ring:`;
+  } else if (isBioSubj) {
+    telegramShareText = `Men Grand Education'da 🧬 Biologiya (Milliy sertifikat) testidan ${Math.round(pct)}% (${grade || 'Sertifikat'}) to'pladim! 🌿 Sinab ko'ring:`;
+  } else if (isChemSubj) {
+    telegramShareText = `Men Grand Education'da 🧪 Kimyo (Milliy sertifikat) testidan ${Math.round(pct)}% (${grade || 'Sertifikat'}) natija oldim! 🔬 Sinab ko'ring:`;
+  } else if (isLawSubj) {
+    telegramShareText = `Men Grand Education'da ⚖️ Huquqshunoslik (Yurisprudensiya) testidan ${Math.round(pct)}% (${grade || 'Sertifikat'}) to'pladim! ⚖️ Sinab ko'ring:`;
+  }
+
   const effectiveTgShareUrl =
     shareData?.telegram_share_url ||
     `https://t.me/share/url?url=${encodeURIComponent(effectiveRefUrl)}&text=${encodeURIComponent(telegramShareText)}`;
@@ -356,28 +376,63 @@ export default function TestAddictiveResults({
         <div className="res-hero__score flex flex-wrap items-baseline gap-2 mb-4" aria-label={`${Math.round(pct)}%`}>
           <strong className="text-4xl md:text-5xl font-black text-white tracking-tight">{Math.round(pct)}%</strong>
           <span className="text-slate-300 text-sm md:text-base font-semibold">
-            • {score}/{maxScore} {t('res_score', 'ball')}
+            • {score}/{maxScore} ball
           </span>
         </div>
 
         <div className="res-metrics grid grid-cols-2 sm:grid-cols-4 gap-3 my-4">
           <div className="flex flex-col items-center justify-center p-3.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-center">
-            <b className="text-lg md:text-xl font-black text-emerald-400">{correctCount} ta</b>
-            <span className="text-xs text-slate-300 font-medium">{t('rv_status_correct', "to'g'ri")}</span>
+            <b className="text-lg md:text-xl font-black text-emerald-400">{correctCount} ta to'g'ri</b>
+            <span className="text-xs text-slate-300 font-medium">{t('rv_status_correct', "To'g'ri javoblar")}</span>
           </div>
           <div className="flex flex-col items-center justify-center p-3.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-center">
-            <b className="text-lg md:text-xl font-black text-rose-400">{wrongCount} ta</b>
-            <span className="text-xs text-slate-300 font-medium">{t('rv_status_wrong', 'xato')}</span>
+            <b className="text-lg md:text-xl font-black text-rose-400">{wrongCount} ta xato</b>
+            <span className="text-xs text-slate-300 font-medium">{t('rv_status_wrong', 'Xato javoblar')}</span>
           </div>
           <div className="flex flex-col items-center justify-center p-3.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-center">
-            <b className="text-lg md:text-xl font-black text-amber-400">{unansweredCount} ta</b>
-            <span className="text-xs text-slate-300 font-medium">{t('rv_status_blank', 'javobsiz')}</span>
+            <b className="text-lg md:text-xl font-black text-amber-400">{unansweredCount} ta javobsiz</b>
+            <span className="text-xs text-slate-300 font-medium">{t('rv_status_blank', 'Belgilanmagan')}</span>
           </div>
           <div className="flex flex-col items-center justify-center p-3.5 rounded-xl bg-sky-500/15 border border-sky-500/30 text-center">
             <b className="text-lg md:text-xl font-black text-sky-400">{formatTime(timeSpentSeconds)}</b>
-            <span className="text-xs text-slate-300 font-medium">{t('res_time', 'sarflangan vaqt')}</span>
+            <span className="text-xs text-slate-300 font-medium">{t('res_time', 'Sarflangan vaqt')}</span>
           </div>
         </div>
+
+        {/* 1-Click Mistake Replay Banner (Hero Card) */}
+        {(wrongCount > 0 || unansweredCount > 0) && (
+          <div style={{ marginTop: 16, marginBottom: 8 }}>
+            <button
+              type="button"
+              disabled={retesting}
+              onClick={handleRetestClick}
+              style={{
+                width: '100%',
+                padding: '15px 22px',
+                borderRadius: 16,
+                background: 'linear-gradient(135deg, #EF4444 0%, #DC2626 50%, #B91C1C 100%)',
+                color: '#FFFFFF',
+                fontWeight: 900,
+                fontSize: '1.02rem',
+                border: '1.5px solid rgba(254, 202, 202, 0.45)',
+                boxShadow: '0 8px 24px -4px rgba(239, 68, 68, 0.5)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 10,
+                cursor: retesting ? 'wait' : 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <span style={{ fontSize: 22 }}>🔥</span>
+              <span>
+                {retesting
+                  ? 'Qayta ishlash yuklanmoqda…'
+                  : `Xato qilingan savollarni qayta ishlash (${wrongCount + unansweredCount} ta)`}
+              </span>
+            </button>
+          </div>
+        )}
 
         {/* Personal Best Record Indicator */}
         {isNewRecord && (
@@ -785,9 +840,11 @@ export default function TestAddictiveResults({
 
       {/* Standard Action buttons (Retest, New Test) */}
       <div className="res-actions">
-        {wrongCount > 0 && (
+        {(wrongCount > 0 || unansweredCount > 0) && (
           <button type="button" className="ui-btn ui-btn--primary" disabled={retesting} onClick={handleRetestClick}>
-            {retesting ? t('res_retest_preparing') : t('res_retest').replace('{n}', String(wrongCount))}
+            {retesting
+              ? t('res_retest_preparing')
+              : `🔥 Xatolar ustida ishlash (${wrongCount + unansweredCount} ta)`}
           </button>
         )}
         <button type="button" className="ui-btn" onClick={() => setShowScoreCard(true)}>

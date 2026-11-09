@@ -6,6 +6,7 @@ import { essayStatus } from '../lib/essays';
 import { useAuth } from '../auth/AuthContext';
 import { Essays } from '../lib/api';
 import ScoreCardModal from '../components/ScoreCardModal';
+import InlineEssayHighlighter, { type HighlightError } from '../components/InlineEssayHighlighter';
 import {
   countEssayWords,
   isEssayDone,
@@ -148,7 +149,7 @@ export default function EssayResult() {
   const [res, setRes] = useState<Result | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [showScoreCard, setShowScoreCard] = useState(false);
-  const [tab, setTab] = useState<Tab>('criteria');
+  const [tab, setTab] = useState<Tab>('essay');
   const [openCrit, setOpenCrit] = useState<Set<number>>(new Set());
 
   const [improved, setImproved] = useState<string | null>(null);
@@ -167,7 +168,7 @@ export default function EssayResult() {
   const [pollNonce, setPollNonce] = useState(0);
 
   const [workingText, setWorkingText] = useState('');
-  const [activeError, setActiveError] = useState<SpellingError | null>(null);
+  const [_activeError, setActiveError] = useState<SpellingError | null>(null);
   const [fixed, setFixed] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -209,6 +210,41 @@ export default function EssayResult() {
     () => (res?.spelling_errors ?? []).filter((e) => e && typeof e.word === 'string' && e.word.trim()),
     [res?.spelling_errors],
   );
+
+  const allHighlightErrors = useMemo<HighlightError[]>(() => {
+    const list: HighlightError[] = [];
+    const seen = new Set<string>();
+
+    for (const e of spelling) {
+      const w = e.word.trim();
+      if (w && !seen.has(w.toLowerCase())) {
+        seen.add(w.toLowerCase());
+        list.push({
+          word: w,
+          correction: e.correction || '',
+          explanation: e.explanation || "Imlo yoki shakl xatosi",
+          type: 'spelling',
+        });
+      }
+    }
+
+    for (const c of criteria) {
+      for (const errStr of c.errors ?? []) {
+        const { before, after } = splitEvidence(errStr);
+        const w = (before || '').trim();
+        if (w && !seen.has(w.toLowerCase())) {
+          seen.add(w.toLowerCase());
+          list.push({
+            word: w,
+            correction: after || '',
+            explanation: `${c.name}: ${c.reason || 'Grammatik yoki uslubiy tavsiya'}`,
+            type: c.id >= 6 && c.id <= 8 ? 'spelling' : 'grammar',
+          });
+        }
+      }
+    }
+    return list;
+  }, [spelling, criteria]);
 
   const groups = useMemo(() => {
     if (!criteria.length) return [];
@@ -353,37 +389,11 @@ export default function EssayResult() {
       return next;
     });
 
-  const renderEssay = (text: string) => {
-    if (!text) return <span className="muted">{t('er_no_text')}</span>;
-    if (!activeErrors.length) return text;
-    try {
-      const words = activeErrors.map((e) => e.word.trim()).sort((a, b) => b.length - a.length);
-      const parts = text.split(new RegExp(`(${words.map(escapeRe).join('|')})`, 'gi'));
-      return parts.map((part, i) => {
-        const match = activeErrors.find((e) => e.word.toLowerCase() === part.toLowerCase());
-        if (!match) return part;
-        const selected = activeError?.word.toLowerCase() === match.word.toLowerCase();
-        return (
-          <button
-            key={i}
-            type="button"
-            className={`er-mark${selected ? ' is-active' : ''}`}
-            onClick={() => setActiveError(match)}
-            aria-label={`${match.word} → ${match.correction}`}
-          >
-            {part}
-          </button>
-        );
-      });
-    } catch {
-      return text;
-    }
-  };
 
   const tabs: Array<{ key: Tab; label: string; count?: number }> = [
+    { key: 'essay', label: `🎨 ${t('er_tab_essay')} (Rangli Tahlil)`, count: allHighlightErrors.length || undefined },
     { key: 'criteria', label: t('er_tab_criteria'), count: criteria.length || undefined },
     { key: 'corrections', label: t('er_tab_corrections'), count: spelling.length || undefined },
-    { key: 'essay', label: t('er_tab_essay') },
     { key: 'improved', label: t('er_tab_improved') },
   ];
 
@@ -687,8 +697,10 @@ export default function EssayResult() {
 
           {tab === 'essay' && (
             <section id="er-panel-essay" role="tabpanel" aria-labelledby="er-tab-essay" className="er-panel">
-              <div className="er-panel__bar">
-                {activeErrors.length > 0 ? <span className="muted small">{t('er_essay_hint')}</span> : <span />}
+              <div className="er-panel__bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <span className="muted small">
+                  {t('er_essay_hint')}
+                </span>
                 <button
                   type="button"
                   className="ui-btn ui-btn--sm"
@@ -697,22 +709,20 @@ export default function EssayResult() {
                   {copied === 'essay' ? t('er_copied') : t('er_copy')}
                 </button>
               </div>
-              {activeError && (
-                <div className="ui-card er-inspector" role="dialog" aria-label={t('er_tab_corrections')}>
-                  <p className="er-diff__before">❌ {activeError.word}</p>
-                  <p className="er-diff__after">✅ {activeError.correction}</p>
-                  {activeError.explanation && <p className="er-fix__why">{activeError.explanation}</p>}
-                  <div className="er-actions">
-                    <button type="button" className="ui-btn ui-btn--sm" onClick={() => setActiveError(null)}>
-                      {t('close')}
-                    </button>
-                    <button type="button" className="ui-btn ui-btn--sm ui-btn--primary" onClick={() => applyFix(activeError)}>
-                      {t('er_apply_fix')}
-                    </button>
-                  </div>
-                </div>
-              )}
-              <div className="ui-card er-essay">{renderEssay(workingText || res.essay_text || '')}</div>
+
+              <InlineEssayHighlighter
+                essayText={workingText || res.essay_text || ''}
+                errors={allHighlightErrors}
+                strengths={res.strengths}
+                onApplyFix={(err) => {
+                  applyFix({
+                    word: err.word,
+                    correction: err.correction,
+                    explanation: err.explanation || '',
+                  });
+                }}
+                title="Talaba Essesi — Rangli Tahlil & Xatolar Ustida Ishlash"
+              />
             </section>
           )}
 

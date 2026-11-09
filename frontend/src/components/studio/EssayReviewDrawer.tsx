@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCheck, Save, X } from 'lucide-react';
 import { useLang } from '../../i18n/LangContext';
 import { TeacherEssays, type TeacherEssayDetail } from '../../lib/api';
+import InlineEssayHighlighter from '../InlineEssayHighlighter';
 
 const CRITERIA = Array.from({ length: 12 }, (_, i) => i + 1);
 
@@ -135,7 +136,13 @@ export default function EssayReviewDrawer({ submissionId, onClose, onSaved }: Pr
             )}
             <details className="studio-essay" open>
               <summary>{t('tr_essay_text')}</summary>
-              <p>{data.submission.essay_text}</p>
+              <div style={{ marginTop: 10 }}>
+                <InlineEssayHighlighter
+                  essayText={data.submission.essay_text}
+                  readOnly={true}
+                  title="O'quvchi Essesi (Rangli Tahlil)"
+                />
+              </div>
             </details>
             {data.submission.summary && <p className="muted small">{data.submission.summary}</p>}
 

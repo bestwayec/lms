@@ -188,6 +188,37 @@ const emptyEntry = (): AnswerEntry => ({
 
 const TEXT_DEBOUNCE_MS = 400;
 
+export function isOpenTextQuestion(q: Question): boolean {
+  const type = (q.question_type || '').toLowerCase();
+  if (['text', 'short_answer', 'inline_gap_fill', 'open', 'fill_blank'].includes(type)) {
+    return true;
+  }
+  // If it has NO choices and is not other complex interactive types
+  if (
+    (!q.choices || q.choices.length === 0) &&
+    !['matching', 'matching_matrix', 'written', 'gap_fill', 'dual_open_calc', 'legal_case_study'].includes(type)
+  ) {
+    return true;
+  }
+  // IELTS / CEFR Listening & Reading gap/short answer patterns
+  const textLower = (q.text || '').toLowerCase();
+  const isListeningOrReadingGap =
+    /write\s+(?:no\s+more\s+than\s+)?(?:one|two|three|\d+)\s+words?/i.test(textLower) ||
+    /one\s+word\s+(?:and\/or\s+a\s+number|only)/i.test(textLower) ||
+    /note\s+completion/i.test(textLower) ||
+    /sentence\s+completion/i.test(textLower) ||
+    /summary\s+completion/i.test(textLower) ||
+    /table\s+completion/i.test(textLower) ||
+    /form\s+completion/i.test(textLower) ||
+    /short\s+answer/i.test(textLower) ||
+    /qisqa\s+javob/i.test(textLower);
+
+  if (isListeningOrReadingGap && (!q.choices || q.choices.length <= 1)) {
+    return true;
+  }
+  return false;
+}
+
 function qtypeLabel(qtype: string, t: (k: string) => string): string {
   if (qtype === 'single') return t('take_single');
   if (qtype === 'multiple') return t('take_multiple');
@@ -197,6 +228,9 @@ function qtypeLabel(qtype: string, t: (k: string) => string): string {
   if (qtype === 'matching_matrix') return 'Moslashtirish matritsasi (33–35: 1, 2, 3 -> A–F)';
   if (qtype === 'dual_open_calc') return 'Ikki qismli ochiq masala (36–45: a va b qism)';
   if (qtype === 'legal_case_study') return 'Huquqiy kazus / situatsion tahlil';
+  if (['short_answer', 'inline_gap_fill', 'open', 'fill_blank'].includes((qtype || '').toLowerCase())) {
+    return 'Qisqa javobli savol';
+  }
   return t('take_text');
 }
 
@@ -204,8 +238,14 @@ function entryHasContent(q: Question, a: AnswerEntry): boolean {
   if (q.question_type === 'gap_fill') return Object.keys(a.gaps).length > 0;
   if (q.question_type === 'matching') return Object.keys(a.matching).length > 0;
   if (q.question_type === 'written') return a.written.trim().length > 0;
-  if (q.question_type === 'text' || q.question_type === 'dual_open_calc' || q.question_type === 'matching_matrix') {
-    return a.text.trim().length > 0;
+  if (
+    q.question_type === 'text' ||
+    q.question_type === 'dual_open_calc' ||
+    q.question_type === 'matching_matrix' ||
+    isOpenTextQuestion(q) ||
+    Boolean(a.text && a.text.trim().length > 0)
+  ) {
+    return Boolean(a.text && a.text.trim().length > 0);
   }
   return a.choices.length > 0;
 }
@@ -1012,7 +1052,7 @@ export default function TakeTest() {
             <FormulaText text={q.text} />
           </p>
 
-          {q.question_type === 'text' ? (
+          {q.question_type === 'text' || isOpenTextQuestion(q) ? (
             (() => {
               const isTwoPart =
                 (q.text.includes('a)') && q.text.includes('b)')) ||
@@ -1089,31 +1129,58 @@ export default function TakeTest() {
                 );
               }
               return (
-                <div style={{ marginTop: 12 }}>
-                  <input
-                    type="text"
-                    className="w-full px-4 py-3 rounded-xl border border-slate-700 bg-slate-900/80 text-white placeholder-slate-500 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-base font-medium"
-                    value={a.text}
-                    disabled={finished || submitting}
-                    onChange={(e) => editText(q, e.target.value)}
-                    onBlur={() => {
-                      if (timers.current[q.id]) clearTimeout(timers.current[q.id]);
-                      const cur = answers[q.id] ?? emptyEntry();
-                      if (cur.text.trim()) save(q, cur);
-                    }}
-                    placeholder={t('take_text_ph', 'Javobingizni kiriting...')}
+                <div style={{ marginTop: 14 }}>
+                  <div
                     style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      borderRadius: 12,
-                      border: '1.5px solid rgba(255, 255, 255, 0.15)',
-                      background: 'rgba(15, 23, 42, 0.85)',
-                      color: 'var(--ink, #FFFFFF)',
-                      fontSize: '1rem',
-                      fontWeight: 500,
-                      outline: 'none',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 8,
+                      background: 'rgba(255, 255, 255, 0.02)',
+                      padding: '16px',
+                      borderRadius: 14,
+                      border: '1.5px solid rgba(255, 255, 255, 0.1)',
                     }}
-                  />
+                  >
+                    <label style={{ fontSize: '0.88rem', fontWeight: 700, color: '#f59e0b', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span>✍️</span>
+                      <span>Javobingizni kiriting:</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full px-4 py-3 rounded-xl border border-slate-700 bg-slate-900/80 text-white placeholder-slate-500 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-base font-medium"
+                      value={a.text || ''}
+                      disabled={finished || submitting}
+                      onChange={(e) => editText(q, e.target.value)}
+                      onBlur={() => {
+                        if (timers.current[q.id]) clearTimeout(timers.current[q.id]);
+                        const cur = answers[q.id] ?? emptyEntry();
+                        if (cur.text.trim()) save(q, cur);
+                      }}
+                      placeholder={t('take_text_ph', 'Javobingizni kiriting...')}
+                      style={{
+                        width: '100%',
+                        padding: '13px 16px',
+                        borderRadius: 12,
+                        border: '1.5px solid rgba(245, 158, 11, 0.35)',
+                        background: 'rgba(15, 23, 42, 0.85)',
+                        color: 'var(--ink, #FFFFFF)',
+                        fontSize: '1.02rem',
+                        fontWeight: 600,
+                        outline: 'none',
+                        minHeight: 48,
+                      }}
+                    />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2, flexWrap: 'wrap', gap: 6 }}>
+                      <span style={{ fontSize: '0.8rem', color: 'rgba(255, 255, 255, 0.5)' }}>
+                        IELTS/CEFR: harflar va raqamlarni aniq kiriting (masalan: 15, Monday, apple)
+                      </span>
+                      {a.text && a.text.trim().length > 0 && (
+                        <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#10b981' }}>
+                          ✓ Kiritildi
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
               );
             })()

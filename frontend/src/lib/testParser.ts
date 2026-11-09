@@ -38,12 +38,31 @@ export type SupportedSubject = 'uzbek' | 'adabiyot' | 'milliy' | 'english' | 'bi
  */
 export function cleanChoiceText(text: string, letter?: string): string {
   if (!text) return '';
-  const trimmed = text.trim();
+  let s = text.trim();
+  if (!s) return '';
+
+  // If text is solely the option letter itself (e.g. "A", "a", "(A)", "[A]", "A.", "A)")
+  const soleLetterRegex = letter
+    ? new RegExp(`^(?:\\[?${letter}\\]?|\\(?${letter}\\)?|[${letter}])[.\\)\\:\\-\\s]*$`, 'i')
+    : /^(?:\[?[A-Za-z]\]?|\(?[A-Za-z]\)?|[A-Za-z])[.\)\:\-\\s]*$/;
+  if (soleLetterRegex.test(s)) {
+    return '';
+  }
+
+  // Iteratively strip leading letter prefixes: e.g. "A)", "A.", "A -", "[A]", "(A)", "A:", "A "
+  // Handle cases like "A A) Toshkent" or "A. A) Toshkent"
   const prefixRegex = letter
-    ? new RegExp(`^(?:\\(?[${letter}]\\)?|[${letter}])[\\.\\)\\:\\-\\s]+\\s*`, 'i')
-    : /^(\(?[A-Za-z]\)?|[A-Za-z])[\.\)\:\-\s]+\s*/;
-  const cleaned = trimmed.replace(prefixRegex, '').trim();
-  return cleaned || trimmed;
+    ? new RegExp(`^(?:\\[?${letter}\\]?|\\(?${letter}\\)?|[${letter}])[.\\)\\:\\-\\s]+\\s*`, 'i')
+    : /^(?:\[?[A-Za-z]\]?|\(?[A-Za-z]\)?|[A-Za-z])[.\\)\\:\\-\\s]+\\s*/;
+
+  let prev = '';
+  while (s !== prev && prefixRegex.test(s)) {
+    prev = s;
+    s = s.replace(prefixRegex, '').trim();
+    if (!s) break;
+  }
+
+  return s;
 }
 
 export function parseSmartTestText(rawText: string, defaultSubject: SupportedSubject = 'uzbek'): SmartParseResult {
