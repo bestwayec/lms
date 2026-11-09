@@ -76,7 +76,13 @@ def get_group_full_analytics(group: StudentGroup) -> dict[str, Any]:
     }
 
     # Kurs to'lovlari (Tuition Billing): har bir o'quvchining eng so'nggi to'lovi
+    from apps.accounts.models import Profile
     from apps.tuition.models import StudentTuition
+
+    profile_streaks: dict[int, int] = {
+        p.user_id: p.current_streak
+        for p in Profile.objects.filter(user_id__in=student_ids).only("user_id", "current_streak")
+    }
 
     tuition_status: dict[int, str] = {}
     for sid, tuit_status in (
@@ -135,6 +141,8 @@ def get_group_full_analytics(group: StudentGroup) -> dict[str, Any]:
                 "student_name": s.get_full_name() or s.email,
                 "full_name": s.get_full_name() or s.email,
                 "email": s.email,
+                "streak": profile_streaks.get(s.id, 0),
+                "streak_days": profile_streaks.get(s.id, 0),
                 "has_pro": True,
                 "pro_status_label": "⭐ PRO (Faol)",
                 "tests_count": tests_count,

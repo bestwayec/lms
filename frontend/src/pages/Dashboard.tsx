@@ -23,6 +23,7 @@ import PlanBadge from '../components/PlanBadge';
 import { Zap, Target, Flame, ArrowRight, ChevronRight, KeyRound, Award, Trophy } from 'lucide-react';
 import { hapticSelect, hapticImpact, hapticNotify } from '../lib/haptics';
 import ReferralCard from '../components/ReferralCard';
+import DailyBlitzModal from '../components/DailyBlitzModal';
 
 const CURATED_RADAR_TOPICS: Record<string, { label: string; percentage: number; needsReview: boolean }[]> = {
   biology: [
@@ -103,6 +104,7 @@ export default function Dashboard() {
   const [pendingReceipt, setPendingReceipt] = useState<PaymentReceiptItem | null>(null);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [streakData, setStreakData] = useState<StreakInfoResponse | null>(null);
+  const [blitzModalOpen, setBlitzModalOpen] = useState(false);
   const [pinCode, setPinCode] = useState('');
   const [pinBusy, setPinBusy] = useState(false);
   const [pinErr, setPinErr] = useState<string | null>(null);
@@ -490,25 +492,28 @@ export default function Dashboard() {
                       <Flame size={12} className="text-amber-400" /> +25 XP Olov
                     </span>
                     <span className="text-[11px] font-semibold text-slate-300">
-                      5 daqiqa • 5 ta savol
+                      ⚡ 60 soniya • 5 savol
                     </span>
                   </div>
                   <h2 className="text-base font-extrabold text-white tracking-tight">
-                    Kunlik 5 talik Blits-test
+                    ⚡ Kunlik Blits (60 soniya • 5 savol)
                   </h2>
                   <p className="text-xs text-slate-300 mt-0.5">
                     {subject === 'biology' ? '🧬 Biologiya' : subject === 'chemistry' ? '🧪 Kimyo' : subject === 'law' ? '⚖️ Huquq' : subject === 'english' ? '🇬🇧 English' : '🇺🇿 Ona tili'} bo'yicha bugungi ekspress sinov
                   </p>
                 </div>
               </div>
-              <Link
-                to="/tests?mode=blitz"
-                onClick={() => hapticImpact('medium')}
-                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-xs uppercase tracking-wider bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 hover:from-amber-400 hover:to-amber-500 active:scale-95 transition-all shadow-lg shadow-amber-500/25 shrink-0"
+              <button
+                type="button"
+                onClick={() => {
+                  hapticImpact('medium');
+                  setBlitzModalOpen(true);
+                }}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-xs uppercase tracking-wider bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 hover:from-amber-400 hover:to-amber-500 active:scale-95 transition-all shadow-lg shadow-amber-500/25 shrink-0 border-0 cursor-pointer"
               >
                 <span>⚡️ Blits-testni boshlash</span>
                 <ArrowRight size={14} />
-              </Link>
+              </button>
             </div>
           </div>
 
@@ -903,6 +908,16 @@ export default function Dashboard() {
       {isStudent && <ReferralCard variant="compact" />}
 
       <OnboardingModal isOpen={onboardingOpen} onClose={() => setOnboardingOpen(false)} onSuccess={() => setOnboardingOpen(false)} />
+
+      <DailyBlitzModal
+        isOpen={blitzModalOpen}
+        onClose={() => setBlitzModalOpen(false)}
+        subject={subject}
+        onCompleted={() => {
+          GamificationApi.streak().then(setStreakData).catch(() => {});
+          load();
+        }}
+      />
     </div>
   );
 }

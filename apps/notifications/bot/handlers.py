@@ -334,8 +334,8 @@ def _persistent_menu_keyboard(role: str = "student") -> ReplyKeyboardMarkup:
                     KeyboardButton("⚙️ Tizim sozlamalari"),
                 ],
                 [
-                    KeyboardButton("🎓 O'quvchi menyusi"),
-                    KeyboardButton("👨‍🏫 O'qituvchi menyusi"),
+                    KeyboardButton("👨‍🎓 O'quvchi rejimi"),
+                    KeyboardButton("👨‍🏫 O'qituvchi rejimi"),
                 ],
             ],
             resize_keyboard=True,
@@ -1446,7 +1446,7 @@ async def auth_conversation_handler(
             return
         await admin_settings_handler(update, context)
         return
-    elif raw_text == "🎓 O'quvchi menyusi":
+    elif raw_text in ("🎓 O'quvchi menyusi", "👨‍🎓 O'quvchi rejimi"):
         user = await _get_or_create_user_async(update)
         role = _get_user_role(
             user, update.effective_user.id if update.effective_user else None
@@ -1466,7 +1466,7 @@ async def auth_conversation_handler(
             reply_markup=_student_main_menu_keyboard(),
         )
         return
-    elif raw_text == "👨‍🏫 O'qituvchi menyusi":
+    elif raw_text in ("👨‍🏫 O'qituvchi menyusi", "👨‍🏫 O'qituvchi rejimi"):
         user = await _get_or_create_user_async(update)
         role = _get_user_role(
             user, update.effective_user.id if update.effective_user else None
@@ -2050,6 +2050,16 @@ async def _finish_new_account(
 
 async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /help command safely."""
+    try:
+        user = await _get_or_create_user_async(update)
+        role = (
+            _get_user_role(user, update.effective_user.id if update.effective_user else None)
+            if user
+            else "student"
+        )
+    except Exception:
+        role = "student"
+
     text = (
         "📋 <b>Bot buyruqlari:</b>\n\n"
         "/start — Botni qayta ishga tushirish\n"
@@ -2064,12 +2074,41 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/leaderboard — <b>Reyting</b> (eng yaxshilar)\n"
         "/streak — <b>Kunlik streak</b> (kirishlar)\n"
         "/daily — <b>Kunlik vazifalar</b>\n"
-        "/mytuition — Kurs to'lovlari (o'quvchi / tasdiqlangan ota-ona)\n\n"
-        "🌐 <b>Web platforma:</b>\n"
-        "Barcha funksiyalar to'liq ishlashi uchun "
-        "veb-saytda tizimga kiring."
+        "/mytuition — Kurs to'lovlari (o'quvchi / tasdiqlangan ota-ona)\n"
     )
-    await send_reply(update, text, parse_mode="HTML")
+
+    if role in ("teacher", "admin"):
+        text += (
+            "\n👨‍🏫 <b>O'qituvchi buyruqlari:</b>\n"
+            "/ustoz — O'qituvchi menyusi\n"
+            "/my_groups — Guruhlaringiz ro'yxati\n"
+            "/newmock KOD — Yangi tezkor mock yaratish\n"
+            "/davomat — Dars davomatini olish\n"
+            "/attendance_report — Davomat hisoboti\n"
+            "/students — Guruh o'quvchilari ro'yxati\n"
+            "/essay_results — Esse tekshirish navbati\n"
+            "/group_report — Guruh hisoboti\n"
+        )
+    if role == "admin":
+        text += (
+            "\n👑 <b>Administrator:</b>\n"
+            "/admin — Admin panel\n"
+        )
+
+    text += (
+        "\n🌐 <b>Web platforma:</b>\n"
+        "Barcha funksiyalar to'liq ishlashi uchun veb-saytda tizimga kiring."
+    )
+
+    try:
+        await send_reply(update, text, parse_mode="HTML")
+    except Exception as exc:
+        logger.warning("help_handler HTML reply failed (%s), retrying plain text", exc)
+        clean = text.replace("<b>", "").replace("</b>", "")
+        try:
+            await send_reply(update, clean)
+        except Exception as inner_exc:
+            logger.exception("help_handler fallback failed: %s", inner_exc)
 
 
 # ---------------------------------------------------------------------------
@@ -3827,64 +3866,76 @@ async def payment_history_handler(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
     """/payment_history — this linked user's private course-payment history."""
-    from apps.tuition.models import CoursePayment
+    try:
+        from apps.tuition.models import CoursePayment
+        from apps.payments.card import BOT_UNAVAILABLE_MESSAGE, get_payment_card
 
-    if not await _require_private_chat(update):
-        return
+        if not await _require_private_chat(update):
+            return
 
-    user = await _get_or_create_user_async(update)
-    if not user:
-        await send_reply(update, "Hisobni aniqlab bo'lmadi. /start ni bosing.")
-        return
+        user = await _get_or_create_user_async(update)
+        if not user:
+            await send_reply(update, "Hisobni aniqlab bo'lmadi. /start ni bosing.")
+            return
 
-    def _load():
-        if user.role == "parent":
-            from apps.accounts.models import ParentStudentLink
+        card = get_payment_card()
+        if card is None:
+            await send_reply(update, BOT_UNAVAILABLE_MESSAGE)
+            return
 
-            child_ids = ParentStudentLink.objects.filter(
-                parent=user,
-                is_approved=True,
-                student__is_active=True,
-            ).values_list("student_id", flat=True)
+        def _load():
+            if user.role == "parent":
+                from apps.accounts.models import ParentStudentLink
+
+                child_ids = ParentStudentLink.objects.filter(
+                    parent=user,
+                    is_approved=True,
+                    student__is_active=True,
+                ).values_list("student_id", flat=True)
+                return list(
+                    CoursePayment.objects.filter(student_id__in=child_ids)
+                    .select_related(
+                        "invoice",
+                        "student",
+                    )
+                    .order_by("-created_at")[:20]
+                )
+            if user.role != "student":
+                return []
             return list(
-                CoursePayment.objects.filter(student_id__in=child_ids)
+                CoursePayment.objects.filter(student_id=user.pk)
                 .select_related(
                     "invoice",
-                    "student",
                 )
                 .order_by("-created_at")[:20]
             )
-        if user.role != "student":
-            return []
-        return list(
-            CoursePayment.objects.filter(student_id=user.pk)
-            .select_related(
-                "invoice",
-            )
-            .order_by("-created_at")[:20]
-        )
 
-    payments = await _run_db(_load)
-    if not payments:
-        await send_reply(update, "To'lovlar tarixi bo'sh.")
-        return
-    lines = ["🧾 *Kurs to'lovlari tarixi*", ""]
-    for payment in payments:
-        period = (
-            payment.invoice.period_label
-            if payment.invoice_id
-            else "Hisobga biriktirilmagan"
-        )
-        student_name = (
-            f"{payment.student.get_full_name() or payment.student.email} · "
-            if user.role == "parent"
-            else ""
-        )
-        lines.append(
-            f"• {student_name}{period}: {_format_uzs(payment.amount_uzs)} so'm · "
-            f"{payment.get_status_display()}"
-        )
-    await send_reply(update, "\n".join(lines), parse_mode="Markdown")
+        payments = await _run_db(_load)
+        if not payments:
+            await send_reply(update, "To'lovlar tarixi bo'sh.")
+            return
+        lines = ["🧾 *Kurs to'lovlari tarixi*", ""]
+        for payment in payments:
+            period = (
+                payment.invoice.period_label
+                if payment.invoice_id
+                else "Hisobga biriktirilmagan"
+            )
+            student_name = (
+                f"{payment.student.get_full_name() or payment.student.email} · "
+                if user.role == "parent"
+                else ""
+            )
+            lines.append(
+                f"• {student_name}{period}: {_format_uzs(payment.amount_uzs)} so'm · "
+                f"{payment.get_status_display()}"
+            )
+        await send_reply(update, "\n".join(lines), parse_mode="Markdown")
+    except Exception as exc:
+        logger.exception("payment_history_handler error: %s", exc)
+        from apps.payments.card import BOT_UNAVAILABLE_MESSAGE
+
+        await send_reply(update, BOT_UNAVAILABLE_MESSAGE)
 
 
 async def payment_proof_handler(

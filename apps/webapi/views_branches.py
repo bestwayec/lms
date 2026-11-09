@@ -821,6 +821,8 @@ def student_group_detail_view(request, group_id: int):
                 "avg_test_pct": item.get("avg_test_pct", 0.0),
                 "tests_taken": item.get("tests_taken", 0),
                 "bmb_grade": item.get("bmb_grade", "—"),
+                "streak": item.get("streak", 0),
+                "streak_days": item.get("streak_days", 0),
                 "essays_written": item.get("essays_written", 0),
                 "last_active": item.get("last_active", "Yaqinda"),
                 "is_me": is_me,

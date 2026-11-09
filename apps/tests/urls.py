@@ -13,7 +13,7 @@ Endpoints:
 
 from django.urls import path
 
-from . import views, views_converter, views_mistakes, views_omr, views_placement, views_teacher_inspector
+from . import views, views_blitz, views_converter, views_mistakes, views_omr, views_placement, views_teacher_inspector
 
 app_name = "tests"
 
@@ -213,5 +213,10 @@ urlpatterns = [
         "attempts/<int:attempt_id>/certificate-card/",
         views.CertificateCardView.as_view(),
         name="certificate-card",
+    ),
+    path(
+        "daily-blitz/",
+        views_blitz.DailyBlitzView.as_view(),
+        name="daily-blitz",
     ),
 ]

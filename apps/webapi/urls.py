@@ -26,6 +26,7 @@ from . import (
 )
 from apps.organizations import views as views_enterprise
 from apps.tests import (
+    views_blitz,
     views_converter,
     views_mistakes,
     views_omr,
@@ -182,6 +183,11 @@ urlpatterns = [
         "tests/placement-quiz/submit/",
         views_placement.placement_quiz_submit_view,
         name="tests-placement-quiz-submit",
+    ),
+    path(
+        "tests/daily-blitz/",
+        views_blitz.DailyBlitzView.as_view(),
+        name="tests-daily-blitz",
     ),
     path("subjects/", views_placement.subjects_list_view, name="subjects-list"),
     path(

@@ -75,11 +75,21 @@ export default function PanelTests() {
         </Link>
       </div>
       {tests.length === 0 ? (
-        <div className="card">
-          <p>
-            <strong>{t('no_tests_created_title')}</strong>
+        <div className="card" style={{ textAlign: 'center', padding: '36px 20px' }}>
+          <p style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 8px' }}>
+            ✨ {t('no_tests_created_title') || 'Hozircha testlar mavjud emas'}
           </p>
-          <p className="muted small">{t('no_tests_created_hint')}</p>
+          <p className="muted small" style={{ marginBottom: '20px' }}>
+            {t('no_tests_created_hint') || 'Yangi test yaratish yoki Vision AI yordamida rasmdan test import qilish mumkin.'}
+          </p>
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <Link className="btn primary" to="/teacher/ai-converter">
+              ✨ AI Konvertor orqali test qo'shish
+            </Link>
+            <Link className="btn secondary" to="/panel/tests/new">
+              {t('panel_new_test')}
+            </Link>
+          </div>
         </div>
       ) : (
         <div className="table-wrap">

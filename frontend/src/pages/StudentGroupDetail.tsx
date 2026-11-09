@@ -640,15 +640,20 @@ export default function StudentGroupDetail() {
                             fontSize: 12,
                             fontWeight: 800,
                             color: top2.is_me ? '#FBBF24' : '#F1F5F9',
-                            maxWidth: 90,
+                            maxWidth: 100,
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',
                             marginBottom: 2,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 3,
                           }}
                           title={top2.student_name}
                         >
-                          {top2.student_name.split(' ')[0]} {top2.is_me && '(Siz)'}
+                          <span>{top2.student_name.split(' ')[0]} {top2.is_me && '(Siz)'}</span>
+                          <span style={{ fontSize: 10, color: '#F97316' }}>🔥{top2.streak_days || top2.streak || 0}</span>
                         </div>
                         <div style={{ fontSize: 11, fontWeight: 700, color: '#38BDF8', marginBottom: 8 }}>
                           {top2.avg_test_pct}% ({top2.bmb_grade})
@@ -708,15 +713,20 @@ export default function StudentGroupDetail() {
                             fontSize: 13,
                             fontWeight: 900,
                             color: top1.is_me ? '#FBBF24' : '#FFFFFF',
-                            maxWidth: 105,
+                            maxWidth: 115,
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',
                             marginBottom: 2,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 3,
                           }}
                           title={top1.student_name}
                         >
-                          {top1.student_name.split(' ')[0]} {top1.is_me && '(Siz)'}
+                          <span>{top1.student_name.split(' ')[0]} {top1.is_me && '(Siz)'}</span>
+                          <span style={{ fontSize: 11, color: '#F97316' }}>🔥{top1.streak_days || top1.streak || 0}</span>
                         </div>
                         <div style={{ fontSize: 12, fontWeight: 800, color: '#F59E0B', marginBottom: 8 }}>
                           🔥 {top1.avg_test_pct}% ({top1.bmb_grade})
@@ -776,15 +786,20 @@ export default function StudentGroupDetail() {
                             fontSize: 12,
                             fontWeight: 800,
                             color: top3.is_me ? '#FBBF24' : '#F1F5F9',
-                            maxWidth: 90,
+                            maxWidth: 100,
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',
                             marginBottom: 2,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 3,
                           }}
                           title={top3.student_name}
                         >
-                          {top3.student_name.split(' ')[0]} {top3.is_me && '(Siz)'}
+                          <span>{top3.student_name.split(' ')[0]} {top3.is_me && '(Siz)'}</span>
+                          <span style={{ fontSize: 10, color: '#F97316' }}>🔥{top3.streak_days || top3.streak || 0}</span>
                         </div>
                         <div style={{ fontSize: 11, fontWeight: 700, color: '#F97316', marginBottom: 8 }}>
                           {top3.avg_test_pct}% ({top3.bmb_grade})
@@ -915,8 +930,24 @@ export default function StudentGroupDetail() {
                           </span>
 
                           <div>
-                            <div style={{ fontSize: 14, fontWeight: 700, color: item.is_me ? '#F59E0B' : '#F8FAFC' }}>
-                              {item.student_name}{' '}
+                            <div style={{ fontSize: 14, fontWeight: 700, color: item.is_me ? '#F59E0B' : '#F8FAFC', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <span>{item.student_name}</span>
+                              <span
+                                style={{
+                                  fontSize: 11,
+                                  fontWeight: 800,
+                                  color: '#F97316',
+                                  background: 'rgba(249, 115, 22, 0.12)',
+                                  border: '1px solid rgba(249, 115, 22, 0.25)',
+                                  padding: '1px 6px',
+                                  borderRadius: 12,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 2,
+                                }}
+                              >
+                                🔥 {item.streak_days || item.streak || 0}
+                              </span>
                               {item.is_me && (
                                 <span
                                   style={{
@@ -926,7 +957,6 @@ export default function StudentGroupDetail() {
                                     padding: '1px 6px',
                                     borderRadius: 6,
                                     fontWeight: 800,
-                                    marginLeft: 6,
                                   }}
                                 >
                                   Siz

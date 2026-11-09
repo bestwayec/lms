@@ -67,9 +67,14 @@ export default function TeacherStudio() {
           ) : tests.length === 0 ? (
             <div className="studio-empty">
               <p>{t('studio_no_tests')}</p>
-              <Link to="/teacher/studio/new" className="btn primary sm">
-                {t('studio_new_test')}
-              </Link>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+                <Link to="/teacher/ai-converter" className="btn primary sm">
+                  ✨ AI Konvertor
+                </Link>
+                <Link to="/teacher/studio/new" className="btn secondary sm">
+                  {t('studio_new_test')}
+                </Link>
+              </div>
             </div>
           ) : (
             <ul className="studio-list">

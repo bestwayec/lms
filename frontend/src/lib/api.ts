@@ -3131,6 +3131,8 @@ export interface StudentGroupViewData {
     avg_test_pct: number;
     tests_taken: number;
     bmb_grade: string;
+    streak?: number;
+    streak_days?: number;
     essays_written: number;
     last_active: string;
     is_me: boolean;
@@ -3242,5 +3244,50 @@ export const StudentGroupDetailApi = {
     api<{ success: boolean; message: string; group: Record<string, unknown> }>('/api/v1/school/groups/join/', {
       method: 'POST',
       body: JSON.stringify({ code }),
+    }),
+};
+
+export interface DailyBlitzQuestion {
+  id: number;
+  text: string;
+  choices: { id: number; text: string }[];
+  subject: string;
+}
+
+export interface DailyBlitzResponse {
+  subject: string;
+  duration_seconds: number;
+  total_questions: number;
+  xp_reward: number;
+  current_streak: number;
+  questions: DailyBlitzQuestion[];
+}
+
+export interface DailyBlitzResultResponse {
+  ok: boolean;
+  score: number;
+  total: number;
+  percentage: number;
+  xp_earned: number;
+  current_streak: number;
+  streak_days: number;
+  streak_incremented: boolean;
+  details: {
+    question_id: number;
+    question_text: string;
+    is_correct: boolean;
+    user_choice_id: number | null;
+    correct_choice_id: number | null;
+    explanation: string;
+  }[];
+}
+
+export const DailyBlitzApi = {
+  getQuestions: (subject: string = 'uzbek') =>
+    api<DailyBlitzResponse>(`/api/v1/tests/daily-blitz/?subject=${encodeURIComponent(subject)}`),
+  submitAnswers: (subject: string, answers: Record<string, number>) =>
+    api<DailyBlitzResultResponse>('/api/v1/tests/daily-blitz/', {
+      method: 'POST',
+      body: JSON.stringify({ subject, answers }),
     }),
 };
