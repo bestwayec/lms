@@ -15,9 +15,7 @@ from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 
-UNAVAILABLE_MESSAGE = (
-    "💳 Onlayn to'lov rekvizitlari yangilanmoqda. PRO tarifni faollashtirish uchun administratorga murojaat qiling"
-)
+UNAVAILABLE_MESSAGE = "To'lov ma'lumoti hozircha mavjud emas."
 BOT_UNAVAILABLE_MESSAGE = (
     "💳 Onlayn to'lov rekvizitlari yangilanmoqda. PRO tarifni faollashtirish uchun administratorga murojaat qiling"
 )
