@@ -450,9 +450,28 @@ def placement_quiz_submit_view(request):
 @api_view(["GET"])
 @permission_classes([permissions.AllowAny])
 def subjects_list_view(request):
-    """GET /api/v1/subjects/ — list available subjects and active subject."""
-    ensure_multi_subject_seed_data()
-    subjects = Subject.objects.filter(is_active=True).order_by("position", "id")
+    """GET /api/v1/subjects/ — list available subjects and active subject (cached via Redis)."""
+    from django.core.cache import cache
+
+    def _load_subjects() -> list[dict[str, Any]]:
+        ensure_multi_subject_seed_data()
+        qs = Subject.objects.filter(is_active=True).order_by("position", "id")
+        return [
+            {
+                "id": s.id,
+                "slug": s.slug,
+                "name": s.name,
+                "description": s.description,
+                "icon": s.icon,
+            }
+            for s in qs
+        ]
+
+    subjects_data = cache.get_or_set("grandec:subjects_list_v1", _load_subjects, timeout=300)
+    if not subjects_data:
+        subjects_data = _load_subjects()
+        cache.set("grandec:subjects_list_v1", subjects_data, timeout=300)
+
     active_subject = "uzbek"
     if request.user and request.user.is_authenticated:
         profile, _ = Profile.objects.get_or_create(user=request.user)
@@ -460,16 +479,7 @@ def subjects_list_view(request):
     return Response(
         {
             "active_subject": active_subject,
-            "subjects": [
-                {
-                    "id": s.id,
-                    "slug": s.slug,
-                    "name": s.name,
-                    "description": s.description,
-                    "icon": s.icon,
-                }
-                for s in subjects
-            ],
+            "subjects": subjects_data,
         }
     )
 

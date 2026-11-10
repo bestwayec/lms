@@ -63,11 +63,13 @@ def _quota_denied(exc: QuotaDenied) -> Response:
 
 def submit_new_essay(user, text: str, *, kind: str, topic: EssayTopic | None = None, custom_title: str = "") -> Response:
     """Validate, reserve the allowance, create the submission and queue grading."""
+    from apps.core.validators import sanitize_text_xss
     from apps.essays.pre_validation import PreValidationError, pre_validate_essay
     from apps.essays.services import WordCounter, start_grading
     from apps.essays.views import MAX_ESSAY_LENGTH
 
-    text = (text or "").strip()
+    text = sanitize_text_xss(text or "").strip()
+    custom_title = sanitize_text_xss(custom_title or "").strip()
     if not text:
         return Response({"error": "empty", "code": "empty"}, status=status.HTTP_400_BAD_REQUEST)
     if len(text) > MAX_ESSAY_LENGTH:
@@ -251,7 +253,9 @@ def essay_autosave_view(request: Request, submission_id: int) -> Response:
         return Response({"error": "not_found"}, status=status.HTTP_404_NOT_FOUND)
     if submission.status != EssaySubmission.Status.DRAFT:
         return Response({"saved": False, "status": submission.status}, status=status.HTTP_409_CONFLICT)
-    text = str(request.data.get("essay_text") or "")
+    from apps.core.validators import sanitize_text_xss
+
+    text = sanitize_text_xss(str(request.data.get("essay_text") or ""))
     if len(text) > MAX_ESSAY_LENGTH:
         return Response({"error": "too_long", "max": MAX_ESSAY_LENGTH}, status=status.HTTP_400_BAD_REQUEST)
     submission.essay_text = text

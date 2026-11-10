@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, Sparkles, Check, RefreshCw, Award } from 'lucide-react';
 import { Essays, type IeltsGradeResponse } from '../lib/api';
 import { countEssayWords } from '../lib/essays-arena';
+import { escapeHtml, sanitizeHtml } from '../lib/sanitize';
 
 interface Suggestion {
   id: string;
@@ -133,7 +134,7 @@ export default function EssayStudio() {
 
   // Render text with inline highlights for strong sentences (green) and errors/improvable (yellow)
   const renderedAnalysis = useMemo(() => {
-    let html = essayText;
+    let html = escapeHtml(essayText);
     // Highlight strong sentences with subtle green
     const strongPhrases = [
       'fostering empathy and essential civic responsibility',
@@ -149,11 +150,14 @@ export default function EssayStudio() {
     // Highlight suggestions
     for (const sug of suggestions) {
       if (!appliedIds.has(sug.id)) {
-        const re = new RegExp(`(${sug.original})`, 'gi');
-        html = html.replace(re, '<mark class="essay-error-highlight">$1</mark>');
+        const safeOrig = escapeHtml(sug.original).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        if (safeOrig) {
+          const re = new RegExp(`(${safeOrig})`, 'gi');
+          html = html.replace(re, '<mark class="essay-error-highlight">$1</mark>');
+        }
       }
     }
-    return html;
+    return sanitizeHtml(html);
   }, [essayText, suggestions, appliedIds]);
 
   return (

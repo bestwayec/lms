@@ -239,66 +239,81 @@ def find_mock_by_code(code_str: str) -> Test | None:
     return None
 
 
+def invalidate_mock_leaderboard_cache(test_id: int) -> None:
+    """Invalidate cached leaderboard when new results or test metadata changes."""
+    try:
+        from django.core.cache import cache
+
+        cache.delete(f"grandec:mock_leaderboard_v1:{test_id}")
+    except Exception:
+        pass
+
+
 def get_mock_leaderboard(test_id: int) -> dict[str, Any]:
     """
     Mock test natijalari bo'yicha guruh reytingi va BMB darajalari tahlili.
+    Uses Redis cache (cache.get_or_set) with automatic invalidation on submission.
     """
+    from django.core.cache import cache
     from apps.results.models import Result
 
-    test = Test.objects.filter(id=test_id).first()
-    results = (
-        Result.objects.filter(test_id=test_id, attempt__is_preview=False)
-        .select_related("student", "attempt")
-        .order_by("-percentage", "time_taken_seconds")
-    )
-
-    ranking = []
-    bmb_counts = {"A+": 0, "A": 0, "B+": 0, "B": 0, "C+": 0, "C": 0, "Fail": 0}
-
-    for idx, r in enumerate(results, start=1):
-        grade_info = calculate_bmb_grade(r.percentage)
-        grade = grade_info["grade"]
-        if grade in bmb_counts:
-            bmb_counts[grade] += 1
-
-        attempt = getattr(r, "attempt", None)
-        cheating_detected = (
-            bool(getattr(attempt, "cheating_detected", False)) if attempt else False
-        )
-        violation_count = (
-            int(getattr(attempt, "violation_count", 0) or 0) if attempt else 0
+    def _compute() -> dict[str, Any]:
+        test = Test.objects.filter(id=test_id).first()
+        results = (
+            Result.objects.filter(test_id=test_id, attempt__is_preview=False)
+            .select_related("student", "attempt")
+            .order_by("-percentage", "time_taken_seconds")
         )
 
-        ranking.append(
-            {
-                "rank": idx,
-                "student_id": r.student_id,
-                "student_name": r.student.get_full_name() or r.student.email,
-                "score": float(r.score),
-                "max_score": float(r.max_score),
-                "percentage": float(r.percentage),
-                "bmb_grade": grade,
-                "bmb_title": grade_info["title"],
-                "badge_class": grade_info["badge_class"],
-                "time_taken_seconds": r.time_taken_seconds,
-                "cheating_detected": cheating_detected,
-                "violation_count": violation_count,
-                "calculated_at": r.calculated_at.isoformat(),
-            }
+        ranking = []
+        bmb_counts = {"A+": 0, "A": 0, "B+": 0, "B": 0, "C+": 0, "C": 0, "Fail": 0}
+
+        for idx, r in enumerate(results, start=1):
+            grade_info = calculate_bmb_grade(r.percentage)
+            grade = grade_info["grade"]
+            if grade in bmb_counts:
+                bmb_counts[grade] += 1
+
+            attempt = getattr(r, "attempt", None)
+            cheating_detected = (
+                bool(getattr(attempt, "cheating_detected", False)) if attempt else False
+            )
+            violation_count = (
+                int(getattr(attempt, "violation_count", 0) or 0) if attempt else 0
+            )
+
+            ranking.append(
+                {
+                    "rank": idx,
+                    "student_id": r.student_id,
+                    "student_name": r.student.get_full_name() or r.student.email,
+                    "score": float(r.score),
+                    "max_score": float(r.max_score),
+                    "percentage": float(r.percentage),
+                    "bmb_grade": grade,
+                    "bmb_title": grade_info["title"],
+                    "badge_class": grade_info["badge_class"],
+                    "time_taken_seconds": r.time_taken_seconds,
+                    "cheating_detected": cheating_detected,
+                    "violation_count": violation_count,
+                    "calculated_at": r.calculated_at.isoformat(),
+                }
+            )
+
+        total_candidates = len(ranking)
+        avg_score = (
+            round(sum(r["percentage"] for r in ranking) / total_candidates, 1)
+            if total_candidates > 0
+            else 0.0
         )
 
-    total_candidates = len(ranking)
-    avg_score = (
-        round(sum(r["percentage"] for r in ranking) / total_candidates, 1)
-        if total_candidates > 0
-        else 0.0
-    )
+        return {
+            "test_id": test_id,
+            "is_strict_mode": bool(test.is_strict_mode) if test else False,
+            "total_participants": total_candidates,
+            "average_percentage": avg_score,
+            "bmb_distribution": bmb_counts,
+            "ranking": ranking,
+        }
 
-    return {
-        "test_id": test_id,
-        "is_strict_mode": bool(test.is_strict_mode) if test else False,
-        "total_participants": total_candidates,
-        "average_percentage": avg_score,
-        "bmb_distribution": bmb_counts,
-        "ranking": ranking,
-    }
+    return cache.get_or_set(f"grandec:mock_leaderboard_v1:{test_id}", _compute, timeout=60)

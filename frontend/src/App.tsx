@@ -169,7 +169,14 @@ function AnimatedRoutes() {
                 requires auth, so a shell-less public route only 401'd. */}
             <Route path="/essay-leaderboard" element={<EssayLeaderboard />} />
             <Route path="/leaderboard" element={<Arena />} />
-            <Route path="/dashboard" element={<DashboardRouter />} />
+            <Route
+              path="/dashboard"
+              element={
+                <ErrorBoundary backTo="/" backKey="error_boundary_home">
+                  <DashboardRouter />
+                </ErrorBoundary>
+              }
+            />
             <Route path="/groups" element={<GroupsRouter />} />
             <Route path="/groups/:groupId" element={<StudentGroupDetail />} />
             <Route path="/profile" element={<Profile />} />

@@ -1627,6 +1627,12 @@ class SubmitAttemptService:
             is_passed,
             grading_status,
         )
+        try:
+            from apps.tests.mock_service import invalidate_mock_leaderboard_cache
+
+            invalidate_mock_leaderboard_cache(test.id)
+        except Exception:
+            pass
 
         # -- Async tasks: PDF + Telegram (faqat to'liq baholanganda) --------
         # PENDING_GRADING attemptlar uchun hech qanday sertifikat/xabar

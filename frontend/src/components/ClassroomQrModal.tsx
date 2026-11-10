@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { Copy, Check, X, Maximize2, Minimize2, Smartphone, Globe, Send } from 'lucide-react';
+import { sanitizeSvg } from '../lib/sanitize';
 
 interface ClassroomQrModalProps {
   isOpen: boolean;
@@ -157,7 +158,7 @@ export default function ClassroomQrModal({
               className={`${
                 isFullscreen ? 'w-72 h-72 sm:w-96 sm:h-96' : 'w-56 h-56 sm:w-64 sm:h-64'
               } flex items-center justify-center`}
-              dangerouslySetInnerHTML={{ __html: svgContent }}
+              dangerouslySetInnerHTML={{ __html: sanitizeSvg(svgContent) }}
             />
           ) : (
             <div className="w-56 h-56 flex items-center justify-center text-slate-500 text-sm">

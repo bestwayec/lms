@@ -157,6 +157,28 @@ def _student_question_payload(
     if not passage_obj and getattr(q, "passage", None):
         passage_obj = q.passage
 
+    raw_config = getattr(q, "config", {}) or {}
+    safe_config = (
+        {
+            k: v
+            for k, v in raw_config.items()
+            if k
+            not in {
+                "correct_answer",
+                "correct_text",
+                "answer",
+                "answers",
+                "accepted_answers",
+                "explanation",
+                "evidence",
+                "is_correct",
+                "answer_key",
+            }
+        }
+        if isinstance(raw_config, dict)
+        else {}
+    )
+
     payload: dict[str, Any] = {
         "id": getattr(q, "id", 0),
         "text": getattr(q, "text", "") or "",
@@ -174,7 +196,7 @@ def _student_question_payload(
             }
             for c in choices
         ],
-        "config": getattr(q, "config", {}) or {},
+        "config": safe_config,
     }
 
     qtype = getattr(q, "question_type", "single")

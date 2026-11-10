@@ -24,7 +24,12 @@ const readQueue = (key: string): Record<number, SavePayload> => {
  */
 export function useAnswerQueue(attemptId: string, send: (payload: SavePayload) => Promise<unknown>) {
   const key = `cd-queue:${attemptId}`;
-  const [initial] = useState(() => readQueue(key));
+  const backupKey = `grandec_attempt_${attemptId}_answers`;
+  const [initial] = useState(() => {
+    const q = readQueue(key);
+    if (Object.keys(q).length) return q;
+    return readQueue(backupKey);
+  });
   const queue = useRef<Record<number, SavePayload>>({ ...initial });
   const [state, setState] = useState<SaveState>(Object.keys(initial).length ? 'saving' : 'saved');
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
@@ -33,12 +38,18 @@ export function useAnswerQueue(attemptId: string, send: (payload: SavePayload) =
 
   const persist = useCallback(() => {
     try {
-      if (Object.keys(queue.current).length) localStorage.setItem(key, JSON.stringify(queue.current));
-      else localStorage.removeItem(key);
+      if (Object.keys(queue.current).length) {
+        const serialized = JSON.stringify(queue.current);
+        localStorage.setItem(key, serialized);
+        localStorage.setItem(backupKey, serialized);
+      } else {
+        localStorage.removeItem(key);
+        localStorage.removeItem(backupKey);
+      }
     } catch {
       /* storage can be unavailable; the queue still works in memory */
     }
-  }, [key]);
+  }, [key, backupKey]);
 
   const flush = useCallback(async (): Promise<boolean> => {
     if (flushing.current) return Object.keys(queue.current).length === 0;

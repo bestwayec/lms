@@ -67,7 +67,7 @@ def _note_provider_failure(submission_id: int, exc: Exception, final_status: str
     name="essays.grade_submission",
     acks_late=True,
     bind=True,
-    max_retries=2,
+    max_retries=3,
     retry_backoff=True,  # exponential backoff: ~2s, ~4s, ...
     retry_backoff_max=120,
     retry_jitter=True,
