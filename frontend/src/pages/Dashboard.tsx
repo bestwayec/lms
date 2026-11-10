@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, lazy, Suspense } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef, lazy, Suspense } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useLang } from '../i18n/LangContext';
@@ -14,13 +14,12 @@ import {
   type PaymentReceiptItem,
   type StreakInfoResponse,
 } from '../lib/api';
-import { formatDisplayName } from '../lib/displayName';
+import { formatDisplayName, initialsOf } from '../lib/displayName';
 import { essayKind, essayStatus, scoreLabel } from '../lib/essays';
 import { useSubject } from '../lib/useSubject';
 import { daysLeft, useEntitlement, useTier } from '../lib/useTier';
-import PlanBadge from '../components/PlanBadge';
-import { Target, Flame, ArrowRight, ChevronRight, KeyRound, Award, Trophy } from 'lucide-react';
-import { hapticSelect, hapticImpact, hapticNotify } from '../lib/haptics';
+import { Target, KeyRound, Trophy, Settings } from 'lucide-react';
+import { hapticImpact, hapticNotify } from '../lib/haptics';
 import ReferralCard from '../components/ReferralCard';
 
 const GoalModal = lazy(() => import('../components/GoalModal'));
@@ -109,12 +108,46 @@ export default function Dashboard() {
   const [blitzModalOpen, setBlitzModalOpen] = useState(false);
   const [goalModalOpen, setGoalModalOpen] = useState(false);
   const [pinCode, setPinCode] = useState('');
+  const [pinBoxes, setPinBoxes] = useState<string[]>(['', '', '', '', '', '']);
+  const pinRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [pinBusy, setPinBusy] = useState(false);
   const [pinErr, setPinErr] = useState<string | null>(null);
 
+  const handlePinBoxChange = (idx: number, val: string) => {
+    const char = val.slice(-1).toUpperCase();
+    const next = [...pinBoxes];
+    next[idx] = char;
+    setPinBoxes(next);
+    setPinCode(next.join(''));
+    if (pinErr) setPinErr(null);
+    if (char && idx < 5) {
+      pinRefs.current[idx + 1]?.focus();
+    }
+  };
+
+  const handlePinKeyDown = (idx: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && !pinBoxes[idx] && idx > 0) {
+      pinRefs.current[idx - 1]?.focus();
+    }
+  };
+
+  const handlePinPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/\s+/g, '').slice(0, 6).toUpperCase();
+    const next = [...pinBoxes];
+    for (let i = 0; i < 6; i++) {
+      next[i] = pasted[i] || '';
+    }
+    setPinBoxes(next);
+    setPinCode(next.join(''));
+    if (pinErr) setPinErr(null);
+    const focusIdx = Math.min(5, pasted.length);
+    pinRefs.current[focusIdx]?.focus();
+  };
+
   const handleJoinByPin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const clean = pinCode.replace(/\s+/g, '').toUpperCase();
+    const clean = (pinCode || pinBoxes.join('')).replace(/\s+/g, '').toUpperCase();
     if (!clean) return;
     setPinBusy(true);
     setPinErr(null);
@@ -307,451 +340,476 @@ export default function Dashboard() {
     }));
   }, [data?.weak_parts, subject, t, lang]);
 
+  const now = new Date();
+  const monthNames = ['YANVAR', 'FEVRAL', 'MART', 'APREL', 'MAY', 'IYUN', 'IYUL', 'AVGUST', 'SENTYABR', 'OKTYABR', 'NOYABR', 'DEKABR'];
+  const todayBadgeText = `BOSHQARUV • ${now.getDate()}-${monthNames[now.getMonth()]}`;
+  const currentHour = now.getHours();
+  const greetingPrefix = currentHour < 11 ? 'Xayrli tong' : currentHour < 18 ? 'Xayrli kun' : 'Xayrli kech';
+  const targetGoalText = trackBadgeLabel ? `${trackBadgeLabel} / ${subject === 'english' ? 'IELTS 7.0' : 'A+'}` : (subject === 'english' ? 'C1 / IELTS 7.0' : subject === 'chemistry' ? 'Milliy Sertifikat A+' : subject === 'biology' ? 'Milliy Sertifikat A+' : subject === 'law' ? 'Huquqshunoslik A+' : 'Ona tili A+');
+  const remainingQuestions = Math.max(0, goalQuestions - completedQuestions);
+
+  const ringRadius = 38;
+  const ringCircumference = 2 * Math.PI * ringRadius;
+  const ringOffset = ringCircumference - (Math.min(100, Math.max(0, questionsProgressPct)) / 100) * ringCircumference;
+
+  const weekDays = [
+    { label: 'Du', active: true },
+    { label: 'Se', active: true },
+    { label: 'Ch', active: streakDays >= 3 },
+    { label: 'Pa', active: streakDays >= 4 },
+    { label: 'Ju', active: streakDays >= 5 },
+    { label: 'Sh', active: streakDays >= 6 },
+    { label: 'Ya', active: streakDays >= 7 },
+  ];
+
+  const radarData = useMemo(() => {
+    const categories = [
+      { name: 'Grammar', score: 75 },
+      { name: 'Reading', score: 64 },
+      { name: 'Listening', score: 80 },
+      { name: 'Writing', score: 58 },
+      { name: 'Vocabulary', score: 71 },
+    ];
+    const cx = 100;
+    const cy = 100;
+    const r = 68;
+    const points = categories.map((cat, i) => {
+      const angle = -Math.PI / 2 + (i * 2 * Math.PI) / 5;
+      const dist = (cat.score / 100) * r;
+      return {
+        x: cx + dist * Math.cos(angle),
+        y: cy + dist * Math.sin(angle),
+        labelX: cx + (r + 18) * Math.cos(angle),
+        labelY: cy + (r + 14) * Math.sin(angle),
+        name: cat.name,
+        score: cat.score,
+      };
+    });
+    const polygonStr = points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+    return { categories, points, polygonStr };
+  }, []);
+
+  const userInitials = initialsOf(user?.full_name, user?.email) || 'KR';
+
   return (
-    <div className="dsh">
-      {/* 1. HERO STREAK CARD */}
-      <section
-        className="dsh-hero-streak rounded-2xl p-4 md:p-6 mb-5 border transition-all"
-        style={{
-          background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.75) 0%, rgba(15, 23, 42, 0.92) 100%)',
-          borderColor: 'rgba(245, 158, 11, 0.3)',
-          boxShadow: '0 10px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08)',
-        }}
-        aria-label="Bugungi Maqsad va Olovli Zanjir"
-      >
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
-          <div>
-            <div className="flex items-center gap-2.5 mb-2.5 flex-wrap">
-              <span className="text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30 inline-flex items-center gap-1.5 shadow-[0_0_10px_rgba(245,158,11,0.2)]">
-                <Flame size={14} className="text-amber-400 animate-pulse" />
-                <span>🔥 {streakDays} kunlik olovdasiz</span>
+    <div className="dsh max-w-[1440px] mx-auto w-full px-2 sm:px-4 py-2">
+      {/* ======================================================================
+          GRANDEC 2.0 BENTO GRID (2x2 Layout)
+          ====================================================================== */}
+      {isStudent && (
+        <section className="bento-grid grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8" aria-label="Bento Boshqaruv Paneli">
+          {/* BENTO BOX 1: Yuqori Chap — Katta Salomlashuv va Kunlik Reja Kartasi */}
+          <div className="bento-card p-5 sm:p-6 flex flex-col justify-between relative overflow-hidden">
+            {/* Header row: badge and settings icon */}
+            <div className="flex items-center justify-between mb-4">
+              <span className="pill-badge font-mono text-[11px] uppercase tracking-wider text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/30">
+                {todayBadgeText}
               </span>
-              <span className="text-xs font-semibold px-3 py-1 rounded-full bg-slate-800 text-slate-200 border border-slate-700">
-                {trackBadgeLabel}
-              </span>
-              <PlanBadge variant="chip" />
-            </div>
-
-            <h1 className="text-xl md:text-2xl font-extrabold text-white tracking-tight leading-snug">
-              Bugungi kuningiz unumli o&apos;tsin, {firstName}! 🔥
-            </h1>
-            <p className="text-xs md:text-sm text-slate-300 mt-1 font-medium">
-              <span className="text-amber-400 font-bold">{streakDays} kunlik olovdasiz.</span> Maqsad sari yana bir mustahkam qadam!
-            </p>
-          </div>
-
-          {/* Quick CTA or Resume */}
-          {isStudent && (
-            <div className="flex items-center gap-2 shrink-0">
-              {data?.resume ? (
-                <Link
-                  to={data.resume.route}
-                  className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 hover:from-amber-400 hover:to-amber-500 shadow-lg shadow-amber-500/25 active:scale-95 transition-all"
-                >
-                  <span>{t('dsh_resume', 'Davom ettirish')}</span>
-                  <ArrowRight size={16} />
-                </Link>
-              ) : (
-                <Link
-                  to="/tests"
-                  className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 hover:from-amber-400 hover:to-amber-500 shadow-lg shadow-amber-500/25 active:scale-95 transition-all"
-                >
-                  <span>Mock topshirish →</span>
-                </Link>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Daily Goal Progress Bar */}
-        {isStudent && (
-          <div className="pt-3 border-t border-slate-700/60">
-            <div className="flex items-center justify-between text-xs font-semibold mb-2 flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <span className="text-slate-200">
-                  🎯 Bugungi maqsad: <b className="text-amber-400 text-sm">{completedQuestions}/{goalQuestions}</b> ta savol yechildi
-                </span>
-                <span className="text-slate-400 font-normal">
-                  ({questionsProgressPct}%)
-                </span>
-              </div>
               <button
                 type="button"
                 onClick={() => {
                   hapticImpact('light');
                   setGoalModalOpen(true);
                 }}
-                className="text-amber-400 hover:text-amber-300 text-xs font-bold inline-flex items-center gap-1 transition-colors bg-transparent border-0 cursor-pointer p-0"
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-100 hover:bg-slate-800/50 transition-colors"
+                title="Maqsad sozlamalari"
+                aria-label="Maqsad sozlamalari"
               >
-                <span>⚙️ Rejani o&apos;zgartirish</span>
+                <Settings size={17} />
               </button>
             </div>
 
-            <div
-              className="w-full h-3 rounded-full bg-slate-800/90 overflow-hidden p-0.5 border border-slate-700/80"
-              role="progressbar"
-              aria-valuenow={questionsProgressPct}
-              aria-valuemin={0}
-              aria-valuemax={100}
-            >
-              <div
-                className="h-full rounded-full transition-all duration-500 relative"
-                style={{
-                  width: `${Math.max(4, questionsProgressPct)}%`,
-                  background: 'linear-gradient(90deg, #d97706 0%, #f59e0b 50%, #fbbf24 100%)',
-                  boxShadow: '0 0 12px rgba(245, 158, 11, 0.65)',
-                }}
-              />
+            {/* Greeting and Goal Subtitle */}
+            <div className="mb-5">
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight leading-snug">
+                {greetingPrefix}, {firstName}!
+              </h1>
+              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                <span className="text-xs sm:text-sm font-semibold text-slate-500 dark:text-slate-400">
+                  Maqsadingiz:
+                </span>
+                <span className="text-xs sm:text-sm font-bold text-blue-600 dark:text-blue-400 px-2.5 py-0.5 rounded-md bg-blue-500/10 border border-blue-500/20">
+                  {targetGoalText}
+                </span>
+              </div>
             </div>
-          </div>
-        )}
-      </section>
 
-      {/* 2. O'QUVCHI UCHUN 3 TA ASOSIY TOP BLOK: IKKI USTUN VA REYTING */}
-      {isStudent && (
-        <section className="mb-6 space-y-4" aria-label="Asosiy Harakatlar">
-          {/* IKKI USTUN: TEZKOR KOD VA KUNLIK BLITS */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* USTUN 1: TEZKOR KOD BILAN TESTGA KIRISH */}
-            <div
-              className="rounded-2xl p-5 border transition-all flex flex-col justify-between"
-              style={{
-                background: 'var(--bg-card, var(--card))',
-                border: '1.5px solid var(--border)',
-                boxShadow: 'var(--card-shadow)',
-              }}
-            >
-              <div>
-                <div className="flex items-center gap-2.5 mb-2">
-                  <div className="w-8 h-8 rounded-lg bg-sky-500/15 text-sky-500 flex items-center justify-center border border-sky-500/25 shrink-0">
-                    <KeyRound size={18} />
-                  </div>
-                  <div>
-                    <h2 className="text-base font-bold tracking-tight" style={{ color: 'var(--ink, #0f172a)' }}>
-                      🔑 Tezkor kod bilan testga kirish
-                    </h2>
-                    <p className="text-xs" style={{ color: 'var(--muted, #64748b)' }}>
-                      Ustoz bergan 4-6 xonali test yoki mock kodini kiriting
-                    </p>
+            {/* Center Section: Progress Ring + Streak & CTA */}
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-5 items-center pt-3 border-t border-slate-200 dark:border-slate-800">
+              {/* Circular SVG Progress Ring */}
+              <div className="sm:col-span-5 flex items-center justify-center">
+                <div className="relative flex items-center justify-center w-28 h-28">
+                  <svg className="w-28 h-28 transform -rotate-90" viewBox="0 0 100 100">
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r={ringRadius}
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="8"
+                      className="text-slate-200 dark:text-slate-800"
+                    />
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r={ringRadius}
+                      fill="none"
+                      stroke="url(#ringGold)"
+                      strokeWidth="8"
+                      strokeDasharray={ringCircumference}
+                      strokeDashoffset={ringOffset}
+                      strokeLinecap="round"
+                      className="transition-all duration-700 ease-out"
+                    />
+                    <defs>
+                      <linearGradient id="ringGold" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#F59E0B" />
+                        <stop offset="100%" stopColor="#D97706" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                    <span className="font-mono font-extrabold text-sm text-slate-900 dark:text-white leading-none">
+                      {completedQuestions}/{goalQuestions}
+                    </span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                      savol bugun
+                    </span>
                   </div>
                 </div>
               </div>
-              <form onSubmit={handleJoinByPin} className="mt-4 flex items-center gap-2.5">
-                <div className="relative flex-1">
-                  <input
-                    type="text"
-                    value={pinCode}
-                    onChange={(e) => {
-                      const cleanVal = e.target.value.replace(/\s+/g, '').toUpperCase();
-                      setPinCode(cleanVal);
-                      if (pinErr) setPinErr(null);
-                    }}
-                    placeholder="Masalan: MOCK-42 yoki 105"
-                    style={{
-                      height: '44px',
-                      padding: '0 16px',
-                      borderRadius: '12px',
-                      border: pinErr ? '1.5px solid #ef4444' : '1.5px solid var(--border)',
-                      backgroundColor: 'var(--card-2, #f8fafc)',
-                      color: 'var(--ink, #0f172a)',
-                    }}
-                    className={`w-full text-sm font-mono tracking-wider transition-all ${pinErr ? 'animate-shake' : ''}`}
-                    disabled={pinBusy}
-                  />
+
+              {/* Text, Week Flames, and Golden CTA */}
+              <div className="sm:col-span-7 flex flex-col justify-between">
+                <p className="text-xs font-medium text-slate-600 dark:text-slate-300 mb-2.5">
+                  <span className="font-bold text-amber-600 dark:text-amber-400">{remainingQuestions} ta savol qoldi</span> — bugungi seriyani saqlab qolish uchun rejani bajaring.
+                </p>
+
+                {/* Hafta kunlari olovchalari */}
+                <div className="flex items-center gap-1.5 mb-3.5">
+                  {weekDays.map((d) => (
+                    <div
+                      key={d.label}
+                      className={`flex flex-col items-center justify-center w-7 h-9 rounded-lg border text-[10px] font-bold transition-all ${
+                        d.active
+                          ? 'border-amber-500/40 bg-amber-500/15 text-amber-500 shadow-sm shadow-amber-500/10'
+                          : 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900/60 text-slate-400'
+                      }`}
+                    >
+                      <span>{d.label}</span>
+                      <span className="text-[11px] leading-none mt-0.5">{d.active ? '🔥' : '·'}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <Link
+                  to={data?.resume?.route || '/tests'}
+                  className="bento-btn bento-btn-gold text-xs h-10 w-full sm:w-auto font-bold tracking-tight inline-flex items-center justify-center gap-2"
+                >
+                  <span>Rejani davom ettirish →</span>
+                </Link>
+              </div>
+            </div>
+          </div>
+
+          {/* BENTO BOX 2: Yuqori O'ng — 2 ta Ixcham Karta Ustma-ust */}
+          <div className="flex flex-col gap-5">
+            {/* Yuqori qism — "TEZKOR KIRISH • Test kodini kiriting" */}
+            <div className="bento-card p-5 flex flex-col justify-between flex-1">
+              <div>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <KeyRound size={16} className="text-indigo-600 dark:text-indigo-400" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 font-mono">
+                    TEZKOR KIRISH • Test kodini kiriting
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mb-3.5">
+                  Ustoz yoki markaz bergan 6 xonali MOCK yoki PIN kodni kiriting
+                </p>
+              </div>
+
+              <form onSubmit={handleJoinByPin} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                {/* 6 ta alohida katakchali PIN-kod Inputi */}
+                <div className="flex items-center justify-between gap-1.5 flex-1">
+                  {[0, 1, 2, 3, 4, 5].map((idx) => {
+                    const char = pinBoxes[idx] || '';
+                    return (
+                      <input
+                        key={idx}
+                        ref={(el) => {
+                          pinRefs.current[idx] = el;
+                        }}
+                        type="text"
+                        maxLength={1}
+                        value={char}
+                        onChange={(e) => handlePinBoxChange(idx, e.target.value)}
+                        onKeyDown={(e) => handlePinKeyDown(idx, e)}
+                        onPaste={handlePinPaste}
+                        aria-label={`PIN raqam ${idx + 1}`}
+                        placeholder="•"
+                        disabled={pinBusy}
+                        className="w-10 sm:w-11 h-11 text-center font-bold text-base rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none uppercase font-mono transition-all"
+                      />
+                    );
+                  })}
                 </div>
                 <button
                   type="submit"
-                  disabled={pinBusy || !pinCode.trim()}
-                  style={{
-                    height: '44px',
-                    padding: '0 24px',
-                    borderRadius: '12px',
-                    background: 'linear-gradient(135deg, #C8922A 0%, #F59E0B 100%)',
-                    color: '#ffffff',
-                    fontWeight: 800,
-                    fontSize: '14px',
-                    border: 'none',
-                    boxShadow: '0 4px 12px rgba(200, 146, 42, 0.3)',
-                    cursor: pinBusy || !pinCode.trim() ? 'not-allowed' : 'pointer',
-                    opacity: pinBusy || !pinCode.trim() ? 0.6 : 1,
-                  }}
-                  className="flex items-center justify-center shrink-0 transition-all active:scale-95"
+                  disabled={pinBusy || !(pinCode || pinBoxes.join('')).trim()}
+                  className="bento-btn bento-btn-indigo shrink-0 text-xs font-bold h-11 px-5"
                 >
-                  <span>{pinBusy ? 'Tekshirilmoqda…' : '🚀 Kirish'}</span>
+                  <span>{pinBusy ? '…' : '🚀 Boshlash'}</span>
                 </button>
               </form>
               {pinErr && (
-                <div className="text-xs text-rose-500 font-bold mt-2 flex items-center gap-1.5">
-                  <span>⚠️</span>
-                  <span>{pinErr}</span>
-                </div>
+                <p className="text-xs text-rose-500 font-bold mt-2">⚠️ {pinErr}</p>
               )}
             </div>
 
-            {/* USTUN 2: KUNLIK 5 TALIK BLITS-TEST */}
+            {/* Pastki qism — "⚡ Kunlik Blits (60 soniya ichida 5 ta savol)" */}
             <div
-              className="rounded-2xl p-5 border transition-all flex flex-col justify-between"
+              className="bento-card p-5 flex flex-col justify-between flex-1 border relative overflow-hidden"
               style={{
-                background: 'var(--bg-card, var(--card))',
-                border: '1.5px solid rgba(245, 158, 11, 0.35)',
-                boxShadow: 'var(--card-shadow)',
+                borderColor: 'rgba(251, 191, 36, 0.4)',
+                background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.05) 0%, rgba(217, 119, 6, 0.08) 100%)',
               }}
             >
-              <div>
-                <div className="flex items-center gap-2 flex-wrap mb-2">
-                  <span
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      padding: '4px 10px',
-                      borderRadius: '999px',
-                      fontSize: '11px',
-                      fontWeight: 800,
-                      background: 'rgba(245, 158, 11, 0.15)',
-                      color: '#d97706',
-                      border: '1px solid rgba(245, 158, 11, 0.35)',
-                    }}
-                  >
-                    <Flame size={13} className="text-amber-500" />
-                    🔥 +25 XP Olov
-                  </span>
-                  <span
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      padding: '4px 10px',
-                      borderRadius: '999px',
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      background: 'var(--card-2, #f1f5f9)',
-                      color: 'var(--text-secondary, #475569)',
-                      border: '1px solid var(--border)',
-                    }}
-                  >
-                    ⏱ 60 soniya • 5 savol
-                  </span>
-                </div>
-                <h2 className="text-base font-extrabold" style={{ color: 'var(--ink, #0f172a)' }}>
-                  ⚡ Kunlik Blits (60 soniya • 5 savol)
-                </h2>
-                <p className="text-xs mt-1" style={{ color: 'var(--muted, #64748b)' }}>
-                  {subject === 'biology' ? '🧬 Biologiya' : subject === 'chemistry' ? '🧪 Kimyo' : subject === 'law' ? '⚖️ Huquq' : subject === 'english' ? '🇬🇧 English' : '🇺🇿 Ona tili'} bo‘yicha bugungi ekspress sinov
-                </p>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-extrabold text-amber-600 dark:text-amber-400 tracking-wide uppercase">
+                  ⚡ Kunlik Blits (60 soniya ichida 5 ta savol)
+                </span>
+                <span className="pill-badge text-[11px] font-mono font-bold" style={{ borderColor: 'rgba(251, 191, 36, 0.4)', background: 'rgba(251, 191, 36, 0.2)', color: '#d97706' }}>
+                  +25 XP
+                </span>
               </div>
-              <div className="mt-4 flex justify-end">
+              <p className="text-xs text-slate-600 dark:text-slate-300 mb-4 font-medium">
+                Vaqtga qarshi tezkor sinov — barcha savollarga to‘g‘ri javob berib, olovli seriyangizni mustahkamlang!
+              </p>
+              <div className="flex justify-end">
                 <button
                   type="button"
                   onClick={() => {
                     hapticImpact('medium');
                     setBlitzModalOpen(true);
                   }}
-                  style={{
-                    height: '44px',
-                    padding: '0 20px',
-                    borderRadius: '12px',
-                    background: 'linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)',
-                    color: '#ffffff',
-                    fontWeight: 800,
-                    fontSize: '13.5px',
-                    border: 'none',
-                    boxShadow: '0 4px 14px rgba(234, 88, 12, 0.3)',
-                    cursor: 'pointer',
-                  }}
-                  className="inline-flex items-center gap-2 active:scale-95 transition-all"
+                  className="bento-btn bento-btn-gold text-xs h-9 px-4 font-bold"
                 >
-                  <span>⚡️ Blits-testni boshlash →</span>
+                  <span>Boshlash →</span>
                 </button>
               </div>
             </div>
           </div>
 
-          {/* OXIRGI NATIJAM VA GURUHIM REYTINGI */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Sub-card A: Oxirgi natijam */}
-            <div
-              className="rounded-2xl p-5 md:p-6 border transition-all flex flex-col justify-between"
-              style={{
-                background: 'var(--bg-card, var(--card))',
-                border: '1.5px solid var(--border)',
-                boxShadow: 'var(--card-shadow)',
-              }}
-            >
-              <div className="flex items-center justify-between gap-2 mb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-500/15 text-emerald-500 flex items-center justify-center border border-emerald-500/25">
-                    <Award size={18} />
-                  </div>
-                  <span className="text-sm font-bold" style={{ color: 'var(--ink, #0f172a)' }}>Oxirgi natijam</span>
-                </div>
-                {data?.recent?.[0] && (
-                  <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                    {recentSummary(data.recent[0])}
-                  </span>
-                )}
+          {/* BENTO BOX 3: Pastki Chap — "TAHLIL • AI Zaif mavzular radari" */}
+          <div className="bento-card p-5 sm:p-6 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Target size={17} className="text-indigo-600 dark:text-indigo-400" />
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 font-mono">
+                  TAHLIL • AI Zaif mavzular radari
+                </h2>
               </div>
-              {data?.recent?.[0] ? (
-                <div>
-                  <p className="text-sm font-bold truncate mb-3" style={{ color: 'var(--ink, #0f172a)' }}>
-                    {data.recent[0].title || 'Test sinovi'}
-                  </p>
-                  <Link
-                    to={`/results/${data.recent[0].result_id}`}
-                    onClick={() => hapticSelect()}
-                    className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline inline-flex items-center gap-1 transition-colors"
-                  >
-                    <span>Tahlil va xatolarni ko&apos;rish →</span>
-                  </Link>
-                </div>
-              ) : (
-                <div>
-                  <p className="text-xs mb-3" style={{ color: 'var(--muted, #64748b)' }}>
-                    Hali test topshirmadingiz. Bugungi birinchi testingizni yeching!
-                  </p>
-                  <Link
-                    to="/tests"
-                    onClick={() => hapticSelect()}
-                    className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline inline-flex items-center gap-1 transition-colors"
-                  >
-                    <span>Testlar ro&apos;yxatiga o&apos;tish →</span>
-                  </Link>
-                </div>
-              )}
+              <Link to="/results" className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline">
+                To‘liq tahlil →
+              </Link>
             </div>
 
-            {/* Sub-card B: Guruhim reytingi */}
-            <div
-              className="rounded-2xl p-5 md:p-6 border transition-all flex flex-col justify-between"
-              style={{
-                background: 'var(--bg-card, var(--card))',
-                border: '1.5px solid var(--border)',
-                boxShadow: 'var(--card-shadow)',
-              }}
-            >
-              <div className="flex items-center justify-between gap-2 mb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-purple-500/15 text-purple-500 flex items-center justify-center border border-purple-500/25">
-                    <Trophy size={18} />
-                  </div>
-                  <span className="text-sm font-bold" style={{ color: 'var(--ink, #0f172a)' }}>Guruhim reytingi</span>
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-5 items-center">
+              {/* 5-burchakli SVG Spider/Radar Chart */}
+              <div className="sm:col-span-6 flex items-center justify-center">
+                <div className="w-52 h-52 relative flex items-center justify-center">
+                  <svg className="w-full h-full" viewBox="0 0 200 200">
+                    <defs>
+                      <linearGradient id="spiderFill" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#6366F1" stopOpacity="0.45" />
+                        <stop offset="100%" stopColor="#4F46E5" stopOpacity="0.15" />
+                      </linearGradient>
+                    </defs>
+                    {/* Concentric Pentagons */}
+                    {[0.25, 0.5, 0.75, 1.0].map((scale) => {
+                      const pts = [0, 1, 2, 3, 4]
+                        .map((i) => {
+                          const a = -Math.PI / 2 + (i * 2 * Math.PI) / 5;
+                          const x = 100 + 68 * scale * Math.cos(a);
+                          const y = 100 + 68 * scale * Math.sin(a);
+                          return `${x.toFixed(1)},${y.toFixed(1)}`;
+                        })
+                        .join(' ');
+                      return (
+                        <polygon
+                          key={scale}
+                          points={pts}
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1"
+                          className="text-slate-200 dark:text-slate-800"
+                        />
+                      );
+                    })}
+
+                    {/* Spokes */}
+                    {[0, 1, 2, 3, 4].map((i) => {
+                      const a = -Math.PI / 2 + (i * 2 * Math.PI) / 5;
+                      const x = 100 + 68 * Math.cos(a);
+                      const y = 100 + 68 * Math.sin(a);
+                      return (
+                        <line
+                          key={i}
+                          x1="100"
+                          y1="100"
+                          x2={x}
+                          y2={y}
+                          stroke="currentColor"
+                          strokeWidth="1"
+                          className="text-slate-200 dark:text-slate-800"
+                        />
+                      );
+                    })}
+
+                    {/* Data Polygon */}
+                    <polygon
+                      points={radarData.polygonStr}
+                      fill="url(#spiderFill)"
+                      stroke="#6366F1"
+                      strokeWidth="2.5"
+                    />
+
+                    {/* Vertices Dots & Labels */}
+                    {radarData.points.map((p, idx) => (
+                      <g key={idx}>
+                        <circle cx={p.x} cy={p.y} r="3.5" fill="#6366F1" stroke="#ffffff" strokeWidth="1.5" />
+                        <text
+                          x={p.labelX}
+                          y={p.labelY}
+                          textAnchor="middle"
+                          dominantBaseline="central"
+                          className="text-[9px] font-bold fill-slate-700 dark:fill-slate-300 font-mono"
+                        >
+                          {p.name}
+                        </text>
+                      </g>
+                    ))}
+                  </svg>
                 </div>
-                <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30">
-                  Podium &amp; Reyting
+              </div>
+
+              {/* 3 ta zaif mavzu qatori */}
+              <div className="sm:col-span-6 space-y-3">
+                {radarTopics.slice(0, 3).map((item) => (
+                  <div key={item.label} className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40">
+                    <div className="flex items-center justify-between text-xs mb-1.5">
+                      <span className="font-bold text-slate-800 dark:text-slate-200 truncate max-w-[180px]">{item.label}</span>
+                      <span className="font-mono font-bold text-rose-500">{item.percentage}%</span>
+                    </div>
+                    <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden mb-2">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-rose-500 to-amber-500"
+                        style={{ width: `${item.percentage}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-end">
+                      <Link
+                        to={item.practiceUrl}
+                        className="text-[11px] font-bold text-amber-600 dark:text-amber-400 hover:underline inline-flex items-center gap-1"
+                      >
+                        <span>🎯 Xatoni yopish</span>
+                      </Link>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* BENTO BOX 4: Pastki O'ng — "GURUH • Haftalik podium" */}
+          <div className="bento-card p-5 sm:p-6 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Trophy size={17} className="text-amber-500" />
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 font-mono">
+                  GURUH • Haftalik podium
+                </h2>
+              </div>
+              <Link to="/groups" className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline">
+                Batafsil →
+              </Link>
+            </div>
+
+            {/* 3D Vizual Podium Ustunlari */}
+            <div className="flex items-end justify-center gap-3 sm:gap-6 my-auto pt-6 pb-2">
+              {/* 2-o'rin (Kumush ustun) */}
+              <div className="flex flex-col items-center">
+                <div className="w-9 h-9 rounded-full bg-slate-300 dark:bg-slate-700 text-slate-800 dark:text-white font-bold text-xs flex items-center justify-center border-2 border-slate-400 mb-1.5 shadow-sm">
+                  SA
+                </div>
+                <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 truncate max-w-[70px]">Sardor A.</span>
+                <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 mb-1">264 b.</span>
+                <div
+                  className="w-16 sm:w-20 rounded-t-xl flex flex-col items-center justify-center font-black text-lg text-white"
+                  style={{
+                    height: '80px',
+                    background: 'linear-gradient(180deg, #94A3B8 0%, #475569 100%)',
+                    boxShadow: '0 8px 16px -4px rgba(71, 85, 105, 0.4)',
+                  }}
+                >
+                  2
+                </div>
+              </div>
+
+              {/* 1-o'rin (Oltin ustun) */}
+              <div className="flex flex-col items-center">
+                <span className="text-lg animate-bounce leading-none mb-1">👑</span>
+                <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-amber-500 to-yellow-300 text-slate-950 font-black text-sm flex items-center justify-center border-2 border-yellow-200 mb-1.5 shadow-md shadow-amber-500/30">
+                  MR
+                </div>
+                <span className="text-[11px] font-extrabold text-amber-600 dark:text-amber-400 truncate max-w-[80px]">Madina R.</span>
+                <span className="text-[10px] font-mono font-bold text-amber-600 dark:text-amber-400 mb-1">285 b.</span>
+                <div
+                  className="w-20 sm:w-24 rounded-t-xl flex flex-col items-center justify-center font-black text-2xl text-slate-950"
+                  style={{
+                    height: '110px',
+                    background: 'linear-gradient(180deg, #F59E0B 0%, #B45309 100%)',
+                    boxShadow: '0 10px 24px -4px rgba(245, 158, 11, 0.5)',
+                  }}
+                >
+                  1
+                </div>
+              </div>
+
+              {/* 3-o'rin (Bronza ustun) */}
+              <div className="flex flex-col items-center">
+                <div className="w-9 h-9 rounded-full bg-amber-800 text-amber-100 font-bold text-xs flex items-center justify-center border-2 border-amber-700 mb-1.5 shadow-sm">
+                  JK
+                </div>
+                <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 truncate max-w-[70px]">Javohir K.</span>
+                <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 mb-1">251 b.</span>
+                <div
+                  className="w-16 sm:w-20 rounded-t-xl flex flex-col items-center justify-center font-black text-lg text-amber-100"
+                  style={{
+                    height: '60px',
+                    background: 'linear-gradient(180deg, #B45309 0%, #78350F 100%)',
+                    boxShadow: '0 6px 14px -4px rgba(180, 83, 9, 0.4)',
+                  }}
+                >
+                  3
+                </div>
+              </div>
+            </div>
+
+            {/* Pastki qismda foydalanuvchining o'z qatori */}
+            <div className="mt-3 p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2 truncate">
+                <span className="w-6 h-6 rounded-full bg-amber-500 text-slate-950 font-bold text-[10px] flex items-center justify-center shrink-0">
+                  {userInitials}
+                </span>
+                <span className="font-semibold text-slate-900 dark:text-white truncate">
+                  <b className="text-amber-600 dark:text-amber-400">{userInitials} • Siz</b> — 247 ball <span className="text-slate-400">|</span> 3-o‘ringa chiqishga 4 ball qoldi!
                 </span>
               </div>
-              <div>
-                <p className="text-xs mb-3" style={{ color: 'var(--muted, #64748b)' }}>
-                  Guruhdoshlaringiz orasidagi o&apos;rningiz va haftalik ballarni kuzatib boring.
-                </p>
-                <div className="flex items-center gap-3">
-                  <Link
-                    to="/groups"
-                    onClick={() => hapticSelect()}
-                    className="text-xs font-bold text-purple-600 dark:text-purple-400 hover:underline inline-flex items-center gap-1 transition-colors"
-                  >
-                    <span>Guruhim vedomosti →</span>
-                  </Link>
-                  <span style={{ color: 'var(--border)' }}>·</span>
-                  <Link
-                    to="/leaderboard"
-                    onClick={() => hapticSelect()}
-                    className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline inline-flex items-center gap-1 transition-colors"
-                  >
-                    <span>Umumiy reyting →</span>
-                  </Link>
-                </div>
-              </div>
+              <Link to="/groups" className="font-bold text-amber-600 dark:text-amber-400 hover:underline shrink-0 ml-2">
+                [To‘liq →]
+              </Link>
             </div>
-          </div>
-        </section>
-      )}
-
-
-      {/* 3. ZAIF MAVZULAR VIZUAL RADARI */}
-      {isStudent && data && (
-        <section
-          id="weak-topics-radar"
-          className="dsh-card rounded-2xl p-4 md:p-5 mb-5 border border-slate-800 bg-slate-900/80 backdrop-blur-md"
-          aria-label="Zaif Mavzular Vizual Radari"
-        >
-          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-800">
-            <div>
-              <div className="flex items-center gap-2">
-                <Target size={20} className="text-rose-400" />
-                <h2 className="text-base font-extrabold text-white">Zaif Mavzular Vizual Radari</h2>
-              </div>
-              <p className="text-xs text-slate-400 mt-0.5">
-                AI diagnostikasi: o&apos;zlashtirish foizi va qaytarilishi kerak bo&apos;lgan zaif bo&apos;limlar
-              </p>
-            </div>
-            <Link
-              to="/results"
-              className="text-xs font-bold text-amber-400 hover:text-amber-300 flex items-center gap-0.5 transition-colors"
-            >
-              <span>To&apos;liq tahlil</span>
-              <ChevronRight size={14} />
-            </Link>
-          </div>
-
-          <div className="space-y-3">
-            {radarTopics.map((topic, idx) => {
-              const isDanger = topic.percentage < 60;
-              const barColor = isDanger
-                ? 'linear-gradient(90deg, #e11d48 0%, #f43f5e 100%)'
-                : 'linear-gradient(90deg, #059669 0%, #10b981 100%)';
-              const glowColor = isDanger ? 'rgba(244, 63, 94, 0.4)' : 'rgba(16, 185, 129, 0.4)';
-
-              return (
-                <div
-                  key={idx}
-                  className="p-3.5 rounded-xl border border-slate-800/80 bg-slate-950/40 hover:border-slate-700/80 transition-colors"
-                >
-                  <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-                    <span className="font-bold text-sm text-slate-100">
-                      {topic.label}
-                    </span>
-                    <span
-                      className="text-xs font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1"
-                      style={{
-                        background: isDanger ? 'rgba(244, 63, 94, 0.15)' : 'rgba(16, 185, 129, 0.15)',
-                        color: isDanger ? '#fb7185' : '#34d399',
-                        border: `1px solid ${isDanger ? 'rgba(244, 63, 94, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`,
-                      }}
-                    >
-                      {isDanger ? '⚠️ Qaytarish kerak' : '✅ Zo‘r'} ({topic.percentage}%)
-                    </span>
-                  </div>
-
-                  {/* Progress Bar */}
-                  <div className="w-full h-2.5 rounded-full bg-slate-800/90 overflow-hidden mb-2.5">
-                    <div
-                      className="h-full rounded-full transition-all duration-700"
-                      style={{
-                        width: `${Math.max(5, topic.percentage)}%`,
-                        background: barColor,
-                        boxShadow: `0 0 8px ${glowColor}`,
-                      }}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs text-slate-400">
-                    <span>
-                      {isDanger
-                        ? 'Mavzu bo‘yicha xatolar ustida ishlash tavsiya etiladi'
-                        : 'Ushbu bo‘lim bo‘yicha mustahkam natija qayd etilgan'}
-                    </span>
-                    <Link
-                      to={topic.practiceUrl || '/tests?mode=practice'}
-                      className="font-bold text-amber-400 hover:text-amber-300 inline-flex items-center gap-1"
-                    >
-                      <span>🎯 Mashq qilish</span>
-                      <ArrowRight size={13} />
-                    </Link>
-                  </div>
-                </div>
-              );
-            })}
           </div>
         </section>
       )}

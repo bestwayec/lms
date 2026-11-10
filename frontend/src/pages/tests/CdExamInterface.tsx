@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
-import { Flag, LayoutGrid, MoreVertical } from 'lucide-react';
+import { Flag, LayoutGrid, ChevronLeft, Highlighter, FileText, CheckCircle2, X } from 'lucide-react';
 import { useLang } from '../../i18n/LangContext';
 import { Tests as TestsApi } from '../../lib/api';
 import AutoGrow from '../../components/AutoGrow';
@@ -157,17 +157,60 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
   const [ielts, setIelts] = useState<IeltsSummary | null>(null);
   const [resultId, setResultId] = useState<number | null>(null);
   const [showNotice, setShowNotice] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [pane, setPane] = useState<'text' | 'questions'>('text');
-  const [fontStep, setFontStep] = useState(() => Math.min(2, Math.max(0, Number(read(localStorage, 'cd-font')) || 0)));
+  const [fontStep] = useState(() => Math.min(2, Math.max(0, Number(read(localStorage, 'cd-font')) || 0)));
   const [flagged, setFlagged] = useState<Set<number>>(
     () => new Set((read(sessionStorage, `cd-flags:${attemptId}`) || '').split(',').filter(Boolean).map(Number)),
   );
   const textTimers = useRef<Record<number, number>>({});
   const submittedRef = useRef(false);
   const scrollTo = useRef<number | null>(null);
+
+  // Zen highlight & note tools
+  const [highlightColor, setHighlightColor] = useState<'yellow' | 'green'>('yellow');
+  const [highlightActive, setHighlightActive] = useState(false);
+  const [selectedText, setSelectedText] = useState('');
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [noteContent, setNoteContent] = useState('');
+  const [notes, setNotes] = useState<Record<number, string[]>>({});
+  const [highlights, setHighlights] = useState<Record<number, { text: string; color: string }[]>>(() => {
+    try {
+      const saved = sessionStorage.getItem(`cd-highlights:${attemptId}`);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const saveHighlights = useCallback((newH: Record<number, { text: string; color: string }[]>) => {
+    setHighlights(newH);
+    try {
+      sessionStorage.setItem(`cd-highlights:${attemptId}`, JSON.stringify(newH));
+    } catch {
+      // storage quota
+    }
+  }, [attemptId]);
+
+  const addHighlight = useCallback((passageId: number, colorToUse?: 'yellow' | 'green', textToUse?: string) => {
+    const txt = (textToUse || selectedText).trim();
+    if (!txt || txt.length < 2) return;
+    const color = colorToUse || highlightColor;
+    const current = highlights[passageId] || [];
+    if (!current.some((h) => h.text.toLowerCase() === txt.toLowerCase())) {
+      const next = { ...highlights, [passageId]: [...current, { text: txt, color }] };
+      saveHighlights(next);
+    }
+    setSelectedText('');
+  }, [selectedText, highlightColor, highlights, saveHighlights]);
+
+  const clearPassageHighlights = useCallback((passageId: number) => {
+    const next = { ...highlights };
+    delete next[passageId];
+    saveHighlights(next);
+    setSelectedText('');
+  }, [highlights, saveHighlights]);
 
   const section = sections[pos.s];
   const part = section.parts[pos.p];
@@ -570,59 +613,228 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
           ? t('cd_offline_short')
           : t('cd_save_failed_short');
 
+  const currentPartQs = partObjective;
+  const firstQNum = currentPartQs[0]?.config?.number ?? 1;
+  const lastQNum = currentPartQs[currentPartQs.length - 1]?.config?.number ?? (currentPartQs.length || 1);
+
+  const renderPassageWithHighlights = (p: { id: number; content: string }) => {
+    const list = highlights[p.id] || [];
+    if (!list.length) return p.content;
+
+    const sorted = [...list].sort((a, b) => b.text.length - a.text.length);
+    const escaped = sorted.map((h) => h.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+    const regex = new RegExp(`(${escaped})`, 'gi');
+    const parts = p.content.split(regex);
+
+    return parts.map((part, idx) => {
+      const hit = sorted.find((h) => h.text.toLowerCase() === part.toLowerCase());
+      if (hit) {
+        const bg = hit.color === 'green' ? 'rgba(16, 185, 129, 0.28)' : 'rgba(251, 191, 36, 0.28)';
+        const border = hit.color === 'green' ? '#10B981' : '#F59E0B';
+        return (
+          <mark
+            key={idx}
+            style={{
+              background: bg,
+              borderRadius: 4,
+              padding: '2px 4px',
+              borderBottom: `2px solid ${border}`,
+              color: 'inherit',
+            }}
+          >
+            {part}
+          </mark>
+        );
+      }
+      return part;
+    });
+  };
+
   /* -------------------------------------------------------------- layout */
   return (
     <div className={`cd-exam${keyboardOpen ? ' kb-open' : ''}`} style={{ ['--cd-font' as string]: `${FONT_SIZES[fontStep]}px` }}>
-      <header className="cd-header">
-        <div className="cd-title">
-          <strong title={attempt.test_title}>{attempt.test_title}</strong>
-          {attempt.is_trial ? (
-            <span className="cd-preview-badge">{t('cd_trial_badge')}</span>
-          ) : (
-            attempt.is_preview && <span className="cd-preview-badge">{t('cd_preview_badge')}</span>
-          )}
-        </div>
-        <div className="cd-timers">
-          {sectionLeft != null && (
-            <span className={sectionLeft < 300 ? 'cd-timer warn' : 'cd-timer'} aria-label={t('cd_section_time')}>
-              {fmt(sectionLeft)}
+      {/* Zen Imtihon Yuqori Paneli */}
+      <header
+        className="cd-header"
+        style={{
+          minHeight: 56,
+          padding: '0 16px',
+          background: 'var(--bg-surface, #fff)',
+          borderBottom: '1px solid var(--border-subtle, #e2e8f0)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 10,
+        }}
+      >
+        {/* Chapda: Chiqish + Fan va Passage */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button
+            type="button"
+            className="bento-btn"
+            onClick={() => setLeaveOpen(true)}
+            style={{
+              height: 36,
+              padding: '0 12px',
+              fontSize: 13,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border-subtle)',
+              color: 'var(--text-primary)',
+              borderRadius: 10,
+              cursor: 'pointer',
+              fontWeight: 700,
+            }}
+          >
+            <ChevronLeft size={16} /> Chiqish
+          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span
+              className="pill-badge"
+              style={{
+                background: 'rgba(59, 130, 246, 0.12)',
+                color: '#3B82F6',
+                fontWeight: 800,
+                fontSize: 12,
+              }}
+            >
+              {section.name || 'Reading'}
             </span>
-          )}
-          <div className="cd-menu-wrap">
+            <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--text-primary)' }}>
+              Passage {part.number || pos.p + 1}
+            </span>
+          </div>
+        </div>
+
+        {/* Markazda: Highlight va Izoh tugmalari */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              background: 'var(--bg-elevated)',
+              padding: '3px 8px',
+              borderRadius: 10,
+              border: '1px solid var(--border-subtle)',
+            }}
+          >
             <button
               type="button"
-              className="cd-icon-btn"
-              aria-haspopup="menu"
-              aria-expanded={menuOpen}
-              aria-label={t('cd_menu')}
-              onClick={() => setMenuOpen((v) => !v)}
+              onClick={() => {
+                setHighlightActive(!highlightActive);
+                if (selectedText && partPassages[0]?.id) {
+                  addHighlight(partPassages[0].id, highlightColor);
+                }
+              }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                background: highlightActive ? 'rgba(245, 158, 11, 0.2)' : 'transparent',
+                border: highlightActive ? '1px solid #F59E0B' : '1px solid transparent',
+                borderRadius: 8,
+                padding: '4px 8px',
+                color: highlightActive ? '#D97706' : 'var(--text-primary)',
+                fontWeight: 700,
+                fontSize: 12.5,
+                cursor: 'pointer',
+              }}
             >
-              <MoreVertical size={20} aria-hidden="true" />
+              <Highlighter size={14} /> Highlight
             </button>
-            {menuOpen && (
-              <div className="cd-menu" role="menu">
-                {hasText && (
-                  <div className="cd-menu__row" role="group" aria-label={t('cd_font')}>
-                    <span>{t('cd_font')}</span>
-                    <button type="button" className="cd-icon-btn" disabled={fontStep === 0} onClick={() => setFontStep((v) => Math.max(0, v - 1))} aria-label={t('cd_font_down')}>A−</button>
-                    <button type="button" className="cd-icon-btn" disabled={fontStep === 2} onClick={() => setFontStep((v) => Math.min(2, v + 1))} aria-label={t('cd_font_up')}>A+</button>
-                  </div>
-                )}
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="cd-menu__danger"
-                  disabled={submitting}
-                  onClick={() => {
-                    setMenuOpen(false);
-                    setConfirming(true);
-                  }}
-                >
-                  {t('cd_finish')}
-                </button>
-              </div>
-            )}
+            <button
+              type="button"
+              onClick={() => setHighlightColor('yellow')}
+              title="Sariq belgilash"
+              style={{
+                width: 18,
+                height: 18,
+                borderRadius: '50%',
+                background: '#FBBF24',
+                border: highlightColor === 'yellow' ? '2px solid #fff' : 'none',
+                outline: highlightColor === 'yellow' ? '2px solid #FBBF24' : 'none',
+                cursor: 'pointer',
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => setHighlightColor('green')}
+              title="Yashil belgilash"
+              style={{
+                width: 18,
+                height: 18,
+                borderRadius: '50%',
+                background: '#10B981',
+                border: highlightColor === 'green' ? '2px solid #fff' : 'none',
+                outline: highlightColor === 'green' ? '2px solid #10B981' : 'none',
+                cursor: 'pointer',
+              }}
+            />
           </div>
+
+          <button
+            type="button"
+            onClick={() => setNoteOpen(true)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              padding: '6px 12px',
+              borderRadius: 10,
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border-subtle)',
+              color: 'var(--text-primary)',
+              fontWeight: 700,
+              fontSize: 12.5,
+              cursor: 'pointer',
+            }}
+          >
+            <FileText size={14} /> Izoh
+          </button>
+        </div>
+
+        {/* O'ngda: Taymer va Oltin Topshirish tugmasi */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {sectionLeft != null && (
+            <span
+              style={{
+                fontFamily: 'JetBrains Mono, monospace',
+                fontWeight: 800,
+                fontSize: 16,
+                padding: '4px 12px',
+                borderRadius: 999,
+                background: sectionLeft < 300 ? 'rgba(239, 68, 68, 0.15)' : 'var(--bg-elevated)',
+                border: sectionLeft < 300 ? '1px solid #EF4444' : '1px solid var(--border-subtle)',
+                color: sectionLeft < 300 ? '#EF4444' : 'var(--text-primary)',
+                letterSpacing: '0.04em',
+              }}
+            >
+              ⏱ {fmt(sectionLeft)}
+            </span>
+          )}
+
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => setConfirming(true)}
+            className="bento-btn bento-btn-gold"
+            style={{
+              height: 38,
+              padding: '0 16px',
+              fontSize: 13,
+              fontWeight: 800,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              boxShadow: '0 2px 10px rgba(245, 158, 11, 0.35)',
+            }}
+          >
+            <CheckCircle2 size={16} /> Topshirish
+          </button>
         </div>
       </header>
 
@@ -669,12 +881,26 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
       {locked && <p className="cd-alert" role="status">{t('cd_time_up')}</p>}
 
       {hasText && narrow && (
-        <div className="cd-tabs" role="tablist" aria-label={t('cd_text')}>
-          <button type="button" role="tab" aria-selected={pane === 'text'} className={pane === 'text' ? 'active' : ''} onClick={() => setPane('text')}>
-            {t('cd_text')}
+        <div className="cd-tabs" role="tablist" style={{ padding: '8px 12px', display: 'flex', gap: 8 }}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={pane === 'text'}
+            className={pane === 'text' ? 'active' : ''}
+            onClick={() => setPane('text')}
+            style={{ flex: 1, borderRadius: 10, height: 42, fontWeight: 800 }}
+          >
+            📖 Matn
           </button>
-          <button type="button" role="tab" aria-selected={pane === 'questions'} className={pane === 'questions' ? 'active' : ''} onClick={() => setPane('questions')}>
-            {t('cd_questions_tab')} <small>{partAnswered}/{partObjective.length}</small>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={pane === 'questions'}
+            className={pane === 'questions' ? 'active' : ''}
+            onClick={() => setPane('questions')}
+            style={{ flex: 1, borderRadius: 10, height: 42, fontWeight: 800 }}
+          >
+            ❓ Savollar ({firstQNum}-{lastQNum})
           </button>
         </div>
       )}
@@ -687,11 +913,90 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
 
       <main className={hasText && !narrow ? 'cd-body with-passage' : 'cd-body'}>
         {showText && (
-          <article className="cd-passage">
+          <article
+            className="cd-passage"
+            onMouseUp={() => {
+              const sel = window.getSelection()?.toString().trim();
+              if (sel && sel.length >= 2 && sel.length <= 500) {
+                setSelectedText(sel);
+                if (highlightActive && partPassages[0]?.id) {
+                  addHighlight(partPassages[0].id, highlightColor, sel);
+                }
+              }
+            }}
+          >
+            {/* Highlight quick bar when selection is made */}
+            {selectedText && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '6px 12px',
+                  borderRadius: 8,
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid #F59E0B',
+                  marginBottom: 12,
+                  gap: 8,
+                }}
+              >
+                <span style={{ fontSize: 12, color: '#D97706', fontWeight: 600 }}>
+                  Tanlangan: &quot;{selectedText.length > 30 ? selectedText.slice(0, 30) + '…' : selectedText}&quot;
+                </span>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    type="button"
+                    onClick={() => partPassages[0]?.id && addHighlight(partPassages[0].id, 'yellow')}
+                    className="bento-btn"
+                    style={{ height: 28, padding: '0 8px', fontSize: 11, background: '#FBBF24', color: '#000', fontWeight: 800 }}
+                  >
+                    Sariq
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => partPassages[0]?.id && addHighlight(partPassages[0].id, 'green')}
+                    className="bento-btn"
+                    style={{ height: 28, padding: '0 8px', fontSize: 11, background: '#10B981', color: '#fff', fontWeight: 800 }}
+                  >
+                    Yashil
+                  </button>
+                </div>
+              </div>
+            )}
+
             {partPassages.map((p) => (
               <div key={p.id}>
-                {p.title && <h2>{p.title}</h2>}
-                <p>{p.content}</p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  {p.title && <h2 style={{ margin: 0 }}>{p.title}</h2>}
+                  {(highlights[p.id]?.length ?? 0) > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => clearPassageHighlights(p.id)}
+                      style={{
+                        fontSize: 11,
+                        padding: '2px 8px',
+                        background: 'transparent',
+                        border: '1px solid var(--border-subtle)',
+                        borderRadius: 6,
+                        color: 'var(--text-secondary)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Tozalash ({highlights[p.id]?.length})
+                    </button>
+                  )}
+                </div>
+                <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.8 }}>{renderPassageWithHighlights(p)}</p>
+                {(notes[p.id] || []).length > 0 && (
+                  <div style={{ marginTop: 12, padding: '8px 12px', background: 'var(--bg-elevated)', borderRadius: 10, border: '1px solid var(--border-subtle)' }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#D97706' }}>📝 Yozilgan izohlar:</span>
+                    <ul style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: 13, color: 'var(--text-secondary)' }}>
+                      {(notes[p.id] || []).map((n, ni) => (
+                        <li key={ni}>{n}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             ))}
           </article>
@@ -797,6 +1102,78 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
             <div className="error-boundary-actions">
               <button type="button" className="btn primary" onClick={() => setLeaveOpen(false)}>{t('cd_leave_stay')}</button>
               <button type="button" className="btn" onClick={() => navigate('/tests')}>{t('cd_leave_exit')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {noteOpen && (
+        <div className="cd-modal" role="dialog" aria-modal="true">
+          <div className="card" style={{ maxWidth: 440, textAlign: 'left' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>
+                📝 Matnga izoh yozish
+              </h3>
+              <button
+                type="button"
+                onClick={() => setNoteOpen(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            {selectedText && (
+              <p style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-elevated)', padding: '6px 10px', borderRadius: 8, margin: '0 0 10px' }}>
+                &quot;{selectedText.length > 60 ? selectedText.slice(0, 60) + '…' : selectedText}&quot;
+              </p>
+            )}
+            <textarea
+              value={noteContent}
+              onChange={(e) => setNoteContent(e.target.value)}
+              placeholder="Fikr yoki eslatmangizni kiriting..."
+              rows={4}
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                borderRadius: 10,
+                border: '1px solid var(--border-subtle)',
+                background: 'var(--bg-elevated)',
+                color: 'var(--text-primary)',
+                fontSize: 14,
+                marginBottom: 12,
+                outline: 'none',
+              }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                type="button"
+                className="bento-btn"
+                onClick={() => {
+                  setNoteOpen(false);
+                  setNoteContent('');
+                }}
+                style={{ height: 36, padding: '0 12px', fontSize: 13 }}
+              >
+                Bekor qilish
+              </button>
+              <button
+                type="button"
+                className="bento-btn bento-btn-gold"
+                onClick={() => {
+                  if (noteContent.trim() && partPassages[0]?.id) {
+                    const pId = partPassages[0].id;
+                    setNotes((prev) => ({
+                      ...prev,
+                      [pId]: [...(prev[pId] || []), noteContent.trim()],
+                    }));
+                  }
+                  setNoteOpen(false);
+                  setNoteContent('');
+                }}
+                style={{ height: 36, padding: '0 14px', fontSize: 13 }}
+              >
+                Saqlash
+              </button>
             </div>
           </div>
         </div>

@@ -1,44 +1,242 @@
-/* LMS React — Warm Academic Luxury Light Aesthetic (Ivory, Gold & Emerald) */
+/* ============================================================================
+   GRANDEC 2.0 DESIGN SYSTEM — Crisp Alabaster & Obsidian Glass Bento UI
+   Fonts: Plus Jakarta Sans (UI) & JetBrains Mono (Numbers, Timers, Codes)
+   ============================================================================ */
+
 :root,
+[data-theme="light"],
 html.light {
-  --bg: #F8FAFC;
-  --bg-page: #F8FAFC;
+  /* Fonts */
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font: var(--font-sans);
+
+  /* GRANDEC 2.0 Crisp Alabaster Tokens */
+  --bg-main: #F8FAFC;
+  --bg-surface: #FFFFFF;
+  --bg-elevated: #F1F5F9;
+  --border-subtle: #E2E8F0;
+  --text-primary: #0F172A;
+  --text-secondary: #475569;
+  --brand-gold: #D97706;
+  --brand-gold-gradient: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+  --accent-indigo: #4F46E5;
+
+  /* Backward Compatibility Mappings */
+  --bg: var(--bg-main);
+  --bg-page: var(--bg-main);
   --bg-gradient: radial-gradient(circle at 50% 0%, #ffffff 0%, #fbfbfa 100%);
-  --card: #ffffff;
-  --bg-card: #ffffff;
-  --card-surface: #ffffff;
-  --card-2: #f8fafc;
-  --bg-card-2: #f1f5f9;
-  --border: rgba(226, 232, 240, 0.85);
-  --border-color: rgba(226, 232, 240, 0.9);
-  --border-focus: #d97706;
-  --ink: #0f172a;
-  --text-primary: #0f172a;
+  --card: var(--bg-surface);
+  --bg-card: var(--bg-surface);
+  --card-surface: var(--bg-surface);
+  --card-2: var(--bg-elevated);
+  --bg-card-2: var(--bg-elevated);
+  --border: var(--border-subtle);
+  --border-color: var(--border-subtle);
+  --border-focus: var(--brand-gold);
+  --ink: var(--text-primary);
   --ink-soft: #334155;
   --muted: #64748b;
-  --text-secondary: #475569;
-  --accent: #d97706;
+  --accent: var(--brand-gold);
   --accent-dark: #b45309;
   --accent-deep: #92400e;
   --emerald: #059669;
   --emerald-light: #10b981;
   --danger: #e11d48;
   --sidebar-bg: #ffffff;
-  --sidebar-ink: #0f172a;
-  --sidebar-border: rgba(226, 232, 240, 0.85);
-  --sidebar-link: #475569;
+  --sidebar-ink: var(--text-primary);
+  --sidebar-border: var(--border-subtle);
+  --sidebar-link: var(--text-secondary);
   --sidebar-link-hover: #b45309;
   --sidebar-link-active: #b45309;
   --sidebar-link-bg-active: rgba(245, 158, 11, 0.12);
-  --radius: 1rem;
-  --font: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
-  --topbar-bg: rgba(255, 255, 255, 0.95);
+  --radius: 1.25rem;
+  --topbar-bg: rgba(255, 255, 255, 0.92);
   --dropdown-bg: #ffffff;
-  --dropdown-border: rgba(226, 232, 240, 0.9);
+  --dropdown-border: var(--border-subtle);
   --dropdown-hover: #f1f5f9;
-  --card-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.05);
+  --card-shadow: 0 10px 30px -10px rgba(15, 23, 42, 0.08);
   --header-bg: rgba(255, 255, 255, 0.88);
+
+  /* Chameleon Accent Default */
+  --subject-accent: #3B82F6;
   color-scheme: light;
+}
+
+[data-theme="dark"],
+html.dark {
+  /* Fonts */
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font: var(--font-sans);
+
+  /* GRANDEC 2.0 Obsidian Glass Tokens */
+  --bg-main: #090D16;
+  --bg-surface: rgba(17, 24, 39, 0.82);
+  --bg-elevated: #161F30;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --text-primary: #F8FAFC;
+  --text-secondary: #94A3B8;
+  --brand-gold: #FBBF24;
+  --brand-gold-gradient: linear-gradient(135deg, #FBBF24 0%, #D97706 100%);
+  --accent-indigo: #6366F1;
+
+  /* Backward Compatibility Mappings */
+  --bg: var(--bg-main);
+  --bg-page: var(--bg-main);
+  --bg-gradient: radial-gradient(circle at 50% 0%, #111827 0%, #090D16 100%);
+  --card: #111827;
+  --bg-card: rgba(17, 24, 39, 0.82);
+  --card-surface: rgba(17, 24, 39, 0.88);
+  --card-2: var(--bg-elevated);
+  --bg-card-2: var(--bg-elevated);
+  --border: var(--border-subtle);
+  --border-color: var(--border-subtle);
+  --border-focus: var(--brand-gold);
+  --ink: var(--text-primary);
+  --ink-soft: #e2e8f0;
+  --muted: var(--text-secondary);
+  --accent: var(--brand-gold);
+  --accent-dark: #fbbf24;
+  --accent-deep: #d97706;
+  --emerald: #10b981;
+  --emerald-light: #34d399;
+  --danger: #f43f5e;
+  --sidebar-bg: #090D16;
+  --sidebar-ink: var(--text-primary);
+  --sidebar-border: var(--border-subtle);
+  --sidebar-link: var(--text-secondary);
+  --sidebar-link-hover: #fef9c3;
+  --sidebar-link-active: #fde047;
+  --sidebar-link-bg-active: linear-gradient(135deg, rgba(251, 191, 36, 0.2), rgba(251, 191, 36, 0.08));
+  --radius: 1.25rem;
+  --topbar-bg: rgba(9, 13, 22, 0.92);
+  --dropdown-bg: #111827;
+  --dropdown-border: var(--border-subtle);
+  --dropdown-hover: rgba(255, 255, 255, 0.08);
+  --card-shadow: 0 18px 50px rgba(0, 0, 0, 0.6);
+  --header-bg: rgba(9, 13, 22, 0.92);
+
+  /* Chameleon Accent Default */
+  --subject-accent: #3B82F6;
+  color-scheme: dark;
+}
+
+/* 5 Subject Chameleon Accent Tokens */
+:root[data-subject="english"], [data-subject="english"] { --subject-accent: #3B82F6; } /* Royal Blue */
+:root[data-subject="chemistry"], [data-subject="chemistry"] { --subject-accent: #10B981; } /* Emerald Green */
+:root[data-subject="biology"], [data-subject="biology"] { --subject-accent: #06B6D4; } /* Bio Teal */
+:root[data-subject="law"], [data-subject="law"] { --subject-accent: #8B5CF6; } /* Imperial Purple */
+:root[data-subject="uzbek"], [data-subject="uzbek"] { --subject-accent: #0EA5E9; } /* Sky Turquoise */
+
+/* Base Typography */
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.font-mono-code,
+.timer-mono,
+.pin-mono,
+.formula-mono {
+  font-family: var(--font-mono) !important;
+  font-variant-numeric: tabular-nums;
+}
+
+/* GRANDEC 2.0 Standard Bento Component Classes */
+.bento-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 20px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.bento-card:hover {
+  border-color: rgba(245, 158, 11, 0.35);
+  box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.15), 0 0 20px rgba(245, 158, 11, 0.08);
+}
+
+.bento-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 20px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 14px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+  border: none;
+}
+
+.bento-btn:active {
+  transform: scale(0.97);
+}
+
+.bento-btn-gold {
+  background: var(--brand-gold-gradient);
+  color: #0F172A;
+  box-shadow: 0 4px 14px rgba(217, 119, 6, 0.25);
+}
+
+.bento-btn-gold:hover {
+  box-shadow: 0 6px 20px rgba(217, 119, 6, 0.38);
+  filter: brightness(1.05);
+}
+
+.bento-btn-indigo {
+  background: var(--accent-indigo);
+  color: #FFFFFF;
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.25);
+}
+
+.bento-btn-indigo:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 6px 20px rgba(79, 70, 229, 0.38);
+}
+
+.pill-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+}
+
+.segmented-switch {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  gap: 4px;
+}
+
+.teacher-editor-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .teacher-editor-layout {
+    grid-template-columns: 1fr;
+  }
 }
 
 html.dark {

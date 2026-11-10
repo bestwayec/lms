@@ -16,11 +16,18 @@ import {
 import ClassroomQrModal from '../components/ClassroomQrModal';
 import { type ConvertedQuestion, TestsApi } from '../lib/testing';
 
+const FORMULA_SYMBOLS = [
+  '₂', '₃', '₄', '⁺', '⁻', '²⁺', '³⁺', '²⁻', '³⁻',
+  '→', '⇌', 'Δ', '℃', '²', '³', 'π', '√', '±', 'α', 'β', 'γ', '≈', '≠', '≤', '≥'
+];
+
 export default function TeacherAiConverter() {
   const { t } = useLang();
   // Step 1: Upload state
   const [file, setFile] = useState<File | null>(null);
-  const [subject, setSubject] = useState<'uzbek' | 'english' | 'biology' | 'chemistry' | 'law'>('uzbek');
+  const [subject, setSubject] = useState<'uzbek' | 'english' | 'biology' | 'chemistry' | 'law'>('chemistry');
+  const [activeGroup] = useState('11-A');
+  const [activeInputRef, setActiveInputRef] = useState<{ qIndex: number; choiceCode?: string } | null>(null);
   const [converting, setConverting] = useState(false);
   const [conversionStep, setConversionStep] = useState<1 | 2 | 3>(1);
   const [qrModalOpen, setQrModalOpen] = useState(false);
@@ -135,6 +142,22 @@ export default function TeacherAiConverter() {
     );
   };
 
+  const insertFormula = (sym: string) => {
+    if (!activeInputRef) {
+      if (questions.length > 0) {
+        updateQuestionText(0, (questions[0].text || '') + sym);
+      }
+      return;
+    }
+    const { qIndex, choiceCode } = activeInputRef;
+    if (choiceCode) {
+      const curChoice = questions[qIndex]?.choices.find((c) => c.code === choiceCode);
+      updateChoiceText(qIndex, choiceCode, (curChoice?.text || '') + sym);
+    } else {
+      updateQuestionText(qIndex, (questions[qIndex]?.text || '') + sym);
+    }
+  };
+
   const removeQuestion = (index: number) => {
     setQuestions((prev) =>
       prev.filter((_, i) => i !== index).map((q, idx) => ({ ...q, order: idx + 1 }))
@@ -227,16 +250,93 @@ export default function TeacherAiConverter() {
         </Link>
       </div>
 
+      {/* Top 3 Command Tabs */}
+      <div
+        style={{
+          display: 'flex',
+          gap: 8,
+          background: 'var(--bg-surface)',
+          padding: 6,
+          borderRadius: 16,
+          border: '1px solid var(--border-subtle)',
+          marginBottom: 24,
+          maxWidth: 580,
+        }}
+      >
+        <button
+          type="button"
+          style={{
+            flex: 1,
+            padding: '10px 16px',
+            borderRadius: 12,
+            border: '1px solid rgba(99, 102, 241, 0.5)',
+            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(99, 102, 241, 0.08) 100%)',
+            color: '#818cf8',
+            fontWeight: 800,
+            fontSize: '0.92rem',
+            cursor: 'default',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+          }}
+        >
+          <span>✨</span> AI Konvertor
+        </button>
+
+        <Link
+          to="/panel?tab=live"
+          style={{
+            flex: 1,
+            padding: '10px 16px',
+            borderRadius: 12,
+            border: '1px solid transparent',
+            background: 'transparent',
+            color: 'var(--text-secondary)',
+            fontWeight: 800,
+            fontSize: '0.92rem',
+            textDecoration: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+          }}
+        >
+          <span>📡</span> Jonli tablo
+        </Link>
+
+        <Link
+          to="/panel?tab=vedomost"
+          style={{
+            flex: 1,
+            padding: '10px 16px',
+            borderRadius: 12,
+            border: '1px solid transparent',
+            background: 'transparent',
+            color: 'var(--text-secondary)',
+            fontWeight: 800,
+            fontSize: '0.92rem',
+            textDecoration: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+          }}
+        >
+          <span>📊</span> Vedomost
+        </Link>
+      </div>
+
       {/* Header */}
-      <div style={{ marginBottom: '2rem' }}>
+      <div style={{ marginBottom: '1.5rem' }}>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px', borderRadius: 999, background: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent, #6366f1)', fontSize: '0.8rem', fontWeight: 700, marginBottom: 8 }}>
-          <Sparkles size={14} /> AI Vision Test Konvertor
+          <Sparkles size={14} /> 10-soniyalik AI Vision Konvertor
         </div>
         <h1 style={{ margin: '0 0 6px 0', fontSize: '1.8rem', fontWeight: 900 }}>
-          Qog'oz va PDF testdan 1 soniyada test yasash
+          Qog'oz va PDF testdan 10 soniyada test yasash
         </h1>
         <p className="muted" style={{ margin: 0, fontSize: '0.95rem' }}>
-          Kitob sahifasini rasmga oling yoki PDF faylni yuklang. Gemini Vision AI savollar va variantlarni avtomatik ajratib oladi.
+          Kitob sahifasini rasmga oling yoki PDF faylni yuklang. Gemini Vision AI savollar, formulalar va variantlarni avtomatik ajratib oladi.
         </p>
       </div>
 
@@ -262,13 +362,21 @@ export default function TeacherAiConverter() {
 
       {/* STEP 1: UPLOAD SCREEN */}
       {!isConverted && (
-        <div className="card" style={{ padding: '2rem', borderRadius: 16 }}>
+        <div className="card bento-card" style={{ padding: '2rem', borderRadius: 20 }}>
           {/* Subject Switcher */}
           <div style={{ marginBottom: '1.5rem' }}>
             <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: 8 }}>
               1. Fan yo'nalishini tanlang:
             </label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 4, background: 'var(--bg)', borderRadius: 12, border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 4, background: 'var(--bg-elevated)', borderRadius: 12, border: '1px solid var(--border-subtle)' }}>
+              <button
+                type="button"
+                className={`btn sm ${subject === 'chemistry' ? 'primary' : 'ghost'}`}
+                onClick={() => setSubject('chemistry')}
+                style={{ borderRadius: 8 }}
+              >
+                🧪 Kimyo (Milliy sertifikat)
+              </button>
               <button
                 type="button"
                 className={`btn sm ${subject === 'biology' ? 'primary' : 'ghost'}`}
@@ -279,11 +387,11 @@ export default function TeacherAiConverter() {
               </button>
               <button
                 type="button"
-                className={`btn sm ${subject === 'chemistry' ? 'primary' : 'ghost'}`}
-                onClick={() => setSubject('chemistry')}
+                className={`btn sm ${subject === 'english' ? 'primary' : 'ghost'}`}
+                onClick={() => setSubject('english')}
                 style={{ borderRadius: 8 }}
               >
-                🧪 Kimyo (Milliy sertifikat)
+                🇬🇧 English (IELTS & CEFR)
               </button>
               <button
                 type="button"
@@ -301,22 +409,32 @@ export default function TeacherAiConverter() {
               >
                 🇺🇿 Ona tili va Adabiyot
               </button>
-              <button
-                type="button"
-                className={`btn sm ${subject === 'english' ? 'primary' : 'ghost'}`}
-                onClick={() => setSubject('english')}
-                style={{ borderRadius: 8 }}
-              >
-                🇬🇧 English (IELTS & CEFR)
-              </button>
             </div>
           </div>
 
-          {/* File Dropzone */}
+          {/* Drag & Drop Area */}
           <div style={{ marginBottom: '1.5rem' }}>
-            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: 8 }}>
-              2. Test faylini yuklang (PDF yoki Rasm):
-            </label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+              <label style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                2. Test varag'ini tashlang — AI qolganini qiladi
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span
+                  style={{
+                    padding: '4px 12px',
+                    borderRadius: 999,
+                    background: 'rgba(16, 185, 129, 0.15)',
+                    border: '1px solid rgba(16, 185, 129, 0.35)',
+                    color: '#10B981',
+                    fontSize: 12,
+                    fontWeight: 800,
+                  }}
+                >
+                  🧪 {subject === 'chemistry' ? 'Kimyo' : subject === 'biology' ? 'Biologiya' : subject === 'english' ? 'Ingliz tili' : subject === 'law' ? 'Huquq' : 'Ona tili'} • {activeGroup}
+                </span>
+              </div>
+            </div>
+
             <label
               style={{
                 display: 'flex',
@@ -324,53 +442,73 @@ export default function TeacherAiConverter() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 padding: '3rem 1.5rem',
-                border: '2px dashed var(--border)',
-                borderRadius: 16,
-                background: file ? 'rgba(99, 102, 241, 0.04)' : 'var(--bg)',
+                border: '2px dashed rgba(99, 102, 241, 0.4)',
+                borderRadius: 20,
+                background: file ? 'rgba(99, 102, 241, 0.05)' : 'var(--bg-surface)',
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
               }}
             >
               <input
                 type="file"
-                accept=".pdf,image/png,image/jpeg,image/jpg,image/webp"
+                accept=".pdf,image/png,image/jpeg,image/jpg,image/webp,.docx"
                 onChange={onFileChange}
                 style={{ display: 'none' }}
               />
               <div
                 style={{
-                  width: 56,
-                  height: 56,
-                  borderRadius: 16,
+                  width: 64,
+                  height: 64,
+                  borderRadius: 20,
                   background: 'rgba(99, 102, 241, 0.12)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  color: 'var(--accent, #6366f1)',
-                  marginBottom: 12,
+                  color: '#6366f1',
+                  marginBottom: 16,
+                  boxShadow: '0 8px 20px rgba(99, 102, 241, 0.15)',
                 }}
               >
-                {file ? <FileText size={28} /> : <Upload size={28} />}
+                {file ? <FileText size={32} /> : <Upload size={32} />}
               </div>
-              {file ? (
-                <div style={{ textAlign: 'center' }}>
-                  <span style={{ fontWeight: 800, fontSize: '1rem', display: 'block', color: 'var(--ink)' }}>
-                    {file.name}
-                  </span>
-                  <span className="muted small">
-                    {(file.size / 1024 / 1024).toFixed(2)} MB • O'zgartirish uchun yana bosing
-                  </span>
-                </div>
-              ) : (
-                <div style={{ textAlign: 'center' }}>
-                  <span style={{ fontWeight: 800, fontSize: '1rem', display: 'block', color: 'var(--ink)', marginBottom: 4 }}>
-                    Faylni bu yerga tashlang yoki tanlang
-                  </span>
-                  <span className="muted small">
-                    Qo'llab-quvvatlanadi: PDF, PNG, JPG, JPEG, WEBP (15 MB gacha)
-                  </span>
-                </div>
-              )}
+
+              <h3 style={{ margin: '0 0 6px', fontSize: '1.25rem', fontWeight: 900, color: 'var(--text-primary)' }}>
+                {file ? file.name : "Faylni shu yerga tashlang"}
+              </h3>
+              <p className="muted" style={{ margin: '0 0 16px', fontSize: '0.9rem', maxWidth: 480, textAlign: 'center', lineHeight: 1.5 }}>
+                Word, PDF yoki telefonda olingan rasm. Formulalar, variantlar va javob kalitlari avtomatik ajratiladi
+              </p>
+
+              {/* Supported format chips */}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginBottom: 18 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 999, background: 'rgba(255, 255, 255, 0.06)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}>
+                  📄 .docx
+                </span>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 999, background: 'rgba(255, 255, 255, 0.06)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}>
+                  📑 .pdf
+                </span>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 999, background: 'rgba(255, 255, 255, 0.06)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}>
+                  🖼 .jpg / .png
+                </span>
+              </div>
+
+              {/* Indigo button */}
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '10px 20px',
+                  borderRadius: 12,
+                  background: 'linear-gradient(135deg, #4F46E5 0%, #4338CA 100%)',
+                  color: '#FFFFFF',
+                  fontWeight: 800,
+                  fontSize: 14,
+                  boxShadow: '0 4px 14px rgba(79, 70, 229, 0.35)',
+                }}
+              >
+                📁 Fayl tanlash yoki rasmga olish
+              </span>
             </label>
           </div>
 
@@ -489,23 +627,70 @@ export default function TeacherAiConverter() {
             </div>
           </div>
 
-          {/* Questions Header */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-            <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 800 }}>
-              Ajratib olingan savollar ({questions.length} ta)
-            </h2>
-            <button
-              type="button"
-              className="btn sm ghost"
-              onClick={addQuestion}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          {/* 2-Column Split: Ilmiy Formula Paneli on Left + Savollar on Right */}
+          <div className="teacher-editor-layout">
+            {/* Left Column: Ilmiy Formula Paneli */}
+            <div
+              style={{
+                position: 'sticky',
+                top: 90,
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 16,
+                padding: 16,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.06)',
+              }}
             >
-              <Plus size={16} /> Savol qo'shish
-            </button>
-          </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <span style={{ fontSize: 20 }}>🧪</span>
+                <strong style={{ fontSize: '0.95rem', color: 'var(--text-primary)' }}>Ilmiy Formula Paneli</strong>
+              </div>
+              <p className="muted small" style={{ margin: '0 0 12px', fontSize: 11, lineHeight: 1.4 }}>
+                Belgini bosish orqali oxirgi tahrirlanayotgan savol matni yoki variantiga qo'shing:
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+                {FORMULA_SYMBOLS.map((sym) => (
+                  <button
+                    key={sym}
+                    type="button"
+                    onClick={() => insertFormula(sym)}
+                    style={{
+                      height: 38,
+                      borderRadius: 8,
+                      border: '1px solid var(--border-subtle)',
+                      background: 'var(--bg-elevated)',
+                      color: 'var(--text-primary)',
+                      fontSize: 16,
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                    title={`${sym} belgisini kiritish`}
+                  >
+                    {sym}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-          {/* Questions List */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Right Column: Savollar ro'yxati */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 800 }}>
+                  Ajratib olingan savollar ({questions.length} ta)
+                </h2>
+                <button
+                  type="button"
+                  className="btn sm ghost"
+                  onClick={addQuestion}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                >
+                  <Plus size={16} /> Savol qo'shish
+                </button>
+              </div>
+
+              {/* Questions List */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {questions.map((q, qIndex) => (
               <div
                 key={qIndex}
@@ -546,6 +731,7 @@ export default function TeacherAiConverter() {
                   <textarea
                     rows={2}
                     value={q.text}
+                    onFocus={() => setActiveInputRef({ qIndex })}
                     onChange={(e) => updateQuestionText(qIndex, e.target.value)}
                     placeholder="Savol matnini kiriting..."
                     style={{ width: '100%', fontWeight: 600, fontSize: '0.95rem' }}
@@ -591,6 +777,7 @@ export default function TeacherAiConverter() {
                         <input
                           type="text"
                           value={c.text}
+                          onFocus={() => setActiveInputRef({ qIndex, choiceCode: c.code })}
                           onChange={(e) => updateChoiceText(qIndex, c.code, e.target.value)}
                           placeholder={`${c.code} varianti`}
                           style={{
@@ -676,7 +863,9 @@ export default function TeacherAiConverter() {
             </div>
           </div>
         </div>
-      )}
+      </div>
+    </div>
+  )}
 
       {/* STEP 3: SUCCESS MODAL / SCREEN */}
       {savedResult && (

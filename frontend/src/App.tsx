@@ -22,6 +22,7 @@ const EssayTeacherQueue = lazyPage(() => import('./pages/EssayTeacherQueue'));
 const EssayTeacherReview = lazyPage(() => import('./pages/EssayTeacherReview'));
 const EssayTopics = lazyPage(() => import('./pages/EssayTopics'));
 const EssayWrite = lazyPage(() => import('./pages/EssayWrite'));
+const EssayStudio = lazyPage(() => import('./pages/EssayStudio'));
 const EssayNew = lazyPage(() => import('./pages/EssayNew'));
 const EssayUpload = lazyPage(() => import('./pages/EssayUpload'));
 const Games = lazyPage(() => import('./pages/Games'));
@@ -212,6 +213,22 @@ function AnimatedRoutes() {
               element={
                 <ErrorBoundary titleKey="error_boundary_essay_title" backTo="/essays" backKey="error_boundary_home">
                   <EssayWrite />
+                </ErrorBoundary>
+              }
+            />
+            <Route
+              path="/essays/studio"
+              element={
+                <ErrorBoundary titleKey="error_boundary_essay_title" backTo="/essays" backKey="error_boundary_home">
+                  <EssayStudio />
+                </ErrorBoundary>
+              }
+            />
+            <Route
+              path="/essays/studio/:topicId"
+              element={
+                <ErrorBoundary titleKey="error_boundary_essay_title" backTo="/essays" backKey="error_boundary_home">
+                  <EssayStudio />
                 </ErrorBoundary>
               }
             />

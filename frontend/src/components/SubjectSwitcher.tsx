@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { useLang } from '../i18n/LangContext';
 import { ProfileApi } from '../lib/api';
@@ -26,64 +26,64 @@ export interface SubjectConfig {
 
 export const SUBJECT_CONFIGS: SubjectConfig[] = [
   {
-    id: 'biology',
-    icon: '🧬',
-    labelKey: 'subject_biology',
-    fallbackLabel: 'Biologiya',
-    gradient: 'linear-gradient(135deg, rgba(16, 185, 129, 0.22), rgba(20, 184, 166, 0.32))',
-    borderColor: '#10b981',
-    activeTextColor: '#34d399',
-    glowColor: 'rgba(16, 185, 129, 0.45)',
+    id: 'english',
+    icon: '🇬🇧',
+    labelKey: 'subject_english',
+    fallbackLabel: 'Ingliz tili',
+    gradient: 'linear-gradient(135deg, rgba(59, 130, 246, 0.22), rgba(37, 99, 235, 0.32))',
+    borderColor: '#3B82F6',
+    activeTextColor: '#60a5fa',
+    glowColor: 'rgba(59, 130, 246, 0.45)',
   },
   {
     id: 'chemistry',
     icon: '🧪',
     labelKey: 'subject_chemistry',
     fallbackLabel: 'Kimyo',
-    gradient: 'linear-gradient(135deg, rgba(139, 92, 246, 0.22), rgba(99, 102, 241, 0.32))',
-    borderColor: '#8b5cf6',
-    activeTextColor: '#a78bfa',
-    glowColor: 'rgba(139, 92, 246, 0.45)',
+    gradient: 'linear-gradient(135deg, rgba(16, 185, 129, 0.22), rgba(5, 150, 105, 0.32))',
+    borderColor: '#10B981',
+    activeTextColor: '#34d399',
+    glowColor: 'rgba(16, 185, 129, 0.45)',
+  },
+  {
+    id: 'biology',
+    icon: '🧬',
+    labelKey: 'subject_biology',
+    fallbackLabel: 'Biologiya',
+    gradient: 'linear-gradient(135deg, rgba(6, 182, 212, 0.22), rgba(14, 165, 233, 0.32))',
+    borderColor: '#06B6D4',
+    activeTextColor: '#38bdf8',
+    glowColor: 'rgba(6, 182, 212, 0.45)',
   },
   {
     id: 'law',
     icon: '⚖️',
     labelKey: 'subject_law',
     fallbackLabel: 'Huquq',
-    gradient: 'linear-gradient(135deg, rgba(245, 158, 11, 0.22), rgba(234, 179, 8, 0.32))',
-    borderColor: '#f59e0b',
-    activeTextColor: '#fbbf24',
-    glowColor: 'rgba(245, 158, 11, 0.45)',
+    gradient: 'linear-gradient(135deg, rgba(139, 92, 246, 0.22), rgba(124, 58, 237, 0.32))',
+    borderColor: '#8B5CF6',
+    activeTextColor: '#a78bfa',
+    glowColor: 'rgba(139, 92, 246, 0.45)',
   },
   {
     id: 'uzbek',
     icon: '🇺🇿',
     labelKey: 'subject_uzbek',
     fallbackLabel: 'Ona tili',
-    gradient: 'linear-gradient(135deg, rgba(14, 165, 233, 0.22), rgba(6, 182, 212, 0.32))',
-    borderColor: '#0ea5e9',
+    gradient: 'linear-gradient(135deg, rgba(14, 165, 233, 0.22), rgba(2, 132, 199, 0.32))',
+    borderColor: '#0EA5E9',
     activeTextColor: '#38bdf8',
     glowColor: 'rgba(14, 165, 233, 0.45)',
-  },
-  {
-    id: 'english',
-    icon: '🇬🇧',
-    labelKey: 'subject_english',
-    fallbackLabel: 'Ingliz tili',
-    gradient: 'linear-gradient(135deg, rgba(244, 63, 94, 0.22), rgba(249, 115, 22, 0.32))',
-    borderColor: '#f43f5e',
-    activeTextColor: '#fb7185',
-    glowColor: 'rgba(244, 63, 94, 0.45)',
   },
 ];
 
 /**
  * Subject Switcher with smooth horizontal touch-scrolling & subject brand palettes.
- * Biologiya: emerald/teal
- * Kimyo: violet/indigo
- * Huquq: amber/yellow
- * Ona tili: sky/cyan
- * Ingliz tili: rose/orange
+ * Ingliz tili: royal blue (#3B82F6)
+ * Kimyo: emerald green (#10B981)
+ * Biologiya: bio teal (#06B6D4)
+ * Huquq: imperial purple (#8B5CF6)
+ * Ona tili: sky turquoise (#0EA5E9)
  */
 export default function SubjectSwitcher({
   className = '',
@@ -105,12 +105,22 @@ export default function SubjectSwitcher({
         } catch {
           /* ignore */
         }
-        return 'biology';
+        return 'english';
       })();
+
+  // Keep data-subject synchronized on root document for CSS Chameleon Token
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-subject', currentSubject);
+    }
+  }, [currentSubject]);
 
   const handleSelect = async (nextSubject: Subject) => {
     if (nextSubject === currentSubject || loading) return;
     hapticImpact('light');
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-subject', nextSubject);
+    }
 
     setLoading(true);
     try {

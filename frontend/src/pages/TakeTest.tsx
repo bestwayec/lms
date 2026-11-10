@@ -17,6 +17,8 @@ import FormulaText from '../components/FormulaText';
 import { Tests as TestsApi } from '../lib/api';
 
 const PeriodicTableModal = lazy(() => import('../components/PeriodicTableModal'));
+const SolubilityTableModal = lazy(() => import('../components/SolubilityTableModal'));
+const CalculatorModal = lazy(() => import('../components/CalculatorModal'));
 const StreakCelebrationModal = lazy(() =>
   import('../components/StreakBadge').then((m) => ({ default: m.StreakCelebrationModal }))
 );
@@ -309,6 +311,8 @@ export default function TakeTest() {
   const [savingAll, setSavingAll] = useState(false);
   const [singleMode, setSingleMode] = useState(true);
   const [showPeriodicModal, setShowPeriodicModal] = useState(false);
+  const [showSolubilityModal, setShowSolubilityModal] = useState(false);
+  const [showCalculatorModal, setShowCalculatorModal] = useState(false);
   const [currentQIndex, setCurrentQIndex] = useState(0);
   const [flagged, setFlagged] = useState<Record<number, boolean>>({});
   const timers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
@@ -1191,103 +1195,148 @@ export default function TakeTest() {
             <div
               style={{
                 marginTop: 14,
-                background: 'rgba(255, 255, 255, 0.03)',
-                padding: '14px 16px',
-                borderRadius: 12,
+                padding: '16px',
+                background: 'rgba(0, 0, 0, 0.25)',
+                borderRadius: 14,
                 border: '1px solid rgba(255, 255, 255, 0.08)',
               }}
             >
-              <p style={{ margin: '0 0 12px 0', fontSize: 13, fontWeight: 700, color: '#f59e0b' }}>
-                Moslashtirish matritsasi (1, 2, 3 qatorlar uchun A–F variantlaridan tanlang):
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {['1', '2', '3'].map((rowNum) => {
-                  const parseMap: Record<string, string> = {};
-                  const parts = (a.text || '').replace(/\|/g, ',').split(',');
-                  for (const pt of parts) {
-                    if (pt.includes('-')) {
-                      const [r, col] = pt.split('-');
-                      if (r && col) parseMap[r.trim()] = col.trim().toUpperCase();
-                    } else if (pt.includes(':')) {
-                      const [r, col] = pt.split(':');
-                      if (r && col) parseMap[r.trim()] = col.trim().toUpperCase();
-                    }
-                  }
-                  const selectedCol = parseMap[rowNum];
-
-                  const onPickCol = (colLetter: string) => {
-                    const nextMap = { ...parseMap };
-                    if (nextMap[rowNum] === colLetter) {
-                      delete nextMap[rowNum];
-                    } else {
-                      nextMap[rowNum] = colLetter;
-                    }
-                    const serialized = Object.entries(nextMap)
-                      .sort(([k1], [k2]) => k1.localeCompare(k2))
-                      .map(([r, c]) => `${r}-${c}`)
-                      .join(', ');
-                    editText(q, serialized);
-                    if (timers.current[q.id]) clearTimeout(timers.current[q.id]);
-                    timers.current[q.id] = setTimeout(() => {
-                      const updated = { ...(answers[q.id] ?? emptyEntry()), text: serialized };
-                      save(q, updated);
-                    }, 350);
-                  };
-
-                  return (
-                    <div
-                      key={rowNum}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 10,
-                        flexWrap: 'wrap',
-                        background: 'rgba(0, 0, 0, 0.22)',
-                        padding: '10px 14px',
-                        borderRadius: 10,
-                        border: '1px solid rgba(255, 255, 255, 0.05)',
-                      }}
-                    >
-                      <span style={{ fontWeight: 800, minWidth: 60, fontSize: 13.5, color: '#f59e0b' }}>
-                        {rowNum}-band:
-                      </span>
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        {['A', 'B', 'C', 'D', 'E', 'F'].map((col) => {
-                          const isSel = selectedCol === col;
-                          return (
-                            <button
-                              key={col}
-                              type="button"
-                              disabled={finished || submitting}
-                              onClick={() => onPickCol(col)}
-                              style={{
-                                minWidth: 44,
-                                height: 42,
-                                borderRadius: 10,
-                                border: isSel ? '2px solid #f59e0b' : '1.5px solid rgba(255, 255, 255, 0.15)',
-                                background: isSel ? '#f59e0b' : 'rgba(255, 255, 255, 0.06)',
-                                color: isSel ? '#000' : 'inherit',
-                                fontWeight: 800,
-                                cursor: 'pointer',
-                                fontSize: 15,
-                                boxShadow: isSel ? '0 0 12px rgba(245, 158, 11, 0.5)' : 'none',
-                                transition: 'all 0.15s ease',
-                              }}
-                            >
-                              {col}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      {selectedCol && (
-                        <span style={{ fontSize: 13, fontWeight: 700, color: '#10b981', marginLeft: 6 }}>
-                          ✓ {rowNum} ➔ {selectedCol}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+                <p style={{ margin: 0, fontSize: 13.5, fontWeight: 800, color: '#f59e0b' }}>
+                  🧪 33–35-savollar: Interaktiv Matritsa Jadvali (Radio Matrix Grid)
+                </p>
+                <span className="pill-badge" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10B981', fontSize: 11, fontWeight: 800 }}>
+                  2.2 ball
+                </span>
               </div>
+
+              {(() => {
+                const parseMap: Record<string, string> = {};
+                const parts = (a.text || '').replace(/\|/g, ',').split(',');
+                for (const pt of parts) {
+                  if (pt.includes('-')) {
+                    const [r, col] = pt.split('-');
+                    if (r && col) parseMap[r.trim()] = col.trim().toUpperCase();
+                  } else if (pt.includes(':')) {
+                    const [r, col] = pt.split(':');
+                    if (r && col) parseMap[r.trim()] = col.trim().toUpperCase();
+                  }
+                }
+
+                const rows = [
+                  { id: '1', label: '1. NaOH' },
+                  { id: '2', label: '2. H₂SO₄' },
+                  { id: '3', label: '3. NaCl' },
+                  { id: '4', label: '4. CO₂' },
+                ];
+                const cols = ['A', 'B', 'C', 'D', 'E'];
+
+                const onPickCol = (rowId: string, colLetter: string) => {
+                  const nextMap = { ...parseMap };
+                  if (nextMap[rowId] === colLetter) {
+                    delete nextMap[rowId];
+                  } else {
+                    nextMap[rowId] = colLetter;
+                  }
+                  const serialized = Object.entries(nextMap)
+                    .sort(([k1], [k2]) => k1.localeCompare(k2))
+                    .map(([r, c]) => `${r}-${c}`)
+                    .join(', ');
+                  editText(q, serialized);
+                  if (timers.current[q.id]) clearTimeout(timers.current[q.id]);
+                  timers.current[q.id] = setTimeout(() => {
+                    const updated = { ...(answers[q.id] ?? emptyEntry()), text: serialized };
+                    save(q, updated);
+                  }, 350);
+                };
+
+                return (
+                  <div>
+                    <div style={{ overflowX: 'auto', marginBottom: 12 }}>
+                      <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '6px', textAlign: 'center' }}>
+                        <thead>
+                          <tr>
+                            <th style={{ padding: '8px 12px', fontSize: 12, fontWeight: 800, color: 'var(--text-secondary, #94a3b8)', textAlign: 'left' }}>
+                              Band / Modda
+                            </th>
+                            {cols.map((col) => (
+                              <th key={col} style={{ padding: '8px 10px', fontSize: 14, fontWeight: 900, color: '#F59E0B' }}>
+                                {col}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map((row) => (
+                            <tr key={row.id} style={{ background: 'rgba(255, 255, 255, 0.02)', borderRadius: 10 }}>
+                              <td style={{ padding: '10px 14px', fontSize: 13.5, fontWeight: 800, color: '#F8FAFC', textAlign: 'left', whiteSpace: 'nowrap' }}>
+                                <FormulaText text={row.label} />
+                              </td>
+                              {cols.map((col) => {
+                                const isSel = parseMap[row.id] === col;
+                                return (
+                                  <td key={col} style={{ padding: 4 }}>
+                                    <button
+                                      type="button"
+                                      disabled={finished || submitting}
+                                      onClick={() => onPickCol(row.id, col)}
+                                      style={{
+                                        width: 40,
+                                        height: 40,
+                                        borderRadius: '50%',
+                                        border: isSel ? '2px solid #10B981' : '1.5px solid rgba(255, 255, 255, 0.15)',
+                                        background: isSel ? '#10B981' : 'rgba(255, 255, 255, 0.04)',
+                                        color: isSel ? '#04130D' : '#F8FAFC',
+                                        fontWeight: 800,
+                                        fontSize: 13,
+                                        cursor: 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        boxShadow: isSel ? '0 0 12px rgba(16, 185, 129, 0.6)' : 'none',
+                                        transition: 'all 0.15s ease',
+                                      }}
+                                    >
+                                      {isSel ? '✓' : col}
+                                    </button>
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Tanlangan chiplari */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', paddingTop: 10, borderTop: '1px dashed rgba(255, 255, 255, 0.1)' }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary, #94a3b8)' }}>
+                        Tanlangan:
+                      </span>
+                      {rows.map((row) => {
+                        const val = parseMap[row.id];
+                        return (
+                          <span
+                            key={row.id}
+                            style={{
+                              padding: '4px 10px',
+                              borderRadius: 8,
+                              fontSize: 12,
+                              fontWeight: 800,
+                              fontFamily: 'JetBrains Mono, monospace',
+                              background: val ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                              border: val ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(255, 255, 255, 0.1)',
+                              color: val ? '#10B981' : 'var(--text-secondary, #94a3b8)',
+                            }}
+                          >
+                            [{row.id} ➔ {val || '?'}]
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           ) : q.question_type === 'dual_open_calc' ? (
             (() => {
@@ -1305,6 +1354,10 @@ export default function TakeTest() {
                 }, 400);
               };
 
+              const addSymbol = (sym: string) => {
+                handleDualChange(partA + sym, partB);
+              };
+
               return (
                 <div
                   style={{
@@ -1318,17 +1371,48 @@ export default function TakeTest() {
                     border: '1px solid rgba(255, 255, 255, 0.08)',
                   }}
                 >
-                  <p style={{ margin: '0 0 4px 0', fontSize: 13, fontWeight: 700, color: '#f59e0b' }}>
-                    Ikki qismli masala javobi (har bir qism alohida baholanadi):
-                  </p>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#f59e0b' }}>
+                      36–45-savollar: Ikki qismli masala (har bir qism alohida baholanadi):
+                    </p>
+                    <span className="pill-badge" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#F59E0B', fontSize: 11, fontWeight: 800 }}>
+                      a va b qismlar
+                    </span>
+                  </div>
+
+                  {/* Kimyoviy indeks / belgilar mini-paneli */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', padding: '6px 8px', borderRadius: 10, background: 'rgba(0, 0, 0, 0.25)', border: '1px solid rgba(255, 255, 255, 0.06)' }}>
+                    <span style={{ fontSize: 11.5, color: 'var(--text-secondary, #94a3b8)', fontWeight: 700 }}>Belgilar:</span>
+                    {['₂', '₃', '₄', '⁺', '⁻', '→', '⇌', 'Δ', '℃'].map((sym) => (
+                      <button
+                        key={sym}
+                        type="button"
+                        onClick={() => addSymbol(sym)}
+                        title={`Formulaga ${sym} qo'shish`}
+                        style={{
+                          height: 28,
+                          minWidth: 28,
+                          padding: '0 6px',
+                          borderRadius: 6,
+                          background: 'rgba(255, 255, 255, 0.06)',
+                          border: '1px solid rgba(255, 255, 255, 0.12)',
+                          color: '#F59E0B',
+                          fontWeight: 800,
+                          fontSize: 12,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {sym}
+                      </button>
+                    ))}
+                  </div>
+
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                     <label style={{ fontSize: '0.88rem', fontWeight: 700, color: '#f59e0b' }}>
                       a) qism javobi:
                     </label>
                     <input
                       type="text"
-                      inputMode="decimal"
-                      pattern="[0-9]*[.,]?[0-9]*"
                       disabled={finished || submitting}
                       value={partA}
                       onChange={(e) => {
@@ -1340,7 +1424,7 @@ export default function TakeTest() {
                         const cur = answers[q.id] ?? emptyEntry();
                         if (cur.text.trim()) save(q, cur);
                       }}
-                      placeholder="Masalan: 12.4"
+                      placeholder="Masalan: 12.4 yoki formulalar..."
                       style={{
                         padding: '12px 14px',
                         borderRadius: 10,
@@ -1349,6 +1433,7 @@ export default function TakeTest() {
                         color: 'var(--ink, #fff)',
                         fontSize: '1.05rem',
                         fontWeight: 700,
+                        fontFamily: 'JetBrains Mono, monospace',
                         minHeight: 48,
                       }}
                     />
@@ -1359,8 +1444,6 @@ export default function TakeTest() {
                     </label>
                     <input
                       type="text"
-                      inputMode="decimal"
-                      pattern="[0-9]*[.,]?[0-9]*"
                       disabled={finished || submitting}
                       value={partB}
                       onChange={(e) => {
@@ -1372,7 +1455,7 @@ export default function TakeTest() {
                         const cur = answers[q.id] ?? emptyEntry();
                         if (cur.text.trim()) save(q, cur);
                       }}
-                      placeholder="Masalan: 5.8"
+                      placeholder="Masalan: 5.8 yoki formulalar..."
                       style={{
                         padding: '12px 14px',
                         borderRadius: 10,
@@ -1381,6 +1464,7 @@ export default function TakeTest() {
                         color: 'var(--ink, #fff)',
                         fontSize: '1.05rem',
                         fontWeight: 700,
+                        fontFamily: 'JetBrains Mono, monospace',
                         minHeight: 48,
                       }}
                     />
@@ -1661,35 +1745,59 @@ export default function TakeTest() {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'nowrap' }}>
-          {/* Back button with safe exit confirmation */}
-          <button
-            type="button"
-            onClick={() => {
-              if (inProgress) {
-                setExitConfirmOpen(true);
-              } else {
-                navigate('/tests');
-              }
-            }}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: '6px 10px',
-              borderRadius: 10,
-              background: 'rgba(255, 255, 255, 0.06)',
-              border: '1px solid rgba(255, 255, 255, 0.12)',
-              color: 'var(--ink, #f8fafc)',
-              fontSize: 13,
-              fontWeight: 700,
-              cursor: 'pointer',
-              flexShrink: 0,
-            }}
-            title="Imtihondan chiqish (xavfsiz tasdiqlash bilan)"
-          >
-            <ChevronLeft size={16} />
-            <span className="hide-on-phone">Chiqish</span>
-          </button>
+          {/* Back button with safe exit confirmation + Zen Question Info */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <button
+              type="button"
+              onClick={() => {
+                if (inProgress) {
+                  setExitConfirmOpen(true);
+                } else {
+                  navigate('/tests');
+                }
+              }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '6px 10px',
+                borderRadius: 10,
+                background: 'rgba(255, 255, 255, 0.06)',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                color: 'var(--ink, #f8fafc)',
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+              title="Imtihondan chiqish (xavfsiz tasdiqlash bilan)"
+            >
+              <ChevronLeft size={16} />
+              <span className="hide-on-phone">Chiqish</span>
+            </button>
+
+            <span
+              className="hide-on-phone"
+              style={{
+                fontSize: 12,
+                fontWeight: 800,
+                color: '#38bdf8',
+                background: 'rgba(56, 189, 248, 0.12)',
+                padding: '4px 8px',
+                borderRadius: 8,
+                border: '1px solid rgba(56, 189, 248, 0.25)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {safeQIndex + 1} / {attempt.questions.length}-savol •{' '}
+              {currentQuestion?.question_type === 'matching_matrix'
+                ? 'Moslashtirish'
+                : currentQuestion?.question_type === 'dual_open_calc'
+                ? 'Ochiq masala'
+                : 'Test'}{' '}
+              • {currentQuestion?.points || (safeQIndex >= 32 && safeQIndex <= 34 ? 2.2 : 2)} ball
+            </span>
+          </div>
 
           {/* Center: Timer & Network Badges */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap' }}>
@@ -1704,6 +1812,7 @@ export default function TakeTest() {
                   borderRadius: 999,
                   fontWeight: 800,
                   fontSize: 14,
+                  fontFamily: 'JetBrains Mono, monospace',
                   fontVariantNumeric: 'tabular-nums',
                   background: isTimeCritical
                     ? 'rgba(239, 68, 68, 0.2)'
@@ -1784,32 +1893,74 @@ export default function TakeTest() {
             )}
           </div>
 
-          {/* Right: Chemistry Periodic Table Button & Question Counter */}
+          {/* Right: Chemistry Modals & Question Counter */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-            {(attempt.subject === 'chemistry' || (attempt.test_title || '').toLowerCase().includes('kimyo')) && (
-              <button
-                type="button"
-                onClick={() => setShowPeriodicModal(true)}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  background: 'rgba(245, 158, 11, 0.18)',
-                  border: '1.5px solid #f59e0b',
-                  color: '#f59e0b',
-                  fontWeight: 800,
-                  borderRadius: 10,
-                  padding: '5px 9px',
-                  cursor: 'pointer',
-                  fontSize: 12,
-                  boxShadow: '0 0 10px rgba(245, 158, 11, 0.3)',
-                }}
-                title="Mendeleyev davriy jadvali va eruvchanlik"
-              >
-                <span>🧪</span>
-                <span className="hide-on-phone">Jadval</span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setShowPeriodicModal(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                background: 'rgba(245, 158, 11, 0.18)',
+                border: '1.5px solid #f59e0b',
+                color: '#f59e0b',
+                fontWeight: 800,
+                borderRadius: 10,
+                padding: '5px 9px',
+                cursor: 'pointer',
+                fontSize: 12,
+                boxShadow: '0 0 10px rgba(245, 158, 11, 0.3)',
+              }}
+              title="Mendeleyev davriy jadvali"
+            >
+              <span>🧪</span>
+              <span className="hide-on-phone">Mendeleyev</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowSolubilityModal(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                background: 'rgba(6, 182, 212, 0.18)',
+                border: '1.5px solid #06b6d4',
+                color: '#06b6d4',
+                fontWeight: 800,
+                borderRadius: 10,
+                padding: '5px 9px',
+                cursor: 'pointer',
+                fontSize: 12,
+              }}
+              title="Eruvchanlik jadvali"
+            >
+              <span>💧</span>
+              <span className="hide-on-phone">Eruvchanlik</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowCalculatorModal(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                background: 'rgba(99, 102, 241, 0.18)',
+                border: '1.5px solid #6366f1',
+                color: '#818cf8',
+                fontWeight: 800,
+                borderRadius: 10,
+                padding: '5px 9px',
+                cursor: 'pointer',
+                fontSize: 12,
+              }}
+              title="Kalkulyator"
+            >
+              <span>🧮</span>
+              <span className="hide-on-phone">Kalkulyator</span>
+            </button>
 
             <span
               style={{
@@ -1935,6 +2086,26 @@ export default function TakeTest() {
           <PeriodicTableModal
             isOpen={showPeriodicModal}
             onClose={() => setShowPeriodicModal(false)}
+          />
+        </Suspense>
+      )}
+
+      {/* Solubility Table Modal */}
+      {showSolubilityModal && (
+        <Suspense fallback={null}>
+          <SolubilityTableModal
+            isOpen={showSolubilityModal}
+            onClose={() => setShowSolubilityModal(false)}
+          />
+        </Suspense>
+      )}
+
+      {/* Calculator Modal */}
+      {showCalculatorModal && (
+        <Suspense fallback={null}>
+          <CalculatorModal
+            isOpen={showCalculatorModal}
+            onClose={() => setShowCalculatorModal(false)}
           />
         </Suspense>
       )}
@@ -2142,6 +2313,99 @@ export default function TakeTest() {
             </button>
           )}
         </>
+      )}
+      {/* 4. Pastki Raqamlangan Savollar Xaritasi (1–45 Palette Bar) */}
+      {!finished && !result && attempt.questions.length > 0 && (
+        <div
+          className="take-test-sticky-palette-bar"
+          style={{
+            position: 'sticky',
+            bottom: 0,
+            zIndex: 35,
+            background: 'rgba(15, 23, 42, 0.95)',
+            backdropFilter: 'blur(16px)',
+            borderTop: '1px solid rgba(255, 255, 255, 0.12)',
+            padding: '10px 14px',
+            boxShadow: '0 -4px 20px rgba(0, 0, 0, 0.4)',
+            borderRadius: '16px 16px 0 0',
+            marginTop: 20,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: '#f8fafc' }}>
+              SAVOLLAR XARITASI (1–{attempt.questions.length}):
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 11, fontWeight: 700 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#34d399' }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} /> Yechilgan
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#f59e0b' }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b' }} /> Joriy
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#fbbf24' }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#fbbf24' }} /> Bayroqcha
+              </span>
+            </div>
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              gap: 6,
+              overflowX: 'auto',
+              paddingBottom: 4,
+              scrollbarWidth: 'none',
+            }}
+          >
+            {attempt.questions.map((q, i) => {
+              const a = answers[q.id];
+              const done = Boolean(a && entryHasContent(q, a));
+              const isActive = safeQIndex === i;
+              const isFlagged = Boolean(flagged[q.id]);
+              return (
+                <button
+                  key={q.id}
+                  type="button"
+                  onClick={() => {
+                    setCurrentQIndex(i);
+                    if (!singleMode) {
+                      const el = document.getElementById(`question-${q.id}`);
+                      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                  }}
+                  style={{
+                    minWidth: 38,
+                    height: 38,
+                    borderRadius: 10,
+                    fontSize: 13,
+                    fontWeight: 800,
+                    fontFamily: 'JetBrains Mono, monospace',
+                    flexShrink: 0,
+                    cursor: 'pointer',
+                    border: isActive
+                      ? '2px solid #F59E0B'
+                      : isFlagged
+                      ? '2px solid #EAB308'
+                      : done
+                      ? '1.5px solid #10B981'
+                      : '1px solid rgba(255, 255, 255, 0.12)',
+                    background: isActive
+                      ? 'rgba(245, 158, 11, 0.25)'
+                      : isFlagged
+                      ? 'rgba(234, 179, 8, 0.25)'
+                      : done
+                      ? 'rgba(16, 185, 129, 0.22)'
+                      : 'rgba(255, 255, 255, 0.04)',
+                    color: isActive ? '#FBBF24' : done ? '#34D399' : '#F8FAFC',
+                    boxShadow: isActive ? '0 0 10px rgba(245, 158, 11, 0.5)' : 'none',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  {i + 1}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       )}
 
       {confirmOpen && !result && (

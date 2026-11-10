@@ -594,106 +594,194 @@ export default function DuelRoom() {
 
       {state === 'playing' && question && (
         <>
-          <div className="card">
-            <div className="score-head">
-              <div className="score-side">
-                <span
-                  className="score-ava"
+          {/* Top 2 Player Cards & Big Scoreboard */}
+          <div className="bento-card" style={{ padding: '20px', borderRadius: 20, marginBottom: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 16 }}>
+              {/* Player 1 Card (You) */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div
                   style={{
-                    color: '#111111',
-                    background: 'linear-gradient(135deg,#EAB308,#FACC15)',
+                    width: 48,
+                    height: 48,
+                    borderRadius: '50%',
+                    background: 'linear-gradient(135deg, #3B82F6, #1D4ED8)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#FFFFFF',
+                    fontWeight: 900,
+                    fontSize: 16,
+                    boxShadow: '0 0 16px rgba(59, 130, 246, 0.4)',
+                    border: '2px solid rgba(255, 255, 255, 0.2)',
+                    flexShrink: 0,
                   }}
                 >
                   {myName.slice(0, 2).toUpperCase()}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <b style={{ display: 'block', fontSize: 14, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{myName}</b>
+                  <span style={{ fontSize: 11, color: '#38BDF8', fontWeight: 700 }}>Siz (O'yinchi 1)</span>
+                </div>
+              </div>
+
+              {/* Center: Katta hisob tablosu (4 : 3) */}
+              <div style={{ textAlign: 'center', padding: '6px 20px', borderRadius: 16, background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', minWidth: 120 }}>
+                <span className="timer-mono" style={{ fontSize: 32, fontWeight: 900, letterSpacing: '0.08em', color: '#FBBF24' }}>
+                  {myScore} : {otherScore}
                 </span>
-                <span className="duel-player">
-                  <b className="duel-player__name">{myName}</b>
-                  <b className="duel-player__score is-me">{myScore}</b>
+                <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: timeLeft <= 5 ? '#EF4444' : 'var(--text-secondary)' }}>
+                  ⏱ {timeLeft}s qoldi
                 </span>
               </div>
-              <span
-                className={`duel-timer${timeLeft <= 5 ? ' is-low' : ''}`}
-                role="timer"
-                aria-label={t('arena_time_left')}
-              >
-                {timeLeft}s
-              </span>
-              <div className="score-side right">
-                <span className="duel-player">
-                  <b className="duel-player__name">
-                    {oppName}
-                    {isBotDuel ? ` (${t('arena_bot')})` : ''}
+
+              {/* Player 2 Card (Opponent) */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12 }}>
+                <div style={{ textAlign: 'right', minWidth: 0 }}>
+                  <b style={{ display: 'block', fontSize: 14, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {oppName} {isBotDuel ? `(${t('arena_bot')})` : ''}
                   </b>
-                  <b className="duel-player__score is-opp">{otherScore}</b>
-                </span>
-                <span
-                  className="score-ava"
+                  <span style={{ fontSize: 11, color: '#F43F5E', fontWeight: 700 }}>Raqib (O'yinchi 2)</span>
+                </div>
+                <div
                   style={{
-                    color: '#111111',
-                    background: 'linear-gradient(135deg,#A16207,#EAB308)',
+                    width: 48,
+                    height: 48,
+                    borderRadius: '50%',
+                    background: 'linear-gradient(135deg, #EF4444, #B91C1C)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#FFFFFF',
+                    fontWeight: 900,
+                    fontSize: 16,
+                    boxShadow: '0 0 16px rgba(239, 68, 68, 0.4)',
+                    border: '2px solid rgba(255, 255, 255, 0.2)',
+                    flexShrink: 0,
                   }}
                 >
                   {oppName.slice(0, 2).toUpperCase()}
-                </span>
+                </div>
               </div>
             </div>
-            <div className="laser-beam-wrapper" aria-hidden="true" style={{ margin: '10px 0' }}>
-              <div className="laser-beam-line" />
-            </div>
-            {streak >= 2 && (
-              <p className="duel-streak">
-                <FlameIcon size={14} className="ico" /> x{streak}
-              </p>
-            )}
-            {gained !== null && reveal !== null && (
-              <p className="muted small">
-                +{gained} {t('points')}
-              </p>
-            )}
-            {!opponentAnswered && <p className="muted small">{t('arena_thinking')}</p>}
-          </div>
 
-          <div className="card" style={{ marginTop: 12 }}>
-            <p className="muted small">
-              {t('arena_question_n')
-                .replace('{i}', String(total > 0 ? qIndex + 1 : qIndex))
-                .replace('{n}', String(total))}{' '}
-              · {question.points} {t('points')}
-            </p>
-            <div
-              className="progress"
-              style={{ margin: '8px 0' }}
-              aria-hidden="true"
-            >
+            {/* Pastga kamayib boruvchi taymer chizig'i */}
+            <div style={{ height: 6, width: '100%', background: 'rgba(255, 255, 255, 0.08)', borderRadius: 999, overflow: 'hidden', marginTop: 16 }}>
               <div
                 style={{
-                  width: total > 0 ? `${Math.min(100, ((qIndex + 1) / total) * 100)}%` : '0%',
+                  height: '100%',
+                  width: `${Math.min(100, Math.max(0, (timeLeft / 15) * 100))}%`,
+                  background: timeLeft <= 4 ? '#EF4444' : 'linear-gradient(90deg, #10B981, #F59E0B)',
+                  transition: 'width 1s linear',
                 }}
               />
             </div>
-            <h2 className="duel-question">{question.question_text}</h2>
-            <div className="duel-options">
+
+            {streak >= 2 && (
+              <p className="duel-streak" style={{ marginTop: 8 }}>
+                <FlameIcon size={14} className="ico" /> x{streak} seriya!
+              </p>
+            )}
+            {gained !== null && reveal !== null && (
+              <p className="muted small" style={{ marginTop: 4 }}>
+                +{gained} {t('points')}
+              </p>
+            )}
+            {!opponentAnswered && <p className="muted small" style={{ marginTop: 4 }}>{t('arena_thinking')}</p>}
+          </div>
+
+          {/* Question Card & 4 Fast A, B, C, D Options */}
+          <div className="bento-card" style={{ padding: '24px', borderRadius: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--brand-gold)' }}>
+                {t('arena_question_n').replace('{i}', String(total > 0 ? qIndex + 1 : qIndex)).replace('{n}', String(total))}
+              </span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>
+                +{question.points} ball
+              </span>
+            </div>
+
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 800, lineHeight: 1.5, margin: '0 0 20px', color: 'var(--text-primary)' }}>
+              {question.question_text}
+            </h2>
+
+            {/* 4 Swift Variant Buttons */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))', gap: 12 }}>
               {OPTS.map((opt) => {
                 const label = question[`option_${opt}` as keyof Question] as string;
-                const cls =
-                  reveal !== null
-                    ? opt === reveal
-                      ? 'quiz-opt right'
-                      : opt === picked
-                        ? 'quiz-opt wrong'
-                        : 'quiz-opt'
-                    : picked === opt
-                      ? 'quiz-opt picked'
-                      : 'quiz-opt';
+                const isPicked = picked === opt;
+                const isRight = reveal !== null && opt === reveal;
+                const isWrong = reveal !== null && isPicked && opt !== reveal;
+
                 return (
                   <button
                     key={opt}
-                    className={cls}
+                    type="button"
                     disabled={picked !== null || disabled}
                     onClick={() => answer(opt)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      padding: '14px 16px',
+                      borderRadius: 14,
+                      fontSize: 15,
+                      fontWeight: 700,
+                      cursor: picked !== null || disabled ? 'default' : 'pointer',
+                      border: isRight
+                        ? '2px solid #10B981'
+                        : isWrong
+                        ? '2px solid #EF4444'
+                        : isPicked
+                        ? '2px solid #F59E0B'
+                        : '1.5px solid var(--border-subtle)',
+                      background: isRight
+                        ? 'rgba(16, 185, 129, 0.15)'
+                        : isWrong
+                        ? 'rgba(239, 68, 68, 0.15)'
+                        : isPicked
+                        ? 'rgba(245, 158, 11, 0.15)'
+                        : 'var(--bg-elevated)',
+                      color: isRight
+                        ? '#10B981'
+                        : isWrong
+                        ? '#EF4444'
+                        : isPicked
+                        ? '#F59E0B'
+                        : 'var(--text-primary)',
+                      textAlign: 'left',
+                      transition: 'all 0.15s ease',
+                      boxShadow: isRight
+                        ? '0 0 16px rgba(16, 185, 129, 0.3)'
+                        : isPicked
+                        ? '0 0 16px rgba(245, 158, 11, 0.3)'
+                        : 'none',
+                    }}
                   >
-                    <span className="quiz-key">{opt.toUpperCase()}</span>
-                    <span>{label}</span>
+                    <span
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 8,
+                        background: isRight
+                          ? '#10B981'
+                          : isWrong
+                          ? '#EF4444'
+                          : isPicked
+                          ? '#F59E0B'
+                          : 'var(--border-subtle)',
+                        color: isRight || isWrong || isPicked ? '#FFFFFF' : 'var(--text-secondary)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontWeight: 900,
+                        fontSize: 14,
+                        fontFamily: 'JetBrains Mono, monospace',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {opt.toUpperCase()}
+                    </span>
+                    <span style={{ flex: 1 }}>{label}</span>
                   </button>
                 );
               })}

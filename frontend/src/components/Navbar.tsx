@@ -1,14 +1,14 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Moon, Sun } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useLang } from '../i18n/LangContext';
 import { isPlatformAdmin, type StreakInfoResponse } from '../lib/api';
 import { initialsOf } from '../lib/displayName';
-import { useSubject } from '../lib/useSubject';
+import { useTier } from '../lib/useTier';
 import { ShieldCheckIcon } from './icons';
-import StreakBadge from './StreakBadge';
 import SubjectSwitcher from './SubjectSwitcher';
 import UserNavDropdown from './UserNavDropdown';
+import { useTheme } from '../theme/ThemeContext';
 
 interface NavbarProps {
   streakData?: StreakInfoResponse | null;
@@ -17,132 +17,153 @@ interface NavbarProps {
 }
 
 /**
- * Compact Top Navbar (Height 56px / h-14)
- * Mobile:
- * - Back button (when not on dashboard/home)
- * - Brand logo + dynamic section title
- * - Profile avatar toggle button
- * Desktop:
- * - Brand motto badge
- * - Streak & XP counter
- * - Desktop SubjectSwitcher
- * - Admin panel shortcut (for staff)
- * - User dropdown menu
+ * GRANDEC 2.0 Top Command Bar (Navbar)
+ * Left: Golden Humo winged GRANDEC logo
+ * Center: Horizontal Pill-Shaped Subject Switcher (English, Chemistry, Biology, Law, Uzbek)
+ * Right: Streak & XP Badge, Theme Toggle (Sun/Moon), PRO Badge, Circular Avatar
  */
-export default function Navbar({ streakData, onOpenProfile, pageTitle = 'GRANDEC' }: NavbarProps) {
+export default function Navbar({ streakData, onOpenProfile, pageTitle: _pageTitle = 'GRANDEC' }: NavbarProps) {
   const { user } = useAuth();
   const { t } = useLang();
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const activeSubject = useSubject();
   const isAdmin = isPlatformAdmin(user);
+  const tier = useTier();
+  const { resolvedTheme, setTheme } = useTheme();
 
   const isRootOrDashboard = pathname === '/' || pathname === '/dashboard';
+  const streakDays = streakData?.current_streak ?? 1;
+
+  const toggleTheme = () => {
+    setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
+  };
 
   return (
     <header
       className="topbar app-topbar px-3 md:px-6"
       aria-label={t('topbar_label', 'Yuqori panel')}
       style={{
-        paddingTop: 'max(env(safe-area-inset-top, 0px), 12px)',
-        height: 'calc(56px + max(env(safe-area-inset-top, 0px), 12px))',
+        paddingTop: 'max(env(safe-area-inset-top, 0px), 8px)',
+        height: 'calc(60px + max(env(safe-area-inset-top, 0px), 8px))',
         display: 'flex',
         alignItems: 'center',
         position: 'sticky',
         top: 0,
         zIndex: 40,
-        backdropFilter: 'blur(16px)',
-        WebkitBackdropFilter: 'blur(16px)',
-        borderBottom: '1px solid var(--border, rgba(255, 255, 255, 0.08))',
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
+        backgroundColor: 'var(--topbar-bg)',
+        borderBottom: '1px solid var(--border-subtle)',
       }}
     >
-      <div className="topbar-inner w-full flex items-center justify-between" style={{ height: '100%' }}>
-        {/* Mobile Left: Back Button or Brand Logo */}
-        <div className="flex items-center gap-2 md:hidden min-w-0 flex-1">
-          {!isRootOrDashboard ? (
+      <div className="topbar-inner w-full flex items-center justify-between gap-3" style={{ height: '100%' }}>
+        {/* Left: Oltin Humo qanotli GRANDEC logotipi */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          {!isRootOrDashboard && (
             <button
               type="button"
               onClick={() => navigate(-1)}
-              className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 active:scale-95 transition-all shrink-0"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800/50 active:scale-95 transition-all md:hidden"
               aria-label="Orqaga qaytish"
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             >
               <ArrowLeft size={19} />
             </button>
-          ) : null}
+          )}
 
-          <Link to="/dashboard" className="tb-brand flex items-center gap-2 min-w-0 shrink">
-            <img
-              src="/logo-mark.png"
-              alt=""
-              onError={(e) => {
-                e.currentTarget.style.display = 'none';
-              }}
-              className="w-6 h-6 shrink-0 object-contain overflow-hidden rounded"
-              width={24}
-              height={24}
-            />
-            <span
-              className="tb-title font-bold text-sm tracking-tight text-slate-100 truncate min-w-0"
-              style={{ maxWidth: '180px' }}
-            >
-              {pageTitle}
-            </span>
+          <Link to="/dashboard" className="flex items-center gap-2.5 group text-decoration-none">
+            <div className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-600 via-amber-500 to-yellow-400 p-0.5 shadow-md shadow-amber-500/20 group-hover:scale-105 transition-transform">
+              <img
+                src="/logo-mark.png"
+                alt="GRANDEC"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
+                className="w-full h-full object-contain rounded-lg"
+              />
+            </div>
+            <div className="flex flex-col">
+              <div className="flex items-center gap-1.5">
+                <span className="font-extrabold text-base tracking-tight leading-none text-slate-900 dark:text-white">
+                  GRANDEC
+                </span>
+                <span className="text-[10px] font-black px-1.5 py-0.2 rounded bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 uppercase tracking-wider">
+                  2.0
+                </span>
+              </div>
+              <span className="text-[9px] font-bold tracking-widest text-amber-600 dark:text-amber-400 uppercase leading-tight mt-0.5">
+                ACADEMIC EDTECH
+              </span>
+            </div>
           </Link>
         </div>
 
-        {/* Desktop Left: Active Track / Motto (Redundant desktop logo hidden next to sidebar) */}
-        <div className="hidden md:flex items-center gap-3">
-          {user?.active_subject && (
-            <span className="tb-tag text-xs font-semibold px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20">
-              {t(activeSubject === 'english' ? 'app_motto_badge_english' : 'app_motto_badge', 'Grand Education')}
-            </span>
-          )}
+        {/* Center: Gorizontal Pill-Shaped Fan Tanlagich (Desktop & Tablet) */}
+        <div className="hidden lg:flex items-center justify-center flex-1 max-w-xl mx-auto">
+          <SubjectSwitcher size="sm" variant="pill" />
         </div>
 
-        <div className="spacer flex-1" />
-
-        {/* Right Section */}
-        <div className="tb-right flex items-center gap-2 md:gap-3">
+        {/* Right Section: Streak, Theme Switcher, PRO badge, Avatar */}
+        <div className="flex items-center gap-2 md:gap-3 shrink-0">
+          {/* Streak nishoni */}
           {streakData && (
-            <div className="inline-flex items-center gap-1.5">
-              <StreakBadge streakData={streakData} compact />
-              <span
-                className="tb-xp hidden sm:inline-flex items-center font-bold px-2 py-0.5 rounded-full text-xs"
-                style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.3)' }}
-              >
+            <div className="hidden sm:inline-flex items-center gap-1.5">
+              <span className="pill-badge" style={{ borderColor: 'rgba(245, 158, 11, 0.35)', background: 'rgba(245, 158, 11, 0.12)', color: '#d97706' }}>
+                <span className="animate-pulse">🔥</span> {streakDays} kun
+              </span>
+              <span className="hidden md:inline-flex text-xs font-bold font-mono px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
                 {streakData.xp_points} XP
               </span>
             </div>
           )}
 
-          {/* Desktop Subject Switcher */}
-          <div className="hidden md:flex">
-            <SubjectSwitcher size="sm" />
-          </div>
-
-          {/* Desktop Staff Shortcuts & Dropdown */}
-          <div className="hidden md:flex items-center gap-2">
-            {isAdmin && (
-              <Link to="/panel" className="ui-btn ui-btn--sm flex items-center gap-1 text-xs">
-                <ShieldCheckIcon size={14} />
-                <span>{t('tb_admin_panel', 'Admin panel')}</span>
-              </Link>
+          {/* Theme Switcher Toggle (☀️ / 🌙) */}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="p-2 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60 active:scale-95 transition-all"
+            aria-label="Mavzuni almashtirish (Yorug‘ / Qorong‘i)"
+            title={resolvedTheme === 'dark' ? '☀️ Ertalabgi rejimga o‘tish' : '🌙 Tungi rejimga o‘tish'}
+          >
+            {resolvedTheme === 'dark' ? (
+              <Sun size={17} className="text-amber-400" />
+            ) : (
+              <Moon size={17} className="text-indigo-600" />
             )}
+          </button>
+
+          {/* 👑 PRO Badge */}
+          <Link
+            to="/subscribe"
+            className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/25 transition-colors"
+          >
+            <span>👑</span>
+            <span>{tier.isPaid ? 'PRO' : 'PRO-ga o‘tish'}</span>
+          </Link>
+
+          {/* Admin panel shortcut for staff */}
+          {isAdmin && (
+            <Link to="/panel" className="hidden xl:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/25 transition-colors">
+              <ShieldCheckIcon size={14} />
+              <span>{t('tb_admin_panel', 'Admin')}</span>
+            </Link>
+          )}
+
+          {/* Desktop User Dropdown with Circular Avatar */}
+          <div className="hidden md:flex items-center">
             <UserNavDropdown />
           </div>
 
-          {/* Mobile Profile Drawer Trigger */}
+          {/* Mobile Circular KR Avatar Trigger */}
           <button
             type="button"
-            className="tb-avatar md:hidden flex items-center justify-center w-8 h-8 rounded-full overflow-hidden border border-slate-700 active:scale-95 transition-transform"
+            className="md:hidden flex items-center justify-center w-9 h-9 rounded-full overflow-hidden border-2 border-amber-500/60 shadow-sm active:scale-95 transition-transform"
             onClick={onOpenProfile}
             aria-label={t('tb_open_profile', 'Profil')}
             style={{
               background: 'linear-gradient(135deg, #d97706, #b45309)',
               color: '#ffffff',
               fontSize: '12px',
-              fontWeight: 700,
+              fontWeight: 800,
             }}
           >
             {user?.avatar ? (

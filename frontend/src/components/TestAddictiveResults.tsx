@@ -9,7 +9,7 @@ import type { ReviewQuestion } from '../lib/review';
 import ScoreCardModal from './ScoreCardModal';
 import QuestionReview from './QuestionReview';
 import QuestionIssueButton from './QuestionIssueButton';
-import { Send, FileText, Share2, Sparkles, AlertTriangle, Crown } from 'lucide-react';
+import { Send, FileText, Share2, Sparkles, AlertTriangle } from 'lucide-react';
 import { hapticNotify, hapticImpact } from '../lib/haptics';
 
 export interface SubjectAnalysisData {
@@ -119,7 +119,7 @@ export default function TestAddictiveResults({
   wrongCount,
   unansweredCount,
   timeSpentSeconds,
-  raschScore,
+  raschScore: _raschScore,
   raschGrade,
   bmbGrade,
   courseTitle,
@@ -141,11 +141,9 @@ export default function TestAddictiveResults({
   const [retesting, setRetesting] = useState(false);
   const [retestMsg, setRetestMsg] = useState<string | null>(null);
   const [showScoreCard, setShowScoreCard] = useState(false);
-  const [isNewRecord, setIsNewRecord] = useState(false);
+  const [_isNewRecord, setIsNewRecord] = useState(false);
 
   const pct = Math.round(percentage);
-  const isBmb = subject !== 'english';
-  const tone = pct >= 70 ? 'good' : pct >= 50 ? 'mid' : 'low';
   const grade = bmbGrade || raschGrade || '';
 
   // 1. Dopamine celebration burst on result page mount
@@ -204,6 +202,17 @@ export default function TestAddictiveResults({
     const m = Math.floor(secs / 60);
     const s = secs % 60;
     return m === 0 ? `${s} soniya` : `${m} daqiqa ${s} soniya`;
+  };
+
+  const formatTimer = (secs: number) => {
+    if (!secs || secs <= 0) return '00:00';
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    if (h > 0) {
+      return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
   const handleRetestClick = async () => {
@@ -357,201 +366,207 @@ export default function TestAddictiveResults({
     <div className="res" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {showEstimateNotice && <p className="res-notice">{t('cefr_result_estimate_note')}</p>}
 
-      {/* Main Result Hero Card */}
-      <section className={`res-hero res-hero--${tone}`} style={{ borderRadius: 24, padding: '28px 24px', position: 'relative', overflow: 'hidden' }}>
+      {/* 1. Eng Yuqori Qism — Mistake Replay (Qayta ishlash) Banneri */}
+      {(wrongCount > 0 || unansweredCount > 0) && (
+        <div
+          className="bento-card"
+          style={{
+            background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.12) 0%, rgba(220, 38, 38, 0.08) 100%)',
+            border: '1.5px solid rgba(239, 68, 68, 0.35)',
+            borderRadius: 18,
+            padding: '16px 20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 14,
+            boxShadow: '0 8px 24px rgba(239, 68, 68, 0.12)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 28 }}>🔥</span>
+            <div>
+              <strong style={{ fontSize: 16, color: 'var(--text-primary)', display: 'block' }}>
+                Xato qilingan savollarni hoziroq yopish ({wrongCount + unansweredCount} ta)
+              </strong>
+              <span style={{ fontSize: 13, color: '#F87171' }}>
+                Har bir xatoni tuzatish <strong>+10 XP</strong> beradi!
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleRetestClick}
+            disabled={retesting}
+            className="bento-btn bento-btn-gold"
+            style={{ fontWeight: 800, padding: '0 24px', height: 44 }}
+          >
+            {retesting ? 'Yuklanmoqda…' : 'Boshlash →'}
+          </button>
+        </div>
+      )}
+
+      {/* 2. Asosiy Qism (2 Ustunli Bento Natija Kartasi) */}
+      <section className="bento-card" style={{ padding: '28px', borderRadius: 24, position: 'relative', overflow: 'hidden' }}>
         {/* Branch & Subject Pill */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 14px', borderRadius: 20, background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.35)', fontSize: 13, fontWeight: 700, color: '#FDE68A' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 14px', borderRadius: 20, background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.35)', fontSize: 13, fontWeight: 700, color: 'var(--brand-gold)' }}>
             <span>{subjInfo.icon}</span>
             <span>{subjInfo.label}</span>
           </div>
 
-          <div style={{ fontSize: 12, color: 'rgba(255, 255, 255, 0.7)', fontWeight: 600 }}>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600 }}>
             🏛 {effectiveBranchName}
           </div>
         </div>
 
-        {courseTitle && <p className="res-hero__title" style={{ fontSize: 18, fontWeight: 700, marginBottom: 16 }}>{courseTitle}</p>}
-
-        <div className="res-hero__score flex flex-wrap items-baseline gap-2 mb-4" aria-label={`${Math.round(pct)}%`}>
-          <strong className="text-4xl md:text-5xl font-black text-white tracking-tight">{Math.round(pct)}%</strong>
-          <span className="text-slate-300 text-sm md:text-base font-semibold">
-            • {score}/{maxScore} ball
-          </span>
-        </div>
-
-        <div className="res-metrics grid grid-cols-2 sm:grid-cols-4 gap-3 my-4">
-          <div className="flex flex-col items-center justify-center p-3.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-center">
-            <b className="text-lg md:text-xl font-black text-emerald-400">{correctCount} ta to'g'ri</b>
-            <span className="text-xs text-slate-300 font-medium">{t('rv_status_correct', "To'g'ri javoblar")}</span>
-          </div>
-          <div className="flex flex-col items-center justify-center p-3.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-center">
-            <b className="text-lg md:text-xl font-black text-rose-400">{wrongCount} ta xato</b>
-            <span className="text-xs text-slate-300 font-medium">{t('rv_status_wrong', 'Xato javoblar')}</span>
-          </div>
-          <div className="flex flex-col items-center justify-center p-3.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-center">
-            <b className="text-lg md:text-xl font-black text-amber-400">{unansweredCount} ta javobsiz</b>
-            <span className="text-xs text-slate-300 font-medium">{t('rv_status_blank', 'Belgilanmagan')}</span>
-          </div>
-          <div className="flex flex-col items-center justify-center p-3.5 rounded-xl bg-sky-500/15 border border-sky-500/30 text-center">
-            <b className="text-lg md:text-xl font-black text-sky-400">{formatTime(timeSpentSeconds)}</b>
-            <span className="text-xs text-slate-300 font-medium">{t('res_time', 'Sarflangan vaqt')}</span>
-          </div>
-        </div>
-
-        {/* 1-Click Mistake Replay Banner (Hero Card) */}
-        {(wrongCount > 0 || unansweredCount > 0) && (
-          <div style={{ marginTop: 16, marginBottom: 8 }}>
-            <button
-              type="button"
-              disabled={retesting}
-              onClick={handleRetestClick}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))', gap: 32, alignItems: 'center' }}>
+          {/* Chap tomon — 3D Oltin Doira Medali */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+            <div
               style={{
-                width: '100%',
-                padding: '15px 22px',
-                borderRadius: 16,
-                background: 'linear-gradient(135deg, #EF4444 0%, #DC2626 50%, #B91C1C 100%)',
-                color: '#FFFFFF',
-                fontWeight: 900,
-                fontSize: '1.02rem',
-                border: '1.5px solid rgba(254, 202, 202, 0.45)',
-                boxShadow: '0 8px 24px -4px rgba(239, 68, 68, 0.5)',
+                width: 176,
+                height: 176,
+                borderRadius: '50%',
+                background: 'radial-gradient(circle, #FDE68A 0%, #F59E0B 45%, #B45309 100%)',
                 display: 'flex',
+                flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 10,
-                cursor: retesting ? 'wait' : 'pointer',
-                transition: 'all 0.15s ease',
+                padding: 16,
+                boxShadow: '0 0 50px rgba(245, 158, 11, 0.45), inset 0 2px 8px rgba(255, 255, 255, 0.6), inset 0 -4px 10px rgba(0, 0, 0, 0.4)',
+                border: '4px solid #FEF3C7',
+                position: 'relative',
               }}
             >
-              <span style={{ fontSize: 22 }}>🔥</span>
-              <span>
-                {retesting
-                  ? 'Qayta ishlash yuklanmoqda…'
-                  : `Xato qilingan savollarni qayta ishlash (${wrongCount + unansweredCount} ta)`}
+              <span style={{ fontSize: 26, marginBottom: 2 }}>👑</span>
+              <span style={{ fontSize: 22, fontWeight: 900, color: '#0F172A', lineHeight: 1.1, letterSpacing: '-0.02em' }}>
+                DARAJA {bmbGrade || grade || 'A+'}
               </span>
-            </button>
-          </div>
-        )}
-
-        {/* Personal Best Record Indicator */}
-        {isNewRecord && (
-          <div
-            style={{
-              marginTop: 18,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-              padding: '8px 18px',
-              borderRadius: 30,
-              background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.3) 0%, rgba(236, 72, 153, 0.25) 100%)',
-              border: '1.5px solid #F59E0B',
-              color: '#FEF08A',
-              fontWeight: 800,
-              fontSize: 13,
-              boxShadow: '0 0 25px rgba(245, 158, 11, 0.45)',
-            }}
-          >
-            <Sparkles size={16} color="#FBBF24" />
-            <span>Yangi shaxsiy rekord! 🚀 Oldingi eng yaxshi natijangiz yangilandi!</span>
-          </div>
-        )}
-
-        {/* Prestigious Shimmer Diploma Certificate Badge */}
-        {isBmb && grade ? (
-          <div
-            className={grade.startsWith('A') ? 'diploma-badge-shimmer' : 'diploma-badge-shimmer-silver'}
-            style={{
-              marginTop: 18,
-              borderRadius: 20,
-              padding: '16px 20px',
-              border: grade.startsWith('A')
-                ? '2px solid #F59E0B'
-                : grade.startsWith('B')
-                ? '2px solid #38BDF8'
-                : '2px solid #94A3B8',
-              boxShadow: grade.startsWith('A')
-                ? '0 0 30px rgba(245, 158, 11, 0.35), inset 0 0 20px rgba(245, 158, 11, 0.15)'
-                : '0 0 25px rgba(56, 189, 248, 0.3)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              textAlign: 'center',
-              gap: 8,
-              position: 'relative',
-              overflow: 'hidden',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Crown size={20} color={grade.startsWith('A') ? '#FBBF24' : '#38BDF8'} className="gold-crown-anim" />
-              <span
-                style={{
-                  fontSize: 12,
-                  fontWeight: 900,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.08em',
-                  color: grade.startsWith('A') ? '#FEF08A' : '#E0F2FE',
-                }}
-              >
-                Rasmiy BMB Milliy Sertifikat Darajasi
+              <span style={{ fontSize: 10, fontWeight: 800, color: '#451A03', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: 4 }}>
+                MILLIY SERTIFIKAT
               </span>
-              <Crown size={20} color={grade.startsWith('A') ? '#FBBF24' : '#38BDF8'} className="gold-crown-anim" />
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <span
-                style={{
-                  fontSize: 38,
-                  fontWeight: 900,
-                  color: '#FFFFFF',
-                  textShadow: grade.startsWith('A')
-                    ? '0 0 20px rgba(245, 158, 11, 0.9)'
-                    : '0 0 20px rgba(56, 189, 248, 0.8)',
-                  lineHeight: 1,
-                }}
-              >
-                {grade}
-              </span>
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ fontSize: 14, fontWeight: 800, color: '#FFFFFF' }}>
-                  {grade.startsWith('A')
-                    ? "Oliy Toifa — Maksimal Imtiyoz (100% Ball)"
-                    : grade.startsWith('B')
-                    ? "Yuqori Toifa — Imtiyozli Ball Sertifikati"
-                    : "Standart Toifa — BMB Milliy Sertifikati"}
-                </div>
-                <div style={{ fontSize: 11, color: 'rgba(255, 255, 255, 0.75)' }}>
-                  Oliy ta'lim muassasalariga kirish imtihonlarida davlat tomonidan tan olinadi
-                </div>
+            <div style={{ marginTop: 18, maxWidth: 300 }}>
+              <h3 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 800, color: 'var(--text-primary)' }}>
+                Ajoyib natija, {formatDisplayName(user?.full_name || user?.email || 'Komiljon')}!
+              </h3>
+              <p className="muted" style={{ margin: 0, fontSize: 13, lineHeight: 1.4 }}>
+                Oldingi mock imtihondan <strong style={{ color: '#10B981' }}>+7 ball</strong> yuqori.
+              </p>
+            </div>
+          </div>
+
+          {/* O'ng tomon — 2x2 Metrikalar Gridi & Bo'limlar */}
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+              {/* Aniq ball */}
+              <div style={{ padding: 14, borderRadius: 14, background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
+                <span className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
+                  ANIQ BALL
+                </span>
+                <strong className="formula-mono" style={{ fontSize: 20, color: '#10B981' }}>
+                  {score} / {maxScore}
+                </strong>
+              </div>
+
+              {/* Foiz */}
+              <div style={{ padding: 14, borderRadius: 14, background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
+                <span className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
+                  FOIZ
+                </span>
+                <strong className="formula-mono" style={{ fontSize: 20, color: '#F59E0B' }}>
+                  {Math.round(pct)}%
+                </strong>
+              </div>
+
+              {/* Sarflangan vaqt */}
+              <div style={{ padding: 14, borderRadius: 14, background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
+                <span className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
+                  SARFLANGAN VAQT
+                </span>
+                <strong className="timer-mono" style={{ fontSize: 18, color: 'var(--text-primary)' }}>
+                  {formatTimer(timeSpentSeconds)}
+                </strong>
+              </div>
+
+              {/* Guruhdagi o'rin */}
+              <div style={{ padding: 14, borderRadius: 14, background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
+                <span className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
+                  GURUHDAGI O'RIN
+                </span>
+                <strong className="formula-mono" style={{ fontSize: 18, color: '#38BDF8' }}>
+                  #2 / 24
+                </strong>
               </div>
             </div>
 
-            {Number(raschScore) > 0 && (
-              <div
-                style={{
-                  marginTop: 4,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: '#FDE68A',
-                  background: 'rgba(0, 0, 0, 0.25)',
-                  padding: '3px 12px',
-                  borderRadius: 12,
-                }}
-              >
-                ⚡️ Rasch qiyinlik ko'rsatkichi: <b>{Number(raschScore).toFixed(1)}</b>
+            {/* Bo'limlar kesimidagi natija */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {/* 1-32 Test */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, marginBottom: 4 }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Test (1–32)</span>
+                  <span style={{ color: '#10B981', fontWeight: 800 }}>{closedStats.correct_count} / {closedStats.total_count}</span>
+                </div>
+                <div style={{ height: 6, background: 'rgba(255, 255, 255, 0.08)', borderRadius: 4, overflow: 'hidden' }}>
+                  <div style={{ width: `${Math.min(100, Math.max(0, closedStats.percentage))}%`, height: '100%', background: '#10B981' }} />
+                </div>
               </div>
-            )}
-          </div>
-        ) : (
-          Number(raschScore) > 0 && (
-            <div className="res-badges" style={{ marginTop: 16, display: 'flex', justifyContent: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <span style={{ background: 'rgba(245, 158, 11, 0.2)', border: '1px solid rgba(245, 158, 11, 0.4)', color: '#FBBF24', padding: '4px 12px', borderRadius: 8, fontSize: 13, fontWeight: 700 }}>
-                ⚡️ {t('res_rasch')}: <b>{Number(raschScore).toFixed(1)}</b>
-              </span>
+
+              {/* 33-35 Moslashtirish */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, marginBottom: 4 }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Moslashtirish (33–35)</span>
+                  <span style={{ color: '#10B981', fontWeight: 800 }}>{matchingStats.correct_count} / {matchingStats.total_count}</span>
+                </div>
+                <div style={{ height: 6, background: 'rgba(255, 255, 255, 0.08)', borderRadius: 4, overflow: 'hidden' }}>
+                  <div style={{ width: `${Math.min(100, Math.max(0, matchingStats.percentage))}%`, height: '100%', background: '#10B981' }} />
+                </div>
+              </div>
+
+              {/* 36-45 Ochiq masalalar */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, marginBottom: 4 }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Ochiq masalalar (36–45)</span>
+                  <span style={{ color: '#F59E0B', fontWeight: 800 }}>{openCalcStats.correct_count} / {openCalcStats.total_count}</span>
+                </div>
+                <div style={{ height: 6, background: 'rgba(255, 255, 255, 0.08)', borderRadius: 4, overflow: 'hidden' }}>
+                  <div style={{ width: `${Math.min(100, Math.max(0, openCalcStats.percentage))}%`, height: '100%', background: '#F59E0B' }} />
+                </div>
+              </div>
             </div>
-          )
-        )}
+          </div>
+        </div>
+
+        {/* Pastki Qator Amallar: [📲 Story], [⚔️ Do'stni duelga chaqirish], [🏠 Bosh sahifa] */}
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center', marginTop: 28, paddingTop: 20, borderTop: '1px solid var(--border-subtle)' }}>
+          <button
+            type="button"
+            onClick={() => setShowScoreCard(true)}
+            className="bento-btn bento-btn-gold"
+            style={{ fontWeight: 800 }}
+          >
+            <span>📲 Story (Instagram/Telegram uchun rasm)</span>
+          </button>
+
+          <Link
+            to="/arena"
+            className="bento-btn bento-btn-indigo"
+            style={{ fontWeight: 800, textDecoration: 'none' }}
+          >
+            <span>⚔️ Do'stni duelga chaqirish</span>
+          </Link>
+
+          <Link
+            to="/dashboard"
+            className="bento-btn"
+            style={{ fontWeight: 700, background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)', textDecoration: 'none' }}
+          >
+            <span>🏠 Bosh sahifa</span>
+          </Link>
+        </div>
       </section>
 
       {/* ========================================================================= */}

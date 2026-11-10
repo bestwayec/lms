@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useLang } from '../i18n/LangContext';
 import {
   MockTests,
@@ -11,7 +11,7 @@ import {
 import AnalyticsChart from '../components/AnalyticsChart';
 import AttendancePanel from '../components/AttendancePanel';
 import { UsersIcon } from '../components/icons';
-import { Send, PlusCircle, QrCode } from 'lucide-react';
+import { Send, PlusCircle, QrCode, Download, Sparkles, Radio } from 'lucide-react';
 import ClassroomQrModal from '../components/ClassroomQrModal';
 import type {
   AnalyticsData,
@@ -31,6 +31,34 @@ export default function TeacherDashboard() {
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [weeklyReports, setWeeklyReports] = useState<WeeklyReportRow[]>([]);
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const [activeMode, setActiveMode] = useState<'converter' | 'live' | 'vedomost'>(
+    tabParam === 'live' ? 'live' : tabParam === 'vedomost' ? 'vedomost' : 'converter'
+  );
+
+  useEffect(() => {
+    if (tabParam === 'live' || tabParam === 'vedomost' || tabParam === 'converter') {
+      setActiveMode(tabParam);
+    }
+  }, [tabParam]);
+
+  const setTab = (mode: 'converter' | 'live' | 'vedomost') => {
+    setActiveMode(mode);
+    setSearchParams({ tab: mode });
+  };
+
+  const openClassroomModal = (code: string = 'MOCK-42', title: string = 'Kimyo • 11-A Milliy Sertifikat Test') => {
+    setQrModalData({
+      isOpen: true,
+      title,
+      code,
+      webUrl: `https://grandec.uz/pin?code=${code}`,
+      tmaUrl: `https://t.me/grandec_bot/app?startapp=join_${code}`,
+      subtitle: "Doskada proyektor qiling — o'quvchilar QR-kod yoki 6 xonali kod orqali ulanishadi",
+    });
+  };
 
   // Quick Mock Creator state
   const [mockTitle, setMockTitle] = useState('');
@@ -157,6 +185,26 @@ export default function TeacherDashboard() {
     return [...seen.values()].sort((a, b) => a.full_name.localeCompare(b.full_name));
   }, [groups]);
 
+  const exportVedomostCsv = () => {
+    const headers = ['FIO', 'Email', 'Tarif', 'Testlar soni', 'Esselar soni', 'Guruhlar'];
+    const rows = students.map((s) => [
+      `"${s.full_name}"`,
+      `"${s.email}"`,
+      `"${s.pro_status_label ?? 'PRO'}"`,
+      s.tests_count ?? 0,
+      s.essays_count ?? 0,
+      `"${groups.filter((g) => (g.students ?? []).some((m) => m.id === s.id)).map((g) => g.name).join(', ')}"`,
+    ]);
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `grandec-vedomost-${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   if (loading && !err) return <p className="muted" role="status" aria-live="polite">{t('loading')}</p>;
 
   return (
@@ -165,6 +213,89 @@ export default function TeacherDashboard() {
         <UsersIcon size={24} className="ico" /> {t('teacher_dashboard')}
       </h1>
       {err && <p className="error" role="alert">{err}</p>}
+
+      {/* 3 Asosiy Rejim Tablari (Stage 5) */}
+      <div
+        style={{
+          display: 'flex',
+          gap: 8,
+          background: 'var(--bg-surface)',
+          padding: 6,
+          borderRadius: 16,
+          border: '1px solid var(--border-subtle)',
+          margin: '16px 0 24px',
+          maxWidth: 620,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setTab('converter')}
+          style={{
+            flex: 1,
+            padding: '10px 16px',
+            borderRadius: 12,
+            border: activeMode === 'converter' ? '1px solid rgba(99, 102, 241, 0.5)' : '1px solid transparent',
+            background: activeMode === 'converter' ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(99, 102, 241, 0.08) 100%)' : 'transparent',
+            color: activeMode === 'converter' ? '#818cf8' : 'var(--text-secondary)',
+            fontWeight: 800,
+            fontSize: '0.92rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            transition: 'all 0.2s ease',
+          }}
+        >
+          <Sparkles size={16} /> AI Konvertor
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setTab('live')}
+          style={{
+            flex: 1,
+            padding: '10px 16px',
+            borderRadius: 12,
+            border: activeMode === 'live' ? '1px solid rgba(245, 158, 11, 0.5)' : '1px solid transparent',
+            background: activeMode === 'live' ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(245, 158, 11, 0.08) 100%)' : 'transparent',
+            color: activeMode === 'live' ? '#F59E0B' : 'var(--text-secondary)',
+            fontWeight: 800,
+            fontSize: '0.92rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            transition: 'all 0.2s ease',
+          }}
+        >
+          <Radio size={16} /> Jonli tablo
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setTab('vedomost')}
+          style={{
+            flex: 1,
+            padding: '10px 16px',
+            borderRadius: 12,
+            border: activeMode === 'vedomost' ? '1px solid rgba(14, 165, 233, 0.5)' : '1px solid transparent',
+            background: activeMode === 'vedomost' ? 'linear-gradient(135deg, rgba(14, 165, 233, 0.15) 0%, rgba(14, 165, 233, 0.08) 100%)' : 'transparent',
+            color: activeMode === 'vedomost' ? '#0ea5e9' : 'var(--text-secondary)',
+            fontWeight: 800,
+            fontSize: '0.92rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            transition: 'all 0.2s ease',
+          }}
+        >
+          <span>📊</span> Vedomost
+        </button>
+      </div>
 
       {/* 🌟 USTOZ BOSHQARUV PANELINING ASOSIY 2 TA FOKUSI */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))', gap: '16px', marginBottom: '20px', marginTop: '16px' }}>
@@ -293,6 +424,62 @@ export default function TeacherDashboard() {
           </span>
         </div>
       </div>
+
+      {/* 📡 Jonli Tablo & Classroom QR Proyektor (Stage 5) */}
+      {(activeMode === 'live' || activeMode === 'converter') && (
+        <div
+          className="card bento-card"
+          style={{
+            marginTop: 18,
+            background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(99, 102, 241, 0.08) 100%)',
+            border: '1.5px solid rgba(245, 158, 11, 0.35)',
+            borderRadius: '20px',
+            padding: '24px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 16,
+          }}
+        >
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+              <span style={{ fontSize: 28 }}>📡</span>
+              <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 900 }}>
+                Jonli Tablo & Sinfxona Proyektori
+              </h2>
+            </div>
+            <p className="muted" style={{ margin: 0, fontSize: '0.92rem', maxWidth: 540 }}>
+              Testni sinf doskasida katta ekran rejimida ko'rsating. O'quvchilar <strong>QR-kod</strong> yoki 6 xonali PIN-kod (<strong>MOCK-42</strong>) orqali darhol ulanishadi.
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => openClassroomModal('MOCK-42', 'Kimyo • 11-A Milliy Sertifikat Test')}
+              className="bento-btn bento-btn-gold"
+              style={{ fontWeight: 800, padding: '0 22px', height: 46 }}
+            >
+              <QrCode size={18} />
+              <span>📱 Classroom QR & PIN (MOCK-42)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (data?.published_tests) {
+                  viewMockLeaderboard(1);
+                }
+              }}
+              className="bento-btn bento-btn-indigo"
+              style={{ fontWeight: 800, padding: '0 20px', height: 46 }}
+            >
+              <Radio size={18} />
+              <span>Jonli Natijalar Tablosi</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 🚀 Tezkor Mock Test Yaratish & BMB Reyting */}
       <div
@@ -794,10 +981,33 @@ export default function TeacherDashboard() {
         </div>
       )}
 
-      {/* Full students list across groups. */}
-      <h2>
-        {t('td_students_list')} ({students.length})
-      </h2>
+      {/* Full students list across groups (Vedomost) */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 32, marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
+        <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>📊</span>
+          <span>{t('td_students_list')} — Guruhlar Vedomosti ({students.length})</span>
+        </h2>
+        <button
+          type="button"
+          onClick={exportVedomostCsv}
+          className="btn primary sm"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            fontWeight: 800,
+            background: 'linear-gradient(135deg, #0ea5e9, #0284c7)',
+            borderColor: '#0284c7',
+            padding: '8px 16px',
+            borderRadius: 10,
+            cursor: 'pointer',
+          }}
+          title="Barcha o'quvchilar ballari va guruhlarini CSV/Excel faylga yuklash"
+        >
+          <Download size={15} />
+          <span>📥 CSV / Excel Yuklab Olish (Export Vedomost)</span>
+        </button>
+      </div>
       {students.length === 0 ? (
         <p className="muted">{t('gf_no_students')}</p>
       ) : (
