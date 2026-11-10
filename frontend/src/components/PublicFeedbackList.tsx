@@ -28,94 +28,124 @@ export default function PublicFeedbackList({ items, loading, onOpen }: Props) {
 
   if (loading) return null;
 
-  const sampleCards = [
+  const showcaseCards = [
     {
-      id: 'sample-1',
-      title: 'Milliy sertifikat (BMB) & Esse tahlili',
-      message: 'BMB standarti bo‘yicha 45 talik testlar va 12 mezonli AI Esse tekshiruvi orqali xatolar ustida chuqur ishlash imkoniyati.',
-      topic: 'Milliy Sertifikat',
-      tag: 'Namunaviy ko‘rinish',
+      id: 'showcase-cbt',
+      icon: '🎯',
+      title: 'BMB Milliy Sertifikat 45 talik CBT Arena',
+      badge: 'CBT Arena',
+      badgeColor: '#0EA5E9',
+      badgeBg: 'rgba(14, 165, 233, 0.12)',
+      badgeBorder: 'rgba(14, 165, 233, 0.3)',
+      desc: 'Haqiqiy davlat test markazi standarti, qat’iy vaqt nazorati, ko‘p tanlovli va ochiq savollar hamda avtomatik ball hisoblash.',
     },
     {
-      id: 'sample-2',
-      title: 'IELTS Academic & CEFR Multi-Level',
-      message: 'Listening gap-fill, Reading moslashtirish va Writing Task tahlili bo‘yicha xalqaro imtihon muhiti simulyatsiyasi.',
-      topic: 'IELTS / CEFR',
-      tag: 'Namunaviy ko‘rinish',
+      id: 'showcase-essay',
+      icon: '✍️',
+      title: '12-Mezonli AI Esse Studiyasi',
+      badge: 'AI Esse',
+      badgeColor: '#D97706',
+      badgeBg: 'rgba(217, 119, 6, 0.12)',
+      badgeBorder: 'rgba(217, 119, 6, 0.3)',
+      desc: 'O‘zbek va ingliz tillarida grammatika, uslub, mavzuni yoritish va leksika bo‘yicha soniyalar ichida professional xulosa va band ball.',
     },
     {
-      id: 'sample-3',
-      title: 'AI Vision Konvertor (5 ta fan)',
-      message: 'Qog‘ozdagi va PDF dagi testlarni soniyalar ichida raqamli CBT formatiga o‘tkazib, guruhlarga biriktirish tizimi.',
-      topic: 'AI Konvertor',
-      tag: 'Namunaviy ko‘rinish',
+      id: 'showcase-ielts',
+      icon: '🎧',
+      title: 'CD-IELTS & CEFR Audio CBT Imtihon',
+      badge: 'Audio CBT',
+      badgeColor: '#3B82F6',
+      badgeBg: 'rgba(59, 130, 246, 0.12)',
+      badgeBorder: 'rgba(59, 130, 246, 0.3)',
+      desc: 'Sinxron audio tinglash, matn bo‘ylab split-screen va to‘g‘ridan-to‘g‘ri gap-fill (bo‘sh joy to‘ldirish) bilan to‘liq xalqaro format muhiti.',
+    },
+    {
+      id: 'showcase-converter',
+      icon: '⚡',
+      title: '10-Soniyalik AI Test Konvertor',
+      badge: 'AI Vision',
+      badgeColor: '#10B981',
+      badgeBg: 'rgba(16, 185, 129, 0.12)',
+      badgeBorder: 'rgba(16, 185, 129, 0.3)',
+      desc: 'Qog‘ozdagi test fotosurati yoki PDF faylni bir zumda raqamli testga aylantirish va guruh o‘quvchilariga darhol biriktirish imkoniyati.',
     },
   ];
 
   if (items.length === 0) {
     return (
       <div className="fb-samples-section" style={{ width: '100%', margin: '0 auto' }}>
-        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
           <span
             style={{
               fontSize: '11.5px',
               fontWeight: 800,
-              padding: '4px 12px',
+              padding: '4px 14px',
               borderRadius: '999px',
               backgroundColor: 'rgba(200, 146, 42, 0.12)',
               color: '#C8922A',
               border: '1px solid rgba(200, 146, 42, 0.35)',
               display: 'inline-block',
               marginBottom: '8px',
+              letterSpacing: '0.04em',
+              textTransform: 'uppercase',
             }}
           >
-            Namunaviy taqrizlar (Platforma imkoniyatlari)
+            Platforma Imkoniyatlari Vitrinasi
           </span>
-          <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted, #64748b)' }}>
-            Hozircha foydalanuvchilar sharhi tasdiqlanmoqda. Birinchi bo‘lib o‘z fikringizni qoldiring!
+          <p style={{ margin: 0, fontSize: '13.5px', color: 'var(--muted, #64748b)' }}>
+            GRANDEC 2.0 intellektual LMS platformasining ilg‘or imkoniyatlari
           </p>
         </div>
 
-        <div className="fb-grid" style={{ marginBottom: '24px' }}>
-          {sampleCards.map((sc) => (
-            <figure
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+            gap: '16px',
+            marginBottom: '28px',
+          }}
+        >
+          {showcaseCards.map((sc) => (
+            <div
               key={sc.id}
-              className="fb-card"
+              className="bento-card"
               style={{
-                position: 'relative',
-                borderRadius: '16px',
-                border: '1.5px dashed var(--border, rgba(226, 232, 240, 0.8))',
-                backgroundColor: 'var(--card, #ffffff)',
-                padding: '20px',
+                borderRadius: '18px',
+                border: '1px solid var(--border-subtle, rgba(226, 232, 240, 0.8))',
+                backgroundColor: 'var(--bg-surface, #ffffff)',
+                padding: '22px',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                transition: 'transform 0.2s ease, box-shadow 0.2s ease',
               }}
             >
-              <div className="fb-card__top" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <div className="fb-card__stars" role="img" aria-label="5/5" style={{ display: 'flex', gap: '3px', color: '#f59e0b' }}>
-                  {[1, 2, 3, 4, 5].map((s) => (
-                    <Star key={s} size={15} fill="currentColor" />
-                  ))}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <span style={{ fontSize: '26px' }}>{sc.icon}</span>
+                  <span
+                    style={{
+                      fontSize: '10.5px',
+                      fontWeight: 800,
+                      padding: '3px 10px',
+                      borderRadius: '999px',
+                      backgroundColor: sc.badgeBg,
+                      color: sc.badgeColor,
+                      border: `1px solid ${sc.badgeBorder}`,
+                      letterSpacing: '0.03em',
+                    }}
+                  >
+                    {sc.badge}
+                  </span>
                 </div>
-                <span
-                  style={{
-                    fontSize: '10.5px',
-                    fontWeight: 800,
-                    padding: '2px 8px',
-                    borderRadius: '999px',
-                    backgroundColor: 'rgba(56, 189, 248, 0.12)',
-                    color: '#0284c7',
-                    border: '1px solid rgba(56, 189, 248, 0.3)',
-                  }}
-                >
-                  {sc.tag}
-                </span>
+                <h4 style={{ margin: '0 0 8px 0', fontSize: '15px', fontWeight: 800, color: 'var(--text-primary, #0f172a)', lineHeight: 1.35 }}>
+                  {sc.title}
+                </h4>
+                <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary, #64748b)', lineHeight: 1.6 }}>
+                  {sc.desc}
+                </p>
               </div>
-              <h4 style={{ margin: '0 0 6px 0', fontSize: '14.5px', fontWeight: 800, color: 'var(--ink, #0f172a)' }}>
-                {sc.title}
-              </h4>
-              <blockquote className="fb-card__quote" style={{ margin: 0, fontSize: '13px', color: 'var(--ink-soft, #475569)', lineHeight: 1.5 }}>
-                “{sc.message}”
-              </blockquote>
-            </figure>
+            </div>
           ))}
         </div>
 

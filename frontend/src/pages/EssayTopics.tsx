@@ -242,6 +242,14 @@ export default function EssayTopics() {
             <div className="es-grid">
               {visibleTopics.map((tp) => {
                 const kind = essayKind(tp);
+                const badge = {
+                  ielts_task1: { bg: 'rgba(59, 130, 246, 0.12)', color: '#2563eb', border: 'rgba(59, 130, 246, 0.3)' },
+                  ielts_task2: { bg: 'rgba(99, 102, 241, 0.12)', color: '#4f46e5', border: 'rgba(99, 102, 241, 0.3)' },
+                  multilevel: { bg: 'rgba(6, 182, 212, 0.12)', color: '#0891b2', border: 'rgba(6, 182, 212, 0.3)' },
+                  ona_tili: { bg: 'rgba(14, 165, 233, 0.12)', color: '#0284c7', border: 'rgba(14, 165, 233, 0.3)' },
+                  adabiyot: { bg: 'rgba(245, 158, 11, 0.12)', color: '#d97706', border: 'rgba(245, 158, 11, 0.3)' },
+                }[kind] || { bg: 'rgba(14, 165, 233, 0.12)', color: '#0284c7', border: 'rgba(14, 165, 233, 0.3)' };
+
                 return (
                   <article key={tp.id} className="ui-card es-card">
                     <div className="es-card__top">
@@ -249,7 +257,22 @@ export default function EssayTopics() {
                         <PenLine size={18} aria-hidden="true" />
                       </span>
                       <div style={{ minWidth: 0, flex: 1 }}>
-                        <span className="es-card__type">{t(`es_kind_${kind}`)}</span>
+                        <span
+                          className="es-card__type"
+                          style={{
+                            display: 'inline-block',
+                            padding: '2px 8px',
+                            borderRadius: '999px',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            backgroundColor: badge.bg,
+                            color: badge.color,
+                            border: `1px solid ${badge.border}`,
+                            marginBottom: '4px',
+                          }}
+                        >
+                          {t(`es_kind_${kind}`)}
+                        </span>
                         <h3 className="es-card__title clamp-2">{tp.title}</h3>
                       </div>
                       {tp.has_password && <Lock size={16} aria-label={t('es_locked')} />}

@@ -2916,7 +2916,14 @@
     "group_tests_taken": "{n} ta test",
     "group_load_err": "Guruh ma‘lumotlarini yuklab bo‘lmadi",
     "copy": "Nusxa olish",
-    "copied": "Nusxalandi!"
+    "copied": "Nusxalandi!",
+    "fix_mistake": "Xatoni yopish",
+    "all_sections": "Barcha bo‘limlar",
+    "start_practice": "Rejani davom ettirish",
+    "start_writing": "Insho yozish",
+    "daily_blitz": "Kunlik Blits",
+    "weak_topics_radar": "AI Zaif mavzular radari",
+    "tab_title": "GRANDEC 2.0 — Milliy Sertifikat, IELTS/CEFR va BMBA Intellektual LMS"
   },
   "ru": {
     "main": "Главное",
@@ -5835,7 +5842,14 @@
     "group_tests_taken": "{n} тестов",
     "group_load_err": "Не удалось загрузить данные группы",
     "copy": "Скопировать",
-    "copied": "Скопировано!"
+    "copied": "Скопировано!",
+    "fix_mistake": "Исправить ошибку",
+    "all_sections": "Все разделы",
+    "start_practice": "Продолжить план",
+    "start_writing": "Написать эссе",
+    "daily_blitz": "Ежедневный блиц",
+    "weak_topics_radar": "AI Радар слабых тем",
+    "tab_title": "GRANDEC 2.0 — Национальный сертификат, IELTS/CEFR и БМБА Интеллектуальная LMS"
   },
   "en": {
     "main": "Main",
@@ -8754,6 +8768,13 @@
     "group_tests_taken": "{n} tests",
     "group_load_err": "Failed to load group details",
     "copy": "Copy",
-    "copied": "Copied!"
+    "copied": "Copied!",
+    "fix_mistake": "Fix mistake",
+    "all_sections": "All sections",
+    "start_practice": "Continue plan",
+    "start_writing": "Write essay",
+    "daily_blitz": "Daily blitz",
+    "weak_topics_radar": "AI Weak topics radar",
+    "tab_title": "GRANDEC 2.0 — National Certificate, IELTS/CEFR & BMBA Next-Gen LMS"
   }
 }

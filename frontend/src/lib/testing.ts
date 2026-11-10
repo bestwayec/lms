@@ -243,7 +243,7 @@ export const TestsApi = {
 
 /** Storage draft key for network-failure resume of an attempt. */
 export function draftKey(attemptId: string): string {
-  return `take-draft-${attemptId}`;
+  return `grandec_attempt_${attemptId}_answers`;
 }
 
 export type DraftMap = Record<
@@ -263,8 +263,10 @@ export type DraftMap = Record<
 export function loadDraft(attemptId: string): DraftMap {
   try {
     const raw =
-      localStorage.getItem(draftKey(attemptId)) ||
-      sessionStorage.getItem(draftKey(attemptId));
+      localStorage.getItem(`grandec_attempt_${attemptId}_answers`) ||
+      localStorage.getItem(`take-draft-${attemptId}`) ||
+      sessionStorage.getItem(`grandec_attempt_${attemptId}_answers`) ||
+      sessionStorage.getItem(`take-draft-${attemptId}`);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as DraftMap;
     return parsed && typeof parsed === 'object' ? parsed : {};
@@ -276,10 +278,10 @@ export function loadDraft(attemptId: string): DraftMap {
 export function storeDraft(attemptId: string, draft: DraftMap): void {
   const json = JSON.stringify(draft);
   try {
-    localStorage.setItem(draftKey(attemptId), json);
+    localStorage.setItem(`grandec_attempt_${attemptId}_answers`, json);
   } catch {
     try {
-      sessionStorage.setItem(draftKey(attemptId), json);
+      sessionStorage.setItem(`grandec_attempt_${attemptId}_answers`, json);
     } catch {
       /* storage full / private mode — non-fatal */
     }
@@ -288,8 +290,10 @@ export function storeDraft(attemptId: string, draft: DraftMap): void {
 
 export function clearDraft(attemptId: string): void {
   try {
-    localStorage.removeItem(draftKey(attemptId));
-    sessionStorage.removeItem(draftKey(attemptId));
+    localStorage.removeItem(`grandec_attempt_${attemptId}_answers`);
+    localStorage.removeItem(`take-draft-${attemptId}`);
+    sessionStorage.removeItem(`grandec_attempt_${attemptId}_answers`);
+    sessionStorage.removeItem(`take-draft-${attemptId}`);
   } catch {
     /* ignore */
   }

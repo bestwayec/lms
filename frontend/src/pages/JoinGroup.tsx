@@ -6,12 +6,9 @@ import {
   LogIn,
   Users,
   X,
-  Building2,
   Search,
-  KeyRound,
   GraduationCap,
   Sparkles,
-  Phone,
   CheckCircle2,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
@@ -19,10 +16,7 @@ import { useToast } from '../context/ToastContext';
 import { useLang } from '../i18n/LangContext';
 import {
   GroupInviteApi,
-  SchoolBranchesCatalogApi,
-  StudentGroupDetailApi,
   type GroupJoinPreview,
-  type CatalogBranchItem,
 } from '../lib/api';
 
 export default function JoinGroup() {
@@ -32,9 +26,6 @@ export default function JoinGroup() {
   const toast = useToast();
   const { t } = useLang();
 
-  // Tab: 'code' | 'catalog'
-  const [activeTab, setActiveTab] = useState<'code' | 'catalog'>(token ? 'code' : 'code');
-
   // Direct Code / Token Flow
   const [codeInput, setCodeInput] = useState(token || '');
   const [loadingPreview, setLoadingPreview] = useState(false);
@@ -42,12 +33,6 @@ export default function JoinGroup() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [joined, setJoined] = useState(false);
-
-  // Catalog Flow
-  const [catalog, setCatalog] = useState<CatalogBranchItem[]>([]);
-  const [loadingCatalog, setLoadingCatalog] = useState(false);
-  const [selectedSubject, setSelectedSubject] = useState<string>('all');
-  const [joiningGroupId, setJoiningGroupId] = useState<number | null>(null);
 
   // If token is in URL, fetch preview immediately
   useEffect(() => {
@@ -75,25 +60,6 @@ export default function JoinGroup() {
     }
   };
 
-  const loadCatalog = async () => {
-    try {
-      setLoadingCatalog(true);
-      const res = await SchoolBranchesCatalogApi.catalog();
-      setCatalog(res || []);
-    } catch (err) {
-      toast.error('Kursxonalar katalogini yuklab bo‘lmadi');
-    } finally {
-      setLoadingCatalog(false);
-    }
-  };
-
-  const handleTabChange = (tab: 'code' | 'catalog') => {
-    setActiveTab(tab);
-    if (tab === 'catalog' && catalog.length === 0) {
-      loadCatalog();
-    }
-  };
-
   const handleJoin = async (targetTokenOrCode?: string) => {
     const code = targetTokenOrCode || group?.invite_token || group?.invite_code || codeInput.trim();
     if (!code) return;
@@ -115,26 +81,6 @@ export default function JoinGroup() {
       toast.error(msg);
     } finally {
       setSubmitting(false);
-      setJoiningGroupId(null);
-    }
-  };
-
-  const handleCatalogGroupJoin = async (groupCode: string, gId: number) => {
-    if (!user) {
-      toast.error('Guruhga qo‘shilish uchun avval tizimga kiring');
-      navigate(`/login?next=${encodeURIComponent('/join')}`);
-      return;
-    }
-    setJoiningGroupId(gId);
-    try {
-      const res = await StudentGroupDetailApi.joinByCode(groupCode);
-      toast.success(res.message || 'Guruhga muvaffaqiyatli qo‘shildingiz!');
-      setTimeout(() => navigate(`/groups/${gId}`), 800);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Qo‘shilishda xatolik yuz berdi';
-      toast.error(msg);
-    } finally {
-      setJoiningGroupId(null);
     }
   };
 
@@ -154,81 +100,19 @@ export default function JoinGroup() {
           Guruhga va Kursxonaga Qo‘shilish
         </h1>
         <p style={{ margin: 0, color: 'var(--text-secondary, #94A3B8)', fontSize: 14 }}>
-          Ustozingiz bergan 6 xonali guruh kodi orqali yoki o‘z hududingizdagi filialni tanlab guruhga a‘zo bo‘ling.
+          Ustozingiz bergan 6 xonali guruh kodi yoki taklif havolasi orqali guruhga a‘zo bo‘ling.
         </p>
       </div>
 
-      {/* Tabs */}
       <div
         style={{
-          display: 'flex',
           background: 'var(--card-bg, #1E293B)',
-          borderRadius: 14,
-          padding: 4,
-          marginBottom: 24,
+          borderRadius: 20,
+          padding: '28px 24px',
           border: '1px solid var(--border-color, rgba(255,255,255,0.08))',
+          boxShadow: '0 8px 30px rgba(0,0,0,0.2)',
         }}
       >
-        <button
-          type="button"
-          onClick={() => handleTabChange('code')}
-          style={{
-            flex: 1,
-            padding: '11px 16px',
-            borderRadius: 10,
-            border: 'none',
-            fontSize: 14,
-            fontWeight: 600,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            background: activeTab === 'code' ? '#C8922A' : 'transparent',
-            color: activeTab === 'code' ? '#fff' : '#94A3B8',
-            transition: 'all 0.2s',
-          }}
-        >
-          <KeyRound size={17} />
-          Guruh Kodi Orqali (Masalan: BIO-104)
-        </button>
-
-        <button
-          type="button"
-          onClick={() => handleTabChange('catalog')}
-          style={{
-            flex: 1,
-            padding: '11px 16px',
-            borderRadius: 10,
-            border: 'none',
-            fontSize: 14,
-            fontWeight: 600,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            background: activeTab === 'catalog' ? '#C8922A' : 'transparent',
-            color: activeTab === 'catalog' ? '#fff' : '#94A3B8',
-            transition: 'all 0.2s',
-          }}
-        >
-          <Building2 size={17} />
-          Filial va Fanlar Katalogi
-        </button>
-      </div>
-
-      {/* TAB 1: CODE INPUT */}
-      {activeTab === 'code' && (
-        <div
-          style={{
-            background: 'var(--card-bg, #1E293B)',
-            borderRadius: 20,
-            padding: '28px 24px',
-            border: '1px solid var(--border-color, rgba(255,255,255,0.08))',
-            boxShadow: '0 8px 30px rgba(0,0,0,0.2)',
-          }}
-        >
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -447,174 +331,47 @@ export default function JoinGroup() {
             </div>
           )}
         </div>
-      )}
 
-      {/* TAB 2: CATALOG BROWSE */}
-      {activeTab === 'catalog' && (
+      <div
+        style={{
+          marginTop: 24,
+          padding: '16px 20px',
+          borderRadius: 16,
+          background: 'rgba(245, 158, 11, 0.08)',
+          border: '1px solid rgba(245, 158, 11, 0.25)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 12,
+        }}
+      >
         <div>
-          {/* Subject Filter Pills */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
-            {[
-              { id: 'all', label: 'Barcha Fanlar' },
-              { id: 'biology', label: '🧬 Biologiya' },
-              { id: 'chemistry', label: '🧪 Kimyo' },
-              { id: 'law', label: '⚖️ Huquqshunoslik' },
-              { id: 'uzbek', label: '🇺🇿 Ona tili' },
-              { id: 'english', label: '🇬🇧 Ingliz tili' },
-            ].map((p) => {
-              const active = selectedSubject === p.id;
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => setSelectedSubject(p.id)}
-                  style={{
-                    padding: '8px 16px',
-                    borderRadius: 10,
-                    border: 'none',
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    background: active ? '#C8922A' : 'var(--card-bg, #1E293B)',
-                    color: active ? '#fff' : '#94A3B8',
-                  }}
-                >
-                  {p.label}
-                </button>
-              );
-            })}
-          </div>
-
-          {loadingCatalog ? (
-            <div style={{ textAlign: 'center', padding: '50px 0', color: '#94A3B8' }}>
-              Kursxonalar yuklanmoqda...
-            </div>
-          ) : catalog.length === 0 ? (
-            <div
-              style={{
-                background: 'var(--card-bg, #1E293B)',
-                borderRadius: 16,
-                padding: '40px 20px',
-                textAlign: 'center',
-                color: '#94A3B8',
-              }}
-            >
-              Hozircha ochiq kursxonalar ro‘yxati topilmadi.
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              {catalog.map((b) => {
-                const filteredGroups = (b.groups || []).filter(
-                  (g) => selectedSubject === 'all' || g.subject === selectedSubject
-                );
-
-                if (selectedSubject !== 'all' && filteredGroups.length === 0) {
-                  return null;
-                }
-
-                return (
-                  <div
-                    key={b.id}
-                    style={{
-                      background: 'var(--card-bg, #1E293B)',
-                      borderRadius: 18,
-                      padding: '22px',
-                      border: '1px solid var(--border-color, rgba(255,255,255,0.08))',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                      <div>
-                        <span
-                          style={{
-                            padding: '3px 8px',
-                            borderRadius: 6,
-                            background: 'rgba(59,130,246,0.15)',
-                            color: '#60A5FA',
-                            fontSize: 11,
-                            fontWeight: 700,
-                          }}
-                        >
-                          {b.branch_code}
-                        </span>
-                        <h3 style={{ fontSize: 17, fontWeight: 700, margin: '6px 0 4px', color: '#F8FAFC' }}>
-                          {b.name}
-                        </h3>
-                        <div style={{ fontSize: 12, color: '#94A3B8' }}>
-                          📍 {b.region} {b.address ? `• ${b.address}` : ''}
-                        </div>
-                      </div>
-
-                      {b.phone && (
-                        <div style={{ fontSize: 12, color: '#10B981', display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <Phone size={13} /> {b.phone}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Groups under this branch */}
-                    <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#94A3B8' }}>
-                        Filialdagi Ochiq Guruhlar ({filteredGroups.length}):
-                      </div>
-
-                      {filteredGroups.length === 0 ? (
-                        <div style={{ fontSize: 13, color: '#64748B', fontStyle: 'italic' }}>
-                          Bu fanda hozircha guruh ochilmagan.
-                        </div>
-                      ) : (
-                        filteredGroups.map((g) => (
-                          <div
-                            key={g.id}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              padding: '12px 16px',
-                              borderRadius: 12,
-                              background: 'rgba(255,255,255,0.04)',
-                              border: '1px solid rgba(255,255,255,0.06)',
-                            }}
-                          >
-                            <div>
-                              <div style={{ fontSize: 14, fontWeight: 700, color: '#F8FAFC' }}>
-                                {g.name}
-                              </div>
-                              <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 2 }}>
-                                Ustoz: <b>{g.teacher_name}</b> • {g.student_count} ta o‘quvchi • Kod:{' '}
-                                <b style={{ color: '#F59E0B' }}>{g.invite_code}</b>
-                              </div>
-                            </div>
-
-                            <button
-                              onClick={() => handleCatalogGroupJoin(g.invite_code, g.id)}
-                              disabled={joiningGroupId === g.id}
-                              style={{
-                                padding: '8px 16px',
-                                borderRadius: 10,
-                                background: '#C8922A',
-                                color: '#fff',
-                                border: 'none',
-                                fontWeight: 600,
-                                fontSize: 13,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 6,
-                              }}
-                            >
-                              {joiningGroupId === g.id ? 'Qo‘shilmoqda...' : 'Guruhga kirish'}
-                              <ArrowRight size={14} />
-                            </button>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          <span style={{ fontSize: 14, fontWeight: 700, color: '#F8FAFC', display: 'block' }}>
+            🌍 Umumiy Platforma Peshqadamlari
+          </span>
+          <span style={{ fontSize: 12, color: '#94A3B8' }}>
+            Barcha fanlar va guruhlar bo‘yicha respublika miqyosidagi jonli natijalar bilan tanishing.
+          </span>
         </div>
-      )}
+        <Link
+          to="/leaderboard"
+          style={{
+            padding: '9px 18px',
+            borderRadius: 10,
+            background: '#C8922A',
+            color: '#fff',
+            fontWeight: 700,
+            fontSize: 13,
+            textDecoration: 'none',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          Umumiy reytingni ko‘rish →
+        </Link>
+      </div>
     </div>
   );
 }

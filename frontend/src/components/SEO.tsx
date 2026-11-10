@@ -11,7 +11,13 @@ export interface SEOProps {
   jsonLd?: Record<string, unknown> | Array<Record<string, unknown>>;
 }
 
-const DEFAULT_TITLE = 'GRANDEC 2.0 — Milliy Sertifikat, IELTS/CEFR va BMBA Intellektual LMS';
+const DEFAULT_TITLES: Record<string, string> = {
+  uz: 'GRANDEC 2.0 — Milliy Sertifikat, IELTS/CEFR va BMBA Intellektual LMS',
+  ru: 'GRANDEC 2.0 — Национальный сертификат, IELTS/CEFR и БМБА Интеллектуальная LMS',
+  en: 'GRANDEC 2.0 — National Certificate, IELTS/CEFR & BMBA Next-Gen LMS',
+};
+
+const DEFAULT_TITLE = DEFAULT_TITLES.uz;
 const DEFAULT_DESC =
   "GRANDEC 2.0 — Milliy Sertifikat, IELTS/CEFR va BMBA Intellektual LMS platformasi va AI Tahlil tizimi. 5 ta fan: Ingliz tili, Kimyo, Biologiya, Huquq va Ona tili.";
 const DEFAULT_IMAGE = 'https://grandec.uz/grandec.png';
@@ -48,8 +54,10 @@ export default function SEO({
   jsonLd,
 }: SEOProps) {
   useEffect(() => {
-    // Document Title
-    const formattedTitle = title ? `${title} | GRANDEC` : DEFAULT_TITLE;
+    // Document Title with 3-language fallback
+    const lang = (typeof localStorage !== 'undefined' ? localStorage.getItem('lang') : null) || document.documentElement.lang || 'uz';
+    const localizedDefault = DEFAULT_TITLES[lang] || DEFAULT_TITLE;
+    const formattedTitle = title ? `${title} | GRANDEC 2.0` : localizedDefault;
     document.title = formattedTitle;
 
     // Standard Meta Tags

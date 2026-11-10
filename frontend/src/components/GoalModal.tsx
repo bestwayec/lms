@@ -14,9 +14,10 @@ export interface GoalModalProps {
   currentExam?: string;
   currentGrade?: string;
   currentQuestions?: number;
+  subject?: Subject;
 }
 
-type Subject = 'uzbek' | 'english' | 'biology' | 'chemistry' | 'law';
+export type Subject = 'uzbek' | 'english' | 'biology' | 'chemistry' | 'law';
 
 interface ExamOption {
   id: string;
@@ -29,7 +30,7 @@ interface ExamOption {
 const EXAM_OPTIONS: ExamOption[] = [
   {
     id: 'milliy_sertifikat',
-    title: 'Milliy Sertifikat (BMB)',
+    title: 'Ona tili Milliy Sertifikat (BMB)',
     subject: 'uzbek',
     icon: '🇺🇿',
     grades: [
@@ -40,8 +41,86 @@ const EXAM_OPTIONS: ExamOption[] = [
     ],
   },
   {
+    id: 'bmba',
+    title: 'BMBA (DTM) Asosiy va Majburiy Blok',
+    subject: 'uzbek',
+    icon: '🏛️',
+    grades: [
+      { id: '189 ball', label: '189 ball (Maksimal / Davlat Granti)' },
+      { id: '160+ ball', label: '160+ ball (Davlat Granti)' },
+      { id: '140+ ball', label: '140+ ball (To‘lov-shartnoma)' },
+    ],
+  },
+  {
+    id: 'chemistry_milliy',
+    title: 'Kimyo Milliy Sertifikat (BMB)',
+    subject: 'chemistry',
+    icon: '🧪',
+    grades: [
+      { id: 'A+', label: 'A+ (Maksimal — 70+ ball)' },
+      { id: 'A', label: 'A daraja (65–69 ball)' },
+      { id: 'B+', label: 'B+ daraja (60–64 ball)' },
+      { id: 'B', label: 'B daraja (50–59 ball)' },
+    ],
+  },
+  {
+    id: 'chemistry_dtm',
+    title: 'BMBA Kimyo (Tibbiyot Yo‘nalishi)',
+    subject: 'chemistry',
+    icon: '🩺',
+    grades: [
+      { id: '93 ball', label: '93 ball (Maksimal)' },
+      { id: '80+ ball', label: '80+ ball (Davlat Granti)' },
+      { id: '65+ ball', label: '65+ ball (Kontrakt)' },
+    ],
+  },
+  {
+    id: 'biology_milliy',
+    title: 'Biologiya Milliy Sertifikat (BMB)',
+    subject: 'biology',
+    icon: '🧬',
+    grades: [
+      { id: 'A+', label: 'A+ (Maksimal — 70+ ball)' },
+      { id: 'A', label: 'A daraja (65–69 ball)' },
+      { id: 'B+', label: 'B+ daraja (60–64 ball)' },
+      { id: 'B', label: 'B daraja (50–59 ball)' },
+    ],
+  },
+  {
+    id: 'biology_cbt',
+    title: 'Biologiya 45 talik CBT Arena',
+    subject: 'biology',
+    icon: '🔬',
+    grades: [
+      { id: 'A+', label: 'A+ (Maksimal — 70+ ball)' },
+      { id: 'A', label: 'A daraja (65–69 ball)' },
+      { id: 'B+', label: 'B+ daraja (60–64 ball)' },
+    ],
+  },
+  {
+    id: 'law_milliy',
+    title: 'Huquqshunoslik Milliy Sertifikat (BMB)',
+    subject: 'law',
+    icon: '⚖️',
+    grades: [
+      { id: 'A+', label: 'A+ (Maksimal — 70+ ball)' },
+      { id: 'A', label: 'A daraja (65–69 ball)' },
+      { id: 'B+', label: 'B+ daraja (60–64 ball)' },
+    ],
+  },
+  {
+    id: 'law_bmba',
+    title: 'BMBA Yurisprudensiya Bloki',
+    subject: 'law',
+    icon: '🏛️',
+    grades: [
+      { id: '93 ball', label: '93 ball (Maksimal)' },
+      { id: '80+ ball', label: '80+ ball (Yuridik grant)' },
+    ],
+  },
+  {
     id: 'cefr',
-    title: 'CEFR Multi-Level',
+    title: 'CEFR Multi-Level (BMB)',
     subject: 'english',
     icon: '🇬🇧',
     grades: [
@@ -57,20 +136,9 @@ const EXAM_OPTIONS: ExamOption[] = [
     icon: '🎓',
     grades: [
       { id: 'Band 7.5+', label: 'Band 7.5+ (Ilg‘or)' },
-      { id: 'Band 6.5', label: 'Band 6.5 (Yaxshi)' },
+      { id: 'Band 7.0', label: 'Band 7.0 (Yaxshi)' },
       { id: 'Band 8.0+', label: 'Band 8.0+ (Maksimal)' },
-      { id: 'Band 6.0', label: 'Band 6.0 (Yetarli)' },
-    ],
-  },
-  {
-    id: 'bmba',
-    title: 'BMBA (DTM)',
-    subject: 'uzbek',
-    icon: '🏛️',
-    grades: [
-      { id: '189 ball', label: '189 ball (Maksimal / Davlat Granti)' },
-      { id: '160+ ball', label: '160+ ball (Davlat Granti)' },
-      { id: '140+ ball', label: '140+ ball (To‘lov-shartnoma)' },
+      { id: 'Band 6.5', label: 'Band 6.5 (Yetarli)' },
     ],
   },
 ];
@@ -88,6 +156,7 @@ export const GoalModal: React.FC<GoalModalProps> = ({
   currentExam = 'milliy_sertifikat',
   currentGrade = 'A+',
   currentQuestions = 30,
+  subject,
 }) => {
   const { user, updateUser } = useAuth();
   const [selectedExam, setSelectedExam] = useState<string>(currentExam);
@@ -102,14 +171,23 @@ export const GoalModal: React.FC<GoalModalProps> = ({
   // Sync initial values when opened or props change
   useEffect(() => {
     if (isOpen) {
-      const matchExam = EXAM_OPTIONS.find((e) => e.id === currentExam || currentExam.toLowerCase().includes(e.id));
-      setSelectedExam(matchExam ? matchExam.id : 'milliy_sertifikat');
+      let defaultForSubject: string | undefined;
+      if (subject) {
+        const found = EXAM_OPTIONS.find((e) => e.subject === subject);
+        if (found) defaultForSubject = found.id;
+      }
+      const matchExam = EXAM_OPTIONS.find((e) =>
+        subject
+          ? e.subject === subject && (e.id === currentExam || currentExam.toLowerCase().includes(e.id))
+          : e.id === currentExam || currentExam.toLowerCase().includes(e.id),
+      );
+      setSelectedExam(matchExam ? matchExam.id : defaultForSubject || 'milliy_sertifikat');
       setSelectedGrade(currentGrade || 'A+');
       setSelectedQuestions(currentQuestions || 30);
       setError(null);
       setTimeout(() => closeBtnRef.current?.focus(), 50);
     }
-  }, [isOpen, currentExam, currentGrade, currentQuestions]);
+  }, [isOpen, currentExam, currentGrade, currentQuestions, subject]);
 
   // Handle ESC key to close
   useEffect(() => {
@@ -319,7 +397,14 @@ export const GoalModal: React.FC<GoalModalProps> = ({
               1. Asosiy yo‘nalish / Imtihon turi
             </label>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '8px' }}>
-              {EXAM_OPTIONS.map((exam) => {
+              {(subject
+                ? [...EXAM_OPTIONS].sort((a, b) => {
+                    if (a.subject === subject && b.subject !== subject) return -1;
+                    if (b.subject === subject && a.subject !== subject) return 1;
+                    return 0;
+                  })
+                : EXAM_OPTIONS
+              ).map((exam) => {
                 const isSelected = selectedExam === exam.id;
                 return (
                   <button

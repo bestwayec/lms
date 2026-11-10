@@ -8,6 +8,7 @@ import {
   GamificationApi,
   PaymentsApi,
   MockTests,
+  StudentGroupDetailApi,
   type DashboardData,
   type DashboardRecent,
   type DashboardWeakPart,
@@ -18,13 +19,54 @@ import { formatDisplayName, initialsOf } from '../lib/displayName';
 import { essayKind, essayStatus, scoreLabel } from '../lib/essays';
 import { useSubject } from '../lib/useSubject';
 import { daysLeft, useEntitlement, useTier } from '../lib/useTier';
-import { Target, KeyRound, Trophy, Settings } from 'lucide-react';
+import { Target, KeyRound, Trophy, Settings, Users } from 'lucide-react';
 import { hapticImpact, hapticNotify } from '../lib/haptics';
+import { useToast } from '../context/ToastContext';
 import ReferralCard from '../components/ReferralCard';
 
 const GoalModal = lazy(() => import('../components/GoalModal'));
 const OnboardingModal = lazy(() => import('../components/OnboardingModal'));
 const DailyBlitzModal = lazy(() => import('../components/DailyBlitzModal'));
+
+export interface SubjectGoalConfig {
+  goalText: string;
+  badgeClass: string;
+  badgeStyle: { color: string; backgroundColor: string; borderColor: string };
+  radarAxes: string[];
+}
+
+export const SUBJECT_GOAL_CONFIG: Record<string, SubjectGoalConfig> = {
+  chemistry: {
+    goalText: '🧪 Kimyo Milliy Sertifikat (A+) / Tibbiyot Yo‘nalishi',
+    badgeClass: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/30',
+    badgeStyle: { color: '#10B981', backgroundColor: 'rgba(16, 185, 129, 0.12)', borderColor: 'rgba(16, 185, 129, 0.3)' },
+    radarAxes: ['Organik', 'Anorganik', 'Masalalar (36-45)', 'Reaksiyalar', 'Nazariya'],
+  },
+  uzbek: {
+    goalText: '🇺🇿 BMB Milliy Sertifikat (A+) / BMBA Majburiy va Asosiy Fan',
+    badgeClass: 'text-sky-600 dark:text-sky-400 bg-sky-500/10 border-sky-500/30',
+    badgeStyle: { color: '#0EA5E9', backgroundColor: 'rgba(14, 165, 233, 0.12)', borderColor: 'rgba(14, 165, 233, 0.3)' },
+    radarAxes: ['Grammatika', 'Sintaksis', 'Adabiyot', 'Matn tahlili', 'Imlo va uslub'],
+  },
+  biology: {
+    goalText: '🧬 Biologiya Milliy Sertifikat (A+) / 45 talik CBT',
+    badgeClass: 'text-teal-600 dark:text-teal-400 bg-teal-500/10 border-teal-500/30',
+    badgeStyle: { color: '#06B6D4', backgroundColor: 'rgba(6, 182, 212, 0.12)', borderColor: 'rgba(6, 182, 212, 0.3)' },
+    radarAxes: ['Botanika', 'Zoologiya', 'Odam anatomiyasi', 'Genetika', 'Ekologiya'],
+  },
+  law: {
+    goalText: '⚖️ Davlat va Huquq Asoslari (Milliy Sertifikat / BMBA)',
+    badgeClass: 'text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/30',
+    badgeStyle: { color: '#8B5CF6', backgroundColor: 'rgba(139, 92, 246, 0.12)', borderColor: 'rgba(139, 92, 246, 0.3)' },
+    radarAxes: ['Konstitutsiya', 'Fuqarolik', 'Jinoyat huquqi', 'Mehnat huquqi', 'Davlat nazariyasi'],
+  },
+  english: {
+    goalText: '🇬🇧 IELTS Academic (Band 7.5) / CEFR C1',
+    badgeClass: 'text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/20',
+    badgeStyle: { color: '#3B82F6', backgroundColor: 'rgba(59, 130, 246, 0.12)', borderColor: 'rgba(59, 130, 246, 0.3)' },
+    radarAxes: ['Reading', 'Listening', 'Writing', 'Grammar', 'Vocabulary'],
+  },
+};
 
 const CURATED_RADAR_TOPICS: Record<string, { label: string; percentage: number; needsReview: boolean }[]> = {
   biology: [
@@ -73,22 +115,30 @@ function getStoredPlan(): Record<string, unknown> {
 }
 
 function resolveTrackBadge(userExamTarget?: string, storedPlan?: Record<string, unknown>, subject?: string): string {
-  const target = String(userExamTarget || storedPlan?.target_exam || storedPlan?.exam_target || storedPlan?.target || '');
-  const sub = String(storedPlan?.sub_subject || '');
-  if (target === 'milliy_sertifikat' || target === 'national_certificate') {
-    if (subject === 'biology') return '🧬 Biologiya (Milliy sertifikat & DTM)';
-    if (subject === 'chemistry') return '🧪 Kimyo (Milliy sertifikat & DTM)';
-    if (subject === 'law') return '⚖️ Huquqshunoslik (Yurisprudensiya)';
-    return '🇺🇿 Milliy Sertifikat';
+  const currentSub = subject || 'uzbek';
+  const cfg = SUBJECT_GOAL_CONFIG[currentSub] || SUBJECT_GOAL_CONFIG.uzbek;
+  const target = String(userExamTarget || storedPlan?.target_exam || storedPlan?.exam_target || storedPlan?.target || '').toLowerCase();
+
+  if (currentSub === 'english') {
+    if (target === 'ielts') return '🎓 IELTS Academic (Band 7.5)';
+    if (target === 'cefr' || target === 'multilevel') return '🇬🇧 CEFR Multi-level (C1)';
+    return cfg.goalText;
   }
-  if (target === 'cefr' || target === 'multilevel') return '🇬🇧 CEFR Multi-level';
-  if (target === 'ielts') return '🎓 IELTS Academic';
-  if (target === 'attestatsiya' || target === 'attestation') return '📜 Attestatsiya 2026';
-  if (target === 'other') return sub ? `📚 ${sub}` : '📚 Umumiy fanlar';
-  if (subject === 'biology') return '🧬 Biologiya (Milliy sertifikat & DTM)';
-  if (subject === 'chemistry') return '🧪 Kimyo (Milliy sertifikat & DTM)';
-  if (subject === 'law') return '⚖️ Huquqshunoslik (Yurisprudensiya)';
-  return subject === 'english' ? '🇬🇧 Ingliz tili (CEFR / IELTS)' : '🇺🇿 Ona tili (Milliy sertifikat)';
+  if (currentSub === 'chemistry') {
+    if (target.includes('dtm')) return '🩺 BMBA (DTM) Tibbiyot Yo‘nalishi';
+    return cfg.goalText;
+  }
+  if (currentSub === 'biology') {
+    if (target.includes('dtm') || target.includes('cbt')) return '🧬 Biologiya 45 talik CBT Arena';
+    return cfg.goalText;
+  }
+  if (currentSub === 'law') {
+    if (target.includes('bmba')) return '🏛️ BMBA Yurisprudensiya Bloki';
+    return cfg.goalText;
+  }
+  // uzbek
+  if (target === 'bmba' || target === 'dtm') return '🏛️ BMBA (DTM) Asosiy Blok';
+  return cfg.goalText;
 }
 
 /** Student dashboard: one main action, daily goal, real indicators, recent results, weak parts, goal. */
@@ -173,6 +223,35 @@ export default function Dashboard() {
       hapticNotify('error');
     } finally {
       setPinBusy(false);
+    }
+  };
+
+  const toast = useToast();
+  const [groupCodeInput, setGroupCodeInput] = useState('');
+  const [groupJoining, setGroupJoining] = useState(false);
+  const [groupJoinError, setGroupJoinError] = useState<string | null>(null);
+
+  const handleJoinGroup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const code = groupCodeInput.trim().toUpperCase();
+    if (!code) return;
+    setGroupJoining(true);
+    setGroupJoinError(null);
+    try {
+      const res = await StudentGroupDetailApi.joinByCode(code);
+      toast.success(res.message || 'Guruhga muvaffaqiyatli qo‘shildingiz!');
+      const gid = (res.group as any)?.id || (res as any).group_id;
+      if (gid) {
+        navigate(`/groups/${gid}`);
+      } else {
+        window.location.reload();
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Guruh kodi topilmadi yoki muddat o‘tgan';
+      setGroupJoinError(msg);
+      toast.error(msg);
+    } finally {
+      setGroupJoining(false);
     }
   };
 
@@ -345,7 +424,8 @@ export default function Dashboard() {
   const todayBadgeText = `BOSHQARUV • ${now.getDate()}-${monthNames[now.getMonth()]}`;
   const currentHour = now.getHours();
   const greetingPrefix = currentHour < 11 ? 'Xayrli tong' : currentHour < 18 ? 'Xayrli kun' : 'Xayrli kech';
-  const targetGoalText = trackBadgeLabel ? `${trackBadgeLabel} / ${subject === 'english' ? 'IELTS 7.0' : 'A+'}` : (subject === 'english' ? 'C1 / IELTS 7.0' : subject === 'chemistry' ? 'Milliy Sertifikat A+' : subject === 'biology' ? 'Milliy Sertifikat A+' : subject === 'law' ? 'Huquqshunoslik A+' : 'Ona tili A+');
+  const currentSubjectConfig = SUBJECT_GOAL_CONFIG[subject] || SUBJECT_GOAL_CONFIG.uzbek;
+  const targetGoalText = trackBadgeLabel || currentSubjectConfig.goalText;
   const remainingQuestions = Math.max(0, goalQuestions - completedQuestions);
 
   const ringRadius = 38;
@@ -363,13 +443,15 @@ export default function Dashboard() {
   ];
 
   const radarData = useMemo(() => {
-    const categories = [
-      { name: 'Grammar', score: 75 },
-      { name: 'Reading', score: 64 },
-      { name: 'Listening', score: 80 },
-      { name: 'Writing', score: 58 },
-      { name: 'Vocabulary', score: 71 },
-    ];
+    const axes = (SUBJECT_GOAL_CONFIG[subject] || SUBJECT_GOAL_CONFIG.uzbek).radarAxes;
+    const defaultScores = [75, 64, 80, 58, 71];
+    const categories = axes.map((name, i) => {
+      const wp = data?.weak_parts?.[i];
+      const score = wp
+        ? (wp.total ? Math.round(((wp.correct ?? 0) / wp.total) * 100) : 70)
+        : defaultScores[i % defaultScores.length];
+      return { name, score: Math.max(35, Math.min(95, score)) };
+    });
     const cx = 100;
     const cy = 100;
     const r = 68;
@@ -379,15 +461,15 @@ export default function Dashboard() {
       return {
         x: cx + dist * Math.cos(angle),
         y: cy + dist * Math.sin(angle),
-        labelX: cx + (r + 18) * Math.cos(angle),
-        labelY: cy + (r + 14) * Math.sin(angle),
+        labelX: cx + (r + 26) * Math.cos(angle),
+        labelY: cy + (r + 16) * Math.sin(angle),
         name: cat.name,
         score: cat.score,
       };
     });
     const polygonStr = points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
     return { categories, points, polygonStr };
-  }, []);
+  }, [subject, data?.weak_parts]);
 
   const userInitials = initialsOf(user?.full_name, user?.email) || 'KR';
 
@@ -428,7 +510,7 @@ export default function Dashboard() {
                 <span className="text-xs sm:text-sm font-semibold text-slate-500 dark:text-slate-400">
                   Maqsadingiz:
                 </span>
-                <span className="text-xs sm:text-sm font-bold text-blue-600 dark:text-blue-400 px-2.5 py-0.5 rounded-md bg-blue-500/10 border border-blue-500/20">
+                <span className={`text-xs sm:text-sm font-bold px-2.5 py-0.5 rounded-md border ${currentSubjectConfig.badgeClass}`} style={currentSubjectConfig.badgeStyle}>
                   {targetGoalText}
                 </span>
               </div>
@@ -619,7 +701,7 @@ export default function Dashboard() {
               {/* 5-burchakli SVG Spider/Radar Chart */}
               <div className="sm:col-span-6 flex items-center justify-center">
                 <div className="relative flex items-center justify-center" style={{ width: 190, height: 190, minWidth: 190, minHeight: 190 }}>
-                  <svg style={{ width: 190, height: 190 }} viewBox="0 0 200 200">
+                  <svg style={{ width: 190, height: 190 }} viewBox="-35 -35 270 270">
                     <defs>
                       <linearGradient id="spiderFill" x1="0%" y1="0%" x2="100%" y2="100%">
                         <stop offset="0%" stopColor="#6366F1" stopOpacity="0.45" />
@@ -684,7 +766,7 @@ export default function Dashboard() {
                           y={p.labelY}
                           textAnchor="middle"
                           dominantBaseline="central"
-                          className="text-[9px] font-bold fill-slate-700 dark:fill-slate-300 font-mono"
+                          className="text-[9.5px] font-bold fill-slate-700 dark:fill-slate-300 font-mono"
                         >
                           {p.name}
                         </text>
@@ -722,96 +804,119 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* BENTO BOX 4: Pastki O'ng — "GURUH • Haftalik podium" */}
-          <div className="bento-card p-5 sm:p-6 flex flex-col justify-between">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Trophy size={17} className="text-amber-500" />
-                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 font-mono">
-                  GURUH • Haftalik podium
-                </h2>
-              </div>
-              <Link to="/groups" className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline">
-                Batafsil →
-              </Link>
-            </div>
+          {/* BENTO BOX 4: Pastki O'ng — Real Guruh Holati yoki Kod Kiritish */}
+          {!user?.primary_group_id ? (
+            <div className="bento-card p-5 sm:p-6 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Users size={17} className="text-amber-500" />
+                    <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 font-mono">
+                      GURUH • A'ZO BO'LISH
+                    </h2>
+                  </div>
+                  <span className="pill-badge text-[10px] uppercase font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/20">
+                    A'zo emassiz
+                  </span>
+                </div>
 
-            {/* 3D Vizual Podium Ustunlari */}
-            <div className="flex items-end justify-center gap-3 sm:gap-6 my-auto pt-6 pb-2">
-              {/* 2-o'rin (Kumush ustun) */}
-              <div className="flex flex-col items-center">
-                <div className="w-9 h-9 rounded-full bg-slate-300 dark:bg-slate-700 text-slate-800 dark:text-white font-bold text-xs flex items-center justify-center border-2 border-slate-400 mb-1.5 shadow-sm">
-                  SA
-                </div>
-                <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 truncate max-w-[70px]">Sardor A.</span>
-                <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 mb-1">264 b.</span>
-                <div
-                  className="w-16 sm:w-20 rounded-t-xl flex flex-col items-center justify-center font-black text-lg text-white"
-                  style={{
-                    height: '80px',
-                    background: 'linear-gradient(180deg, #94A3B8 0%, #475569 100%)',
-                    boxShadow: '0 8px 16px -4px rgba(71, 85, 105, 0.4)',
-                  }}
-                >
-                  2
-                </div>
-              </div>
+                <h3 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white mb-2">
+                  👥 Guruhga a'zo emassiz
+                </h3>
+                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
+                  Guruh darslarida qatnashish, uy vazifalarini topshirish va umumiy reytingda qatnashish uchun o‘qituvchingiz bergan 6 xonali guruh kodini kiriting.
+                </p>
 
-              {/* 1-o'rin (Oltin ustun) */}
-              <div className="flex flex-col items-center">
-                <span className="text-lg animate-bounce leading-none mb-1">👑</span>
-                <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-amber-500 to-yellow-300 text-slate-950 font-black text-sm flex items-center justify-center border-2 border-yellow-200 mb-1.5 shadow-md shadow-amber-500/30">
-                  MR
-                </div>
-                <span className="text-[11px] font-extrabold text-amber-600 dark:text-amber-400 truncate max-w-[80px]">Madina R.</span>
-                <span className="text-[10px] font-mono font-bold text-amber-600 dark:text-amber-400 mb-1">285 b.</span>
-                <div
-                  className="w-20 sm:w-24 rounded-t-xl flex flex-col items-center justify-center font-black text-2xl text-slate-950"
-                  style={{
-                    height: '110px',
-                    background: 'linear-gradient(180deg, #F59E0B 0%, #B45309 100%)',
-                    boxShadow: '0 10px 24px -4px rgba(245, 158, 11, 0.5)',
-                  }}
-                >
-                  1
-                </div>
+                <form onSubmit={handleJoinGroup} className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={groupCodeInput}
+                      onChange={(e) => {
+                        setGroupCodeInput(e.target.value.toUpperCase());
+                        if (groupJoinError) setGroupJoinError(null);
+                      }}
+                      placeholder="GRP-104 yoki MOCK42"
+                      maxLength={12}
+                      className="flex-1 h-11 px-3.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 text-slate-900 dark:text-white font-mono font-bold text-sm tracking-wider uppercase placeholder:normal-case placeholder:font-sans placeholder:font-normal placeholder:text-xs placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all"
+                    />
+                    <button
+                      type="submit"
+                      disabled={groupJoining || !groupCodeInput.trim()}
+                      className="bento-btn bento-btn-gold h-11 px-5 text-xs font-bold whitespace-nowrap disabled:opacity-50"
+                    >
+                      {groupJoining ? 'Qo‘shilmoqda…' : 'Qo‘shilish'}
+                    </button>
+                  </div>
+                  {groupJoinError && (
+                    <p className="text-[11px] font-semibold text-rose-500 dark:text-rose-400">
+                      ⚠️ {groupJoinError}
+                    </p>
+                  )}
+                </form>
               </div>
 
-              {/* 3-o'rin (Bronza ustun) */}
-              <div className="flex flex-col items-center">
-                <div className="w-9 h-9 rounded-full bg-amber-800 text-amber-100 font-bold text-xs flex items-center justify-center border-2 border-amber-700 mb-1.5 shadow-sm">
-                  JK
-                </div>
-                <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 truncate max-w-[70px]">Javohir K.</span>
-                <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 mb-1">251 b.</span>
-                <div
-                  className="w-16 sm:w-20 rounded-t-xl flex flex-col items-center justify-center font-black text-lg text-amber-100"
-                  style={{
-                    height: '60px',
-                    background: 'linear-gradient(180deg, #B45309 0%, #78350F 100%)',
-                    boxShadow: '0 6px 14px -4px rgba(180, 83, 9, 0.4)',
-                  }}
-                >
-                  3
-                </div>
-              </div>
-            </div>
-
-            {/* Pastki qismda foydalanuvchining o'z qatori */}
-            <div className="mt-3 p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2 truncate">
-                <span className="w-6 h-6 rounded-full bg-amber-500 text-slate-950 font-bold text-[10px] flex items-center justify-center shrink-0">
-                  {userInitials}
+              <div className="pt-4 mt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  Platforma reytingi bilan tanishing:
                 </span>
-                <span className="font-semibold text-slate-900 dark:text-white truncate">
-                  <b className="text-amber-600 dark:text-amber-400">{userInitials} • Siz</b> — 247 ball <span className="text-slate-400">|</span> 3-o‘ringa chiqishga 4 ball qoldi!
-                </span>
+                <Link
+                  to="/leaderboard"
+                  className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline inline-flex items-center gap-1"
+                >
+                  <span>🌍 Umumiy reyting →</span>
+                </Link>
               </div>
-              <Link to="/groups" className="font-bold text-amber-600 dark:text-amber-400 hover:underline shrink-0 ml-2">
-                [To‘liq →]
-              </Link>
             </div>
-          </div>
+          ) : (
+            <div className="bento-card p-5 sm:p-6 flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Trophy size={17} className="text-amber-500" />
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 font-mono">
+                    GURUH • Faol sinf
+                  </h2>
+                </div>
+                <Link to={`/groups/${user.primary_group_id}`} className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline">
+                  Guruh paneli →
+                </Link>
+              </div>
+
+              <div className="my-auto py-4">
+                <div className="flex items-center gap-3 p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/10 mb-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 font-black flex items-center justify-center shrink-0">
+                    {userInitials}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                      {user?.full_name || 'O‘quvchi'}
+                    </h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                      Guruh ID: #{user.primary_group_id}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                  Guruhdagi vazifalar, dars jadvallari va sinfdoshlar reyting jadvalini ko‘rish uchun guruh sahifasiga o‘ting.
+                </p>
+              </div>
+
+              <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <Link
+                  to={`/groups/${user.primary_group_id}`}
+                  className="bento-btn bento-btn-gold text-xs h-9 px-4 font-bold inline-flex items-center gap-1.5"
+                >
+                  <span>Guruh sahifasiga o‘tish →</span>
+                </Link>
+                <Link
+                  to="/leaderboard"
+                  className="text-xs font-bold text-slate-500 dark:text-slate-400 hover:underline"
+                >
+                  Umumiy reyting
+                </Link>
+              </div>
+            </div>
+          )}
         </section>
       )}
 
@@ -1042,6 +1147,7 @@ export default function Dashboard() {
             currentExam={data?.daily_goal?.target_exam || user?.target_exam || user?.exam_target}
             currentGrade={data?.daily_goal?.target_grade || user?.target_grade}
             currentQuestions={goalQuestions}
+            subject={subject as any}
           />
         </Suspense>
       )}

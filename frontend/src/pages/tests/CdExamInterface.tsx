@@ -389,9 +389,10 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
       return next;
     });
 
-  const unanswered = attempt.questions.filter(
-    (q) => q.question_type !== 'SPEAKING_PROMPT' && !isAnswered(answers[q.id]),
-  ).length;
+  const evaluableQuestions = attempt.questions.filter((q) => q.question_type !== 'SPEAKING_PROMPT');
+  const answeredCount = evaluableQuestions.filter((q) => isAnswered(answers[q.id])).length;
+  const unanswered = evaluableQuestions.length - answeredCount;
+  const flaggedCount = flagged.size;
 
   /* ---------------------------------------------------------- result view */
   if (result) {
@@ -1080,9 +1081,75 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
 
       {confirming && (
         <div className="cd-modal" role="dialog" aria-modal="true">
-          <div className="card">
-            <p>{t('cd_finish_confirm').replace('{n}', String(unanswered))}</p>
-            <div className="error-boundary-actions">
+          <div className="card" style={{ maxWidth: 480, padding: 24, borderRadius: 16 }}>
+            <h3 style={{ margin: '0 0 16px 0', fontSize: '1.2rem', fontWeight: 800 }}>
+              🏁 Imtihonni yakunlashni tasdiqlaysizmi?
+            </h3>
+
+            {/* 3-Column Summary Cards */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: 10,
+                marginBottom: 16,
+              }}
+            >
+              <div
+                style={{
+                  padding: '12px 10px',
+                  borderRadius: 12,
+                  background: 'rgba(16, 185, 129, 0.1)',
+                  border: '1px solid rgba(16, 185, 129, 0.3)',
+                  textAlign: 'center',
+                }}
+              >
+                <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#10b981' }}>{answeredCount}</div>
+                <div style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 600 }}>Javob berilgan</div>
+              </div>
+
+              <div
+                style={{
+                  padding: '12px 10px',
+                  borderRadius: 12,
+                  background: unanswered === 0 ? 'rgba(255, 255, 255, 0.04)' : 'rgba(239, 68, 68, 0.1)',
+                  border: unanswered === 0 ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(239, 68, 68, 0.3)',
+                  textAlign: 'center',
+                }}
+              >
+                <div style={{ fontSize: '1.3rem', fontWeight: 800, color: unanswered === 0 ? 'var(--text-secondary)' : '#ef4444' }}>
+                  {unanswered}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: unanswered === 0 ? 'var(--text-secondary)' : '#ef4444', fontWeight: 600 }}>
+                  Javobsiz qolgan
+                </div>
+              </div>
+
+              <div
+                style={{
+                  padding: '12px 10px',
+                  borderRadius: 12,
+                  background: flaggedCount > 0 ? 'rgba(245, 158, 11, 0.12)' : 'rgba(255, 255, 255, 0.04)',
+                  border: flaggedCount > 0 ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid rgba(255, 255, 255, 0.1)',
+                  textAlign: 'center',
+                }}
+              >
+                <div style={{ fontSize: '1.3rem', fontWeight: 800, color: flaggedCount > 0 ? '#f59e0b' : 'var(--text-secondary)' }}>
+                  {flaggedCount}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: flaggedCount > 0 ? '#f59e0b' : 'var(--text-secondary)', fontWeight: 600 }}>
+                  Belgilangan
+                </div>
+              </div>
+            </div>
+
+            {unanswered > 0 && (
+              <p style={{ fontSize: 13, color: '#f59e0b', margin: '0 0 16px' }}>
+                ⚠️ Diqqat: {unanswered} ta savolga hali javob belgilanmagan.
+              </p>
+            )}
+
+            <div className="error-boundary-actions" style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button type="button" className="btn" onClick={() => setConfirming(false)} disabled={submitting}>
                 {t('cd_cancel')}
               </button>

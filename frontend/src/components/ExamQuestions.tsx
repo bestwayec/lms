@@ -49,15 +49,34 @@ export function AutosaveStatus({ saved, error }: { saved: boolean; error?: strin
   );
 }
 
+export interface HighlightItem {
+  text: string;
+  color: 'yellow' | 'green';
+}
+
 export function PassageCard({ passage }: { passage: PassageDef }) {
   const { t } = useLang();
   const [collapsed, setCollapsed] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth < 768 : false
   );
-  const [highlights, setHighlights] = useState<string[]>(() => {
+  const [fontSize, setFontSize] = useState<number>(() => {
+    try {
+      const saved = Number(localStorage.getItem('grandec_passage_font_size'));
+      return saved >= 13 && saved <= 22 ? saved : 15.5;
+    } catch {
+      return 15.5;
+    }
+  });
+  const [activeColor, setActiveColor] = useState<'yellow' | 'green'>('yellow');
+  const [highlights, setHighlights] = useState<HighlightItem[]>(() => {
     try {
       const saved = localStorage.getItem(`grandec_passage_highlights_${passage.id}`);
-      return saved ? JSON.parse(saved) : [];
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.map((item: any) =>
+        typeof item === 'string' ? { text: item, color: 'yellow' } : item
+      );
     } catch {
       return [];
     }
@@ -65,7 +84,7 @@ export function PassageCard({ passage }: { passage: PassageDef }) {
   const [markerActive, setMarkerActive] = useState(false);
   const [selectedText, setSelectedText] = useState('');
 
-  const saveHighlights = (next: string[]) => {
+  const saveHighlights = (next: HighlightItem[]) => {
     setHighlights(next);
     try {
       localStorage.setItem(`grandec_passage_highlights_${passage.id}`, JSON.stringify(next));
@@ -74,10 +93,24 @@ export function PassageCard({ passage }: { passage: PassageDef }) {
     }
   };
 
-  const addHighlight = (textToAdd?: string) => {
+  const handleZoom = (delta: number) => {
+    setFontSize((prev) => {
+      const next = Math.max(13, Math.min(21, prev + delta));
+      try {
+        localStorage.setItem('grandec_passage_font_size', String(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
+
+  const addHighlight = (textToAdd?: string, colorToUse?: 'yellow' | 'green') => {
     const txt = (textToAdd || selectedText || '').trim();
-    if (txt && txt.length >= 2 && !highlights.includes(txt)) {
-      const next = [...highlights, txt];
+    if (txt && txt.length >= 2) {
+      const col = colorToUse || activeColor;
+      const filtered = highlights.filter((h) => h.text.toLowerCase() !== txt.toLowerCase());
+      const next: HighlightItem[] = [...filtered, { text: txt, color: col }];
       saveHighlights(next);
       setSelectedText('');
     }
@@ -93,7 +126,7 @@ export function PassageCard({ passage }: { passage: PassageDef }) {
     if (sel && sel.length >= 2 && sel.length <= 400) {
       setSelectedText(sel);
       if (markerActive) {
-        addHighlight(sel);
+        addHighlight(sel, activeColor);
       }
     } else {
       setSelectedText('');
@@ -105,26 +138,27 @@ export function PassageCard({ passage }: { passage: PassageDef }) {
       return passage.content;
     }
     try {
-      const sorted = [...highlights].sort((a, b) => b.length - a.length);
-      const escaped = sorted.map((h) => h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+      const sorted = [...highlights].sort((a, b) => b.text.length - a.text.length);
+      const escaped = sorted.map((h) => h.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
       const regex = new RegExp(`(${escaped})`, 'gi');
       const parts = passage.content.split(regex);
       return parts.map((part, idx) => {
-        const isHit = sorted.some((h) => h.toLowerCase() === part.toLowerCase());
-        if (isHit) {
+        const hit = sorted.find((h) => h.text.toLowerCase() === part.toLowerCase());
+        if (hit) {
+          const isGreen = hit.color === 'green';
           return (
             <mark
               key={idx}
               className="cbt-highlight"
               style={{
-                background: 'rgba(250, 204, 21, 0.35)',
+                background: isGreen ? 'rgba(134, 239, 172, 0.45)' : 'rgba(250, 204, 21, 0.4)',
                 color: 'inherit',
                 padding: '2px 4px',
                 borderRadius: '3px',
-                borderBottom: '2px solid #eab308',
+                borderBottom: isGreen ? '2px solid #22c55e' : '2px solid #eab308',
                 fontWeight: 600,
               }}
-              title="Ajratilgan matn (CBT Highlighter)"
+              title={`Ajratilgan matn (${isGreen ? 'Yashil' : 'Sariq'})`}
             >
               {part}
             </mark>
@@ -156,37 +190,92 @@ export function PassageCard({ passage }: { passage: PassageDef }) {
           {passage.title ? ` · ${passage.title}` : ''}
         </p>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          {/* Zoom controls */}
+          <div style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
+            <button
+              type="button"
+              className="btn sm ghost"
+              onClick={() => handleZoom(-1.5)}
+              style={{ fontSize: '0.74rem', padding: '3px 7px', border: 'none' }}
+              title="Shriftni kichraytirish (A-)"
+            >
+              A-
+            </button>
+            <span style={{ fontSize: '0.7rem', padding: '0 4px', color: 'var(--muted)', fontWeight: 700 }}>
+              {Math.round(fontSize)}
+            </span>
+            <button
+              type="button"
+              className="btn sm ghost"
+              onClick={() => handleZoom(1.5)}
+              style={{ fontSize: '0.74rem', padding: '3px 7px', border: 'none' }}
+              title="Shriftni kattalashtirish (A+)"
+            >
+              A+
+            </button>
+          </div>
+
+          {/* Yellow marker button */}
           <button
             type="button"
             className="btn sm"
-            onClick={() => setMarkerActive(!markerActive)}
-            style={{
-              fontSize: '0.76rem',
-              padding: '3px 8px',
-              background: markerActive ? 'rgba(245, 158, 11, 0.2)' : 'transparent',
-              borderColor: markerActive ? '#f59e0b' : 'var(--border)',
-              color: markerActive ? '#f59e0b' : 'var(--muted)',
+            onClick={() => {
+              setActiveColor('yellow');
+              setMarkerActive(markerActive && activeColor === 'yellow' ? false : true);
             }}
-            title="Matndan joy tanlab ajratib qo'yish (CBT Marker)"
+            style={{
+              fontSize: '0.74rem',
+              padding: '3px 8px',
+              background: markerActive && activeColor === 'yellow' ? 'rgba(250, 204, 21, 0.3)' : 'transparent',
+              borderColor: '#facc15',
+              color: '#ca8a04',
+              fontWeight: 700,
+            }}
+            title="Sariq highlighter"
           >
-            <span>🖍️</span> {markerActive ? "Marker (Faol)" : "Marker"}
+            🖍 Sariq
           </button>
+
+          {/* Green marker button */}
+          <button
+            type="button"
+            className="btn sm"
+            onClick={() => {
+              setActiveColor('green');
+              setMarkerActive(markerActive && activeColor === 'green' ? false : true);
+            }}
+            style={{
+              fontSize: '0.74rem',
+              padding: '3px 8px',
+              background: markerActive && activeColor === 'green' ? 'rgba(134, 239, 172, 0.35)' : 'transparent',
+              borderColor: '#4ade80',
+              color: '#16a34a',
+              fontWeight: 700,
+            }}
+            title="Yashil highlighter"
+          >
+            🖍 Yashil
+          </button>
+
+          {/* Clear button */}
           {highlights.length > 0 && (
             <button
               type="button"
               className="btn sm ghost"
               onClick={clearHighlights}
-              style={{ fontSize: '0.76rem', padding: '3px 8px', color: '#f87171' }}
-              title="Barcha ajratilgan belgilarni tozalash"
+              style={{ fontSize: '0.74rem', padding: '3px 8px', color: '#f87171' }}
+              title="Tozalash"
             >
-              🧹 Tozalash ({highlights.length})
+              🗑 Tozalash ({highlights.length})
             </button>
           )}
+
+          {/* Collapse button */}
           <button
             type="button"
             className="btn sm ghost"
             onClick={() => setCollapsed(!collapsed)}
-            style={{ fontSize: '0.78rem', padding: '3px 8px' }}
+            style={{ fontSize: '0.74rem', padding: '3px 8px' }}
           >
             {collapsed ? `📖 ${t('read_full_passage') || 'Matnni ochish'}` : `🔼 ${t('collapse_passage') || 'Yopish'}`}
           </button>
@@ -210,14 +299,24 @@ export function PassageCard({ passage }: { passage: PassageDef }) {
           <span style={{ fontSize: '0.8rem', color: '#f59e0b' }}>
             Tanlangan matn: &quot;{selectedText.length > 40 ? selectedText.slice(0, 40) + '…' : selectedText}&quot;
           </span>
-          <button
-            type="button"
-            className="btn sm primary"
-            onClick={() => addHighlight()}
-            style={{ fontSize: '0.74rem', padding: '2px 8px', background: '#f59e0b', borderColor: '#f59e0b' }}
-          >
-            🖍️ Ajratish
-          </button>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button
+              type="button"
+              className="btn sm"
+              onClick={() => addHighlight(selectedText, 'yellow')}
+              style={{ fontSize: '0.74rem', padding: '2px 8px', background: '#facc15', color: '#713f12', border: 'none', fontWeight: 700 }}
+            >
+              Sariq
+            </button>
+            <button
+              type="button"
+              className="btn sm"
+              onClick={() => addHighlight(selectedText, 'green')}
+              style={{ fontSize: '0.74rem', padding: '2px 8px', background: '#4ade80', color: '#064e3b', border: 'none', fontWeight: 700 }}
+            >
+              Yashil
+            </button>
+          </div>
         </div>
       )}
 
@@ -228,7 +327,7 @@ export function PassageCard({ passage }: { passage: PassageDef }) {
           style={{
             whiteSpace: 'pre-line',
             lineHeight: 1.75,
-            fontSize: '0.96rem',
+            fontSize: `${fontSize}px`,
             color: 'var(--ink)',
             userSelect: 'text',
           }}
@@ -241,7 +340,7 @@ export function PassageCard({ passage }: { passage: PassageDef }) {
           style={{
             whiteSpace: 'pre-line',
             lineHeight: 1.6,
-            fontSize: '0.9rem',
+            fontSize: `${fontSize * 0.9}px`,
             color: 'var(--muted)',
             cursor: 'pointer',
             padding: '6px 8px',
@@ -351,7 +450,22 @@ export function GapFillInput({
               disabled={disabled}
               value={values[String(positions[i] ?? i)] ?? ''}
               onChange={(e) => onChange(positions[i] ?? i, e.target.value)}
-              style={{ width: 140, margin: '0 4px' }}
+              placeholder={`(${positions[i] != null ? positions[i] + 1 : i + 1})`}
+              style={{
+                display: 'inline-block',
+                width: 140,
+                height: 36,
+                padding: '4px 10px',
+                margin: '0 6px',
+                borderRadius: 8,
+                border: '1.5px solid var(--border-subtle, #cbd5e1)',
+                background: 'var(--bg-surface, #ffffff)',
+                color: 'var(--text-primary, #0f172a)',
+                fontFamily: 'var(--font-mono, monospace)',
+                fontWeight: 700,
+                fontSize: '0.9rem',
+                verticalAlign: 'middle',
+              }}
             />
           )}
         </span>
