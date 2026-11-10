@@ -348,7 +348,7 @@ class DailyBlitzView(APIView):
                     "subject": subject,
                 }
                 for q in db_questions
-                if q.choices.exists()
+                if len(q.choices.all()) > 0
             ]
             cache.set(cache_key, cand_pool, timeout=300)
 
@@ -397,6 +397,24 @@ class DailyBlitzView(APIView):
         fallback_pool = FALLBACK_BLITZ_QUESTIONS.get(subject, FALLBACK_BLITZ_QUESTIONS["uzbek"])
         fallback_map = {str(q["id"]): q for q in fallback_pool}
 
+        # Batch prefetch DB questions & choices in a single query pair (eliminates N+1)
+        pos_qids = []
+        for q_id_str in answers.keys():
+            try:
+                val = int(q_id_str)
+                if val > 0:
+                    pos_qids.append(val)
+            except (ValueError, TypeError):
+                continue
+        questions_by_id = (
+            {
+                q.id: q
+                for q in Question.objects.filter(id__in=pos_qids).prefetch_related("choices")
+            }
+            if pos_qids
+            else {}
+        )
+
         for q_id_str, choice_id in answers.items():
             try:
                 q_id = int(q_id_str)
@@ -423,11 +441,13 @@ class DailyBlitzView(APIView):
                     }
                 )
             else:
-                # Database question
-                question = Question.objects.filter(id=q_id).first()
+                # Database question (from prefetched map)
+                question = questions_by_id.get(q_id)
                 if not question:
                     continue
-                correct_choice = question.choices.filter(is_correct=True).first()
+                correct_choice = next(
+                    (c for c in question.choices.all() if c.is_correct), None
+                )
                 is_correct = bool(correct_choice and str(correct_choice.id) == str(choice_id))
                 if is_correct:
                     correct_count += 1

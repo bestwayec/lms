@@ -556,25 +556,32 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
             "daily_goal_minutes",
             "reminder_slot",
             "daily_plan_summary",
+            "role",
+            "is_staff",
+            "is_superuser",
         ]
+        read_only_fields = ["role", "is_staff", "is_superuser"]
 
     def update(self, instance: Any, validated_data: dict[str, Any]) -> Any:
         """
         User va Profile ni birgalikda yangilash.
 
         Nested profile maydonlarini ajratib, alohida saqlash.
+        Privileged fields (role, is_staff, is_superuser, plan) are strictly read-only.
         """
+        from apps.core.validators import sanitize_text_xss
+
+        # Defense-in-depth: strip any privileged keys even if passed to validated_data
+        for forbidden_key in ("role", "is_staff", "is_superuser", "is_pro", "plan"):
+            validated_data.pop(forbidden_key, None)
+
         profile_data = validated_data.pop("profile", {})
 
-        # User maydonlarini yangilash
-        instance.first_name = validated_data.get(
-            "first_name",
-            instance.first_name,
-        )
-        instance.last_name = validated_data.get(
-            "last_name",
-            instance.last_name,
-        )
+        # User maydonlarini yangilash (XSS sanitized)
+        if "first_name" in validated_data:
+            instance.first_name = sanitize_text_xss(validated_data["first_name"])
+        if "last_name" in validated_data:
+            instance.last_name = sanitize_text_xss(validated_data["last_name"])
         if "language" in validated_data:
             instance.language = validated_data["language"]
         instance.save()
@@ -582,8 +589,12 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
         # Profile maydonlarini yangilash
         profile = instance.profile
         for attr, value in profile_data.items():
+            if attr in ("plan", "is_pro", "xp_points", "weekly_xp", "weekly_league"):
+                continue
             if attr == "onboarding_completed":
                 setattr(profile, attr, bool(value) or profile.onboarding_completed)
+            elif isinstance(value, str):
+                setattr(profile, attr, sanitize_text_xss(value))
             else:
                 setattr(profile, attr, value)
         if "exam_target" in profile_data or "target_grade" in profile_data:

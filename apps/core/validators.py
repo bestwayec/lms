@@ -7,6 +7,7 @@ Validates extension + size; MIME is checked where reliable but never trusted alo
 from __future__ import annotations
 
 import os
+import re
 
 from django.core.exceptions import ValidationError
 from django.utils.deconstruct import deconstructible
@@ -88,3 +89,33 @@ validate_image_upload = UploadValidator(ALLOWED_IMAGE_EXTENSIONS, MAX_IMAGE_SIZE
 validate_attachment_upload = UploadValidator(
     ALLOWED_ATTACHMENT_EXTENSIONS, MAX_ATTACHMENT_SIZE
 )
+
+_XSS_SCRIPT_BLOCK_RE = re.compile(
+    r"<\s*script\b[^>]*>.*?<\s*/\s*script\s*>",
+    re.IGNORECASE | re.DOTALL,
+)
+_XSS_TAG_RE = re.compile(
+    r"<\s*/?\s*(?:script|iframe|object|embed|applet|meta|link|style|form|base|img|svg|body|input|video|audio|details|marquee)\b[^>]*>",
+    re.IGNORECASE,
+)
+_XSS_EVENT_ATTR_RE = re.compile(
+    r"\bon[a-z]+\s*=\s*(?:\"[^\"]*\"|'[^']*'|[^\s>]+)",
+    re.IGNORECASE,
+)
+_XSS_JS_URI_RE = re.compile(
+    r"(?:javascript|vbscript|data\s*:\s*text/html)\s*:",
+    re.IGNORECASE,
+)
+
+
+def sanitize_text_xss(value: str | None) -> str:
+    """Strip executable XSS payloads (<script>, <iframe>, event handlers, javascript: URIs)
+    while preserving plain text, Uzbek apostrophes (o', g'), and math expressions."""
+    if not value or not isinstance(value, str):
+        return value or ""
+    cleaned = _XSS_SCRIPT_BLOCK_RE.sub("", value)
+    cleaned = _XSS_TAG_RE.sub("", cleaned)
+    cleaned = _XSS_EVENT_ATTR_RE.sub("", cleaned)
+    cleaned = _XSS_JS_URI_RE.sub("", cleaned)
+    return cleaned
+

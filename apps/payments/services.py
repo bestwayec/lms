@@ -267,13 +267,26 @@ def approve_payment_receipt(
     receipt: PaymentReceipt, admin_user=None
 ) -> UserSubscription:
     """
-    To'lov chekini tasdiqlash:
+    To'lov chekini tasdiqlash (race-safe via select_for_update):
     - Status 'approved' qilinadi.
     - UserSubscription faollashtiriladi / +30 kunga uzaytiriladi.
     - User Profile plan maydoni yangilanadi ('starter' yoki 'premium').
     - PaymentHistory yozuvi saqlanadi.
     - Agar foydalanuvchi Telegram bog'lagan bo'lsa, xabarnoma yuboriladi.
     """
+    locked_receipt = (
+        PaymentReceipt.objects.select_for_update()
+        .select_related("user")
+        .filter(pk=receipt.pk)
+        .first()
+    )
+    if locked_receipt is not None:
+        if locked_receipt.status == PaymentReceipt.Status.APPROVED:
+            existing_sub = getattr(locked_receipt.user, "subscription", None)
+            if existing_sub is not None:
+                return existing_sub
+        receipt = locked_receipt
+
     receipt.status = PaymentReceipt.Status.APPROVED
     receipt.reviewed_at = timezone.now()
     if admin_user and getattr(admin_user, "is_authenticated", False):

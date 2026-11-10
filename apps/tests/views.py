@@ -1042,6 +1042,24 @@ class SocraticTutorExplainView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        # Security: Never allow Socratic AI Tutor while the student has an active IN_PROGRESS attempt on this test
+        if (
+            not is_platform_admin(request.user)
+            and getattr(request.user, "role", "") != "teacher"
+            and TestAttempt.objects.filter(
+                test_id=question.test_id,
+                student=request.user,
+                status=TestAttempt.Status.IN_PROGRESS,
+            ).exists()
+        ):
+            return Response(
+                {
+                    "error": "Faol test urinishi vaqtida javob kaliti va AI tahlildan foydalanish taqiqlanadi.",
+                    "code": "active_attempt_forbidden",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         # Quota check
         allowed, quota_err = check_and_consume_ai_quota(request.user)
         if not allowed:
@@ -1065,7 +1083,16 @@ class SocraticTutorExplainView(APIView):
         if not user_answer:
             result_id = request.data.get("result_id")
             if result_id:
-                res = Result.objects.filter(id=int(result_id)).select_related("attempt").first()
+                res = (
+                    Result.objects.filter(id=int(result_id))
+                    .select_related("attempt", "course")
+                    .first()
+                )
+                if res and not _can_review_answers(request.user, res):
+                    return Response(
+                        {"error": "Ruxsat etilmagan.", "code": "forbidden"},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
                 if res and res.attempt:
                     from apps.tests.models import StudentAnswer
                     sa = StudentAnswer.objects.filter(attempt=res.attempt, question=question).first()
@@ -1233,6 +1260,7 @@ class QuickMockJoinView(APIView):
     """
 
     permission_classes = [IsAuthenticated]
+    throttle_scope = "test-join"
 
     def post(self, request: Request) -> Response:
         code = request.data.get("code") or request.data.get("mock_code") or ""

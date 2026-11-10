@@ -101,6 +101,12 @@ def record_user_activity(
             "weekly_league",
         ]
     )
+    try:
+        from django.core.cache import cache
+
+        cache.delete(f"grandec:weekly_league_v1:{profile.weekly_league}")
+    except Exception:
+        pass
 
     return {
         "ok": True,
@@ -192,7 +198,8 @@ def get_user_streak_info(user) -> Dict[str, Any]:
 
 
 def get_weekly_league_leaderboard(user) -> Dict[str, Any]:
-    """Return the weekly league leaderboard for the user's tier."""
+    """Return the weekly league leaderboard for the user's tier (cached via Redis)."""
+    from django.core.cache import cache
     from apps.accounts.models import Profile
 
     profile, _ = (
@@ -202,36 +209,44 @@ def get_weekly_league_leaderboard(user) -> Dict[str, Any]:
     )
     target_league = profile.weekly_league if profile else Profile.LeagueChoice.BRONZE
 
-    top_profiles = (
-        Profile.objects.filter(weekly_league=target_league)
-        .select_related("user")
-        .order_by("-weekly_xp", "-xp_points")[:20]
+    def _fetch_top_participants() -> list[dict[str, Any]]:
+        top_profiles = (
+            Profile.objects.filter(weekly_league=target_league)
+            .select_related("user")
+            .order_by("-weekly_xp", "-xp_points")[:20]
+        )
+        rows = []
+        for idx, p in enumerate(top_profiles, start=1):
+            name = p.user.get_full_name() or p.user.email.split("@")[0]
+            rows.append(
+                {
+                    "rank": idx,
+                    "user_id": p.user_id,
+                    "name": name,
+                    "avatar_url": p.avatar.url if p.avatar else None,
+                    "weekly_xp": p.weekly_xp,
+                    "tier_badge": "🥇"
+                    if idx == 1
+                    else "🥈"
+                    if idx == 2
+                    else "🥉"
+                    if idx == 3
+                    else f"#{idx}",
+                }
+            )
+        return rows
+
+    base_rows = cache.get_or_set(
+        f"grandec:weekly_league_v1:{target_league}", _fetch_top_participants, timeout=60
     )
 
     participants = []
     user_rank = None
-    for idx, p in enumerate(top_profiles, start=1):
-        is_me = user and user.is_authenticated and p.user_id == user.id
+    for row in base_rows:
+        is_me = bool(user and user.is_authenticated and row["user_id"] == user.id)
         if is_me:
-            user_rank = idx
-        name = p.user.get_full_name() or p.user.email.split("@")[0]
-        participants.append(
-            {
-                "rank": idx,
-                "user_id": p.user_id,
-                "name": name,
-                "avatar_url": p.avatar.url if p.avatar else None,
-                "weekly_xp": p.weekly_xp,
-                "is_current_user": bool(is_me),
-                "tier_badge": "🥇"
-                if idx == 1
-                else "🥈"
-                if idx == 2
-                else "🥉"
-                if idx == 3
-                else f"#{idx}",
-            }
-        )
+            user_rank = row["rank"]
+        participants.append({**row, "is_current_user": is_me})
 
     # Next Sunday 23:59 calculation
     now = timezone.now()

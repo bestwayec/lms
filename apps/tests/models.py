@@ -258,13 +258,6 @@ class Test(models.Model):
             ),
         ]
 
-    def save(self, *args, **kwargs) -> None:
-        if self.strict_anti_cheat:
-            self.is_strict_mode = True
-        elif self.is_strict_mode:
-            self.strict_anti_cheat = True
-        super().save(*args, **kwargs)
-
     def __str__(self) -> str:
         return self.title
 
@@ -310,13 +303,21 @@ class Test(models.Model):
         return self.mock_code or ""
 
     def save(self, *args, **kwargs) -> None:
-        """Keep legacy `is_active` in sync with the three-state `status`.
-
-        DRAFT and ARCHIVED tests must never be attemptable by students;
-        all existing filters use is_active, so derive it from status.
-        """
+        """Keep legacy `is_active` and `strict_anti_cheat` in sync and invalidate caches."""
+        if self.strict_anti_cheat:
+            self.is_strict_mode = True
+        elif self.is_strict_mode:
+            self.strict_anti_cheat = True
         self.is_active = self.status == self.Status.PUBLISHED
         super().save(*args, **kwargs)
+        try:
+            from django.core.cache import cache
+
+            cache.delete("tma_tests_active_v1")
+            if self.pk:
+                cache.delete(f"grandec:mock_leaderboard_v1:{self.pk}")
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -1006,20 +1007,6 @@ class StudentAnswer(models.Model):
         blank=True,
     )
     answered_at = models.DateTimeField(_("javob berilgan"), auto_now=True)
-
-    class Meta:
-        verbose_name = _("O'quvchi javobi")
-        verbose_name_plural = _("O'quvchi javoblari")
-        unique_together = ("attempt", "question")
-        indexes = [
-            models.Index(
-                fields=["attempt", "question"],
-                name="idx_answer_attempt_q",
-            ),
-        ]
-
-    def __str__(self) -> str:
-        return f"{self.attempt} — Q{self.question.position}"
 
     class Meta:
         verbose_name = _("O'quvchi javobi")

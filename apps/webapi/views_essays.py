@@ -195,12 +195,16 @@ def teacher_submit_review_view(request, submission_id: int):
             )
         criteria_scores[cid] = val
 
+    from apps.core.validators import sanitize_text_xss
+
     try:
         review = TeacherReviewService.submit_review(
             submission=submission,
             teacher=request.user,
             criteria_scores=criteria_scores,
-            teacher_comments=str(request.data.get("teacher_comments", "")),
+            teacher_comments=sanitize_text_xss(
+                str(request.data.get("teacher_comments", ""))
+            ),
         )
     except PermissionDenied as e:
         return Response({"detail": str(e)}, status=403)
@@ -224,6 +228,8 @@ def teacher_edit_submission_view(request, submission_id: int):
     Recomputes word_count. Scores are left untouched on purpose — submit a
     review afterwards if the new text needs re-grading.
     """
+    from apps.core.validators import sanitize_text_xss
+
     if not is_platform_admin(request.user):
         raise PermissionDenied("Faqat platforma adminlari uchun.")
     submission = get_object_or_404(EssaySubmission, id=submission_id)
@@ -232,6 +238,7 @@ def teacher_edit_submission_view(request, submission_id: int):
         return Response(
             {"detail": "essay_text must be a non-empty string."}, status=400
         )
+    essay_text = sanitize_text_xss(essay_text)
     from apps.essays.views import MAX_ESSAY_LENGTH as _MAXLEN2
 
     if len(essay_text) > _MAXLEN2:

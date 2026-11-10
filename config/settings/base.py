@@ -275,6 +275,8 @@ REST_FRAMEWORK = {
         "essay-autosave": "60/minute",  # draft autosave, owner only
         "speaking-submit": "10/hour",  # each upload is a transcription + grading call
         "ai-tools": "30/hour",  # teacher converter / vocabulary generator
+        "test-join": "20/minute",  # anti-brute-force for mock code / PIN join
+        "payment-verify": "15/minute",  # payment receipt upload & verification rate limit
     },
 }
 
