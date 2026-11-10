@@ -188,6 +188,11 @@ export default function Layout() {
             <NavLink to="/arena" className={linkClass} onClick={close}>
               <SwordsIcon size={16} className="ico" /> {t('arena_live_duel', '1v1 Arena (Jonli jang)')}
             </NavLink>
+            {!isTeacher && !isAdmin && (
+              <NavLink to="/groups" className={linkClass} onClick={close}>
+                <UsersIcon size={16} className="ico" /> {t('my_group_ranking', 'Guruhim va Reyting')}
+              </NavLink>
+            )}
             <NavLink to="/results" className={linkClass} onClick={close}>
               <TrophyIcon size={16} className="ico" /> {t('results_analysis', 'Natijalar va Tahlil')}
             </NavLink>

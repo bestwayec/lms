@@ -75,7 +75,7 @@ MATCH_WINDOWS = [150, 400, 100_000]
 
 
 def _bot_fallback_seconds() -> float:
-    return float(getattr(settings, "ARENA_BOT_FALLBACK_SECONDS", 15))
+    return float(getattr(settings, "ARENA_BOT_FALLBACK_SECONDS", 8.0))
 
 
 def _countdown_seconds() -> float:

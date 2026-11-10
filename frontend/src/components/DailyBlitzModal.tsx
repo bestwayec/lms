@@ -14,7 +14,8 @@ import {
   type DailyBlitzQuestion,
   type DailyBlitzResultResponse,
 } from '../lib/api';
-import { hapticImpact, hapticNotify } from '../lib/haptics';
+import { hapticNotify, hapticSelect } from '../lib/haptics';
+import confetti from 'canvas-confetti';
 
 interface DailyBlitzModalProps {
   isOpen: boolean;
@@ -103,7 +104,7 @@ export default function DailyBlitzModal({
   };
 
   const handleSelectChoice = (questionId: number, choiceId: number) => {
-    hapticImpact('light');
+    hapticSelect();
     setAnswers((prev) => ({
       ...prev,
       [String(questionId)]: choiceId,
@@ -121,6 +122,16 @@ export default function DailyBlitzModal({
       const res = await DailyBlitzApi.submitAnswers(subject, payload);
       setResult(res);
       hapticNotify('success');
+      try {
+        confetti({
+          particleCount: 90,
+          spread: 75,
+          origin: { y: 0.6 },
+          colors: ['#F59E0B', '#10B981', '#38BDF8', '#EF4444', '#8B5CF6'],
+        });
+      } catch {
+        /* ignore */
+      }
       if (onCompleted) {
         onCompleted(res);
       }
@@ -486,14 +497,18 @@ export default function DailyBlitzModal({
                             padding: '12px 14px',
                             borderRadius: 12,
                             background: isSelected
-                              ? 'rgba(245, 158, 11, 0.16)'
+                              ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.22), rgba(217, 119, 6, 0.16))'
                               : 'rgba(255, 255, 255, 0.04)',
                             border: isSelected
-                              ? '1.5px solid #F59E0B'
+                              ? '2px solid #F59E0B'
                               : '1px solid rgba(255, 255, 255, 0.08)',
+                            boxShadow: isSelected
+                              ? '0 0 16px rgba(245, 158, 11, 0.4)'
+                              : 'none',
+                            transform: isSelected ? 'scale(1.02)' : 'scale(1)',
                             cursor: 'pointer',
                             textAlign: 'left',
-                            transition: 'all 0.15s ease',
+                            transition: 'all 0.18s cubic-bezier(0.4, 0, 0.2, 1)',
                           }}
                         >
                           <span

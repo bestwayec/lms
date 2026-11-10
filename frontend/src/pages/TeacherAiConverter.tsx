@@ -8,10 +8,12 @@ import {
   Copy,
   FileText,
   Plus,
+  QrCode,
   Sparkles,
   Trash2,
   Upload,
 } from 'lucide-react';
+import ClassroomQrModal from '../components/ClassroomQrModal';
 import { type ConvertedQuestion, TestsApi } from '../lib/testing';
 
 export default function TeacherAiConverter() {
@@ -20,6 +22,8 @@ export default function TeacherAiConverter() {
   const [file, setFile] = useState<File | null>(null);
   const [subject, setSubject] = useState<'uzbek' | 'english' | 'biology' | 'chemistry' | 'law'>('uzbek');
   const [converting, setConverting] = useState(false);
+  const [conversionStep, setConversionStep] = useState<1 | 2 | 3>(1);
+  const [qrModalOpen, setQrModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Step 2: Editor state
@@ -66,7 +70,11 @@ export default function TeacherAiConverter() {
     }
 
     setConverting(true);
+    setConversionStep(1);
     setError(null);
+
+    const stepTimer1 = setTimeout(() => setConversionStep(2), 1800);
+    const stepTimer2 = setTimeout(() => setConversionStep(3), 4200);
 
     try {
       const formData = new FormData();
@@ -74,6 +82,8 @@ export default function TeacherAiConverter() {
       formData.append('subject', subject);
 
       const res = await TestsApi.aiConvertDocument(formData);
+      clearTimeout(stepTimer1);
+      clearTimeout(stepTimer2);
       if (res.success && res.data) {
         setTestTitle(res.data.test_title || 'AI Test');
         setReadingPassage(res.data.reading_passage || '');
@@ -83,9 +93,13 @@ export default function TeacherAiConverter() {
         throw new Error('Test ma\'lumotlarini ajratib olish imkoni bo\'lmadi.');
       }
     } catch (err: unknown) {
+      clearTimeout(stepTimer1);
+      clearTimeout(stepTimer2);
       const msg = err instanceof Error ? err.message : 'Konvertatsiya jarayonida xatolik yuz berdi.';
       setError(msg);
     } finally {
+      clearTimeout(stepTimer1);
+      clearTimeout(stepTimer2);
       setConverting(false);
     }
   };
@@ -379,6 +393,51 @@ export default function TeacherAiConverter() {
               )}
             </button>
           </div>
+
+          {converting && (
+            <div
+              style={{
+                marginTop: '1.5rem',
+                padding: '1.25rem',
+                borderRadius: 14,
+                background: 'rgba(99, 102, 241, 0.08)',
+                border: '1.5px solid rgba(99, 102, 241, 0.3)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--ink)' }}>
+                  ✨ AI Vision tahlil jarayoni...
+                </span>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#6366f1' }}>
+                  {conversionStep === 1 ? '30%' : conversionStep === 2 ? '65%' : '92%'}
+                </span>
+              </div>
+              <div style={{ height: 6, width: '100%', background: 'rgba(255, 255, 255, 0.1)', borderRadius: 999, overflow: 'hidden', marginBottom: 16 }}>
+                <div
+                  style={{
+                    height: '100%',
+                    width: conversionStep === 1 ? '30%' : conversionStep === 2 ? '65%' : '92%',
+                    background: 'linear-gradient(90deg, #6366f1, #a855f7)',
+                    transition: 'width 0.4s ease',
+                  }}
+                />
+              </div>
+              <div style={{ display: 'grid', gap: 8, fontSize: '0.85rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: conversionStep >= 1 ? '#10b981' : '#64748b' }}>
+                  <span>{conversionStep > 1 ? '✅' : '⏳'}</span>
+                  <span style={{ fontWeight: conversionStep === 1 ? 800 : 500 }}>1. Fayl o'qilmoqda...</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: conversionStep >= 2 ? (conversionStep > 2 ? '#10b981' : '#6366f1') : '#64748b' }}>
+                  <span>{conversionStep > 2 ? '✅' : conversionStep === 2 ? '⏳' : '⚪'}</span>
+                  <span style={{ fontWeight: conversionStep === 2 ? 800 : 500 }}>2. Savollar va formulalar ajratilmoqda...</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: conversionStep === 3 ? '#6366f1' : '#64748b' }}>
+                  <span>{conversionStep === 3 ? '⏳' : '⚪'}</span>
+                  <span style={{ fontWeight: conversionStep === 3 ? 800 : 500 }}>3. Javob kalitlari tekshirilmoqda...</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -670,7 +729,25 @@ export default function TeacherAiConverter() {
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <Link to={`/tests/${savedResult.test_id}`} className="btn primary" style={{ minHeight: 44, padding: '0 20px' }}>
+            <button
+              type="button"
+              className="btn primary"
+              onClick={() => setQrModalOpen(true)}
+              style={{
+                minHeight: 44,
+                padding: '0 20px',
+                background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                border: 'none',
+                fontWeight: 800,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+              }}
+            >
+              <QrCode size={18} />
+              <span>📱 Sinfxona QR-Kodi va Ulashish</span>
+            </button>
+            <Link to={`/tests/${savedResult.test_id}`} className="btn" style={{ minHeight: 44, padding: '0 20px' }}>
               Testni ko'rish (Preview)
             </Link>
             <button
@@ -689,6 +766,18 @@ export default function TeacherAiConverter() {
             </Link>
           </div>
         </div>
+      )}
+
+      {savedResult && qrModalOpen && (
+        <ClassroomQrModal
+          isOpen={qrModalOpen}
+          onClose={() => setQrModalOpen(false)}
+          title={savedResult.title || testTitle}
+          code={savedResult.mock_code}
+          webUrl={`https://grandec.uz/tests/${savedResult.test_id}`}
+          tmaUrl={`https://t.me/uz_essaygrader_bot/app?startapp=test_${savedResult.test_id}`}
+          subtitle="Sinfxona doskasiga chiqaring yoki Telegram guruhga yuboring"
+        />
       )}
     </div>
   );

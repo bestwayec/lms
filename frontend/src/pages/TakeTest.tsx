@@ -37,7 +37,7 @@ import {
   type DraftMap,
 } from '../lib/testing';
 import { cleanChoiceText } from '../lib/testParser';
-import { hapticImpact, hapticNotify } from '../lib/haptics';
+import { hapticNotify, hapticSelect } from '../lib/haptics';
 import { ClockIcon } from '../components/icons';
 import TiltCard from '../components/TiltCard';
 import confetti from 'canvas-confetti';
@@ -675,7 +675,7 @@ export default function TakeTest() {
 
   const pick = useCallback(
     (q: Question, choiceId: number) => {
-      hapticImpact('light');
+      hapticSelect();
       const cur = answers[q.id] ?? emptyEntry();
       const has = cur.choices.includes(choiceId);
       const chosen =
@@ -1517,13 +1517,14 @@ export default function TakeTest() {
                         gap: 14,
                         width: '100%',
                         textAlign: 'left',
-                        transition: 'all 0.15s ease',
+                        transition: 'all 0.18s cubic-bezier(0.4, 0, 0.2, 1)',
                         borderRadius: 14,
                         border: on ? '2px solid #f59e0b' : '1.5px solid rgba(255, 255, 255, 0.12)',
                         background: on
-                          ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.12))'
+                          ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.22), rgba(217, 119, 6, 0.14))'
                           : 'rgba(255, 255, 255, 0.03)',
-                        boxShadow: on ? '0 0 16px rgba(245, 158, 11, 0.28)' : 'none',
+                        boxShadow: on ? '0 0 20px rgba(245, 158, 11, 0.35)' : 'none',
+                        transform: on ? 'scale(1.015)' : 'scale(1)',
                         cursor: 'pointer',
                       }}
                     >

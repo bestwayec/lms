@@ -2734,4 +2734,12 @@ html.dark select:focus {
   box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.25);
 }
 
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
 
+.animate-shake {
+  animation: shake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}

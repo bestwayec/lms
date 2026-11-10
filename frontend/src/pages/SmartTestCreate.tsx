@@ -68,7 +68,9 @@ import {
   Send,
   Edit3,
   Lock,
+  QrCode,
 } from 'lucide-react';
+import ClassroomQrModal from '../components/ClassroomQrModal';
 import { api } from '../lib/api';
 import { parseSmartTestText, type ParsedQuestion, type SupportedSubject } from '../lib/testParser';
 
@@ -322,6 +324,7 @@ export default function SmartTestCreate() {
   } | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
 
   // Parse text on change
   useEffect(() => {
@@ -739,6 +742,28 @@ export default function SmartTestCreate() {
 
             <button
               type="button"
+              onClick={() => setQrOpen(true)}
+              style={{
+                background: 'linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%)',
+                color: '#FFFFFF',
+                fontWeight: 800,
+                fontSize: 14,
+                padding: '12px 22px',
+                borderRadius: 12,
+                border: 'none',
+                boxShadow: '0 4px 14px rgba(14, 165, 233, 0.35)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                cursor: 'pointer',
+              }}
+            >
+              <QrCode size={16} />
+              <span>📱 Sinfxona Katta QR-Kodi</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => {
                 setCreatedResult(null);
                 setRawText('');
@@ -759,6 +784,18 @@ export default function SmartTestCreate() {
             </button>
           </div>
         </div>
+      )}
+
+      {createdResult && qrOpen && (
+        <ClassroomQrModal
+          isOpen={qrOpen}
+          onClose={() => setQrOpen(false)}
+          title={createdResult.title}
+          code={createdResult.mock_code}
+          webUrl={createdResult.share_url}
+          tmaUrl={`https://t.me/uz_essaygrader_bot/app?startapp=test_${createdResult.test_id}`}
+          subtitle="Sinfxona doskasiga chiqaring yoki Telegram guruhga yuboring"
+        />
       )}
 
       {/* Settings Form Card */}

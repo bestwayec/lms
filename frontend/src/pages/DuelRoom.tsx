@@ -4,6 +4,7 @@ import { useLang } from '../i18n/LangContext';
 import { arenaSocketUrl } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { FlameIcon, SwordsIcon, TrophyIcon } from '../components/icons';
+import { Check, Link as LinkIcon, Send } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import {
   arenaOpponentRows,
@@ -97,6 +98,27 @@ export default function DuelRoom() {
   const [opponentDisconnected, setOpponentDisconnected] = useState(false);
   const [opponentGraceSeconds, setOpponentGraceSeconds] = useState(30);
   const [isReconnecting, setIsReconnecting] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const copyInviteLink = async () => {
+    const url = `${window.location.origin}/arena/${code}`;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = url;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      /* fallback */
+    }
+  };
 
   const ws = useRef<WebSocket | null>(null);
   const stateRef = useRef<State>('session');
@@ -484,10 +506,71 @@ export default function DuelRoom() {
       {state === 'error' && <p className="error">{notice || t('arena_ws_error')}</p>}
 
       {state === 'waiting' && (
-        <div className="card" style={{ textAlign: 'center', padding: '3rem 1rem' }}>
-          <SwordsIcon size={56} />
-          <h2>{t('arena_waiting')}</h2>
-          <p className="muted">{t('arena_wait_hint')}</p>
+        <div className="card" style={{ textAlign: 'center', padding: '2.5rem 1.5rem', maxWidth: 520, margin: '1.5rem auto' }}>
+          <div style={{ marginBottom: 16 }}>
+            <SwordsIcon size={56} />
+          </div>
+          <h2 style={{ marginBottom: 8 }}>{t('arena_waiting')}</h2>
+          <p className="muted" style={{ marginBottom: 20 }}>{t('arena_wait_hint')}</p>
+
+          <div
+            style={{
+              padding: '16px 20px',
+              borderRadius: 12,
+              background: 'rgba(255, 255, 255, 0.04)',
+              border: '1px dashed rgba(255, 255, 255, 0.15)',
+              marginBottom: 20,
+            }}
+          >
+            <span style={{ fontSize: '0.85rem', color: '#94a3b8', display: 'block', marginBottom: 4 }}>
+              Xona kodi:
+            </span>
+            <span
+              style={{
+                fontFamily: 'monospace',
+                fontSize: '1.75rem',
+                fontWeight: 800,
+                letterSpacing: '0.25em',
+                color: 'var(--primary, #38bdf8)',
+              }}
+            >
+              {code}
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <button
+              className="btn primary"
+              onClick={copyInviteLink}
+              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '12px 20px' }}
+            >
+              {copied ? <Check size={18} /> : <LinkIcon size={18} />}
+              {copied ? "Havola nusxalandi! ✅" : "🔗 Do'stni chorlash (Havoladan nusxa olish)"}
+            </button>
+
+            <a
+              href={`https://t.me/share/url?url=${encodeURIComponent(`${window.location.origin}/arena/${code}`)}&text=${encodeURIComponent(`Men bilan 1v1 bilim jangida bellash! Xona kodi: ${code}`)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                background: '#0284c7',
+                color: '#fff',
+                borderColor: '#0284c7',
+              }}
+            >
+              <Send size={16} />
+              ✈️ Telegram orqali taklif qilish
+            </a>
+          </div>
+
+          <p className="muted small" style={{ marginTop: 20 }}>
+            ⚡ 8 soniya ichida boshqa o'yinchi topilmasa, teng kuchli intellektual sparring bot ulanadi!
+          </p>
         </div>
       )}
 

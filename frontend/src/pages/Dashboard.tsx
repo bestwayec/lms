@@ -114,7 +114,7 @@ export default function Dashboard() {
 
   const handleJoinByPin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const clean = pinCode.trim();
+    const clean = pinCode.replace(/\s+/g, '').toUpperCase();
     if (!clean) return;
     setPinBusy(true);
     setPinErr(null);
@@ -135,8 +135,8 @@ export default function Dashboard() {
         return;
       }
       navigate(`/tests?code=${encodeURIComponent(clean)}`);
-    } catch (err: unknown) {
-      setPinErr(err instanceof Error ? err.message : "Kiritilgan kod bo'yicha test topilmadi");
+    } catch {
+      setPinErr("Bunday kodli test topilmadi");
       hapticNotify('error');
     } finally {
       setPinBusy(false);
@@ -442,7 +442,8 @@ export default function Dashboard() {
                     type="text"
                     value={pinCode}
                     onChange={(e) => {
-                      setPinCode(e.target.value);
+                      const cleanVal = e.target.value.replace(/\s+/g, '').toUpperCase();
+                      setPinCode(cleanVal);
                       if (pinErr) setPinErr(null);
                     }}
                     placeholder="Masalan: MOCK-42 yoki 105"
@@ -450,11 +451,11 @@ export default function Dashboard() {
                       height: '44px',
                       padding: '0 16px',
                       borderRadius: '12px',
-                      border: '1.5px solid var(--border)',
+                      border: pinErr ? '1.5px solid #ef4444' : '1.5px solid var(--border)',
                       backgroundColor: 'var(--card-2, #f8fafc)',
                       color: 'var(--ink, #0f172a)',
                     }}
-                    className="w-full text-sm font-mono tracking-wider transition-colors"
+                    className={`w-full text-sm font-mono tracking-wider transition-all ${pinErr ? 'animate-shake' : ''}`}
                     disabled={pinBusy}
                   />
                 </div>
@@ -480,8 +481,9 @@ export default function Dashboard() {
                 </button>
               </form>
               {pinErr && (
-                <div className="text-xs text-rose-500 font-medium mt-2 flex items-center gap-1">
-                  <span>⚠️ {pinErr}</span>
+                <div className="text-xs text-rose-500 font-bold mt-2 flex items-center gap-1.5">
+                  <span>⚠️</span>
+                  <span>{pinErr}</span>
                 </div>
               )}
             </div>

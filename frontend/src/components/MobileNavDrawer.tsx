@@ -192,6 +192,13 @@ export default function MobileNavDrawer({ isOpen, onClose }: MobileNavDrawerProp
                 <span>{t('nav_arena')}</span>
               </NavLink>
 
+              {!isTeacher && !isAdmin && (
+                <NavLink to="/groups" style={linkStyle} onClick={onClose}>
+                  <span style={{ color: '#0EA5E9' }}><UsersIcon size={18} /></span>
+                  <span>{t('my_group_ranking', 'Guruhim va Reyting')}</span>
+                </NavLink>
+              )}
+
               <NavLink to="/tests/scan-omr" style={linkStyle} onClick={onClose}>
                 <span style={{ color: '#8B5CF6' }}><CameraIcon size={18} /></span>
                 <span>{t('nav_omr')}</span>

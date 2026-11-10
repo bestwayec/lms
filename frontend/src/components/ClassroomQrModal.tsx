@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { Copy, Check, X, Maximize2, Minimize2, Smartphone, Globe } from 'lucide-react';
+import { Copy, Check, X, Maximize2, Minimize2, Smartphone, Globe, Send } from 'lucide-react';
 
 interface ClassroomQrModalProps {
   isOpen: boolean;
@@ -194,6 +194,15 @@ export default function ClassroomQrModal({
 
         {/* Action Buttons */}
         <div className="w-full flex flex-col sm:flex-row items-center justify-center gap-2 pt-3 border-t border-slate-800 text-xs">
+          <a
+            href={`https://t.me/share/url?url=${encodeURIComponent(activeUrl)}&text=${encodeURIComponent(`Test kodi: ${code || ''}\n${title} testiga kirish uchun bosing:`)}`}
+            target="_blank"
+            rel="noreferrer"
+            className="w-full sm:w-auto flex items-center justify-center gap-1.5 py-2 px-4 rounded-xl bg-sky-500 hover:bg-sky-400 text-white font-bold transition-all active:scale-95 shadow-md shadow-sky-500/20"
+          >
+            <Send size={14} />
+            <span>✈️ Telegramga yuborish</span>
+          </a>
           <button
             type="button"
             onClick={handleCopyLink}
