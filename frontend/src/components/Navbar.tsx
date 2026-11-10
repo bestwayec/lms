@@ -57,48 +57,70 @@ export default function Navbar({ streakData, onOpenProfile, pageTitle: _pageTitl
       }}
     >
       <div className="topbar-inner w-full flex items-center justify-between gap-3" style={{ height: '100%' }}>
-        {/* Left: Oltin Humo qanotli GRANDEC logotipi */}
-        <div className="flex items-center gap-2.5 shrink-0">
+        {/* Left: Mobile-only branding (Hidden on Desktop >= 768px where Sidebar is active) */}
+        <div className="flex items-center gap-2 shrink-0 md:hidden">
           {!isRootOrDashboard && (
             <button
               type="button"
               onClick={() => navigate(-1)}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800/50 active:scale-95 transition-all md:hidden"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800/50 active:scale-95 transition-all"
               aria-label="Orqaga qaytish"
             >
               <ArrowLeft size={19} />
             </button>
           )}
 
-          <Link to="/dashboard" className="flex items-center gap-2.5 group text-decoration-none">
-            <div className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-600 via-amber-500 to-yellow-400 p-0.5 shadow-md shadow-amber-500/20 group-hover:scale-105 transition-transform">
+          <Link to="/dashboard" className="flex items-center gap-2 group text-decoration-none">
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                minWidth: 32,
+                minHeight: 32,
+                maxWidth: 32,
+                maxHeight: 32,
+                borderRadius: 10,
+                background: 'linear-gradient(135deg, #d97706, #f59e0b)',
+                padding: 2,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'hidden',
+                flexShrink: 0,
+              }}
+            >
               <img
                 src="/logo-mark.png"
                 alt="GRANDEC"
                 onError={(e) => {
                   e.currentTarget.style.display = 'none';
                 }}
-                className="w-full h-full object-contain rounded-lg"
+                style={{
+                  width: 28,
+                  height: 28,
+                  maxWidth: 28,
+                  maxHeight: 28,
+                  objectFit: 'contain',
+                  borderRadius: 6,
+                  display: 'block',
+                }}
               />
             </div>
             <div className="flex flex-col">
-              <div className="flex items-center gap-1.5">
-                <span className="font-extrabold text-base tracking-tight leading-none text-slate-900 dark:text-white">
+              <div className="flex items-center gap-1">
+                <span className="font-extrabold text-sm tracking-tight leading-none text-slate-900 dark:text-white">
                   GRANDEC
                 </span>
-                <span className="text-[10px] font-black px-1.5 py-0.2 rounded bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 uppercase tracking-wider">
+                <span className="text-[9px] font-black px-1 rounded bg-amber-500 text-slate-950 uppercase">
                   2.0
                 </span>
               </div>
-              <span className="text-[9px] font-bold tracking-widest text-amber-600 dark:text-amber-400 uppercase leading-tight mt-0.5">
-                ACADEMIC EDTECH
-              </span>
             </div>
           </Link>
         </div>
 
         {/* Center: Gorizontal Pill-Shaped Fan Tanlagich (Desktop & Tablet) */}
-        <div className="hidden lg:flex items-center justify-center flex-1 max-w-xl mx-auto">
+        <div className="hidden md:flex items-center justify-center flex-1 max-w-xl mx-auto">
           <SubjectSwitcher size="sm" variant="pill" />
         </div>
 

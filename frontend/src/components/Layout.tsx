@@ -106,7 +106,7 @@ export default function Layout() {
     <div className="app">
       <aside className={`sidebar${open ? ' open' : ''}`} aria-label="Yon boshqaruv menyusi">
         <Link to="/" className="side-brand" onClick={close} aria-label="GRANDEC LMS Bosh sahifasi">
-          <img src="/logo-mark.png" alt="GRANDEC" className="brand-badge" style={{ height: 38, width: 'auto', background: 'transparent' }} />
+          <img src="/logo-mark.png" alt="GRANDEC" className="brand-badge" style={{ height: 38, width: 38, maxWidth: 38, maxHeight: 38, objectFit: 'contain', background: 'transparent' }} />
           <span>
             <span className="side-brand-name">GRANDEC</span>
             <span className="side-brand-sub" style={{ color: '#D97706', fontWeight: 700, fontSize: '9px', letterSpacing: '0.12em' }}>ACADEMIC EDTECH</span>

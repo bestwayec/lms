@@ -11,9 +11,9 @@ export interface SEOProps {
   jsonLd?: Record<string, unknown> | Array<Record<string, unknown>>;
 }
 
-const DEFAULT_TITLE = 'GRANDEC — Ona tili va adabiyot LMS | Milliy sertifikat & AI Esse';
+const DEFAULT_TITLE = 'GRANDEC 2.0 — Milliy Sertifikat, IELTS/CEFR va BMBA Intellektual LMS';
 const DEFAULT_DESC =
-  "Ona tili va adabiyoti bo'yicha Milliy sertifikatga tayyorlovchi zamonaviy LMS platformasi va AI Esse tahlil tizimi. 1v1 Arena duellari, testlar banki va rasmiy BMB mezonlari.";
+  "GRANDEC 2.0 — Milliy Sertifikat, IELTS/CEFR va BMBA Intellektual LMS platformasi va AI Tahlil tizimi. 5 ta fan: Ingliz tili, Kimyo, Biologiya, Huquq va Ona tili.";
 const DEFAULT_IMAGE = 'https://grandec.uz/grandec.png';
 const SITE_URL = 'https://grandec.uz';
 
@@ -40,7 +40,7 @@ function setLinkTag(rel: string, href: string) {
 export default function SEO({
   title,
   description = DEFAULT_DESC,
-  keywords = 'ona tili, milliy sertifikat, esse, insho, bmb, adabiyot, test, ai esse, 1v1 arena, grand education',
+  keywords = 'grandec, milliy sertifikat, ielts, cefr, bmba, ona tili, ingliz tili, kimyo, biologiya, huquq, ai esse, 1v1 arena, lms',
   canonical,
   image = DEFAULT_IMAGE,
   type = 'website',

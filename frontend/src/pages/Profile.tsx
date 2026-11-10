@@ -190,7 +190,7 @@ export default function Profile() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))', gap: 20 }}>
         {/* Personal Details Card */}
-        <div className="card" style={{ padding: 24 }}>
+        <div className="bento-card" style={{ padding: 24 }}>
           <h2 style={{ fontSize: 18, marginTop: 0, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
             <UserIcon size={20} style={{ color: 'var(--accent)' }} />
             {t('profile_personal_info')}
@@ -213,7 +213,7 @@ export default function Profile() {
         </div>
 
         {/* Interface & Theme Settings Card */}
-        <div className="card" style={{ padding: 24 }}>
+        <div className="bento-card" style={{ padding: 24 }}>
           <h2 style={{ fontSize: 18, marginTop: 0, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
             <MoonIcon size={20} style={{ color: 'var(--accent)' }} />
             {t('profile_interface_settings')}
@@ -226,9 +226,9 @@ export default function Profile() {
             </span>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
               {[
-                { key: 'dark' as Theme, label: t('theme_dark'), icon: MoonIcon },
-                { key: 'light' as Theme, label: t('theme_light'), icon: SunIcon },
-                { key: 'system' as Theme, label: t('theme_system'), icon: MonitorIcon },
+                { key: 'dark' as Theme, label: "Qorong'i (Obsidian)", icon: MoonIcon },
+                { key: 'light' as Theme, label: "Yorug' (Alabaster)", icon: SunIcon },
+                { key: 'system' as Theme, label: "Tizim (Avto)", icon: MonitorIcon },
               ].map((item) => {
                 const isActive = theme === item.key;
                 const Icon = item.icon;
@@ -261,7 +261,7 @@ export default function Profile() {
             </div>
             <span className="muted small" style={{ display: 'block', marginTop: 6 }}>
               {t('profile_active_theme')}{' '}
-              <strong>{resolvedTheme === 'dark' ? t('profile_dark_ui') : t('profile_light_ui')}</strong>
+              <strong>{resolvedTheme === 'dark' ? "Qorong'i (Obsidian Glass)" : "Yorug' (Crisp Alabaster)"}</strong>
             </span>
           </div>
 

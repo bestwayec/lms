@@ -438,8 +438,8 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-5 items-center pt-3 border-t border-slate-200 dark:border-slate-800">
               {/* Circular SVG Progress Ring */}
               <div className="sm:col-span-5 flex items-center justify-center">
-                <div className="relative flex items-center justify-center w-28 h-28">
-                  <svg className="w-28 h-28 transform -rotate-90" viewBox="0 0 100 100">
+                <div className="relative flex items-center justify-center" style={{ width: 112, height: 112, minWidth: 112, minHeight: 112 }}>
+                  <svg className="transform -rotate-90" style={{ width: 112, height: 112 }} viewBox="0 0 100 100">
                     <circle
                       cx="50"
                       cy="50"
@@ -548,7 +548,8 @@ export default function Dashboard() {
                         aria-label={`PIN raqam ${idx + 1}`}
                         placeholder="•"
                         disabled={pinBusy}
-                        className="w-10 sm:w-11 h-11 text-center font-bold text-base rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none uppercase font-mono transition-all"
+                        style={{ width: 40, height: 44, minWidth: 36 }}
+                        className="text-center font-bold text-base rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none uppercase font-mono transition-all"
                       />
                     );
                   })}
@@ -617,8 +618,8 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-5 items-center">
               {/* 5-burchakli SVG Spider/Radar Chart */}
               <div className="sm:col-span-6 flex items-center justify-center">
-                <div className="w-52 h-52 relative flex items-center justify-center">
-                  <svg className="w-full h-full" viewBox="0 0 200 200">
+                <div className="relative flex items-center justify-center" style={{ width: 190, height: 190, minWidth: 190, minHeight: 190 }}>
+                  <svg style={{ width: 190, height: 190 }} viewBox="0 0 200 200">
                     <defs>
                       <linearGradient id="spiderFill" x1="0%" y1="0%" x2="100%" y2="100%">
                         <stop offset="0%" stopColor="#6366F1" stopOpacity="0.45" />
