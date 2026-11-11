@@ -121,6 +121,24 @@ class TestScienceAndLawEngine:
         result = SubmitAttemptService.execute(attempt.id, self.student)
         assert result.score == Decimal("2")
 
+    def test_dual_open_calc_normalizes_apostrophes_and_decimals(self):
+        test = Test.objects.create(
+            course=self.course, title="Normalization", subject="chemistry", time_limit_minutes=60,
+        )
+        q = Question.objects.create(
+            test=test, text="Two parts", question_type=Question.QuestionType.DUAL_OPEN_CALC,
+            points=4, correct_text="2.5|o'g'il", position=1,
+        )
+        attempt = TestAttempt.objects.create(
+            test=test, student=self.student, status=TestAttempt.Status.IN_PROGRESS,
+        )
+        SaveAnswerService.execute(
+            attempt_id=attempt.id, question_id=q.id, choice_ids=[], student=self.student,
+            text_answer="2,5|O‘G‘IL",
+        )
+        result = SubmitAttemptService.execute(attempt.id, self.student)
+        assert result.score == Decimal("4")
+
     def test_matching_matrix_grading(self):
         """Verify MATCHING_MATRIX evaluates row-to-column pairs."""
         test = Test.objects.create(

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal
+import re
 from typing import Any
 
 
@@ -40,9 +41,11 @@ def unify_apostrophes(text: str) -> str:
 
 def clean_punctuation_and_spaces(text: str) -> str:
     """Taqqoslash uchun tinish belgilarini bo'shliqqa almashtiradi va bo'shliqlarni ixchamlaydi."""
+    # Decimal separators must survive punctuation folding: 2.5 is not 2 5.
+    text = re.sub(r"(?<=\d)[.,](?=\d)", "\u0000", text)
     for ch in (";", ",", ".", "!", "?", "(", ")", "[", "]", "{", "}", '"', ":"):
         text = text.replace(ch, " ")
-    return " ".join(text.split())
+    return " ".join(text.split()).replace("\u0000", ".")
 
 
 def evaluate_text_answer(
@@ -87,8 +90,6 @@ def evaluate_text_answer(
         return True
 
     # 4. Agar 2 talik savol bo'lsa: "a) ... b) ..." formatini alohida ajratib taqqoslash
-    import re
-
     def _extract_parts(t: str) -> tuple[str, str] | None:
         m = re.search(r"a\s*\)\s*(.*?)(?:\s*;?\s*b\s*\)\s*(.*)|$)", t, re.IGNORECASE)
         if m and m.group(1):
@@ -135,8 +136,10 @@ def as_number(text: str) -> int | None:
 
 def answers_match(given: str, key: str, *, case_sensitive: bool = False) -> bool:
     """Normalized equality; numbers match across digits and words (6 = six)."""
-    g = normalize_text(given, case_sensitive=case_sensitive)
-    k = normalize_text(key, case_sensitive=case_sensitive)
+    g = unify_apostrophes(normalize_text(given, case_sensitive=case_sensitive))
+    k = unify_apostrophes(normalize_text(key, case_sensitive=case_sensitive))
+    g = re.sub(r"(?<=\d),(?=\d)", ".", g)
+    k = re.sub(r"(?<=\d),(?=\d)", ".", k)
     if not g or not k:
         return False
     if g == k:
