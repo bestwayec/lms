@@ -70,7 +70,11 @@ export default function Navbar({ streakData, onOpenProfile, pageTitle: _pageTitl
             </button>
           )}
 
-          <Link to="/dashboard" className="flex items-center gap-2 group text-decoration-none">
+          <Link
+            to="/dashboard"
+            className="flex items-center gap-2 group no-underline"
+            style={{ textDecoration: 'none' }}
+          >
             <div
               style={{
                 width: 32,
@@ -106,16 +110,12 @@ export default function Navbar({ streakData, onOpenProfile, pageTitle: _pageTitl
                 }}
               />
             </div>
-            <div className="flex flex-col">
-              <div className="flex items-center gap-1">
-                <span className="font-extrabold text-sm tracking-tight leading-none text-slate-900 dark:text-white">
-                  GRANDEC
-                </span>
-                <span className="text-[9px] font-black px-1 rounded bg-amber-500 text-slate-950 uppercase">
-                  2.0
-                </span>
-              </div>
-            </div>
+            <span
+              className="font-extrabold text-sm tracking-tight leading-none text-slate-900 dark:text-white"
+              style={{ textDecoration: 'none' }}
+            >
+              GRANDEC
+            </span>
           </Link>
         </div>
 
@@ -130,7 +130,7 @@ export default function Navbar({ streakData, onOpenProfile, pageTitle: _pageTitl
           {streakData && (
             <div className="hidden sm:inline-flex items-center gap-1.5">
               <span className="pill-badge" style={{ borderColor: 'rgba(245, 158, 11, 0.35)', background: 'rgba(245, 158, 11, 0.12)', color: '#d97706' }}>
-                <span className="animate-pulse">🔥</span> {streakDays} kun
+                <span className="animate-pulse">🔥</span> {streakDays} {t('dsh_days_unit')}
               </span>
               <span className="hidden md:inline-flex text-xs font-bold font-mono px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
                 {streakData.xp_points} XP
@@ -143,8 +143,8 @@ export default function Navbar({ streakData, onOpenProfile, pageTitle: _pageTitl
             type="button"
             onClick={toggleTheme}
             className="p-2 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60 active:scale-95 transition-all"
-            aria-label="Mavzuni almashtirish (Yorug‘ / Qorong‘i)"
-            title={resolvedTheme === 'dark' ? '☀️ Ertalabgi rejimga o‘tish' : '🌙 Tungi rejimga o‘tish'}
+            aria-label={t('drawer_theme')}
+            title={resolvedTheme === 'dark' ? `☀️ ${t('nav_theme_light')}` : `🌙 ${t('nav_theme_dark')}`}
           >
             {resolvedTheme === 'dark' ? (
               <Sun size={17} className="text-amber-400" />
@@ -156,15 +156,20 @@ export default function Navbar({ streakData, onOpenProfile, pageTitle: _pageTitl
           {/* 👑 PRO Badge */}
           <Link
             to="/subscribe"
-            className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/25 transition-colors"
+            style={{ textDecoration: 'none' }}
+            className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/25 transition-colors no-underline"
           >
             <span>👑</span>
-            <span>{tier.isPaid ? 'PRO' : 'PRO-ga o‘tish'}</span>
+            <span>{tier.isPaid ? 'PRO' : t('nav_go_pro')}</span>
           </Link>
 
           {/* Admin panel shortcut for staff */}
           {isAdmin && (
-            <Link to="/panel" className="hidden xl:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/25 transition-colors">
+            <Link
+              to="/panel"
+              style={{ textDecoration: 'none' }}
+              className="hidden xl:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/25 transition-colors no-underline"
+            >
               <ShieldCheckIcon size={14} />
               <span>{t('tb_admin_panel', 'Admin')}</span>
             </Link>

@@ -373,8 +373,11 @@ export default function Dashboard() {
     });
   }
 
-  const rawFirstName = user?.first_name || name.split(' ')[0] || 'O‘quvchi';
-  const firstName = rawFirstName.charAt(0).toUpperCase() + rawFirstName.slice(1);
+  const rawCandidate = (user?.first_name || name.split(' ')[0] || '').trim();
+  const firstName =
+    rawCandidate.length > 1
+      ? rawCandidate.charAt(0).toUpperCase() + rawCandidate.slice(1)
+      : t('dsh_scholar_name');
   const streakDays = streakData?.current_streak ?? data?.indicators?.streak ?? 1;
 
   const goalQuestions = useMemo(() => {
@@ -421,10 +424,26 @@ export default function Dashboard() {
   }, [data?.weak_parts, subject, t, lang]);
 
   const now = new Date();
-  const monthNames = ['YANVAR', 'FEVRAL', 'MART', 'APREL', 'MAY', 'IYUN', 'IYUL', 'AVGUST', 'SENTYABR', 'OKTYABR', 'NOYABR', 'DEKABR'];
-  const todayBadgeText = `BOSHQARUV • ${now.getDate()}-${monthNames[now.getMonth()]}`;
+  const monthNamesByLang: Record<string, string[]> = {
+    uz: ['YANVAR', 'FEVRAL', 'MART', 'APREL', 'MAY', 'IYUN', 'IYUL', 'AVGUST', 'SENTYABR', 'OKTYABR', 'NOYABR', 'DEKABR'],
+    en: ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'],
+    ru: ['ЯНВАРЯ', 'ФЕВРАЛЯ', 'МАРТА', 'АПРЕЛЯ', 'МАЯ', 'ИЮНЯ', 'ИЮЛЯ', 'АВГУСТА', 'СЕНТЯБРЯ', 'ОКТЯБРЯ', 'НОЯБРЯ', 'ДЕКАБРЯ'],
+  };
+  const monthArr = monthNamesByLang[lang] || monthNamesByLang.uz;
+  const formattedToday =
+    lang === 'en'
+      ? `${monthArr[now.getMonth()]} ${now.getDate()}`
+      : lang === 'ru'
+      ? `${now.getDate()} ${monthArr[now.getMonth()]}`
+      : `${now.getDate()}-${monthArr[now.getMonth()]}`;
+  const todayBadgeText = t('dsh_bento_header').replace('{date}', formattedToday);
   const currentHour = now.getHours();
-  const greetingPrefix = currentHour < 11 ? 'Xayrli tong' : currentHour < 18 ? 'Xayrli kun' : 'Xayrli kech';
+  const greetingPrefix =
+    currentHour < 11
+      ? t('dsh_greet_morning')
+      : currentHour < 18
+      ? t('dsh_greet_afternoon')
+      : t('dsh_greet_evening');
   const currentSubjectConfig = SUBJECT_GOAL_CONFIG[subject] || SUBJECT_GOAL_CONFIG.uzbek;
   const targetGoalText = trackBadgeLabel || currentSubjectConfig.goalText;
   const remainingQuestions = Math.max(0, goalQuestions - completedQuestions);
@@ -433,14 +452,15 @@ export default function Dashboard() {
   const ringCircumference = 2 * Math.PI * ringRadius;
   const ringOffset = ringCircumference - (Math.min(100, Math.max(0, questionsProgressPct)) / 100) * ringCircumference;
 
+  const weekdayLabels = t('dsh_weekdays_short').split(',');
   const weekDays = [
-    { label: 'Du', active: true },
-    { label: 'Se', active: true },
-    { label: 'Ch', active: streakDays >= 3 },
-    { label: 'Pa', active: streakDays >= 4 },
-    { label: 'Ju', active: streakDays >= 5 },
-    { label: 'Sh', active: streakDays >= 6 },
-    { label: 'Ya', active: streakDays >= 7 },
+    { label: weekdayLabels[0] || 'Du', active: true },
+    { label: weekdayLabels[1] || 'Se', active: true },
+    { label: weekdayLabels[2] || 'Ch', active: streakDays >= 3 },
+    { label: weekdayLabels[3] || 'Pa', active: streakDays >= 4 },
+    { label: weekdayLabels[4] || 'Ju', active: streakDays >= 5 },
+    { label: weekdayLabels[5] || 'Sh', active: streakDays >= 6 },
+    { label: weekdayLabels[6] || 'Ya', active: streakDays >= 7 },
   ];
 
   const radarData = useMemo(() => {
@@ -480,7 +500,7 @@ export default function Dashboard() {
           GRANDEC 2.0 BENTO GRID (2x2 Layout)
           ====================================================================== */}
       {isStudent && (
-        <section className="bento-grid grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8" aria-label="Bento Boshqaruv Paneli">
+        <section className="bento-grid grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8" aria-label={todayBadgeText}>
           {/* BENTO BOX 1: Yuqori Chap — Katta Salomlashuv va Kunlik Reja Kartasi */}
           <div className="bento-card p-5 sm:p-6 flex flex-col justify-between relative overflow-hidden">
             {/* Header row: badge and settings icon */}
@@ -495,8 +515,8 @@ export default function Dashboard() {
                   setGoalModalOpen(true);
                 }}
                 className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-100 hover:bg-slate-800/50 transition-colors"
-                title="Maqsad sozlamalari"
-                aria-label="Maqsad sozlamalari"
+                title={t('dsh_goal_title')}
+                aria-label={t('dsh_goal_title')}
               >
                 <Settings size={17} />
               </button>
@@ -509,7 +529,7 @@ export default function Dashboard() {
               </h1>
               <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                 <span className="text-xs sm:text-sm font-semibold text-slate-500 dark:text-slate-400">
-                  Maqsadingiz:
+                  {t('dsh_your_goal')}
                 </span>
                 <span className={`text-xs sm:text-sm font-bold px-2.5 py-0.5 rounded-md border ${currentSubjectConfig.badgeClass}`} style={currentSubjectConfig.badgeStyle}>
                   {targetGoalText}
@@ -556,7 +576,7 @@ export default function Dashboard() {
                       {completedQuestions}/{goalQuestions}
                     </span>
                     <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
-                      savol bugun
+                      {t('dsh_questions_today')}
                     </span>
                   </div>
                 </div>
@@ -565,20 +585,23 @@ export default function Dashboard() {
               {/* Text, Week Flames, and Golden CTA */}
               <div className="sm:col-span-7 flex flex-col justify-between">
                 <p className="text-xs font-medium text-slate-600 dark:text-slate-300 mb-2.5">
-                  <span className="font-bold text-amber-600 dark:text-amber-400">{remainingQuestions} ta savol qoldi</span> — bugungi seriyani saqlab qolish uchun rejani bajaring.
+                  <span className="font-bold text-amber-600 dark:text-amber-400">
+                    {t('dsh_questions_left_prefix').replace('{n}', String(remainingQuestions))}
+                  </span>{' '}
+                  — {t('dsh_questions_left_suffix')}
                 </p>
 
                 {/* Hafta kunlari olovchalari */}
-                <div className="flex items-center gap-1.5 mb-3.5" role="list" aria-label="Haftalik seriya">
-                  {weekDays.map((d) => (
+                <div className="flex items-center gap-1.5 mb-3.5" role="list" aria-label="Weekly streak">
+                  {weekDays.map((d, idx) => (
                     <div
-                      key={d.label}
+                      key={`${d.label}-${idx}`}
                       role="listitem"
-                      aria-label={`${d.label}: ${d.active ? 'bajarildi' : 'kutilmoqda'}`}
+                      aria-label={d.label}
                       className={`dsh-week-chip flex flex-col items-center justify-center w-8 h-10 rounded-lg border text-[10px] font-bold transition-all ${
                         d.active
                           ? 'is-active border-amber-400 bg-gradient-to-b from-amber-400 to-amber-600 text-slate-950 shadow-md shadow-amber-500/30'
-                          : 'border-slate-200 bg-slate-100 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                          : 'bg-slate-100 border-slate-200 text-slate-700 dark:bg-slate-800/90 dark:border-slate-700 dark:text-slate-300'
                       }`}
                     >
                       <span>{d.label}</span>
@@ -589,9 +612,10 @@ export default function Dashboard() {
 
                 <Link
                   to={data?.resume?.route || '/tests'}
-                  className="bento-btn bento-btn-gold text-xs h-10 w-full sm:w-auto font-bold tracking-tight inline-flex items-center justify-center gap-2"
+                  style={{ textDecoration: 'none' }}
+                  className="bento-btn bento-btn-gold text-xs h-10 w-full sm:w-auto font-bold tracking-tight inline-flex items-center justify-center gap-2 no-underline"
                 >
-                  <span>Rejani davom ettirish →</span>
+                  <span>{t('dsh_continue_plan_cta')}</span>
                 </Link>
               </div>
             </div>
@@ -605,11 +629,11 @@ export default function Dashboard() {
                 <div className="flex items-center gap-2 mb-1.5">
                   <KeyRound size={16} className="text-indigo-600 dark:text-indigo-400" />
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 font-mono">
-                    TEZKOR KIRISH • Test kodini kiriting
+                    {t('dsh_quick_entry_title')}
                   </span>
                 </div>
                 <p className="text-xs text-slate-600 dark:text-slate-400 mb-3.5">
-                  Ustoz yoki markaz bergan 6 xonali MOCK yoki PIN kodni kiriting
+                  {t('dsh_quick_entry_desc')}
                 </p>
               </div>
 
@@ -625,16 +649,26 @@ export default function Dashboard() {
                           pinRefs.current[idx] = el;
                         }}
                         type="text"
+                        inputMode="text"
                         maxLength={1}
                         value={char}
                         onChange={(e) => handlePinBoxChange(idx, e.target.value)}
                         onKeyDown={(e) => handlePinKeyDown(idx, e)}
                         onPaste={handlePinPaste}
-                        aria-label={`PIN raqam ${idx + 1}`}
+                        aria-label={`PIN ${idx + 1}`}
                         placeholder="•"
                         disabled={pinBusy}
-                        style={{ width: 40, height: 44, minWidth: 36 }}
-                        className="text-center font-bold text-base rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none uppercase font-mono transition-all"
+                        style={{
+                          width: 42,
+                          height: 44,
+                          minWidth: 38,
+                          padding: 0,
+                          textAlign: 'center',
+                          fontFamily: '"JetBrains Mono", monospace',
+                          fontSize: '1.15rem',
+                          fontWeight: 700,
+                        }}
+                        className="text-center font-bold rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none uppercase font-mono transition-all"
                       />
                     );
                   })}
@@ -644,7 +678,7 @@ export default function Dashboard() {
                   disabled={pinBusy || !(pinCode || pinBoxes.join('')).trim()}
                   className="bento-btn bento-btn-indigo shrink-0 text-xs font-bold h-11 px-5"
                 >
-                  <span>{pinBusy ? '…' : '🚀 Boshlash'}</span>
+                  <span>{pinBusy ? '…' : `🚀 ${t('dsh_start_btn')}`}</span>
                 </button>
               </form>
               {pinErr && (
@@ -662,14 +696,14 @@ export default function Dashboard() {
             >
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-extrabold text-amber-600 dark:text-amber-400 tracking-wide uppercase">
-                  ⚡ Kunlik Blits (60 soniya ichida 5 ta savol)
+                  ⚡ {t('dsh_blitz_title')}
                 </span>
                 <span className="pill-badge text-[11px] font-mono font-bold" style={{ borderColor: 'rgba(251, 191, 36, 0.4)', background: 'rgba(251, 191, 36, 0.2)', color: '#d97706' }}>
                   +25 XP
                 </span>
               </div>
               <p className="text-xs text-slate-600 dark:text-slate-300 mb-4 font-medium">
-                Vaqtga qarshi tezkor sinov — barcha savollarga to‘g‘ri javob berib, olovli seriyangizni mustahkamlang!
+                {t('dsh_blitz_desc')}
               </p>
               <div className="flex justify-end">
                 <button
@@ -680,7 +714,7 @@ export default function Dashboard() {
                   }}
                   className="bento-btn bento-btn-gold text-xs h-9 px-4 font-bold"
                 >
-                  <span>Boshlash →</span>
+                  <span>{t('dsh_start_btn')} →</span>
                 </button>
               </div>
             </div>
@@ -692,11 +726,15 @@ export default function Dashboard() {
               <div className="flex items-center gap-2">
                 <Target size={17} className="text-indigo-600 dark:text-indigo-400" />
                 <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 font-mono">
-                  TAHLIL • AI Zaif mavzular radari
+                  {t('dsh_radar_card_title')}
                 </h2>
               </div>
-              <Link to="/results" className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline">
-                To‘liq tahlil →
+              <Link
+                to="/results"
+                style={{ textDecoration: 'none' }}
+                className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline no-underline"
+              >
+                {t('dsh_full_analysis_cta')}
               </Link>
             </div>
 
@@ -709,7 +747,7 @@ export default function Dashboard() {
                     viewBox="-45 -35 290 270"
                     preserveAspectRatio="xMidYMid meet"
                     role="img"
-                    aria-label="Zaif mavzular radari"
+                    aria-label={t('dsh_radar_card_title')}
                   >
                     <defs>
                       <linearGradient id="spiderFill" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -823,9 +861,10 @@ export default function Dashboard() {
                       <div className="flex justify-end">
                         <Link
                           to={item.practiceUrl}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:bg-amber-400/15 dark:text-amber-300 dark:border-amber-400/40 transition-colors"
+                          style={{ textDecoration: 'none' }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:bg-amber-400/15 dark:text-amber-300 dark:border-amber-400/40 transition-colors no-underline"
                         >
-                          <span>🎯 Xatoni yopish</span>
+                          <span>🎯 {t('dsh_fix_mistake_cta')}</span>
                         </Link>
                       </div>
                     </div>
@@ -843,19 +882,19 @@ export default function Dashboard() {
                   <div className="flex items-center gap-2">
                     <Users size={17} className="text-amber-500" />
                     <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 font-mono">
-                      GURUH • A'ZO BO'LISH
+                      {t('dsh_group_card_header')}
                     </h2>
                   </div>
                   <span className="pill-badge text-[10px] uppercase font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/20">
-                    A'zo emassiz
+                    {t('dsh_group_not_member_badge')}
                   </span>
                 </div>
 
                 <h3 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white mb-2">
-                  👥 Guruhga a'zo emassiz
+                  👥 {t('dsh_group_not_member_title')}
                 </h3>
                 <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
-                  Guruh darslarida qatnashish, uy vazifalarini topshirish va umumiy reytingda qatnashish uchun o‘qituvchingiz bergan 6 xonali guruh kodini kiriting.
+                  {t('dsh_group_not_member_desc')}
                 </p>
 
                 <form onSubmit={handleJoinGroup} className="space-y-3">
@@ -867,7 +906,7 @@ export default function Dashboard() {
                         setGroupCodeInput(e.target.value.toUpperCase());
                         if (groupJoinError) setGroupJoinError(null);
                       }}
-                      placeholder="GRP-104 yoki MOCK42"
+                      placeholder="GRP-104 / MOCK42"
                       maxLength={12}
                       className="flex-1 h-11 px-3.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 text-slate-900 dark:text-white font-mono font-bold text-sm tracking-wider uppercase placeholder:normal-case placeholder:font-sans placeholder:font-normal placeholder:text-xs placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all"
                     />
@@ -876,7 +915,7 @@ export default function Dashboard() {
                       disabled={groupJoining || !groupCodeInput.trim()}
                       className="bento-btn bento-btn-gold h-11 px-5 text-xs font-bold whitespace-nowrap disabled:opacity-50"
                     >
-                      {groupJoining ? 'Qo‘shilmoqda…' : 'Qo‘shilish'}
+                      {groupJoining ? '…' : t('arena_join')}
                     </button>
                   </div>
                   {groupJoinError && (
@@ -889,13 +928,14 @@ export default function Dashboard() {
 
               <div className="pt-4 mt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
                 <span className="text-xs text-slate-500 dark:text-slate-400">
-                  Platforma reytingi bilan tanishing:
+                  {t('jg_leaderboard_card_title')}:
                 </span>
                 <Link
                   to="/leaderboard"
-                  className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline inline-flex items-center gap-1"
+                  style={{ textDecoration: 'none' }}
+                  className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline inline-flex items-center gap-1 no-underline"
                 >
-                  <span>🌍 Umumiy reyting →</span>
+                  <span>🌍 {t('jg_leaderboard_card_cta')} →</span>
                 </Link>
               </div>
             </div>
@@ -905,11 +945,15 @@ export default function Dashboard() {
                 <div className="flex items-center gap-2">
                   <Trophy size={17} className="text-amber-500" />
                   <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 font-mono">
-                    GURUH • Faol sinf
+                    {t('dsh_group_card_header')}
                   </h2>
                 </div>
-                <Link to={`/groups/${user.primary_group_id}`} className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline">
-                  Guruh paneli →
+                <Link
+                  to={`/groups/${user.primary_group_id}`}
+                  style={{ textDecoration: 'none' }}
+                  className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline no-underline"
+                >
+                  {t('jg_to_cabinet')} →
                 </Link>
               </div>
 
@@ -920,30 +964,32 @@ export default function Dashboard() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                      {user?.full_name || 'O‘quvchi'}
+                      {user?.full_name || firstName}
                     </h4>
                     <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                      Guruh ID: #{user.primary_group_id}
+                      ID: #{user.primary_group_id}
                     </p>
                   </div>
                 </div>
                 <p className="text-xs text-slate-600 dark:text-slate-400">
-                  Guruhdagi vazifalar, dars jadvallari va sinfdoshlar reyting jadvalini ko‘rish uchun guruh sahifasiga o‘ting.
+                  {t('dsh_group_not_member_desc')}
                 </p>
               </div>
 
               <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
                 <Link
                   to={`/groups/${user.primary_group_id}`}
-                  className="bento-btn bento-btn-gold text-xs h-9 px-4 font-bold inline-flex items-center gap-1.5"
+                  style={{ textDecoration: 'none' }}
+                  className="bento-btn bento-btn-gold text-xs h-9 px-4 font-bold inline-flex items-center gap-1.5 no-underline"
                 >
-                  <span>Guruh sahifasiga o‘tish →</span>
+                  <span>{t('jg_to_cabinet')} →</span>
                 </Link>
                 <Link
                   to="/leaderboard"
-                  className="text-xs font-bold text-slate-500 dark:text-slate-400 hover:underline"
+                  style={{ textDecoration: 'none' }}
+                  className="text-xs font-bold text-slate-500 dark:text-slate-400 hover:underline no-underline"
                 >
-                  Umumiy reyting
+                  {t('jg_leaderboard_card_cta')}
                 </Link>
               </div>
             </div>

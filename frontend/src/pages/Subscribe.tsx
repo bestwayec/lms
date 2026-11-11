@@ -3,8 +3,12 @@ import type { FormEvent } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useLang } from '../i18n/LangContext';
 import { Billing, PaymentsApi, type PaymentReceiptItem } from '../lib/api';
-import { useCardInfo } from '../lib/useCardInfo';
-import CardGate from '../components/CardGate';
+import {
+  DEFAULT_CARD_HOLDER,
+  DEFAULT_CARD_NUMBER,
+  DEFAULT_CARD_NUMBER_RAW,
+  useCardInfo,
+} from '../lib/useCardInfo';
 import { CopyIcon, CreditCardIcon, CheckIcon } from '../components/icons';
 
 // Strictly 3 commercial subscription plans: START / STARTER (7 000), PRO (15 000 - recommended), PREMIUM (27 000)
@@ -29,7 +33,7 @@ const plans: {
 }[] = [
   {
     id: 'starter',
-    name: 'START / STARTER',
+    name: 'STARTER',
     priceKey: 'starter_price',
     defaultPrice: 7000,
     emoji: '⚡',
@@ -128,10 +132,9 @@ export default function Subscribe() {
   // Selected plan slug: 'starter' | 'pro' | 'premium'
   const [selectedPlan, setSelectedPlan] = useState<'starter' | 'pro' | 'premium'>('pro');
   const card = useCardInfo();
-  const cardReady = card.status === 'ready';
   const cardInfo = {
-    card_number: card.info?.card_number ?? '',
-    card_holder: card.info?.card_holder ?? '',
+    card_number: card.info?.card_number || DEFAULT_CARD_NUMBER,
+    card_holder: card.info?.card_holder || DEFAULT_CARD_HOLDER,
     starter_price: PLAN_PRICES.starter,
     pro_price: PLAN_PRICES.pro,
     premium_price: PLAN_PRICES.premium,
@@ -151,12 +154,30 @@ export default function Subscribe() {
   const [receipts, setReceipts] = useState<PaymentReceiptItem[]>([]);
   const [loadingReceipts, setLoadingReceipts] = useState(false);
 
+  const loadReceipts = async () => {
+    setLoadingReceipts(true);
+    const safetyTimer = window.setTimeout(() => {
+      setLoadingReceipts(false);
+    }, 6000);
+    try {
+      const res = await PaymentsApi.myReceipts();
+      setReceipts(Array.isArray(res?.results) ? res.results : []);
+    } catch {
+      setReceipts([]);
+    } finally {
+      window.clearTimeout(safetyTimer);
+      setLoadingReceipts(false);
+    }
+  };
+
   // Fetch initial card info and user receipts
   useEffect(() => {
-    loadReceipts();
+    void loadReceipts();
 
     if (planQuery === 'pro' || planQuery === 'premium' || planQuery === 'starter') {
       setSelectedPlan(planQuery);
+    } else if (planQuery === 'start') {
+      setSelectedPlan('starter');
     } else if (planId) {
       Billing.plans()
         .then((res) => {
@@ -175,22 +196,15 @@ export default function Subscribe() {
     }
   }, [planId, planQuery]);
 
-  const loadReceipts = () => {
-    setLoadingReceipts(true);
-    PaymentsApi.myReceipts()
-      .then((res) => setReceipts(res.results))
-      .catch(() => {})
-      .finally(() => setLoadingReceipts(false));
-  };
-
   const handleCopy = async (text: string) => {
+    const rawDigits = (text || DEFAULT_CARD_NUMBER).replace(/\s+/g, '') || DEFAULT_CARD_NUMBER_RAW;
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(rawDigits);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
       const ta = document.createElement('textarea');
-      ta.value = text;
+      ta.value = rawDigits;
       document.body.appendChild(ta);
       ta.select();
       document.execCommand('copy');
@@ -203,7 +217,7 @@ export default function Subscribe() {
   const handleFileChange = (file: File | null) => {
     if (!file) return;
     if (!file.type.startsWith('image/')) {
-      setUploadError('Faqat rasm fayllari (.jpg, .jpeg, .png) qabul qilinadi.');
+      setUploadError(t('sub_only_images_error'));
       return;
     }
     setUploadError(null);
@@ -225,7 +239,7 @@ export default function Subscribe() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!selectedFile) {
-      setUploadError("Iltimos, to'lov cheki rasmini tanlang.");
+      setUploadError(t('sub_select_receipt_error'));
       return;
     }
 
@@ -237,15 +251,13 @@ export default function Subscribe() {
 
     try {
       await PaymentsApi.uploadReceipt(selectedPlan, selectedFile, price);
-      setUploadSuccess(
-        "To'lov chekingiz qabul qilindi! Admin tekshiruvidan so'ng (odatda 5-15 daqiqa) tarifingiz faollashadi."
-      );
+      setUploadSuccess(t('sub_upload_success'));
       setSelectedFile(null);
       setPreviewUrl(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
-      loadReceipts();
+      void loadReceipts();
     } catch (err: unknown) {
-      setUploadError(err instanceof Error ? err.message : "Chekni yuklashda xatolik yuz berdi.");
+      setUploadError(err instanceof Error ? err.message : t('sub_upload_failed_error'));
     } finally {
       setUploading(false);
     }
@@ -425,29 +437,28 @@ export default function Subscribe() {
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
             <span style={{ fontSize: 13, textTransform: 'uppercase', letterSpacing: 1.5, color: '#94a3b8' }}>
-              Uzcard / Humo
+              Visa / Humo / Uzcard
             </span>
             <span style={{ fontSize: 13, color: '#38bdf8', fontWeight: 600 }}>GRAND EDUCATION</span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
             <span
               style={{
                 fontSize: 24,
-                fontFamily: 'monospace',
+                fontFamily: '"JetBrains Mono", monospace',
                 letterSpacing: 2,
                 fontWeight: 700,
                 color: '#fff',
                 userSelect: 'all',
               }}
             >
-              {cardReady ? cardInfo.card_number : <CardGate status={card.status} onRetry={card.reload} />}
+              {cardInfo.card_number || DEFAULT_CARD_NUMBER}
             </span>
             <button
               type="button"
               className="btn sm"
-              disabled={!cardReady}
-              onClick={() => handleCopy(cardInfo.card_number)}
+              onClick={() => void handleCopy(cardInfo.card_number || DEFAULT_CARD_NUMBER)}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -473,7 +484,7 @@ export default function Subscribe() {
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 20, paddingTop: 16, borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
             <div>
               <span style={{ fontSize: 11, color: '#94a3b8', display: 'block', textTransform: 'uppercase' }}>{t('sub_card_holder')}</span>
-              <strong style={{ fontSize: 14, color: '#f8fafc' }}>{cardReady ? cardInfo.card_holder : '—'}</strong>
+              <strong style={{ fontSize: 14, color: '#f8fafc' }}>{cardInfo.card_holder || DEFAULT_CARD_HOLDER}</strong>
             </div>
             <div style={{ textAlign: 'right' }}>
               <span style={{ fontSize: 11, color: '#94a3b8', display: 'block', textTransform: 'uppercase' }}>{t('sub_transfer_amount')}</span>
@@ -554,7 +565,7 @@ export default function Subscribe() {
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
                 <img
                   src={previewUrl}
-                  alt="Chek namunasi"
+                  alt={t('sub_step3_title')}
                   style={{
                     maxHeight: 180,
                     maxWidth: '100%',
@@ -598,19 +609,29 @@ export default function Subscribe() {
           <button
             type="button"
             className="btn sm ghost"
-            onClick={loadReceipts}
+            onClick={() => void loadReceipts()}
             disabled={loadingReceipts}
           >
-            Yangilash 🔄
+            {t('sub_refresh_btn')} 🔄
           </button>
         </div>
 
-        {loadingReceipts && <p className="muted small">Yuklanmoqda...</p>}
+        {loadingReceipts && <p className="muted small">{t('sub_loading_receipts')}</p>}
 
         {!loadingReceipts && receipts.length === 0 && (
-          <p className="muted small" style={{ margin: 0 }}>
-            {t('sub_no_receipts')}
-          </p>
+          <div
+            style={{
+              padding: '20px 16px',
+              borderRadius: 12,
+              background: 'var(--card-2)',
+              border: '1px dashed var(--border)',
+              textAlign: 'center',
+            }}
+          >
+            <p className="muted small" style={{ margin: 0 }}>
+              {t('sub_no_receipts')}
+            </p>
+          </div>
         )}
 
         {!loadingReceipts && receipts.length > 0 && (

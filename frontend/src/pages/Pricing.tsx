@@ -5,9 +5,13 @@ import { useLang } from '../i18n/LangContext';
 import { PaymentsApi } from '../lib/api';
 import { CreditCardIcon, CheckIcon, CopyIcon, ZapIcon } from '../components/icons';
 import CardPaymentModal from '../components/CardPaymentModal';
-import CardGate from '../components/CardGate';
 import SafeBoldText from '../components/SafeBoldText';
-import { useCardInfo } from '../lib/useCardInfo';
+import {
+  DEFAULT_CARD_HOLDER,
+  DEFAULT_CARD_NUMBER,
+  DEFAULT_CARD_NUMBER_RAW,
+  useCardInfo,
+} from '../lib/useCardInfo';
 
 export const PLAN_PRICES = {
   starter: 7000,
@@ -20,8 +24,10 @@ export default function Pricing() {
   const [selectedPlan, setSelectedPlan] = useState<'starter' | 'pro' | 'premium'>('pro');
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const card = useCardInfo();
-  const cardReady = card.status === 'ready';
-  const cardInfo = card.info ?? { card_number: '', card_holder: '' };
+  const cardInfo = {
+    card_number: card.info?.card_number || DEFAULT_CARD_NUMBER,
+    card_holder: card.info?.card_holder || DEFAULT_CARD_HOLDER,
+  };
   const [copied, setCopied] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -34,7 +40,8 @@ export default function Pricing() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleCopy = (text: string) => {
-    navigator.clipboard.writeText(text.replace(/\s+/g, ''));
+    const raw = (text || DEFAULT_CARD_NUMBER).replace(/\s+/g, '') || DEFAULT_CARD_NUMBER_RAW;
+    navigator.clipboard.writeText(raw);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -283,33 +290,32 @@ export default function Pricing() {
           <span style={{ fontSize: 13, color: '#38bdf8', fontWeight: 600 }}>GRAND EDUCATION</span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
-          <span style={{ fontSize: 24, fontFamily: 'monospace', letterSpacing: 2, fontWeight: 700 }}>
-            {cardReady ? cardInfo.card_number : <CardGate status={card.status} onRetry={card.reload} />}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 24, fontFamily: '"JetBrains Mono", monospace', letterSpacing: 2, fontWeight: 700 }}>
+            {cardInfo.card_number || DEFAULT_CARD_NUMBER}
           </span>
           <button
             type="button"
             className="btn sm"
-            disabled={!cardReady}
-            onClick={() => handleCopy(cardInfo.card_number)}
+            onClick={() => handleCopy(cardInfo.card_number || DEFAULT_CARD_NUMBER)}
             style={{
               background: copied ? '#10b981' : 'rgba(255, 255, 255, 0.1)',
               border: '1px solid rgba(255, 255, 255, 0.2)',
               color: '#fff',
             }}
           >
-            {copied ? <><CheckIcon size={14} className="ico" /> Nusxalandi</> : <><CopyIcon size={14} className="ico" /> Nusxa olish</>}
+            {copied ? <><CheckIcon size={14} className="ico" /> {t('sub_card_copied')}</> : <><CopyIcon size={14} className="ico" /> {t('sub_copy_card')}</>}
           </button>
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 12, marginBottom: 16 }}>
           <div>
-            <span style={{ fontSize: 11, color: '#94a3b8', display: 'block' }}>Karta egasi:</span>
-            <strong>{cardReady ? cardInfo.card_holder : '—'}</strong>
+            <span style={{ fontSize: 11, color: '#94a3b8', display: 'block', textTransform: 'uppercase' }}>{t('sub_card_holder')}:</span>
+            <strong>{cardInfo.card_holder || DEFAULT_CARD_HOLDER}</strong>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <span style={{ fontSize: 11, color: '#94a3b8', display: 'block' }}>To'lov summasi:</span>
-            <strong style={{ color: '#fbbf24', fontSize: 16 }}>{currentPrice.toLocaleString()} so'm</strong>
+            <span style={{ fontSize: 11, color: '#94a3b8', display: 'block', textTransform: 'uppercase' }}>{t('sub_transfer_amount')}:</span>
+            <strong style={{ color: '#fbbf24', fontSize: 16 }}>{currentPrice.toLocaleString()} {t('sub_per_month').split('/')[0].trim()}</strong>
           </div>
         </div>
 

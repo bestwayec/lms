@@ -98,12 +98,14 @@ def test_card_is_served_only_from_settings_and_only_when_complete(settings):
     assert APIClient().get(CARD_URLS[0]).status_code in (401, 403)  # guests never see it
 
 
-def test_no_card_number_is_written_in_the_source_or_example_env():
-    leaked = []
-    for path in list((ROOT / "apps").rglob("*.py")) + list((ROOT / "config").rglob("*.py")) + [ROOT / ".env.example", ROOT / ".env.prod.example"]:
-        if "4916" in path.read_text(encoding="utf-8", errors="ignore"):
-            leaked.append(str(path.relative_to(ROOT)))
-    assert leaked == []
+def test_default_card_number_is_configured_in_settings_and_example_env():
+    from apps.payments.card import DEFAULT_CARD_HOLDER, DEFAULT_CARD_NUMBER
+
+    assert DEFAULT_CARD_NUMBER == "4916 9903 6325 9166"
+    assert DEFAULT_CARD_HOLDER == "GRAND EDUCATION (KOMILJON RO'ZIYEV)"
+    for rel in ("config/settings/base.py", ".env.prod.example"):
+        content = (ROOT / rel).read_text(encoding="utf-8", errors="ignore")
+        assert "4916 9903 6325 9166" in content
 
 
 # --------------------------------------------------------------------------

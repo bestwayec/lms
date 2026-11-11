@@ -1938,7 +1938,7 @@ export default function Landing() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
                 <img src="/logo-mark.png" alt="GRANDEC" style={{ height: 32, width: 'auto', objectFit: 'contain' }} />
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <span style={{ fontWeight: 900, fontSize: 16, color: '#0F172A', lineHeight: 1.1 }}>GRANDEC</span>
+                  <span className="text-slate-900 dark:text-white" style={{ fontWeight: 900, fontSize: 16, color: 'var(--text-primary)', lineHeight: 1.1 }}>GRANDEC</span>
                   <span style={{ fontSize: 8.5, fontWeight: 800, color: '#D97706', letterSpacing: '0.12em', textTransform: 'uppercase' }}>ACADEMIC EDTECH</span>
                 </div>
               </div>

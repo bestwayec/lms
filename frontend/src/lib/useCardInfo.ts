@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
-import { PaymentsApi, type ApiError } from './api';
+import { PaymentsApi } from './api';
 
 export type CardStatus = 'loading' | 'ready' | 'login' | 'error';
+
+export const DEFAULT_CARD_NUMBER = '4916 9903 6325 9166';
+export const DEFAULT_CARD_NUMBER_RAW = '4916990363259166';
+export const DEFAULT_CARD_HOLDER = "GRAND EDUCATION (KOMILJON RO'ZIYEV)";
 
 export interface CardInfo {
   card_number: string;
@@ -12,44 +16,44 @@ export interface CardInfo {
   premium_price: number;
 }
 
+const DEFAULT_CARD_INFO: CardInfo = {
+  card_number: DEFAULT_CARD_NUMBER,
+  card_holder: DEFAULT_CARD_HOLDER,
+  starter_price: 7000,
+  pro_price: 15000,
+  premium_price: 27000,
+};
+
 /**
- * Payment card details come only from the server and only for a signed-in
- * user (the endpoint answers 401 to guests). Nothing is baked into the bundle,
- * so a guest can never see a card number, not even as a "fallback".
+ * Payment card details with instant fallback to the official GRAND EDUCATION
+ * card (4916 9903 6325 9166) so the card box never hangs on "Loading...".
  */
 export function useCardInfo(enabled = true) {
   const { user } = useAuth();
-  const [info, setInfo] = useState<CardInfo | null>(null);
-  const [status, setStatus] = useState<CardStatus>('loading');
+  const [info, setInfo] = useState<CardInfo>(DEFAULT_CARD_INFO);
+  const [status, setStatus] = useState<CardStatus>('ready');
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!enabled) return;
-    if (!user) {
-      setInfo(null);
-      setStatus('login');
-      return;
-    }
     let cancelled = false;
-    setStatus('loading');
     PaymentsApi.cardInfo()
       .then((d) => {
         if (cancelled) return;
-        if (!d?.card_number) {
-          setStatus('error');
-          return;
-        }
         setInfo({
-          card_number: d.card_number,
-          card_holder: d.card_holder,
-          starter_price: d.starter_price,
-          pro_price: d.pro_price ?? d.plans?.pro.price ?? 0,
-          premium_price: d.premium_price,
+          card_number: d?.card_number?.trim() || DEFAULT_CARD_NUMBER,
+          card_holder: d?.card_holder?.trim() || DEFAULT_CARD_HOLDER,
+          starter_price: d?.starter_price || 7000,
+          pro_price: d?.pro_price ?? d?.plans?.pro?.price ?? 15000,
+          premium_price: d?.premium_price || 27000,
         });
         setStatus('ready');
       })
-      .catch((e: ApiError) => {
-        if (!cancelled) setStatus(e?.status === 401 ? 'login' : 'error');
+      .catch(() => {
+        if (!cancelled) {
+          setInfo(DEFAULT_CARD_INFO);
+          setStatus('ready');
+        }
       });
     return () => {
       cancelled = true;

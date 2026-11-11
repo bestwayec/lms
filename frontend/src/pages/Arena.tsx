@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useLang } from '../i18n/LangContext';
 import { ArenaLobby, arenaSocketUrl } from '../lib/api';
-import { SwordsIcon } from '../components/icons';
+import { SwordsIcon, TrophyIcon } from '../components/icons';
 import { useAuth } from '../auth/AuthContext';
 import TiltCard from '../components/TiltCard';
 import LimitExceededModal from '../components/LimitExceededModal';
@@ -55,6 +55,8 @@ export default function Arena() {
   const { t } = useLang();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isLeaderboardView = location.pathname.startsWith('/leaderboard');
   const [summary, setSummary] = useState<Record<string, unknown> | null>(null);
   const [code, setCode] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
@@ -158,8 +160,6 @@ export default function Arena() {
         setMsg(t('arena_login_needed'));
         return;
       }
-      // Server closes after match_found redirect delay — only reset when
-      // we never reached the found state.
       setQueue((q) => (q === 'found' ? q : 'idle'));
     };
   };
@@ -213,6 +213,173 @@ export default function Arena() {
   const board = (summary?.leaderboard as BoardRow[] | undefined) ?? [];
   const stats = (summary?.stats as ArenaStats | undefined) ?? {};
   const invites = (summary?.invites as Invite[] | undefined) ?? [];
+  const top3 = board.slice(0, 3);
+
+  const myStatsCard = (
+    <div className="card stat stat-gradient-amber" style={{ height: '100%', margin: 0 }}>
+      <span className="stat-label">{t('arena_my_stats')}</span>
+      <span className="stat-value">
+        {stats.rating ?? '—'}
+        <small className="muted">
+          {' '}
+          ELO{stats.rank ? ` · #${stats.rank}` : ''}
+        </small>
+      </span>
+      {stats.rating !== undefined && (
+        <div style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          {(() => {
+            const r = Number(stats.rating ?? 0);
+            let badge = '🥉 Bronza';
+            let color = '#cd7f32';
+            if (r >= 1800) { badge = '💎 Olmos'; color = '#67e8f9'; }
+            else if (r >= 1500) { badge = '🥇 Oltin'; color = '#fbbf24'; }
+            else if (r >= 1200) { badge = '🥈 Kumush'; color = '#94a3b8'; }
+            return (
+              <span style={{
+                fontSize: '0.82rem',
+                fontWeight: 700,
+                color,
+                background: 'rgba(255, 255, 255, 0.06)',
+                border: `1px solid ${color}`,
+                borderRadius: 20,
+                padding: '3px 10px',
+                letterSpacing: '0.02em',
+              }}>
+                {badge}
+              </span>
+            );
+          })()}
+        </div>
+      )}
+      <p className="muted small">
+        {t('arena_wins')}: {stats.wins ?? '—'} · {t('arena_losses')}:{' '}
+        {stats.losses ?? '—'} · {t('arena_draws')}: {stats.draws ?? '—'}
+      </p>
+      <p className="muted small">
+        {t('arena_streak')}: {stats.current_win_streak ?? '—'} ·{' '}
+        {t('arena_accuracy')}: {stats.accuracy ?? '—'}% · {t('arena_duels')}:{' '}
+        {stats.duels_played ?? '—'}
+      </p>
+      {(stats.xp !== undefined || stats.coins !== undefined) && (
+        <p className="muted small">
+          ⚡ {stats.xp ?? 0} {t('xp')} · 🪙 {stats.coins ?? 0} {t('coins')}
+        </p>
+      )}
+    </div>
+  );
+
+  const leaderboardSection = (
+    <>
+      {top3.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          {top3.map((row, idx) => {
+            const medals = ['🥇', '🥈', '🥉'];
+            const borderColors = ['#F59E0B', '#94A3B8', '#D97706'];
+            return (
+              <div
+                key={row.rank ?? idx}
+                className="card flex flex-col items-center text-center p-5"
+                style={{
+                  border: `1.5px solid ${borderColors[idx] ?? '#E2E8F0'}`,
+                  borderRadius: 16,
+                }}
+              >
+                <span style={{ fontSize: 32, lineHeight: 1 }}>{medals[idx] ?? '🏅'}</span>
+                <strong className="text-base font-bold text-slate-900 dark:text-white mt-2">
+                  {row.name ?? '—'}
+                </strong>
+                <span className="text-xs font-mono font-bold text-amber-600 dark:text-amber-400 mt-1">
+                  {row.rating ?? '—'} ELO · {row.wins ?? 0} {t('arena_wins')}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="table-wrap">
+        <table className="data">
+          <thead>
+            <tr>
+              <th>{t('lb_rank')}</th>
+              <th>{t('lb_student')}</th>
+              <th>{t('arena_rating')}</th>
+              <th>{t('arena_wins')}</th>
+              <th>{t('arena_streak')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {board.slice(0, 20).map((r, i) => (
+              <tr key={r.rank ?? i}>
+                <td>{r.rank ?? i + 1}</td>
+                <td>{r.name ?? '—'}</td>
+                <td>{r.rating ?? '—'}</td>
+                <td>{r.wins ?? '—'}</td>
+                <td>{r.current_win_streak ?? '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+
+  if (isLeaderboardView) {
+    return (
+      <div>
+        <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+          <div>
+            <h1 className="m-0 flex items-center gap-2">
+              <TrophyIcon size={24} className="ico" /> {t('arena_leaderboard')}
+            </h1>
+            <p className="muted m-0 mt-1">{t('jg_leaderboard_card_desc')}</p>
+          </div>
+          <Link
+            to="/arena"
+            className="btn primary sm"
+            style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            <SwordsIcon size={16} className="ico" /> {t('arena_live_duel')} →
+          </Link>
+        </div>
+
+        {msg && <p className="error">{msg}</p>}
+
+        <div className="mb-6">{myStatsCard}</div>
+
+        <h2>🏆 {t('jg_leaderboard_card_title')}</h2>
+        {leaderboardSection}
+
+        {/* Compact Banner to 1v1 Live Arena */}
+        <div
+          className="mt-6 p-4 sm:p-5 rounded-2xl bg-amber-50/90 dark:bg-slate-900/90 border border-amber-500/30 flex items-center justify-between flex-wrap gap-3"
+        >
+          <div>
+            <strong className="text-sm sm:text-base font-bold text-slate-900 dark:text-white block">
+              ⚔️ {t('arena_live_duel')}
+            </strong>
+            <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
+              {t('arena_quick_hint')}
+            </span>
+          </div>
+          <Link
+            to="/arena"
+            className="btn primary sm"
+            style={{ textDecoration: 'none' }}
+          >
+            {t('arena_find_match')} →
+          </Link>
+        </div>
+
+        <LimitExceededModal
+          isOpen={limitModalOpen}
+          onClose={() => setLimitModalOpen(false)}
+          message={limitModalMsg}
+          feature="arena"
+        />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -269,56 +436,7 @@ export default function Arena() {
           </div>
         </TiltCard>
         <TiltCard glare maxTilt={8} scale={1.02} style={{ borderRadius: 'var(--radius)', height: '100%' }}>
-          <div className="card stat stat-gradient-amber" style={{ height: '100%', margin: 0 }}>
-            <span className="stat-label">{t('arena_my_stats')}</span>
-            <span className="stat-value">
-              {stats.rating ?? '—'}
-              <small className="muted">
-                {' '}
-                ELO{stats.rank ? ` · #${stats.rank}` : ''}
-              </small>
-            </span>
-            {stats.rating !== undefined && (
-              <div style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                {(() => {
-                  const r = Number(stats.rating ?? 0);
-                  let badge = '🥉 Bronza';
-                  let color = '#cd7f32';
-                  if (r >= 1800) { badge = '💎 Olmos'; color = '#67e8f9'; }
-                  else if (r >= 1500) { badge = '🥇 Oltin'; color = '#fbbf24'; }
-                  else if (r >= 1200) { badge = '🥈 Kumush'; color = '#94a3b8'; }
-                  return (
-                    <span style={{
-                      fontSize: '0.82rem',
-                      fontWeight: 700,
-                      color,
-                      background: 'rgba(255, 255, 255, 0.06)',
-                      border: `1px solid ${color}`,
-                      borderRadius: 20,
-                      padding: '3px 10px',
-                      letterSpacing: '0.02em',
-                    }}>
-                      {badge}
-                    </span>
-                  );
-                })()}
-              </div>
-            )}
-            <p className="muted small">
-              {t('arena_wins')}: {stats.wins ?? '—'} · {t('arena_losses')}:{' '}
-              {stats.losses ?? '—'} · {t('arena_draws')}: {stats.draws ?? '—'}
-            </p>
-            <p className="muted small">
-              {t('arena_streak')}: {stats.current_win_streak ?? '—'} ·{' '}
-              {t('arena_accuracy')}: {stats.accuracy ?? '—'}% · {t('arena_duels')}:{' '}
-              {stats.duels_played ?? '—'}
-            </p>
-            {(stats.xp !== undefined || stats.coins !== undefined) && (
-              <p className="muted small">
-                ⚡ {stats.xp ?? 0} {t('xp')} · 🪙 {stats.coins ?? 0} {t('coins')}
-              </p>
-            )}
-          </div>
+          {myStatsCard}
         </TiltCard>
       </div>
 
@@ -344,30 +462,7 @@ export default function Arena() {
       )}
 
       <h2>{t('arena_leaderboard')}</h2>
-      <div className="table-wrap">
-        <table className="data">
-          <thead>
-            <tr>
-              <th>{t('lb_rank')}</th>
-              <th>{t('lb_student')}</th>
-              <th>{t('arena_rating')}</th>
-              <th>{t('arena_wins')}</th>
-              <th>{t('arena_streak')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {board.slice(0, 20).map((r, i) => (
-              <tr key={r.rank ?? i}>
-                <td>{r.rank ?? i + 1}</td>
-                <td>{r.name ?? '—'}</td>
-                <td>{r.rating ?? '—'}</td>
-                <td>{r.wins ?? '—'}</td>
-                <td>{r.current_win_streak ?? '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {leaderboardSection}
 
       <LimitExceededModal
         isOpen={limitModalOpen}

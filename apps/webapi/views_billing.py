@@ -60,11 +60,25 @@ def plans_view(request):
     in the store. ``my_plan_id`` is derived from the user's subscription rather
     than from the filtered list, so a subscriber whose plan was later made
     non-public still sees which plan they are on.
+    Deduplicates ``start`` and ``starter`` rows so only a single unified
+    7 000 UZS Starter tier appears in the catalogue.
     """
-    plans = SubscriptionPlan.objects.filter(
-        is_active=True,
-        is_public=True,
-    ).order_by("sort_order")
+    qs = list(
+        SubscriptionPlan.objects.filter(
+            is_active=True,
+            is_public=True,
+        ).order_by("sort_order", "id")
+    )
+    has_starter = any(p.plan_type == "starter" for p in qs)
+    seen_types: set[str] = set()
+    plans: list[SubscriptionPlan] = []
+    for p in qs:
+        canonical_type = "starter" if (p.plan_type == "start" and has_starter) else p.plan_type
+        if canonical_type in seen_types:
+            continue
+        seen_types.add(canonical_type)
+        plans.append(p)
+
     sub = getattr(request.user, "subscription", None)
     return Response(
         {

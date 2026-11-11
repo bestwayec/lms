@@ -45,6 +45,20 @@ if [ -n "${OPENROUTER_API_KEY:-}" ] && [ -f .env.prod ]; then
   fi
 fi
 
+# --- Official Payment Card synchronization to .env.prod ---
+if [ -f .env.prod ]; then
+  if grep -q "^PAYMENT_CARD_NUMBER=" .env.prod; then
+    sed -i "s|^PAYMENT_CARD_NUMBER=.*|PAYMENT_CARD_NUMBER=4916 9903 6325 9166|" .env.prod
+  else
+    echo "PAYMENT_CARD_NUMBER=4916 9903 6325 9166" >> .env.prod
+  fi
+  if grep -q "^PAYMENT_CARD_HOLDER=" .env.prod; then
+    sed -i "s|^PAYMENT_CARD_HOLDER=.*|PAYMENT_CARD_HOLDER=GRAND EDUCATION (KOMILJON RO'ZIYEV)|" .env.prod
+  else
+    echo "PAYMENT_CARD_HOLDER=GRAND EDUCATION (KOMILJON RO'ZIYEV)" >> .env.prod
+  fi
+fi
+
 # --- GHCR login: temp DOCKER_CONFIG only (nothing on disk) ---
 export DOCKER_CONFIG="$(mktemp -d)"
 cleanup() { docker logout "$REGISTRY" >/dev/null 2>&1 || true; rm -rf "$DOCKER_CONFIG"; }

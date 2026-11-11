@@ -87,279 +87,232 @@ export default function JoinGroup() {
   const nextUrl = encodeURIComponent(codeInput ? `/join/${codeInput}` : '/join');
 
   return (
-    <div style={{ maxWidth: 840, margin: '0 auto', padding: '30px 16px 80px' }}>
+    <div style={{ maxWidth: 840, margin: '0 auto', padding: '30px 16px 80px', boxSizing: 'border-box' }}>
       {/* Brand Header */}
       <div style={{ textAlign: 'center', marginBottom: 28 }}>
         <Link to="/" style={{ display: 'inline-flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
-          <img src="/logo-mark.png" alt="" width={38} height={38} />
-          <span style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary, #F8FAFC)', letterSpacing: 0.5 }}>
-            GRAND EDUCATION
+          <img src="/logo-mark.png" alt="GRANDEC" width={38} height={38} />
+          <span className="text-xl font-extrabold text-slate-900 dark:text-white tracking-wide">
+            GRANDEC
           </span>
         </Link>
-        <h1 style={{ fontSize: 22, fontWeight: 700, margin: '14px 0 6px' }}>
-          Guruhga va Kursxonaga Qo‘shilish
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white mt-3.5 mb-1.5">
+          {t('jg_page_title')}
         </h1>
-        <p style={{ margin: 0, color: 'var(--text-secondary, #94A3B8)', fontSize: 14 }}>
-          Ustozingiz bergan 6 xonali guruh kodi yoki taklif havolasi orqali guruhga a‘zo bo‘ling.
+        <p className="m-0 text-sm text-slate-600 dark:text-slate-400">
+          {t('jg_page_subtitle')}
         </p>
       </div>
 
       <div
-        style={{
-          background: 'var(--card-bg, #1E293B)',
-          borderRadius: 20,
-          padding: '28px 24px',
-          border: '1px solid var(--border-color, rgba(255,255,255,0.08))',
-          boxShadow: '0 8px 30px rgba(0,0,0,0.2)',
-        }}
+        className="rounded-2xl p-5 sm:p-7 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-lg box-border"
       >
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              fetchPreview(codeInput);
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void fetchPreview(codeInput);
+          }}
+          className="flex flex-col sm:flex-row gap-3 w-full mb-5"
+        >
+          <input
+            type="text"
+            placeholder={t('jg_code_placeholder')}
+            value={codeInput}
+            onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
+            className="w-full sm:flex-1 px-4 py-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-sm sm:text-base font-semibold tracking-wider box-border"
+          />
+          <button
+            type="submit"
+            disabled={loadingPreview || !codeInput.trim()}
+            className="w-full sm:w-auto px-6 py-3.5 rounded-xl font-bold text-sm text-white flex items-center justify-center gap-2 shrink-0 transition-opacity"
+            style={{
+              background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
+              border: 'none',
+              cursor: 'pointer',
+              opacity: !codeInput.trim() ? 0.65 : 1,
             }}
-            style={{ display: 'flex', gap: 10, marginBottom: 20 }}
           >
-            <input
-              type="text"
-              placeholder="Guruh kodini kiriting (masalan: BIO-104, KIM-205, HUQ-301)"
-              value={codeInput}
-              onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
-              style={{
-                flex: 1,
-                padding: '13px 16px',
-                borderRadius: 12,
-                background: 'rgba(255,255,255,0.05)',
-                border: '1px solid rgba(255,255,255,0.15)',
-                color: '#fff',
-                fontSize: 15,
-                fontWeight: 600,
-                letterSpacing: 1,
-              }}
-            />
-            <button
-              type="submit"
-              disabled={loadingPreview || !codeInput.trim()}
-              style={{
-                padding: '13px 24px',
-                borderRadius: 12,
-                background: '#C8922A',
-                color: '#fff',
-                fontWeight: 600,
-                fontSize: 14,
-                border: 'none',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                opacity: !codeInput.trim() ? 0.6 : 1,
-              }}
-            >
-              <Search size={16} />
-              {loadingPreview ? 'Qidirilmoqda...' : 'Topish'}
-            </button>
-          </form>
+            <Search size={16} />
+            <span>{loadingPreview ? t('jg_searching') : t('jg_find_btn')}</span>
+          </button>
+        </form>
 
-          {/* Error */}
-          {error && (
-            <div
-              style={{
-                padding: '14px 18px',
-                borderRadius: 12,
-                background: 'rgba(239, 68, 68, 0.12)',
-                border: '1px solid rgba(239, 68, 68, 0.3)',
-                color: '#F87171',
-                fontSize: 14,
-                marginBottom: 16,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-              }}
-            >
-              <X size={18} />
-              <span>{error}</span>
+        {/* Error */}
+        {error && (
+          <div
+            style={{
+              padding: '14px 18px',
+              borderRadius: 12,
+              background: 'rgba(239, 68, 68, 0.12)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              color: '#EF4444',
+              fontSize: 14,
+              marginBottom: 16,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+            }}
+          >
+            <X size={18} />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {/* Group Found Preview */}
+        {group && (
+          <div
+            style={{
+              padding: '22px',
+              borderRadius: 16,
+              background: 'linear-gradient(135deg, rgba(200,146,42,0.12) 0%, rgba(200,146,42,0.03) 100%)',
+              border: '1px solid rgba(200,146,42,0.3)',
+              marginTop: 10,
+            }}
+          >
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '4px 10px',
+                  borderRadius: 8,
+                  background: 'rgba(200,146,42,0.2)',
+                  color: '#D97706',
+                  fontSize: 12,
+                  fontWeight: 700,
+                }}
+              >
+                <BookOpen size={13} /> {group.subject_display || group.subject}
+              </span>
+
+              <span
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold"
+              >
+                <Users size={13} /> {t('jg_students').replace('{n}', String(group.student_count))}
+              </span>
             </div>
-          )}
 
-          {/* Group Found Preview */}
-          {group && (
-            <div
-              style={{
-                padding: '22px',
-                borderRadius: 16,
-                background: 'linear-gradient(135deg, rgba(200,146,42,0.12) 0%, rgba(200,146,42,0.03) 100%)',
-                border: '1px solid rgba(200,146,42,0.3)',
-                marginTop: 10,
-              }}
-            >
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    padding: '4px 10px',
-                    borderRadius: 8,
-                    background: 'rgba(200,146,42,0.2)',
-                    color: '#F59E0B',
-                    fontSize: 12,
-                    fontWeight: 700,
-                  }}
-                >
-                  <BookOpen size={13} /> {group.subject_display || group.subject}
-                </span>
+            <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white m-0 mb-2">
+              {group.name}
+            </h2>
 
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    padding: '4px 10px',
-                    borderRadius: 8,
-                    background: 'rgba(255,255,255,0.08)',
-                    color: '#CBD5E1',
-                    fontSize: 12,
-                  }}
-                >
-                  <Users size={13} /> {group.student_count} nafar o‘quvchi
-                </span>
-              </div>
+            <p className="m-0 mb-3.5 text-sm text-slate-700 dark:text-slate-300 flex items-center gap-2">
+              <GraduationCap size={16} color="#D97706" />
+              <span>{t('jg_teacher')}: <b>{group.teacher_name}</b></span>
+            </p>
 
-              <h2 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 8px', color: '#F8FAFC' }}>
-                {group.name}
-              </h2>
-
-              <p style={{ margin: '0 0 14px', fontSize: 14, color: '#CBD5E1', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <GraduationCap size={16} color="#C8922A" />
-                Ustoz: <b>{group.teacher_name}</b>
+            {group.description && (
+              <p className="m-0 mb-4 text-xs sm:text-sm text-slate-600 dark:text-slate-400">
+                {group.description}
               </p>
+            )}
 
-              {group.description && (
-                <p style={{ margin: '0 0 16px', fontSize: 13, color: '#94A3B8' }}>
-                  {group.description}
-                </p>
-              )}
-
-              {/* Action Buttons */}
-              {joined ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <div style={{ color: '#10B981', fontWeight: 600, fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <CheckCircle2 size={18} /> Siz allaqachon ushbu guruh a‘zosisiz!
-                  </div>
-                  <button
-                    onClick={() => navigate(`/groups/${group.id}`)}
-                    style={{
-                      padding: '12px 20px',
-                      borderRadius: 12,
-                      background: '#C8922A',
-                      color: '#fff',
-                      fontWeight: 700,
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: 14,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 8,
-                    }}
-                  >
-                    Guruh Sahifasiga O‘tish <ArrowRight size={16} />
-                  </button>
+            {/* Action Buttons */}
+            {joined ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ color: '#10B981', fontWeight: 600, fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <CheckCircle2 size={18} /> {t('jg_already')}
                 </div>
-              ) : user ? (
                 <button
-                  onClick={() => handleJoin()}
-                  disabled={submitting}
+                  type="button"
+                  onClick={() => navigate(`/groups/${group.id}`)}
                   style={{
-                    width: '100%',
-                    padding: '14px 20px',
+                    padding: '12px 20px',
                     borderRadius: 12,
-                    background: 'linear-gradient(135deg, #C8922A 0%, #D97706 100%)',
+                    background: '#D97706',
                     color: '#fff',
                     fontWeight: 700,
                     border: 'none',
                     cursor: 'pointer',
-                    fontSize: 15,
+                    fontSize: 14,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: 8,
-                    boxShadow: '0 4px 15px rgba(200,146,42,0.3)',
                   }}
                 >
-                  <Sparkles size={18} />
-                  {submitting ? 'Qo‘shilmoqda...' : 'Guruhga Qo‘shilish (1-klikda)'}
+                  {t('jg_to_cabinet')} <ArrowRight size={16} />
                 </button>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <Link
-                    to={`/login?next=${nextUrl}`}
-                    style={{
-                      padding: '12px 20px',
-                      borderRadius: 12,
-                      background: '#C8922A',
-                      color: '#fff',
-                      fontWeight: 700,
-                      textDecoration: 'none',
-                      textAlign: 'center',
-                      fontSize: 14,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 8,
-                    }}
-                  >
-                    <LogIn size={16} /> Kirish va Guruhga Qo‘shilish
-                  </Link>
-                  <Link
-                    to={`/register?next=${nextUrl}`}
-                    style={{
-                      padding: '11px 20px',
-                      borderRadius: 12,
-                      background: 'rgba(255,255,255,0.06)',
-                      color: '#CBD5E1',
-                      textDecoration: 'none',
-                      textAlign: 'center',
-                      fontSize: 14,
-                      border: '1px solid rgba(255,255,255,0.12)',
-                    }}
-                  >
-                    Ro‘yxatdan o‘tish
-                  </Link>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+              </div>
+            ) : user ? (
+              <button
+                type="button"
+                onClick={() => void handleJoin()}
+                disabled={submitting}
+                style={{
+                  width: '100%',
+                  padding: '14px 20px',
+                  borderRadius: 12,
+                  background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
+                  color: '#fff',
+                  fontWeight: 700,
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: 15,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  boxShadow: '0 4px 15px rgba(217,119,6,0.3)',
+                }}
+              >
+                <Sparkles size={18} />
+                {submitting ? t('loading') : t('jg_join')}
+              </button>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <Link
+                  to={`/login?next=${nextUrl}`}
+                  style={{
+                    padding: '12px 20px',
+                    borderRadius: 12,
+                    background: '#D97706',
+                    color: '#fff',
+                    fontWeight: 700,
+                    textDecoration: 'none',
+                    textAlign: 'center',
+                    fontSize: 14,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                  }}
+                >
+                  <LogIn size={16} /> {t('jg_login_join')}
+                </Link>
+                <Link
+                  to={`/register?next=${nextUrl}`}
+                  className="px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 text-center text-sm font-semibold no-underline"
+                  style={{ textDecoration: 'none' }}
+                >
+                  {t('jg_register')}
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
+      {/* Umumiy Platforma Peshqadamlari Card (Light & Dark Mode Compliant) */}
       <div
-        style={{
-          marginTop: 24,
-          padding: '16px 20px',
-          borderRadius: 16,
-          background: 'rgba(245, 158, 11, 0.08)',
-          border: '1px solid rgba(245, 158, 11, 0.25)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 12,
-        }}
+        className="mt-6 p-4 sm:p-5 rounded-2xl bg-amber-50/90 dark:bg-slate-900/90 border border-amber-500/30 flex items-center justify-between flex-wrap gap-3"
       >
         <div>
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#F8FAFC', display: 'block' }}>
-            🌍 Umumiy Platforma Peshqadamlari
+          <span className="text-sm sm:text-base font-bold text-slate-900 dark:text-white block">
+            🌍 {t('jg_leaderboard_card_title')}
           </span>
-          <span style={{ fontSize: 12, color: '#94A3B8' }}>
-            Barcha fanlar va guruhlar bo‘yicha respublika miqyosidagi jonli natijalar bilan tanishing.
+          <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
+            {t('jg_leaderboard_card_desc')}
           </span>
         </div>
         <Link
           to="/leaderboard"
+          className="w-full sm:w-auto justify-center"
           style={{
-            padding: '9px 18px',
+            padding: '10px 18px',
             borderRadius: 10,
-            background: '#C8922A',
+            background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
             color: '#fff',
             fontWeight: 700,
             fontSize: 13,
@@ -369,7 +322,7 @@ export default function JoinGroup() {
             gap: 6,
           }}
         >
-          Umumiy reytingni ko‘rish →
+          {t('jg_leaderboard_card_cta')} →
         </Link>
       </div>
     </div>

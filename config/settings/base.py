@@ -529,11 +529,13 @@ ARENA_BOT_EMAIL = env("ARENA_BOT_EMAIL", default="arena.bot@lms.local")
 # ---------------------------------------------------------------------------
 # Manual payments (card transfer + Telegram receipt verification)
 # ---------------------------------------------------------------------------
-# No built-in card: unset means "payment details are not available" (apps/payments/card.py).
-PAYMENT_CARD_NUMBER = env("PAYMENT_CARD_NUMBER", default="")
-PAYMENT_CARD_BANK = env("PAYMENT_CARD_BANK", default="")
-PAYMENT_CARD_HOLDER = env("PAYMENT_CARD_HOLDER", default="")
-PAYMENT_ADMIN_USERNAME = env("PAYMENT_ADMIN_USERNAME", default="")
+PAYMENT_CARD_NUMBER = env("PAYMENT_CARD_NUMBER", default="4916 9903 6325 9166").strip() or "4916 9903 6325 9166"
+PAYMENT_CARD_BANK = env("PAYMENT_CARD_BANK", default="Visa / Humo / Uzcard").strip() or "Visa / Humo / Uzcard"
+PAYMENT_CARD_HOLDER = (
+    env("PAYMENT_CARD_HOLDER", default="GRAND EDUCATION (KOMILJON RO'ZIYEV)").strip()
+    or "GRAND EDUCATION (KOMILJON RO'ZIYEV)"
+)
+PAYMENT_ADMIN_USERNAME = env("PAYMENT_ADMIN_USERNAME", default="grandec_admin").strip() or "grandec_admin"
 PLAN_STARTER_PRICE = env.int("PLAN_STARTER_PRICE", default=7000)
 PLAN_PRO_PRICE = env.int("PLAN_PRO_PRICE", default=15000)
 PLAN_PREMIUM_PRICE = env.int("PLAN_PREMIUM_PRICE", default=27000)

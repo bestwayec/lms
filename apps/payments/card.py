@@ -15,6 +15,11 @@ from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_CARD_NUMBER = "4916 9903 6325 9166"
+DEFAULT_CARD_NUMBER_RAW = "4916990363259166"
+DEFAULT_CARD_HOLDER = "GRAND EDUCATION (KOMILJON RO'ZIYEV)"
+DEFAULT_CARD_BANK = "Visa / Humo / Uzcard"
+
 UNAVAILABLE_MESSAGE = "To'lov ma'lumoti hozircha mavjud emas."
 BOT_UNAVAILABLE_MESSAGE = (
     "💳 Onlayn to'lov rekvizitlari yangilanmoqda. PRO tarifni faollashtirish uchun administratorga murojaat qiling"

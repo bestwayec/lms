@@ -95,14 +95,17 @@ export default function MobileProfileDrawer({ isOpen, onClose, onOpenMenu }: Mob
             transition={{ type: 'spring', damping: 28, stiffness: 300 }}
             role="dialog"
             aria-modal="true"
-            aria-label="Foydalanuvchi profili"
+            aria-label={t('drawer_title')}
+            className="fixed inset-y-0 right-0 w-full max-w-[340px] sm:max-w-[380px] overflow-y-auto overflow-x-hidden px-5 py-6 box-border"
             style={{
               position: 'fixed',
               top: 0,
               right: 0,
               bottom: 0,
-              width: '85%',
-              maxWidth: 360,
+              left: 'auto',
+              width: '100%',
+              maxWidth: 'min(340px, 100vw)',
+              boxSizing: 'border-box',
               background: isDark ? '#0F172A' : '#FFFFFF',
               color: isDark ? '#F8FAFC' : '#0F172A',
               borderLeft: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid #E2E8F0',
@@ -110,7 +113,8 @@ export default function MobileProfileDrawer({ isOpen, onClose, onOpenMenu }: Mob
               display: 'flex',
               flexDirection: 'column',
               overflowY: 'auto',
-              padding: '20px 18px',
+              overflowX: 'hidden',
+              padding: '24px 20px',
               zIndex: 101,
             }}
           >
@@ -438,31 +442,32 @@ export default function MobileProfileDrawer({ isOpen, onClose, onOpenMenu }: Mob
                 </div>
               </div>
 
-              {/* Theme Toggle */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              {/* Theme Toggle: 2-Segment Switch */}
+              <div style={{ display: 'grid', gap: 6 }}>
                 <span style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
                   {isDark ? <MoonIcon size={16} style={{ color: '#F59E0B' }} /> : <SunIcon size={16} style={{ color: '#F59E0B' }} />}
                   <span>{t('drawer_theme')}</span>
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setTheme(isDark ? 'light' : 'dark')}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: 10,
-                    fontSize: 12,
-                    fontWeight: 700,
-                    border: 'none',
-                    cursor: 'pointer',
-                    background: isDark ? 'rgba(245, 158, 11, 0.15)' : '#F1F5F9',
-                    color: isDark ? '#F59E0B' : '#0F172A',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                  }}
-                >
-                  {isDark ? '🌙 Tungi' : '☀️ Kunduzgi'}
-                </button>
+                <div className="ui-seg" role="group" aria-label={t('drawer_theme')}>
+                  <button
+                    type="button"
+                    aria-pressed={!isDark}
+                    onClick={() => setTheme('light')}
+                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                  >
+                    <span>☀️</span>
+                    <span>{t('nav_theme_light')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={isDark}
+                    onClick={() => setTheme('dark')}
+                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                  >
+                    <span>🌙</span>
+                    <span>{t('nav_theme_dark')}</span>
+                  </button>
+                </div>
               </div>
 
               {/* Logout Button */}

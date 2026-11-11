@@ -164,8 +164,10 @@ export default function SubjectSwitcher({
       role="group"
       aria-label={t('subject_label', 'Fan tanlash')}
       className={`subject-switcher-scroll ${
-        isSeg ? 'subject-seg flex items-center gap-2 overflow-x-auto no-scrollbar py-2 px-3' : 'subject-switcher-container overflow-x-auto no-scrollbar'
-      } scroll-smooth ${className}`}
+        isSeg
+          ? 'subject-seg flex items-center gap-2 overflow-x-auto no-scrollbar py-2 px-3 bg-slate-100/90 dark:bg-slate-900/80 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300'
+          : 'subject-switcher-container overflow-x-auto no-scrollbar bg-slate-100/90 border border-slate-200 text-slate-700 dark:bg-slate-900/80 dark:border-slate-800 dark:text-slate-300'
+      } scroll-smooth transition-all duration-200 ${className}`}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -177,9 +179,8 @@ export default function SubjectSwitcher({
         scrollbarWidth: 'none',
         msOverflowStyle: 'none',
         scrollSnapType: isSeg ? 'x proximity' : undefined,
-        padding: isSeg ? '8px 12px' : '3px 4px',
+        padding: isSeg ? '8px 12px' : '4px 5px',
         borderRadius: 14,
-        background: 'transparent',
       }}
     >
       {SUBJECT_CONFIGS.map((s) => {
@@ -191,7 +192,11 @@ export default function SubjectSwitcher({
             disabled={loading}
             aria-pressed={isActive}
             onClick={() => handleSelect(s.id)}
-            className={`subject-pill-btn transition-all duration-200 ${isActive ? 'is-active' : ''}`}
+            className={`subject-pill-btn transition-all duration-200 ${
+              isActive
+                ? 'is-active shadow-sm text-slate-900 dark:text-white'
+                : 'bg-white/80 dark:bg-slate-800/70 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800'
+            }`}
             style={{
               whiteSpace: 'nowrap',
               flex: '0 0 auto',
@@ -202,19 +207,16 @@ export default function SubjectSwitcher({
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
-              padding: isSmall ? '4px 10px' : isSeg ? '6px 12px' : '6px 13px',
+              padding: isSmall ? '5px 11px' : isSeg ? '6px 13px' : '6px 14px',
               minHeight: isSeg ? 36 : undefined,
               borderRadius: isSeg ? 999 : 10,
               fontSize: isSmall ? 12 : 13,
               fontWeight: isActive ? 700 : 600,
               border: isActive
                 ? `1.5px solid ${s.borderColor}`
-                : isSeg
-                  ? '1.5px solid var(--border-subtle, rgba(148,163,184,0.25))'
-                  : '1.5px solid transparent',
-              background: isActive ? s.gradient : isSeg ? 'var(--bg-elevated, rgba(255,255,255,0.04))' : 'rgba(255, 255, 255, 0.04)',
-              color: isActive ? s.activeTextColor : isSeg ? 'var(--text-secondary, #94a3b8)' : 'var(--muted, #94a3b8)',
-              boxShadow: isActive ? `0 2px 10px ${s.glowColor}` : 'none',
+                : '1px solid var(--border-subtle, rgba(148,163,184,0.3))',
+              background: isActive ? s.gradient : undefined,
+              boxShadow: isActive ? `0 2px 10px ${s.glowColor}` : undefined,
               cursor: loading ? 'default' : 'pointer',
               userSelect: 'none',
               WebkitTapHighlightColor: 'transparent',

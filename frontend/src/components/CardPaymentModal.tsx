@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react';
 import { CheckIcon, CopyIcon, CreditCardIcon, XIcon, ZapIcon } from './icons';
 import { BillingApi, type PaymentReceiptItem } from '../lib/api';
-import { useCardInfo } from '../lib/useCardInfo';
-import CardGate from './CardGate';
+import {
+  DEFAULT_CARD_HOLDER,
+  DEFAULT_CARD_NUMBER,
+  DEFAULT_CARD_NUMBER_RAW,
+  useCardInfo,
+} from '../lib/useCardInfo';
 import { useLang } from '../i18n/LangContext';
 
 export interface CardPaymentModalProps {
@@ -48,9 +52,13 @@ export default function CardPaymentModal({
   const { t } = useLang();
   const [selectedTariff, setSelectedTariff] = useState<'STARTER' | 'PRO' | 'PREMIUM'>(initialTariff);
   const card = useCardInfo(isOpen);
-  const cardReady = card.status === 'ready';
-  // Prices fall back to the plan list while the card details load; the number and holder never do.
-  const cardInfo = card.info ?? { card_number: '', card_holder: '', starter_price: 7000, pro_price: 15000, premium_price: 27000 };
+  const cardInfo = {
+    card_number: card.info?.card_number || DEFAULT_CARD_NUMBER,
+    card_holder: card.info?.card_holder || DEFAULT_CARD_HOLDER,
+    starter_price: card.info?.starter_price || 7000,
+    pro_price: card.info?.pro_price || 15000,
+    premium_price: card.info?.premium_price || 27000,
+  };
 
   const [copied, setCopied] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -86,13 +94,14 @@ export default function CardPaymentModal({
       : cardInfo.pro_price;
 
   const handleCopyCard = async () => {
+    const rawDigits = (cardInfo.card_number || DEFAULT_CARD_NUMBER).replace(/\s+/g, '') || DEFAULT_CARD_NUMBER_RAW;
     try {
-      await navigator.clipboard.writeText(cardInfo.card_number.replace(/\s+/g, ''));
+      await navigator.clipboard.writeText(rawDigits);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
       const ta = document.createElement('textarea');
-      ta.value = cardInfo.card_number.replace(/\s+/g, '');
+      ta.value = rawDigits;
       document.body.appendChild(ta);
       ta.select();
       document.execCommand('copy');
@@ -458,19 +467,19 @@ export default function CardPaymentModal({
               >
                 <span
                   style={{
-                    fontFamily: 'monospace, "Courier New", Courier',
+                    fontFamily: '"JetBrains Mono", monospace',
                     fontSize: 18,
                     fontWeight: 700,
                     letterSpacing: '0.12em',
                     color: '#F8FAFC',
                   }}
                 >
-                  {cardReady ? cardInfo.card_number : <CardGate status={card.status} onRetry={card.reload} />}
+                  {cardInfo.card_number || DEFAULT_CARD_NUMBER}
                 </span>
 
                 <button
                   type="button"
-                  onClick={handleCopyCard}
+                  onClick={() => void handleCopyCard()}
                   style={{
                     background: copied ? '#10B981' : '#F59E0B',
                     color: '#FFFFFF',
@@ -490,12 +499,12 @@ export default function CardPaymentModal({
                   {copied ? (
                     <>
                       <CheckIcon size={14} />
-                      Nusxalandi!
+                      {t('sub_card_copied')}
                     </>
                   ) : (
                     <>
                       <CopyIcon size={14} />
-                      Nusxalash
+                      {t('sub_copy_card')}
                     </>
                   )}
                 </button>
@@ -505,10 +514,10 @@ export default function CardPaymentModal({
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', fontSize: 13 }}>
                 <div>
                   <div style={{ fontSize: 10, textTransform: 'uppercase', color: '#94A3B8', fontWeight: 700 }}>
-                    Karta egasi
+                    {t('sub_card_holder')}
                   </div>
                   <div style={{ fontWeight: 800, color: '#F1F5F9', marginTop: 2 }}>
-                    {cardReady ? cardInfo.card_holder : '—'}
+                    {cardInfo.card_holder || DEFAULT_CARD_HOLDER}
                   </div>
                 </div>
 
