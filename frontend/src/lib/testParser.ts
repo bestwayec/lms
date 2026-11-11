@@ -44,7 +44,7 @@ export function cleanChoiceText(text: string, letter?: string): string {
   // If text is solely the option letter itself (e.g. "A", "a", "(A)", "[A]", "A.", "A)")
   const soleLetterRegex = letter
     ? new RegExp(`^(?:\\[?${letter}\\]?|\\(?${letter}\\)?|[${letter}])[.\\)\\:\\-\\s]*$`, 'i')
-    : /^(?:\[?[A-Za-z]\]?|\(?[A-Za-z]\)?|[A-Za-z])[.\)\:\-\\s]*$/;
+    : /^(?:\[?[A-Za-z]\]?|\(?[A-Za-z]\)?|[A-Za-z])[.):\-\\s]*$/;
   if (soleLetterRegex.test(s)) {
     return '';
   }
@@ -102,10 +102,10 @@ export function parseSmartTestText(rawText: string, defaultSubject: SupportedSub
   const qStartRe = /^(?:(?:savol\s*|№\s*)?(\d+)[.)\-:\s]+|(\d+)\s*[-–—]?\s*savol[.):]?\s*)(.*)$/i;
 
   // Matches choices: A), A., A -, (A), [A], *A), +A)
-  const inlineChoiceRe = /(?:^|\s+)([*+]?)\s*(?:\(|\[)?\s*([A-Ea-e])\s*(?:\)|\.|\-|\])\s*(.*?)(?=(?:\s+[*+]?\s*(?:\(|\[)?\s*[A-Ea-e]\s*(?:\)|\.|\-|\]))|$)/g;
+  const inlineChoiceRe = /(?:^|\s+)([*+]?)\s*(?:\(|\[)?\s*([A-Ea-e])\s*(?:\)|\.|-|\])\s*(.*?)(?=(?:\s+[*+]?\s*(?:\(|\[)?\s*[A-Ea-e]\s*(?:\)|\.|-|\]))|$)/g;
 
   // Matches inline answer: Javob: A, To'g'ri javob: B, Ans: C, Answer: D, Kalit: A
-  const inlineAnsRe = /^(?:(?:to['ʼ`]?g['ʼ`]?ri\s+)?(?:javob|kalit|key)|ans(?:wer)?)\s*[:=\-]\s*([A-Ea-e])\b/i;
+  const inlineAnsRe = /^(?:(?:to['ʼ`]?g['ʼ`]?ri\s+)?(?:javob|kalit|key)|ans(?:wer)?)\s*[:=-]\s*([A-Ea-e])\b/i;
 
   const questions: ParsedQuestion[] = [];
   let currQ: ParsedQuestion | null = null;
@@ -124,13 +124,13 @@ export function parseSmartTestText(rawText: string, defaultSubject: SupportedSub
     }
 
     // Check if line starts a choice (e.g. A) or (A) or *A))
-    const isChoiceStart = /^[\*\+]?\s*(?:\(|\[)?\s*[A-Ea-e]\s*(?:\)|\.|\-|\])/.test(line);
+    const isChoiceStart = /^[*+]?\s*(?:\(|\[)?\s*[A-Ea-e]\s*(?:\)|\.|-|\])/.test(line);
     const qMatch = line.match(qStartRe);
 
     if (qMatch && !isChoiceStart) {
       const qNum = Number(qMatch[1] || qMatch[2]);
       let rest = (qMatch[3] || '').trim();
-      rest = rest.replace(/^(?:savol|question)[\.\):\-]?\s*/i, '').trim();
+      rest = rest.replace(/^(?:savol|question)[.):-]?\s*/i, '').trim();
 
       currQ = {
         order: questions.length + 1,
@@ -161,12 +161,12 @@ export function parseSmartTestText(rawText: string, defaultSubject: SupportedSub
     if (choiceMatches.length > 0 && currQ) {
       for (const item of choiceMatches) {
         let cText = item.text;
-        if (/[\*\+\(\)]+$/.test(cText)) {
-          cText = cText.replace(/[\*\+\(\)]+$/, '').trim();
+        if (/[*+()]+$/.test(cText)) {
+          cText = cText.replace(/[*+()]+$/, '').trim();
           currQ.correctAnswer = item.code;
           currQ.hasExplicitAnswer = true;
-        } else if (/^[\*\+]/.test(cText)) {
-          cText = cText.replace(/^[\*\+]+/, '').trim();
+        } else if (/^[*+]/.test(cText)) {
+          cText = cText.replace(/^[*+]+/, '').trim();
           currQ.correctAnswer = item.code;
           currQ.hasExplicitAnswer = true;
         } else if (item.star === '*' || item.star === '+') {
