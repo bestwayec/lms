@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { installErrorCapture } from './lib/feedbackContext'
+import './tailwind.css'
 import './index.css'
 import './theme.css'
 import './styles/ui.css'

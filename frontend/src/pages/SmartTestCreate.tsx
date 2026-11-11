@@ -442,6 +442,7 @@ export default function SmartTestCreate() {
         title: res.title,
         questions_count: res.questions_count,
       });
+      setQrOpen(true);
     } catch (err2: unknown) {
       const msg = err2 instanceof Error ? err2.message : 'Testni saqlashda xatolik yuz berdi.';
       setErrorMsg(msg);
@@ -1284,7 +1285,7 @@ export default function SmartTestCreate() {
                     cursor: 'pointer',
                   }}
                 >
-                  📝 + Oddiy test (1–32)
+                  + Oddiy test (1–32)
                 </button>
                 <button
                   type="button"
@@ -1303,7 +1304,7 @@ export default function SmartTestCreate() {
                     cursor: 'pointer',
                   }}
                 >
-                  🧩 + 33–35 Moslashtirish Matritsasi
+                  + Moslashtirish Matritsasi (33–35)
                 </button>
                 <button
                   type="button"
@@ -1322,13 +1323,13 @@ export default function SmartTestCreate() {
                     cursor: 'pointer',
                   }}
                 >
-                  🔢 + 36–45 a/b Ochiq Masala
+                  + 2 Qismli Ochiq Masala (36–45)
                 </button>
                 <button
                   type="button"
                   onClick={() => {
                     const nextNum = questions.length + 1;
-                    insertAtCursor(`\n\n${nextNum}. Huquqiy vaziyat (Kazus):\nFuqaro A fuqaro B bilan shartnoma tuzdi...\nSavol: Ushbu vaziyatda qonun bo'yicha qanday chora ko'riladi?\n*A) Shartnoma bekor qilinadi\nB) Zarar qoplanadi\nC) Jarima undiriladi\nD) Da'vo rad etiladi\nJavob: A`);
+                    insertAtCursor(`\n\n${nextNum}. Bo'sh joyni to'ldiring: O'zbekiston poytaxti _____ shahri.\n*A) Toshkent\nB) Samarqand\nC) Buxoro\nD) Xiva\nJavob: A`);
                   }}
                   style={{
                     padding: '5px 10px',
@@ -1341,7 +1342,7 @@ export default function SmartTestCreate() {
                     cursor: 'pointer',
                   }}
                 >
-                  ⚖️ + Huquqiy Kazus
+                  + Gap-Fill / Matnli savol
                 </button>
               </div>
 
@@ -1350,7 +1351,7 @@ export default function SmartTestCreate() {
                 <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginRight: 4 }}>
                   ⚡️ Formulalar & Indekslar:
                 </span>
-                {['₂', '₃', '₄', '⁺', '⁻', '²⁺', '³⁺', '²⁻', '→', '⇌', '√', '°C', 'Δ', '≈', '≠', 'π', 'α', 'β', '±', '¹', '²', '³', '⁵'].map((sym) => (
+                {['₂', '₃', '₄', '⁴', '⁺', '⁻', '²⁺', '³⁺', '²⁻', '→', '⇌', '√', '°C', 'Δ', '≈', '≠', 'π', 'α', 'β', '±', '¹', '²', '³', '⁵'].map((sym) => (
                   <button
                     key={sym}
                     type="button"

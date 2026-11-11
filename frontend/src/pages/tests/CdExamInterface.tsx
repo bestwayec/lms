@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { Flag, LayoutGrid, ChevronLeft, Highlighter, FileText, CheckCircle2, X } from 'lucide-react';
 import { useLang } from '../../i18n/LangContext';
@@ -61,7 +61,7 @@ interface Answer { choice?: number; text?: string; written?: string }
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const SELECT_TYPES = new Set(['MATCHING', 'MAP_LABELING', 'HEADING_MATCHING']);
 const GAP_RE = /\(\d+\)\s*_{2,}/;
-const FONT_SIZES = [16, 18, 20];
+const FONT_SIZES = [16, 18, 20, 22];
 
 const isAnswered = (a?: Answer) =>
   !!a && (a.choice != null || !!a.text?.trim() || !!a.written?.trim());
@@ -160,7 +160,18 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [pane, setPane] = useState<'text' | 'questions'>('text');
-  const [fontStep] = useState(() => Math.min(2, Math.max(0, Number(read(localStorage, 'cd-font')) || 0)));
+  const [fontStep, setFontStep] = useState(() =>
+    Math.min(FONT_SIZES.length - 1, Math.max(0, Number(read(localStorage, 'cd-font')) || 0)),
+  );
+  // Desktop split-screen ratio (passage %). Persisted per device.
+  const [splitPct, setSplitPct] = useState(() => {
+    const v = Number(read(localStorage, 'cd-split'));
+    return Number.isFinite(v) && v >= 30 && v <= 70 ? v : 50;
+  });
+  const bodyRef = useRef<HTMLElement | null>(null);
+  const draggingRef = useRef(false);
+  // Floating selection highlighter toolbar (fixed-position, near selection).
+  const [selBox, setSelBox] = useState<{ x: number; y: number } | null>(null);
   const [flagged, setFlagged] = useState<Set<number>>(
     () => new Set((read(sessionStorage, `cd-flags:${attemptId}`) || '').split(',').filter(Boolean).map(Number)),
   );
@@ -211,6 +222,84 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
     saveHighlights(next);
     setSelectedText('');
   }, [highlights, saveHighlights]);
+
+  /** 🗑 O'chirish: drop every highlight overlapping the current selection. */
+  const removeHighlight = useCallback((passageId: number, textToUse?: string) => {
+    const txt = (textToUse || selectedText).trim().toLowerCase();
+    const current = highlights[passageId] || [];
+    if (txt) {
+      const kept = current.filter((h) => {
+        const ht = h.text.toLowerCase();
+        return !(ht.includes(txt) || txt.includes(ht));
+      });
+      if (kept.length !== current.length) saveHighlights({ ...highlights, [passageId]: kept });
+    }
+    setSelectedText('');
+    setSelBox(null);
+    try {
+      window.getSelection()?.removeAllRanges();
+    } catch {
+      /* ignore */
+    }
+  }, [highlights, saveHighlights, selectedText]);
+
+  /** Capture the passage selection and float the toolbar right above it. */
+  const captureSelection = useCallback((passageId?: number) => {
+    const selection = window.getSelection();
+    const sel = selection?.toString().trim() || '';
+    if (!sel || sel.length < 2 || sel.length > 500 || !selection || selection.rangeCount === 0) {
+      setSelBox(null);
+      return;
+    }
+    setSelectedText(sel);
+    if (highlightActive && passageId) {
+      addHighlight(passageId, highlightColor, sel);
+      setSelBox(null);
+      return;
+    }
+    const rect = selection.getRangeAt(0).getBoundingClientRect();
+    const x = Math.min(Math.max(rect.left + rect.width / 2, 120), window.innerWidth - 120);
+    const y = rect.top > 64 ? rect.top - 52 : rect.bottom + 10;
+    setSelBox({ x, y });
+  }, [addHighlight, highlightActive, highlightColor]);
+
+  // Hide the floating toolbar when the selection collapses or the page scrolls.
+  useEffect(() => {
+    if (!selBox) return;
+    const hide = () => setSelBox(null);
+    const onSel = () => {
+      if (!window.getSelection()?.toString().trim()) hide();
+    };
+    window.addEventListener('scroll', hide, true);
+    document.addEventListener('selectionchange', onSel);
+    return () => {
+      window.removeEventListener('scroll', hide, true);
+      document.removeEventListener('selectionchange', onSel);
+    };
+  }, [selBox]);
+
+  const onSplitPointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    draggingRef.current = true;
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }, []);
+  const onSplitPointerMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!draggingRef.current || !bodyRef.current) return;
+    const rect = bodyRef.current.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const pct = ((e.clientX - rect.left) / rect.width) * 100;
+    setSplitPct(Math.round(Math.min(70, Math.max(30, pct))));
+  }, []);
+  const onSplitPointerUp = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    draggingRef.current = false;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  useEffect(() => {
+    write(localStorage, 'cd-split', String(splitPct));
+  }, [splitPct]);
 
   const section = sections[pos.s];
   const part = section.parts[pos.p];
@@ -777,6 +866,42 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
             />
           </div>
 
+          <div
+            role="group"
+            aria-label="Matn o'lchami"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 2,
+              background: 'var(--bg-elevated)',
+              padding: 3,
+              borderRadius: 10,
+              border: '1px solid var(--border-subtle)',
+            }}
+          >
+            <button
+              type="button"
+              className="cd-font-btn"
+              onClick={() => setFontStep((s) => Math.max(0, s - 1))}
+              disabled={fontStep === 0}
+              aria-label="Matnni kichraytirish"
+              title="A- Matnni kichraytirish"
+            >
+              A-
+            </button>
+            <span className="cd-font-val" aria-live="polite">{FONT_SIZES[fontStep]}</span>
+            <button
+              type="button"
+              className="cd-font-btn"
+              onClick={() => setFontStep((s) => Math.min(FONT_SIZES.length - 1, s + 1))}
+              disabled={fontStep === FONT_SIZES.length - 1}
+              aria-label="Matnni kattalashtirish"
+              title="A+ Matnni kattalashtirish"
+            >
+              A+
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={() => setNoteOpen(true)}
@@ -875,7 +1000,15 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
         )}
       </nav>
 
-      {!queue.online && <p className="cd-alert" role="alert">{t('cd_offline_banner')}</p>}
+      {!queue.online && (
+        <>
+          <div className="exam-offline-badge" role="alert" aria-live="assertive">
+            <span className="exam-offline-badge__dot" aria-hidden="true" />
+            ⚡ Oflayn — javoblar saqlanmoqda
+          </div>
+          <p className="cd-alert" role="status">{t('cd_offline_banner')}</p>
+        </>
+      )}
       {queue.online && queue.justRestored && <p className="cd-alert ok" role="status">{t('cd_online_back')}</p>}
       {queue.online && queue.state === 'error' && <p className="cd-alert" role="alert">{t('cd_save_error')}</p>}
       {submitError && <p className="cd-alert" role="alert">{submitError}</p>}
@@ -912,56 +1045,57 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
         </div>
       )}
 
-      <main className={hasText && !narrow ? 'cd-body with-passage' : 'cd-body'}>
+      <main
+        ref={bodyRef}
+        className={hasText && !narrow ? 'cd-body with-passage is-resizable' : 'cd-body'}
+        style={
+          hasText && !narrow
+            ? { gridTemplateColumns: `minmax(0, ${splitPct}fr) 12px minmax(0, ${100 - splitPct}fr)` }
+            : undefined
+        }
+      >
         {showText && (
           <article
             className="cd-passage"
-            onMouseUp={() => {
-              const sel = window.getSelection()?.toString().trim();
-              if (sel && sel.length >= 2 && sel.length <= 500) {
-                setSelectedText(sel);
-                if (highlightActive && partPassages[0]?.id) {
-                  addHighlight(partPassages[0].id, highlightColor, sel);
-                }
-              }
-            }}
+            onMouseUp={() => captureSelection(partPassages[0]?.id)}
+            onTouchEnd={() => window.setTimeout(() => captureSelection(partPassages[0]?.id), 30)}
           >
-            {/* Highlight quick bar when selection is made */}
-            {selectedText && (
+            {/* Floating highlighter toolbar right above the selected words */}
+            {selBox && selectedText && partPassages[0]?.id && (
               <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '6px 12px',
-                  borderRadius: 8,
-                  background: 'var(--bg-elevated)',
-                  border: '1px solid #F59E0B',
-                  marginBottom: 12,
-                  gap: 8,
-                }}
+                className="cd-sel-toolbar"
+                role="toolbar"
+                aria-label="Belgilash asboblari"
+                style={{ left: selBox.x, top: selBox.y }}
+                onMouseDown={(e) => e.preventDefault()}
               >
-                <span style={{ fontSize: 12, color: '#D97706', fontWeight: 600 }}>
-                  Tanlangan: &quot;{selectedText.length > 30 ? selectedText.slice(0, 30) + '…' : selectedText}&quot;
-                </span>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button
-                    type="button"
-                    onClick={() => partPassages[0]?.id && addHighlight(partPassages[0].id, 'yellow')}
-                    className="bento-btn"
-                    style={{ height: 28, padding: '0 8px', fontSize: 11, background: '#FBBF24', color: '#000', fontWeight: 800 }}
-                  >
-                    Sariq
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => partPassages[0]?.id && addHighlight(partPassages[0].id, 'green')}
-                    className="bento-btn"
-                    style={{ height: 28, padding: '0 8px', fontSize: 11, background: '#10B981', color: '#fff', fontWeight: 800 }}
-                  >
-                    Yashil
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  className="cd-sel-toolbar__btn is-yellow"
+                  onClick={() => {
+                    addHighlight(partPassages[0].id, 'yellow');
+                    setSelBox(null);
+                  }}
+                >
+                  🖍 Sariq
+                </button>
+                <button
+                  type="button"
+                  className="cd-sel-toolbar__btn is-green"
+                  onClick={() => {
+                    addHighlight(partPassages[0].id, 'green');
+                    setSelBox(null);
+                  }}
+                >
+                  🖍 Yashil
+                </button>
+                <button
+                  type="button"
+                  className="cd-sel-toolbar__btn is-clear"
+                  onClick={() => removeHighlight(partPassages[0].id)}
+                >
+                  🗑 O‘chirish
+                </button>
               </div>
             )}
 
@@ -1001,6 +1135,29 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
               </div>
             ))}
           </article>
+        )}
+        {showText && showQuestions && !narrow && (
+          <div
+            className="cd-split-handle"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Matn va savollar kengligini o'zgartirish"
+            aria-valuemin={30}
+            aria-valuemax={70}
+            aria-valuenow={splitPct}
+            tabIndex={0}
+            onPointerDown={onSplitPointerDown}
+            onPointerMove={onSplitPointerMove}
+            onPointerUp={onSplitPointerUp}
+            onPointerCancel={onSplitPointerUp}
+            onDoubleClick={() => setSplitPct(50)}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowLeft') setSplitPct((v) => Math.max(30, v - 5));
+              if (e.key === 'ArrowRight') setSplitPct((v) => Math.min(70, v + 5));
+            }}
+          >
+            <span aria-hidden="true" />
+          </div>
         )}
         {showQuestions && (
           <div className="cd-part">

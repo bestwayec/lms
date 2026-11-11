@@ -212,6 +212,7 @@ export default function TeacherAiConverter() {
           mock_code: res.mock_code,
           title: res.title,
         });
+        setQrModalOpen(true);
       } else {
         throw new Error(res.message || 'Saqlashda xatolik yuz berdi.');
       }

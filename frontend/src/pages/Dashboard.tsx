@@ -16,6 +16,7 @@ import {
   type StreakInfoResponse,
 } from '../lib/api';
 import { formatDisplayName, initialsOf } from '../lib/displayName';
+import { splitRadarLabel } from '../lib/radarLabel';
 import { essayKind, essayStatus, scoreLabel } from '../lib/essays';
 import { useSubject } from '../lib/useSubject';
 import { daysLeft, useEntitlement, useTier } from '../lib/useTier';
@@ -568,14 +569,16 @@ export default function Dashboard() {
                 </p>
 
                 {/* Hafta kunlari olovchalari */}
-                <div className="flex items-center gap-1.5 mb-3.5">
+                <div className="flex items-center gap-1.5 mb-3.5" role="list" aria-label="Haftalik seriya">
                   {weekDays.map((d) => (
                     <div
                       key={d.label}
-                      className={`flex flex-col items-center justify-center w-7 h-9 rounded-lg border text-[10px] font-bold transition-all ${
+                      role="listitem"
+                      aria-label={`${d.label}: ${d.active ? 'bajarildi' : 'kutilmoqda'}`}
+                      className={`dsh-week-chip flex flex-col items-center justify-center w-8 h-10 rounded-lg border text-[10px] font-bold transition-all ${
                         d.active
-                          ? 'border-amber-500/40 bg-amber-500/15 text-amber-500 shadow-sm shadow-amber-500/10'
-                          : 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900/60 text-slate-400'
+                          ? 'is-active border-amber-400 bg-gradient-to-b from-amber-400 to-amber-600 text-slate-950 shadow-md shadow-amber-500/30'
+                          : 'border-slate-200 bg-slate-100 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                       }`}
                     >
                       <span>{d.label}</span>
@@ -700,8 +703,14 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-5 items-center">
               {/* 5-burchakli SVG Spider/Radar Chart */}
               <div className="sm:col-span-6 flex items-center justify-center">
-                <div className="relative flex items-center justify-center" style={{ width: 190, height: 190, minWidth: 190, minHeight: 190 }}>
-                  <svg style={{ width: 190, height: 190 }} viewBox="-35 -35 270 270">
+                <div className="relative flex items-center justify-center w-full" style={{ maxWidth: 260, aspectRatio: '290 / 270' }}>
+                  <svg
+                    className="dsh-radar w-full h-full overflow-visible"
+                    viewBox="-45 -35 290 270"
+                    preserveAspectRatio="xMidYMid meet"
+                    role="img"
+                    aria-label="Zaif mavzular radari"
+                  >
                     <defs>
                       <linearGradient id="spiderFill" x1="0%" y1="0%" x2="100%" y2="100%">
                         <stop offset="0%" stopColor="#6366F1" stopOpacity="0.45" />
@@ -758,48 +767,70 @@ export default function Dashboard() {
                     />
 
                     {/* Vertices Dots & Labels */}
-                    {radarData.points.map((p, idx) => (
-                      <g key={idx}>
-                        <circle cx={p.x} cy={p.y} r="3.5" fill="#6366F1" stroke="#ffffff" strokeWidth="1.5" />
-                        <text
-                          x={p.labelX}
-                          y={p.labelY}
-                          textAnchor="middle"
-                          dominantBaseline="central"
-                          className="text-[9.5px] font-bold fill-slate-700 dark:fill-slate-300 font-mono"
-                        >
-                          {p.name}
-                        </text>
-                      </g>
-                    ))}
+                    {radarData.points.map((p, idx) => {
+                      const lines = splitRadarLabel(p.name);
+                      const startDy = lines.length > 1 ? -5.5 : 0;
+                      return (
+                        <g key={idx}>
+                          <circle cx={p.x} cy={p.y} r="3.5" fill="#6366F1" stroke="#ffffff" strokeWidth="1.5" />
+                          <text
+                            x={p.labelX}
+                            y={p.labelY}
+                            textAnchor="middle"
+                            dominantBaseline="central"
+                            className="dsh-radar-label font-bold fill-slate-700 dark:fill-slate-200 font-mono"
+                          >
+                            {lines.map((line, li) => (
+                              <tspan key={li} x={p.labelX} dy={li === 0 ? startDy : 11}>
+                                {line}
+                              </tspan>
+                            ))}
+                          </text>
+                        </g>
+                      );
+                    })}
                   </svg>
                 </div>
               </div>
 
               {/* 3 ta zaif mavzu qatori */}
               <div className="sm:col-span-6 space-y-3">
-                {radarTopics.slice(0, 3).map((item) => (
-                  <div key={item.label} className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40">
-                    <div className="flex items-center justify-between text-xs mb-1.5">
-                      <span className="font-bold text-slate-800 dark:text-slate-200 truncate max-w-[180px]">{item.label}</span>
-                      <span className="font-mono font-bold text-rose-500">{item.percentage}%</span>
+                {radarTopics.slice(0, 3).map((item) => {
+                  const critical = item.percentage < 50;
+                  return (
+                    <div
+                      key={item.label}
+                      className="dsh-weak-card p-3 rounded-xl border border-slate-200 bg-white dark:bg-slate-900/80 dark:border-slate-700/60"
+                    >
+                      <div className="flex items-center justify-between gap-2 text-xs mb-2">
+                        <span className="font-bold text-slate-800 dark:text-white truncate min-w-0">{item.label}</span>
+                        <span
+                          className={`shrink-0 font-mono font-bold text-[11px] px-2 py-0.5 rounded-md border ${
+                            critical
+                              ? 'bg-rose-500/15 border-rose-500/40 text-rose-600 dark:text-rose-300'
+                              : 'bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-300'
+                          }`}
+                        >
+                          {item.percentage}%
+                        </span>
+                      </div>
+                      <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden mb-2.5">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-rose-500 to-amber-500"
+                          style={{ width: `${item.percentage}%` }}
+                        />
+                      </div>
+                      <div className="flex justify-end">
+                        <Link
+                          to={item.practiceUrl}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:bg-amber-400/15 dark:text-amber-300 dark:border-amber-400/40 transition-colors"
+                        >
+                          <span>🎯 Xatoni yopish</span>
+                        </Link>
+                      </div>
                     </div>
-                    <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden mb-2">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-rose-500 to-amber-500"
-                        style={{ width: `${item.percentage}%` }}
-                      />
-                    </div>
-                    <div className="flex justify-end">
-                      <Link
-                        to={item.practiceUrl}
-                        className="text-[11px] font-bold text-amber-600 dark:text-amber-400 hover:underline inline-flex items-center gap-1"
-                      >
-                        <span>🎯 Xatoni yopish</span>
-                      </Link>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
