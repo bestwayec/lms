@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowRight,
@@ -11,8 +11,8 @@ import {
   Sparkles,
   CheckCircle2,
 } from 'lucide-react';
-import { useAuth } from '../auth/AuthContext';
-import { useToast } from '../context/ToastContext';
+import { useAuth } from '../auth/authState';
+import { useToast } from '../context/toastState';
 import { useLang } from '../i18n/LangContext';
 import {
   GroupInviteApi,
@@ -21,6 +21,10 @@ import {
 
 export default function JoinGroup() {
   const { token } = useParams<{ token?: string }>();
+  return <JoinGroupContent key={token ?? ''} token={token} />;
+}
+
+function JoinGroupContent({ token }: { token?: string }) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const toast = useToast();
@@ -28,37 +32,55 @@ export default function JoinGroup() {
 
   // Direct Code / Token Flow
   const [codeInput, setCodeInput] = useState(token || '');
-  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [loadingPreview, setLoadingPreview] = useState(Boolean(token));
   const [group, setGroup] = useState<GroupJoinPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [joined, setJoined] = useState(false);
+  const previewRequest = useRef(0);
 
-  // If token is in URL, fetch preview immediately
-  useEffect(() => {
-    if (token) {
-      setCodeInput(token);
-      fetchPreview(token);
-    }
-  }, [token]);
-
-  const fetchPreview = async (codeOrToken: string) => {
+  const fetchPreview = useCallback(async (codeOrToken: string) => {
     const raw = codeOrToken.trim();
     if (!raw) return;
+    const request = ++previewRequest.current;
     setLoadingPreview(true);
     setError(null);
     try {
       const data = await GroupInviteApi.preview(raw);
+      if (request !== previewRequest.current) return;
       setGroup(data);
-      if (data.is_member) setJoined(true);
+      setJoined(Boolean(data.is_member));
     } catch (err: unknown) {
+      if (request !== previewRequest.current) return;
       const msg = err instanceof Error ? err.message : t('jg_not_found_text');
       setError(msg);
       setGroup(null);
+      setJoined(false);
     } finally {
-      setLoadingPreview(false);
+      if (request === previewRequest.current) setLoadingPreview(false);
     }
-  };
+  }, [t]);
+
+  // Ignore a previous preview if the route changes or the component unmounts.
+  useEffect(() => {
+    if (!token) return;
+    const request = ++previewRequest.current;
+    GroupInviteApi.preview(token)
+      .then((data) => {
+        if (request !== previewRequest.current) return;
+        setGroup(data);
+        setJoined(Boolean(data.is_member));
+        setError(null);
+      })
+      .catch((err: unknown) => {
+        if (request !== previewRequest.current) return;
+        setError(err instanceof Error ? err.message : t('jg_not_found_text'));
+        setGroup(null);
+        setJoined(false);
+      })
+      .finally(() => { if (request === previewRequest.current) setLoadingPreview(false); });
+    return () => { previewRequest.current += 1; };
+  }, [token, t]);
 
   const handleJoin = async (targetTokenOrCode?: string) => {
     const code = targetTokenOrCode || group?.invite_token || group?.invite_code || codeInput.trim();

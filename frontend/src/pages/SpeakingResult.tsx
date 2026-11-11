@@ -1,3 +1,4 @@
+import { useLang } from '../i18n/LangContext';
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -10,17 +11,21 @@ import confetti from 'canvas-confetti';
 import { SpeakingApi, type SpeakingSubmissionDetail } from '../lib/api';
 
 export default function SpeakingResult() {
+  const { t: tr } = useLang();
   const { id } = useParams<{ id: string }>();
-  const [sub, setSub] = useState<SpeakingSubmissionDetail | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState<{ id: string; submission: SpeakingSubmissionDetail | null; error: string | null } | null>(null);
+  const current = loaded?.id === id ? loaded : null;
+  const sub = current?.submission ?? null;
+  const error = current?.error ?? null;
+  const loading = Boolean(id && !current);
 
   useEffect(() => {
     if (!id) return;
-    setLoading(true);
+    let active = true;
     SpeakingApi.submission(id)
       .then((res) => {
-        setSub(res);
+        if (!active) return;
+        setLoaded({ id, submission: res, error: null });
         try {
           confetti({
             particleCount: 80,
@@ -33,16 +38,16 @@ export default function SpeakingResult() {
         }
       })
       .catch((e: unknown) => {
-        setError(e instanceof Error ? e.message : "Natijani yuklashda xatolik.");
-      })
-      .finally(() => setLoading(false));
+        if (active) setLoaded({ id, submission: null, error: e instanceof Error ? e.message : "Natijani yuklashda xatolik." });
+      });
+    return () => { active = false; };
   }, [id]);
 
   if (loading) {
     return (
       <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--ink-muted)' }}>
         <RefreshCw size={32} className="animate-spin" style={{ margin: '0 auto 12px' }} />
-        <div>Speaking natijalari yuklanmoqda...</div>
+        <div>{tr('spk_loading_result')}</div>
       </div>
     );
   }
@@ -50,10 +55,10 @@ export default function SpeakingResult() {
   if (error || !sub) {
     return (
       <div className="card error" style={{ maxWidth: 600, margin: '40px auto' }}>
-        <h3>Xatolik yuz berdi</h3>
-        <p>{error || "Natija topilmadi."}</p>
+        <h3>{tr('spk_error')}</h3>
+        <p>{error || tr('spk_result_missing')}</p>
         <Link to="/speaking" className="btn ghost sm">
-          ← Speaking ro'yxatiga qaytish
+          ← {tr('spk_back_topics')}
         </Link>
       </div>
     );
@@ -179,7 +184,7 @@ export default function SpeakingResult() {
 
       {/* 4 Official IELTS Criteria Grid */}
       <h3 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: 14 }}>
-        📊 4 Ta Rasmiy IELTS Mezonlari Bo'yicha Ballar
+        📊 {tr('spk_criteria_heading')}
       </h3>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 24 }}>
         {criteria.map((c) => (
@@ -218,7 +223,7 @@ export default function SpeakingResult() {
       {/* Audio Playback & Transcript */}
       <div className="card" style={{ padding: 24, borderRadius: 18, marginBottom: 24 }}>
         <h3 style={{ margin: '0 0 12px 0', fontSize: '1.05rem', fontWeight: 800 }}>
-          🎧 Sizning yozib olingan nutqingiz
+          🎧 {tr('spk_recording_heading')}
         </h3>
 
         {sub.audio_url && (
@@ -241,12 +246,12 @@ export default function SpeakingResult() {
       {sub.feedback && (
         <div className="card" style={{ padding: 24, borderRadius: 18, marginBottom: 24 }}>
           <h3 style={{ margin: '0 0 16px 0', fontSize: '1.1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Sparkles size={18} color="#FBBF24" /> AI Examiner Tahlili va Tavsiyalari
+            <Sparkles size={18} color="#FBBF24" /> {tr('spk_feedback_heading')}
           </h3>
 
           {sub.feedback.summary && (
             <div style={{ marginBottom: 18, padding: 14, borderRadius: 12, background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.25)', color: '#D1FAE5', fontSize: '0.9rem', lineHeight: 1.5 }}>
-              <b>Xulosa:</b> {sub.feedback.summary}
+              <b>{tr('spk_summary')}</b> {sub.feedback.summary}
             </div>
           )}
 
@@ -254,7 +259,7 @@ export default function SpeakingResult() {
           {sub.feedback.vocabulary_suggestions && sub.feedback.vocabulary_suggestions.length > 0 && (
             <div style={{ marginBottom: 20 }}>
               <h4 style={{ margin: '0 0 10px 0', fontSize: '0.95rem', fontWeight: 800, color: '#6EE7B7' }}>
-                💎 Band 8+ Leksik tavsiyalar (So'zlarni boyitish):
+                💎 {tr('spk_vocab_tips')}
               </h4>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))', gap: 10 }}>
                 {sub.feedback.vocabulary_suggestions.map((v, idx) => (
@@ -273,7 +278,7 @@ export default function SpeakingResult() {
           {sub.feedback.grammar_corrections && sub.feedback.grammar_corrections.length > 0 && (
             <div>
               <h4 style={{ margin: '0 0 10px 0', fontSize: '0.95rem', fontWeight: 800, color: '#F87171' }}>
-                ✏️ Grammatik tuzatishlar:
+                ✏️ {tr('spk_grammar_tips')}
               </h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {sub.feedback.grammar_corrections.map((g, idx) => (
@@ -293,10 +298,10 @@ export default function SpeakingResult() {
       {/* Action footer */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <Link to={`/speaking/practice/${sub.topic_id}`} className="btn primary" style={{ textDecoration: 'none' }}>
-          🔄 Ushbu mavzuni qayta mashq qilish
+          🔄 {tr('spk_practise_again')}
         </Link>
         <Link to="/speaking" className="btn ghost" style={{ textDecoration: 'none' }}>
-          Yangi speaking mavzulariga o'tish →
+          {tr('spk_new_topics')} →
         </Link>
       </div>
     </div>

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../lib/api';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 import { ClockIcon, TrophyIcon, ArrowLeftIcon } from '../components/icons';
 
 interface LeaderboardEntry {
@@ -55,37 +55,26 @@ export default function TournamentLive() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const socketRef = useRef<WebSocket | null>(null);
 
-  // Load tournament data
-  const loadData = async () => {
-    try {
-      const res = await api.get<{
+  useEffect(() => {
+    let active = true;
+    api.get<{
         tournament: TournamentDetails;
         questions: QuestionItem[];
         leaderboard: LeaderboardEntry[];
         my_participation: { score: number; rank: number | null; is_finished: boolean } | null;
-      }>(`/tournaments/${id}/`);
-
-      setTournament(res.tournament);
-      setQuestions(res.questions || []);
-      setLeaderboard(res.leaderboard || []);
-
-      if (res.my_participation && res.my_participation.is_finished) {
-        setIsSubmitted(true);
-        setMyResult({
-          score: res.my_participation.score,
-          rank: res.my_participation.rank,
-          correct: 0,
-        });
-      }
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void loadData();
+      }>(`/tournaments/${id}/`)
+      .then((res) => {
+        if (!active) return;
+        setTournament(res.tournament);
+        setQuestions(res.questions || []);
+        setLeaderboard(res.leaderboard || []);
+        if (res.my_participation?.is_finished) {
+          setIsSubmitted(true);
+          setMyResult({ score: res.my_participation.score, rank: res.my_participation.rank, correct: 0 });
+        }
+      })
+      .catch(() => {})
+      .finally(() => { if (active) setLoading(false); });
 
     // Auto-join if user is logged in
     if (user && id) {
@@ -129,6 +118,7 @@ export default function TournamentLive() {
     }, 5000);
 
     return () => {
+      active = false;
       clearInterval(pollInterval);
       if (socketRef.current) {
         socketRef.current.close();

@@ -22,12 +22,15 @@ function heat(acc: number | null): number | null {
  */
 export default function TeacherStudioResults() {
   const { id = '' } = useParams<{ id: string }>();
-  const { t } = useLang();
-  const [data, setData] = useState<ItemAnalysis | null>(null);
+  const { t, lang } = useLang();
   const [detail, setDetail] = useState<StudioDetail | null>(null);
   const [groupId, setGroupId] = useState<number | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState<{ key: string; data: ItemAnalysis | null; error: string | null } | null>(null);
+  const key = `${id}:${groupId}:${lang}`;
+  const current = loaded?.key === key ? loaded : null;
+  const data = current?.data ?? null;
+  const err = current?.error ?? null;
+  const loading = !current;
   const [showMatrix, setShowMatrix] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
 
@@ -39,22 +42,17 @@ export default function TeacherStudioResults() {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setErr(null);
     StudioApi.analysis(id, groupId)
       .then((d) => {
-        if (!cancelled) setData(d);
+        if (!cancelled) setLoaded({ key, data: d, error: null });
       })
       .catch((e) => {
-        if (!cancelled) setErr(e instanceof Error ? e.message : t('err_retry_js'));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setLoaded({ key, data: null, error: e instanceof Error ? e.message : t('err_retry_js') });
       });
     return () => {
       cancelled = true;
     };
-  }, [id, groupId, t]);
+  }, [id, groupId, key, t]);
 
   const flagged = useMemo(() => (data ? data.items.filter((i) => i.flagged) : []), [data]);
   const maxBucket = data ? Math.max(1, ...data.distribution.map((b) => b.count)) : 1;

@@ -2,9 +2,9 @@ import { initialsOf } from '../lib/displayName';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 import { useLang, type AppLang } from '../i18n/LangContext';
-import { useTheme, type Theme } from '../theme/ThemeContext';
+import { useTheme, type Theme } from '../theme/themeState';
 import { isPlatformAdmin, formatDisplayName } from '../lib/api';
 import {
   ChevronDownIcon,

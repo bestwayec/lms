@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useLang } from '../i18n/LangContext';
 import { essayStatus } from '../lib/essays';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 import { Essays } from '../lib/api';
 import ScoreCardModal from '../components/ScoreCardModal';
 import InlineEssayHighlighter, { type HighlightError } from '../components/InlineEssayHighlighter';
@@ -150,7 +150,7 @@ export default function EssayResult() {
   const [err, setErr] = useState<string | null>(null);
   const [showScoreCard, setShowScoreCard] = useState(false);
   const [tab, setTab] = useState<Tab>('essay');
-  const [openCrit, setOpenCrit] = useState<Set<number>>(new Set());
+  const [openCritOverride, setOpenCrit] = useState<Set<number> | null>(null);
 
   const [improved, setImproved] = useState<string | null>(null);
   const [improvedBusy, setImprovedBusy] = useState(false);
@@ -193,10 +193,6 @@ export default function EssayResult() {
       clearTimeout(timer);
     };
   }, [id, pollNonce, t]);
-
-  useEffect(() => {
-    if (res?.essay_text && !workingText) setWorkingText(res.essay_text);
-  }, [res?.essay_text, workingText]);
 
   const isEnglish = Boolean(
     res &&
@@ -261,13 +257,14 @@ export default function EssayResult() {
   }, [criteria, isEnglish]);
 
   // Open the criterion that cost the most points by default.
-  useEffect(() => {
-    if (!criteria.length) return;
+  const defaultOpenCrit = useMemo(() => {
+    if (!criteria.length) return new Set<number>();
     const worst = [...criteria].sort(
       (a, b) => (b.max_score ?? 2) - b.score - ((a.max_score ?? 2) - a.score),
     )[0];
-    setOpenCrit((prev) => (prev.size ? prev : new Set([worst.id])));
+    return new Set([worst.id]);
   }, [criteria]);
+  const openCrit = openCritOverride ?? defaultOpenCrit;
 
   const takeaways = useMemo(() => {
     if (!res) return [];
@@ -383,7 +380,7 @@ export default function EssayResult() {
 
   const toggleCrit = (cid: number) =>
     setOpenCrit((prev) => {
-      const next = new Set(prev);
+      const next = new Set(prev ?? defaultOpenCrit);
       if (next.has(cid)) next.delete(cid);
       else next.add(cid);
       return next;

@@ -28,7 +28,7 @@ function normalizeFor(b: StudioBlock, optionCount: number, raw: string): string 
 }
 
 /** Apply `{number: answer}` to every matching question across blocks. */
-export function applyKey(blocks: StudioBlock[], key: Record<string, string>): StudioBlock[] {
+function applyKey(blocks: StudioBlock[], key: Record<string, string>): StudioBlock[] {
   return blocks.map((b) => {
     if (b.type === 'gap') {
       let text = b.gap_text;

@@ -45,8 +45,17 @@ export default function ParentMonitoringCard() {
   };
 
   useEffect(() => {
-    void loadRelations();
+    let active = true;
+    api.get<{ relations: ParentRelation[]; deep_link?: string }>('/parents/relation/')
+      .then((res) => {
+        if (!active) return;
+        setRelations(res.relations || []);
+        if (res.deep_link) setDeepLink(res.deep_link);
+      })
+      .catch(() => {})
+      .finally(() => { if (active) setLoading(false); });
     return () => {
+      active = false;
       if (copyTimerRef.current) {
         clearTimeout(copyTimerRef.current);
       }

@@ -1,5 +1,5 @@
 import { Navigate } from 'react-router-dom';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 import { isPlatformAdmin } from '../lib/api';
 import Dashboard from './Dashboard';
 import TeacherDashboard from './TeacherDashboard';

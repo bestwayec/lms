@@ -1,3 +1,4 @@
+import { useLang } from '../i18n/LangContext';
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
@@ -13,6 +14,7 @@ import {
 import { SpeakingApi, type SpeakingTopicItem } from '../lib/api';
 
 export default function SpeakingPractice() {
+  const { t: tr } = useLang();
   const { topicId } = useParams<{ topicId: string }>();
   const navigate = useNavigate();
 
@@ -175,7 +177,7 @@ export default function SpeakingPractice() {
     return (
       <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--ink-muted)' }}>
         <RefreshCw size={32} className="animate-spin" style={{ margin: '0 auto 12px' }} />
-        <div>Speaking imtihon xonasi tayyorlanmoqda...</div>
+        <div>{tr('spk_loading_room')}</div>
       </div>
     );
   }
@@ -183,10 +185,10 @@ export default function SpeakingPractice() {
   if (error && !topic) {
     return (
       <div className="card error" style={{ maxWidth: 600, margin: '40px auto' }}>
-        <h3>Xatolik yuz berdi</h3>
+        <h3>{tr('spk_error')}</h3>
         <p>{error}</p>
         <Link to="/speaking" className="btn ghost sm">
-          ← Ro'yxatga qaytish
+          ← {tr('spk_back_topics')}
         </Link>
       </div>
     );
@@ -197,7 +199,7 @@ export default function SpeakingPractice() {
       {/* Top back button */}
       <div style={{ marginBottom: 16 }}>
         <Link to="/speaking" className="btn ghost sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <ArrowLeft size={14} /> Barcha mavzularga qaytish
+          <ArrowLeft size={14} /> {tr('spk_back_topics')}
         </Link>
       </div>
 
@@ -245,7 +247,7 @@ export default function SpeakingPractice() {
                 }}
               >
                 <Clock size={16} />
-                <span>Tayyorgarlik vaqti: {formatTimer(prepSecondsLeft)}</span>
+                <span>{tr('spk_prep_time')}: {formatTimer(prepSecondsLeft)}</span>
               </div>
             )}
 
@@ -264,7 +266,7 @@ export default function SpeakingPractice() {
                 }}
               >
                 <span className="pulsing-dot" style={{ width: 10, height: 10, borderRadius: '50%', background: '#F43F5E' }} />
-                <span>Ovoz yozilmoqda: {formatTimer(speakSecondsLeft)}</span>
+                <span>{tr('spk_recording')}: {formatTimer(speakSecondsLeft)}</span>
               </div>
             )}
           </div>
@@ -350,7 +352,7 @@ export default function SpeakingPractice() {
               className="btn sm ghost"
               style={{ fontWeight: 700 }}
             >
-              Tayyorgarlikni o'tkazib yuborish (Tayyorman) →
+              {tr('spk_skip_prep')} →
             </button>
           </div>
         )}
@@ -377,7 +379,7 @@ export default function SpeakingPractice() {
               <Mic size={38} />
             </div>
             <h3 style={{ margin: '0 0 6px 0', fontSize: '1.25rem', fontWeight: 800 }}>
-              Mikrofonni yoqish va javob berish
+              {tr('spk_ready_title')}
             </h3>
             <p className="muted small" style={{ maxWidth: 400, margin: '0 auto 20px' }}>
               Yuqoridagi binafsha tugmani bosing va baland, ravon ovozda gapirishni boshlang (maksimal {topic?.speak_time_seconds || 120} soniya).
@@ -388,7 +390,7 @@ export default function SpeakingPractice() {
               className="btn primary"
               style={{ padding: '12px 28px', fontWeight: 800, fontSize: '0.98rem' }}
             >
-              🎙️ Gapirishni boshlash
+              🎙️ {tr('spk_start_recording')}
             </button>
           </div>
         )}
@@ -429,7 +431,7 @@ export default function SpeakingPractice() {
               className="btn danger"
               style={{ padding: '10px 24px', fontWeight: 800 }}
             >
-              ⏹️ Yozishni to'xtatish
+              ⏹️ {tr('spk_stop_recording')}
             </button>
           </div>
         )}
@@ -438,7 +440,7 @@ export default function SpeakingPractice() {
         {phase === 'review' && audioUrl && (
           <div>
             <h3 style={{ margin: '0 0 12px 0', fontSize: '1.15rem', fontWeight: 800 }}>
-              ✅ Ovoz yozuvi tayyor
+              ✅ {tr('spk_audio_ready')}
             </h3>
             <div style={{ maxWidth: 400, margin: '0 auto 20px' }}>
               <audio src={audioUrl} controls style={{ width: '100%', borderRadius: 10 }} />
@@ -451,7 +453,7 @@ export default function SpeakingPractice() {
                 className="btn ghost"
                 style={{ display: 'flex', alignItems: 'center', gap: 6 }}
               >
-                <RotateCcw size={15} /> Qaytadan yozish
+                <RotateCcw size={15} /> {tr('spk_retake')}
               </button>
 
               <button
@@ -466,7 +468,7 @@ export default function SpeakingPractice() {
                   fontWeight: 800,
                 }}
               >
-                <Sparkles size={16} /> AI Examinerga baholatish
+                <Sparkles size={16} /> {tr('spk_grade')}
               </button>
             </div>
           </div>
@@ -477,7 +479,7 @@ export default function SpeakingPractice() {
           <div style={{ padding: '20px 0' }}>
             <RefreshCw size={42} className="animate-spin" style={{ margin: '0 auto 16px', color: '#6366F1' }} />
             <h3 style={{ margin: '0 0 8px 0', fontSize: '1.25rem', fontWeight: 800 }}>
-              Gemini AI nutqingizni baholamoqda...
+              {tr('spk_evaluating')}
             </h3>
             <p className="muted small" style={{ maxWidth: 440, margin: '0 auto' }}>
               Nutq ravonligi (FC), so'z boyligi (LR), grammatika (GRA) va talaffuz (PR) mezonlari tahlil qilinmoqda. Bu bir necha soniya vaqt oladi.

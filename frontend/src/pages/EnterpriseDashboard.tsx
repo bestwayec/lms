@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 
 function getErrMsg(err: unknown, fallback: string): string {
@@ -78,6 +78,15 @@ interface RecentResult {
   created_at: string;
 }
 
+interface DashboardResponse {
+  center: CenterDetails | null;
+  centers?: CenterDetails[];
+  stats: CenterStats | null;
+  branches: BranchItem[];
+  teachers: TeacherItem[];
+  recent_results: RecentResult[];
+}
+
 export default function EnterpriseDashboard() {
   const [center, setCenter] = useState<CenterDetails | null>(null);
   const [centers, setCenters] = useState<CenterDetails[]>([]);
@@ -106,6 +115,15 @@ export default function EnterpriseDashboard() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ success: boolean; message: string } | null>(null);
 
+  const applyDashboard = useCallback((res: DashboardResponse) => {
+    setCenter(res.center || null);
+    setCenters(Array.isArray(res.centers) ? res.centers : res.center ? [res.center] : []);
+    setStats(res.stats || null);
+    setBranches(res.branches || []);
+    setTeachers(res.teachers || []);
+    setRecentResults(res.recent_results || []);
+  }, []);
+
   const loadData = async (selectedId?: number) => {
     setLoading(true);
     setError(null);
@@ -114,27 +132,8 @@ export default function EnterpriseDashboard() {
         ? `/api/v1/enterprise/dashboard/?center_id=${selectedId}`
         : '/api/v1/enterprise/dashboard/';
 
-      const res = await api.get<{
-        center: CenterDetails | null;
-        centers?: CenterDetails[];
-        stats: CenterStats | null;
-        branches: BranchItem[];
-        teachers: TeacherItem[];
-        recent_results: RecentResult[];
-      }>(url);
-
-      setCenter(res.center || null);
-      if (res.centers && Array.isArray(res.centers)) {
-        setCenters(res.centers);
-      } else if (res.center) {
-        setCenters([res.center]);
-      } else {
-        setCenters([]);
-      }
-      setStats(res.stats || null);
-      setBranches(res.branches || []);
-      setTeachers(res.teachers || []);
-      setRecentResults(res.recent_results || []);
+      const res = await api.get<DashboardResponse>(url);
+      applyDashboard(res);
     } catch (err: unknown) {
       const msg = getErrMsg(err, "O'quv markaz ma'lumotlarini yuklashda xatolik.");
       setError(msg);
@@ -148,13 +147,23 @@ export default function EnterpriseDashboard() {
   const createTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    void loadData();
+    let active = true;
+    api.get<DashboardResponse>('/api/v1/enterprise/dashboard/')
+      .then((res) => { if (active) applyDashboard(res); })
+      .catch((err: unknown) => {
+        if (!active) return;
+        setError(getErrMsg(err, "O'quv markaz ma'lumotlarini yuklashda xatolik."));
+        setCenter(null);
+        setStats(null);
+      })
+      .finally(() => { if (active) setLoading(false); });
     return () => {
+      active = false;
       if (createTimerRef.current) {
         clearTimeout(createTimerRef.current);
       }
     };
-  }, []);
+  }, [applyDashboard]);
 
   const handleCreateCenter = async (e: React.FormEvent) => {
     e.preventDefault();

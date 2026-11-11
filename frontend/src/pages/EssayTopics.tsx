@@ -41,6 +41,9 @@ interface Submission {
   graded_at?: string | null;
 }
 
+const EMPTY_TOPICS: Topic[] = [];
+const EMPTY_SUBMISSIONS: Submission[] = [];
+
 type Tab = 'topics' | 'mine';
 
 const TYPE_FILTERS: Record<'uzbek' | 'english', ('all' | EssayKind)[]> = {
@@ -67,23 +70,27 @@ export default function EssayTopics() {
   const [type, setType] = useState<'all' | EssayKind>('all');
   const [query, setQuery] = useState('');
   const [mineFilter, setMineFilter] = useState<MineFilter>('all');
-  const [topics, setTopics] = useState<Topic[]>([]);
-  const [subs, setSubs] = useState<Submission[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
+  const [loaded, setLoaded] = useState<{ key: string; topics: Topic[]; subs: Submission[]; error: string | null } | null>(null);
+  const loadKey = `${subject}:${reload}:${lang}`;
+  const current = loaded?.key === loadKey ? loaded : null;
+  const topics = current?.topics ?? EMPTY_TOPICS;
+  const subs = current?.subs ?? EMPTY_SUBMISSIONS;
+  const loading = !current;
+  const err = current?.error ?? null;
 
-  useEffect(() => setType('all'), [subject]);
+  const [previousSubject, setPreviousSubject] = useState(subject);
+  if (subject !== previousSubject) {
+    setPreviousSubject(subject);
+    setType('all');
+  }
 
   useEffect(() => {
     let alive = true;
-    setLoading(true);
-    setErr(null);
     Promise.all([Essays.topics({ subject }), Essays.submissions({ subject })])
       .then(([tj, sj]) => {
         if (!alive) return;
-        setTopics((tj.topics as Topic[]) || []);
-        setSubs((sj.submissions as Submission[]) || []);
+        setLoaded({ key: loadKey, topics: (tj.topics as Topic[]) || [], subs: (sj.submissions as Submission[]) || [], error: null });
       })
       .catch((e) => {
         if (!alive) return;
@@ -91,13 +98,12 @@ export default function EssayTopics() {
           navigate('/login');
           return;
         }
-        setErr(e instanceof Error ? e.message : t('err_retry_js'));
-      })
-      .finally(() => alive && setLoading(false));
+        setLoaded({ key: loadKey, topics: [], subs: [], error: e instanceof Error ? e.message : t('err_retry_js') });
+      });
     return () => {
       alive = false;
     };
-  }, [subject, reload, navigate, t]);
+  }, [subject, loadKey, navigate, t]);
 
   const visibleTopics = useMemo(() => filterTopics(topics, type, query), [topics, query, type]);
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BarChart3, PenLine, Plus, Share2 } from 'lucide-react';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 import { useLang } from '../i18n/LangContext';
 import { TeacherEssays, canReviewEssays, type TeacherEssayCard } from '../lib/api';
 import { StudioApi, type StudioDetail, type StudioListItem } from '../lib/studio';

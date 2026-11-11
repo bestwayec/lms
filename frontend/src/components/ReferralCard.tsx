@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from '../i18n/useTranslation';
 import { ReferralApi, type ReferralStats } from '../lib/api';
-import { useToast } from '../context/ToastContext';
+import { useToast } from '../context/toastState';
 
 interface Props {
   /** compact = one row for the dashboard; the full card lives on the profile page. */

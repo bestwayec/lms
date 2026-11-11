@@ -36,6 +36,7 @@ from apps.tests.models import (
 from apps.tests.scoring import (
     aggregate,
     blank_is_correct,
+    evaluate_text_answer,
     grade_gap_fill,
     grade_matching,
     normalize_text,
@@ -179,6 +180,14 @@ class ScoringUnitTests(TestCase):
         self.assertTrue(blank_is_correct(" olMa ", ["OLMA", "anor"]))
         self.assertFalse(blank_is_correct("", ["olma"]))
         self.assertFalse(blank_is_correct("nok", ["olma"]))
+
+    def test_answer_normalization_preserves_decimal_meaning(self):
+        for given, expected in [("  O‘ZBEK   TILI ", "o'zbek tili"), ("2,5", "2.5")]:
+            self.assertTrue(blank_is_correct(given, [expected]))
+            self.assertTrue(evaluate_text_answer(given, [expected]))
+        self.assertFalse(blank_is_correct("2 5", ["2.5"]))
+        self.assertFalse(evaluate_text_answer("2 5", ["2.5"]))
+        self.assertFalse(blank_is_correct("o‘zbek", ["O'zbek"], case_sensitive=True))
 
     def test_gap_full_and_partial(self):
         blanks = {0: ["olma"], 1: ["anor", "behi"]}

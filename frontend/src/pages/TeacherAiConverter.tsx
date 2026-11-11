@@ -282,7 +282,7 @@ export default function TeacherAiConverter() {
             gap: 8,
           }}
         >
-          <span>✨</span> AI Konvertor
+          <span>✨</span> {t('x_converter')}
         </button>
 
         <Link
@@ -303,7 +303,7 @@ export default function TeacherAiConverter() {
             gap: 8,
           }}
         >
-          <span>📡</span> Jonli tablo
+          <span>📡</span> {t('x_live_board')}
         </Link>
 
         <Link
@@ -324,7 +324,7 @@ export default function TeacherAiConverter() {
             gap: 8,
           }}
         >
-          <span>📊</span> Vedomost
+          <span>📊</span> {t('x_gradebook')}
         </Link>
       </div>
 
@@ -334,7 +334,7 @@ export default function TeacherAiConverter() {
           <Sparkles size={14} /> 10-soniyalik AI Vision Konvertor
         </div>
         <h1 style={{ margin: '0 0 6px 0', fontSize: '1.8rem', fontWeight: 900 }}>
-          Qog'oz va PDF testdan 10 soniyada test yasash
+          {t('x_converter_title')}
         </h1>
         <p className="muted" style={{ margin: 0, fontSize: '0.95rem' }}>
           Kitob sahifasini rasmga oling yoki PDF faylni yuklang. Gemini Vision AI savollar, formulalar va variantlarni avtomatik ajratib oladi.
@@ -474,7 +474,7 @@ export default function TeacherAiConverter() {
               </div>
 
               <h3 style={{ margin: '0 0 6px', fontSize: '1.25rem', fontWeight: 900, color: 'var(--text-primary)' }}>
-                {file ? file.name : "Faylni shu yerga tashlang"}
+                {file ? file.name : t('x_drop_file')}
               </h3>
               <p className="muted" style={{ margin: '0 0 16px', fontSize: '0.9rem', maxWidth: 480, textAlign: 'center', lineHeight: 1.5 }}>
                 Word, PDF yoki telefonda olingan rasm. Formulalar, variantlar va javob kalitlari avtomatik ajratiladi
@@ -508,7 +508,7 @@ export default function TeacherAiConverter() {
                   boxShadow: '0 4px 14px rgba(79, 70, 229, 0.35)',
                 }}
               >
-                📁 Fayl tanlash yoki rasmga olish
+                📁 {t('x_choose_file')}
               </span>
             </label>
           </div>
@@ -523,11 +523,11 @@ export default function TeacherAiConverter() {
             >
               {converting ? (
                 <>
-                  <Sparkles size={16} className="spin" /> AI hujjatni tahlil qilmoqda...
+                  <Sparkles size={16} className="spin" /> {t('x_convert_busy')}
                 </>
               ) : (
                 <>
-                  <Sparkles size={16} /> AI bilan testga aylantirish
+                  <Sparkles size={16} /> {t('x_convert_action')}
                 </>
               )}
             </button>
@@ -644,7 +644,7 @@ export default function TeacherAiConverter() {
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                 <span style={{ fontSize: 20 }}>🧪</span>
-                <strong style={{ fontSize: '0.95rem', color: 'var(--text-primary)' }}>Ilmiy Formula Paneli</strong>
+                <strong style={{ fontSize: '0.95rem', color: 'var(--text-primary)' }}>{t('x_formula_panel')}</strong>
               </div>
               <p className="muted small" style={{ margin: '0 0 12px', fontSize: 11, lineHeight: 1.4 }}>
                 Belgini bosish orqali oxirgi tahrirlanayotgan savol matni yoki variantiga qo'shing:
@@ -678,7 +678,7 @@ export default function TeacherAiConverter() {
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
                 <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 800 }}>
-                  Ajratib olingan savollar ({questions.length} ta)
+                  {t('x_extracted_questions').replace('{n}', String(questions.length))}
                 </h2>
                 <button
                   type="button"
@@ -686,7 +686,7 @@ export default function TeacherAiConverter() {
                   onClick={addQuestion}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
                 >
-                  <Plus size={16} /> Savol qo'shish
+                  <Plus size={16} /> {t('x_add_question')}
                 </button>
               </div>
 
@@ -850,7 +850,7 @@ export default function TeacherAiConverter() {
                 onClick={() => setIsConverted(false)}
                 disabled={saving}
               >
-                Orqaga
+                {t('x_back')}
               </button>
               <button
                 type="button"
@@ -859,7 +859,7 @@ export default function TeacherAiConverter() {
                 disabled={saving}
                 style={{ minHeight: 46, padding: '0 24px', fontWeight: 800 }}
               >
-                {saving ? 'Saqlanmoqda...' : '💾 Testni tasdiqlash va saqlash'}
+                {saving ? t('x_saving') : `💾 ${t('x_confirm_save')}`}
               </button>
             </div>
           </div>
@@ -887,7 +887,7 @@ export default function TeacherAiConverter() {
             <CheckCircle2 size={36} />
           </div>
           <h2 style={{ fontSize: '1.6rem', fontWeight: 900, margin: '0 0 8px 0' }}>
-            Test muvaffaqiyatli saqlandi!
+            {t('x_saved')}
           </h2>
           <p className="muted" style={{ maxWidth: 500, margin: '0 auto 20px auto', fontSize: '0.95rem' }}>
             Test platformada nashr etildi. O'quvchilaringiz quyidagi unikal kod orqali testga tezkor ulanishlari mumkin:
@@ -935,10 +935,10 @@ export default function TeacherAiConverter() {
               }}
             >
               <QrCode size={18} />
-              <span>📱 Sinfxona QR-Kodi va Ulashish</span>
+              <span>📱 {t('x_qr_share')}</span>
             </button>
             <Link to={`/tests/${savedResult.test_id}`} className="btn" style={{ minHeight: 44, padding: '0 20px' }}>
-              Testni ko'rish (Preview)
+              {t('x_view_test')}
             </Link>
             <button
               type="button"
@@ -949,10 +949,10 @@ export default function TeacherAiConverter() {
                 setFile(null);
               }}
             >
-              Yana yangi test yuklash
+              {t('x_upload_another')}
             </button>
             <Link to="/panel" className="btn ghost">
-              Ustoz kabineti
+              {t('x_teacher_panel')}
             </Link>
           </div>
         </div>
@@ -966,7 +966,7 @@ export default function TeacherAiConverter() {
           code={savedResult.mock_code}
           webUrl={`https://grandec.uz/tests/${savedResult.test_id}`}
           tmaUrl={`https://t.me/uz_essaygrader_bot/app?startapp=test_${savedResult.test_id}`}
-          subtitle="Sinfxona doskasiga chiqaring yoki Telegram guruhga yuboring"
+          subtitle={t('x_class_qr_hint')}
         />
       )}
     </div>

@@ -1,7 +1,6 @@
+import { Ctx } from './authState';
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useState,
 } from 'react';
@@ -22,33 +21,6 @@ import {
 import type { AuthUser, TokenPair } from '../lib/api';
 import { storeLang } from '../i18n/LangContext';
 import { initTelegramWebApp } from '../pages/tma/telegram';
-
-interface AuthState {
-  user: AuthUser | null;
-  loading: boolean;
-  error: string | null;
-  isAuthModalOpen: boolean;
-  authModalMode: 'login' | 'register';
-  openAuthModal: (mode?: 'login' | 'register') => void;
-  closeAuthModal: () => void;
-  login: (email: string, password: string) => Promise<AuthUser>;
-  loginWithTokens: (tokens: TokenPair, rawUser?: Record<string, unknown>) => Promise<AuthUser>;
-  loginWithTelegram: (tokens: TokenPair, rawUser: Record<string, unknown>) => AuthUser;
-  loginWithGoogle: (credential: string) => Promise<AuthUser>;
-  register: (payload: {
-    email: string;
-    password: string;
-    password_confirm: string;
-    first_name: string;
-    last_name: string;
-    role?: string;
-  }) => Promise<AuthUser>;
-  logout: () => Promise<void>;
-  refreshUser: () => Promise<AuthUser | null>;
-  updateUserLocal: (partial: Partial<AuthUser>) => void;
-}
-
-const Ctx = createContext<AuthState | null>(null);
 
 /** Public SPA paths where an expired session must NOT force a /login bounce. */
 const PUBLIC_PREFIXES = ['/login', '/register', '/password-reset', '/verify', '/certificates/verify'];
@@ -120,7 +92,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // 2. Zero-friction Telegram Mini App authentication if within Telegram
     if (tmaInitData && !getTokens().access) {
-      setLoading(true);
       const safetyTimer = setTimeout(() => {
         setLoading(false);
       }, 5000);
@@ -381,10 +352,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       {children}
     </Ctx.Provider>
   );
-}
-
-export function useAuth(): AuthState {
-  const ctx = useContext(Ctx);
-  if (!ctx) throw new Error('useAuth must be used inside <AuthProvider>');
-  return ctx;
 }

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 import { useLang } from '../i18n/LangContext';
 import { GoogleAuth, landingFor, ReferralApi } from '../lib/api';
 import SEO from '../components/SEO';

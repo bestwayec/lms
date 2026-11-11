@@ -149,7 +149,13 @@ const QUESTION_GOALS = [
   { count: 50, minutes: 50, title: '50 ta savol', desc: 'Intensiv (kuniga 50–60 daqiqa)', badge: '🔥 Intensiv' },
 ];
 
-export const GoalModal: React.FC<GoalModalProps> = ({
+export const GoalModal: React.FC<GoalModalProps> = (props) => {
+  if (!props.isOpen) return null;
+  const key = JSON.stringify([props.currentExam, props.currentGrade, props.currentQuestions, props.subject]);
+  return <GoalModalContent key={key} {...props} />;
+};
+
+const GoalModalContent: React.FC<GoalModalProps> = ({
   isOpen,
   onClose,
   onSaved,
@@ -159,35 +165,25 @@ export const GoalModal: React.FC<GoalModalProps> = ({
   subject,
 }) => {
   const { user, updateUser } = useAuth();
-  const [selectedExam, setSelectedExam] = useState<string>(currentExam);
-  const [selectedGrade, setSelectedGrade] = useState<string>(currentGrade);
-  const [selectedQuestions, setSelectedQuestions] = useState<number>(currentQuestions);
+  const [selectedExam, setSelectedExam] = useState<string>(() => {
+    const fallback = subject ? EXAM_OPTIONS.find((e) => e.subject === subject)?.id : undefined;
+    const match = EXAM_OPTIONS.find((e) =>
+      (!subject || e.subject === subject) && (e.id === currentExam || currentExam.toLowerCase().includes(e.id)),
+    );
+    return match?.id || fallback || 'milliy_sertifikat';
+  });
+  const [selectedGrade, setSelectedGrade] = useState<string>(currentGrade || 'A+');
+  const [selectedQuestions, setSelectedQuestions] = useState<number>(currentQuestions || 30);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const modalRef = useRef<HTMLDivElement>(null);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
 
-  // Sync initial values when opened or props change
   useEffect(() => {
-    if (isOpen) {
-      let defaultForSubject: string | undefined;
-      if (subject) {
-        const found = EXAM_OPTIONS.find((e) => e.subject === subject);
-        if (found) defaultForSubject = found.id;
-      }
-      const matchExam = EXAM_OPTIONS.find((e) =>
-        subject
-          ? e.subject === subject && (e.id === currentExam || currentExam.toLowerCase().includes(e.id))
-          : e.id === currentExam || currentExam.toLowerCase().includes(e.id),
-      );
-      setSelectedExam(matchExam ? matchExam.id : defaultForSubject || 'milliy_sertifikat');
-      setSelectedGrade(currentGrade || 'A+');
-      setSelectedQuestions(currentQuestions || 30);
-      setError(null);
-      setTimeout(() => closeBtnRef.current?.focus(), 50);
-    }
-  }, [isOpen, currentExam, currentGrade, currentQuestions, subject]);
+    const timer = window.setTimeout(() => closeBtnRef.current?.focus(), 50);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   // Handle ESC key to close
   useEffect(() => {

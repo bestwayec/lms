@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Moon, Sun } from 'lucide-react';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 import { useLang } from '../i18n/LangContext';
 import { isPlatformAdmin, type StreakInfoResponse } from '../lib/api';
 import { initialsOf } from '../lib/displayName';
@@ -8,7 +8,7 @@ import { useTier } from '../lib/useTier';
 import { ShieldCheckIcon } from './icons';
 import SubjectSwitcher from './SubjectSwitcher';
 import UserNavDropdown from './UserNavDropdown';
-import { useTheme } from '../theme/ThemeContext';
+import { useTheme } from '../theme/themeState';
 
 interface NavbarProps {
   streakData?: StreakInfoResponse | null;

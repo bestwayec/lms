@@ -1,5 +1,5 @@
 import { Navigate, Outlet } from 'react-router-dom';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 import SessionLoading from './SessionLoading';
 import { canTeach } from '../lib/api';
 

@@ -42,6 +42,10 @@ const errText = (e: unknown, t: (k: string, fallback?: string) => string) => {
  */
 export default function TeacherStudioEditor() {
   const { id } = useParams<{ id: string }>();
+  return <TeacherStudioEditorBody key={id ?? 'new'} id={id} />;
+}
+
+function TeacherStudioEditorBody({ id }: { id?: string }) {
   const navigate = useNavigate();
   const { t } = useLang();
 
@@ -72,7 +76,6 @@ export default function TeacherStudioEditor() {
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
-    setLoading(true);
     StudioApi.detail(id)
       .then((d) => {
         if (!cancelled) applyDetail(d);
@@ -140,8 +143,6 @@ export default function TeacherStudioEditor() {
     [meta.subject],
   );
 
-  const payload = () => ({ ...meta, title: meta.title.trim(), blocks });
-
   const save = useCallback(async (): Promise<StudioDetail | null> => {
     if (!meta.title.trim()) {
       setErr(t('studio_err_title_required'));
@@ -150,7 +151,8 @@ export default function TeacherStudioEditor() {
     setBusy('save');
     setErr(null);
     try {
-      const d = id ? await StudioApi.update(id, payload()) : await StudioApi.create(payload());
+      const payload = { ...meta, title: meta.title.trim(), blocks };
+      const d = id ? await StudioApi.update(id, payload) : await StudioApi.create(payload);
       applyDetail(d);
       setNotice(t('studio_saved'));
       if (!id) navigate(`/teacher/studio/${d.test.id}/edit`, { replace: true });

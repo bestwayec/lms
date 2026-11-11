@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import confetti from 'canvas-confetti';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 import { useLang } from '../i18n/LangContext';
 import { TestsApi } from '../lib/testing';
 import { formatDisplayName } from '../lib/displayName';
@@ -141,9 +141,8 @@ export default function TestAddictiveResults({
   const [retesting, setRetesting] = useState(false);
   const [retestMsg, setRetestMsg] = useState<string | null>(null);
   const [showScoreCard, setShowScoreCard] = useState(false);
-  const [_isNewRecord, setIsNewRecord] = useState(false);
 
-  const pct = Math.round(percentage);
+  const pct = Number.isFinite(percentage) ? Math.round(percentage) : 0;
   const grade = bmbGrade || raschGrade || '';
 
   // 1. Dopamine celebration burst on result page mount
@@ -181,21 +180,6 @@ export default function TestAddictiveResults({
       /* ignore */
     }
   }, [pct]);
-
-  // 2. Personal Record check against previous best score in this subject
-  useEffect(() => {
-    try {
-      const key = `grandec_pb_${(subject || 'general').toLowerCase()}`;
-      const prev = localStorage.getItem(key);
-      const prevScore = prev ? Number(prev) : 0;
-      if (pct > 0 && pct > prevScore) {
-        setIsNewRecord(true);
-        localStorage.setItem(key, String(pct));
-      }
-    } catch {
-      /* ignore */
-    }
-  }, [pct, subject]);
 
   const formatTime = (secs: number) => {
     if (!secs || secs <= 0) return '0 soniya';
@@ -241,7 +225,7 @@ export default function TestAddictiveResults({
     }
   };
 
-  const effectiveBranchName = branchInfo?.branch_name || shareData?.branch_name || 'Grand Education Bosh Filiali';
+  const effectiveBranchName = branchInfo?.branch_name || shareData?.branch_name;
   const refCode = shareData?.referral_code || user?.referral_code || 'GRAND';
   const effectiveRefUrl = shareData?.referral_url || `https://grandec.uz/join?ref=${refCode}`;
   const pdfDownloadUrl = shareData?.pdf_download_url || `/api/results/${resultId}/pdf/`;
@@ -300,67 +284,16 @@ export default function TestAddictiveResults({
   const isScience = normalizedSubject === 'biology' || normalizedSubject === 'chemistry' || subjectAnalysis?.kind === 'science_bmb';
   const isLaw = normalizedSubject === 'law' || subjectAnalysis?.kind === 'law_jurisprudence';
 
-  // Compute local fallback for Science if not supplied from server
-  const closedStats = subjectAnalysis?.closed_questions || {
-    label: '1–32 Yopiq testlar',
-    correct_count: questions.slice(0, 32).filter((q) => q.status === 'correct').length,
-    total_count: Math.min(32, questions.length) || 32,
-    earned_score: questions.slice(0, 32).reduce((sum, q) => sum + (q.status === 'correct' ? Number(q.points || 1.9) : 0), 0),
-    max_score: questions.slice(0, 32).reduce((sum, q) => sum + Number(q.points || 1.9), 0) || 60.8,
-    percentage: Math.round(
-      (questions.slice(0, 32).filter((q) => q.status === 'correct').length / (Math.min(32, questions.length) || 1)) * 100,
-    ),
-  };
-
-  const matchingStats = subjectAnalysis?.matching_questions || {
-    label: '33–35 Moslashtirish matritsasi',
-    correct_count: questions.slice(32, 35).filter((q) => q.status === 'correct').length,
-    total_count: 3,
-    earned_score: questions.slice(32, 35).reduce((sum, q) => sum + (q.status === 'correct' ? Number(q.points || 2.8) : 0), 0),
-    max_score: questions.slice(32, 35).reduce((sum, q) => sum + Number(q.points || 2.8), 0) || 8.4,
-    percentage: Math.round(
-      (questions.slice(32, 35).filter((q) => q.status === 'correct').length / 3) * 100,
-    ),
-  };
-
-  const openCalcStats = subjectAnalysis?.open_calc_questions || {
-    label: '36–45 a/b Ikki qismli ochiq masalalar',
-    correct_count: questions.slice(35, 45).filter((q) => q.status === 'correct').length,
-    total_count: 10,
-    earned_score: questions.slice(35, 45).reduce((sum, q) => sum + (q.status === 'correct' ? Number(q.points || 2.8) : q.earned_points || 0), 0),
-    max_score: questions.slice(35, 45).reduce((sum, q) => sum + Number(q.points || 2.8), 0) || 28.0,
-    percentage: Math.round(
-      (questions.slice(35, 45).filter((q) => q.status === 'correct').length / 10) * 100,
-    ),
-  };
-
-  // Compute local fallback for Law if not supplied from server
-  const lawTheoryStats = subjectAnalysis?.theory_questions || {
-    label: 'Nazariy savollar (1–35)',
-    correct_count: questions.slice(0, 35).filter((q) => q.status === 'correct').length,
-    total_count: Math.min(35, questions.length) || 35,
-    earned_score: questions.slice(0, 35).reduce((sum, q) => sum + (q.status === 'correct' ? Number(q.points || 2) : 0), 0),
-    max_score: questions.slice(0, 35).reduce((sum, q) => sum + Number(q.points || 2), 0) || 70,
-    percentage: Math.round(
-      (questions.slice(0, 35).filter((q) => q.status === 'correct').length / (Math.min(35, questions.length) || 1)) * 100,
-    ),
-  };
-
-  const lawCaseStats = subjectAnalysis?.case_study_questions || {
-    label: 'Huquqiy kazus va amaliy tahlil (36–45)',
-    correct_count: questions.slice(35, 45).filter((q) => q.status === 'correct').length,
-    total_count: 10,
-    earned_score: questions.slice(35, 45).reduce((sum, q) => sum + (q.status === 'correct' ? Number(q.points || 3) : 0), 0),
-    max_score: questions.slice(35, 45).reduce((sum, q) => sum + Number(q.points || 3), 0) || 30,
-    percentage: Math.round(
-      (questions.slice(35, 45).filter((q) => q.status === 'correct').length / 10) * 100,
-    ),
-  };
-
-  const lawMistakes = subjectAnalysis?.mistake_topics || [
-    { topic: "Konstitutsiyaviy huquq normalari", count: 2 },
-    { topic: "Mehnat kodeksi (ish vaqti va ta'tillar)", count: 1 },
-  ];
+  // A breakdown is displayed only when the server supplies its scores.
+  const emptyStats = { label: '', correct_count: 0, total_count: 0, earned_score: 0, max_score: 0, percentage: 0 };
+  const closedStats = subjectAnalysis?.closed_questions ?? emptyStats;
+  const matchingStats = subjectAnalysis?.matching_questions ?? emptyStats;
+  const openCalcStats = subjectAnalysis?.open_calc_questions ?? emptyStats;
+  const lawTheoryStats = subjectAnalysis?.theory_questions ?? emptyStats;
+  const lawCaseStats = subjectAnalysis?.case_study_questions ?? emptyStats;
+  const lawMistakes = subjectAnalysis?.mistake_topics ?? [];
+  const hasScienceStats = Boolean(subjectAnalysis?.closed_questions && subjectAnalysis.matching_questions && subjectAnalysis.open_calc_questions);
+  const hasLawStats = Boolean(subjectAnalysis?.theory_questions && subjectAnalysis.case_study_questions);
 
   return (
     <div className="res" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -415,9 +348,9 @@ export default function TestAddictiveResults({
             <span>{subjInfo.label}</span>
           </div>
 
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600 }}>
+          {effectiveBranchName && <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600 }}>
             🏛 {effectiveBranchName}
-          </div>
+          </div>}
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))', gap: 32, alignItems: 'center' }}>
@@ -441,20 +374,14 @@ export default function TestAddictiveResults({
             >
               <span style={{ fontSize: 26, marginBottom: 2 }}>👑</span>
               <span style={{ fontSize: 22, fontWeight: 900, color: '#0F172A', lineHeight: 1.1, letterSpacing: '-0.02em' }}>
-                DARAJA {bmbGrade || grade || 'A+'}
-              </span>
-              <span style={{ fontSize: 10, fontWeight: 800, color: '#451A03', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: 4 }}>
-                MILLIY SERTIFIKAT
+                {grade || `${pct}%`}
               </span>
             </div>
 
             <div style={{ marginTop: 18, maxWidth: 300 }}>
               <h3 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 800, color: 'var(--text-primary)' }}>
-                Ajoyib natija, {formatDisplayName(user?.full_name || user?.email || 'Komiljon')}!
+                {t('result_your_result')}{user?.full_name ? `, ${formatDisplayName(user.full_name, user.email)}` : ''}
               </h3>
-              <p className="muted" style={{ margin: 0, fontSize: 13, lineHeight: 1.4 }}>
-                Oldingi mock imtihondan <strong style={{ color: '#10B981' }}>+7 ball</strong> yuqori.
-              </p>
             </div>
           </div>
 
@@ -464,7 +391,7 @@ export default function TestAddictiveResults({
               {/* Aniq ball */}
               <div style={{ padding: 14, borderRadius: 14, background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
                 <span className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
-                  ANIQ BALL
+                  {t('res_score')}
                 </span>
                 <strong className="formula-mono" style={{ fontSize: 20, color: '#10B981' }}>
                   {score} / {maxScore}
@@ -474,7 +401,7 @@ export default function TestAddictiveResults({
               {/* Foiz */}
               <div style={{ padding: 14, borderRadius: 14, background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
                 <span className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
-                  FOIZ
+                  {t('result_percentage')}
                 </span>
                 <strong className="formula-mono" style={{ fontSize: 20, color: '#F59E0B' }}>
                   {Math.round(pct)}%
@@ -484,30 +411,22 @@ export default function TestAddictiveResults({
               {/* Sarflangan vaqt */}
               <div style={{ padding: 14, borderRadius: 14, background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
                 <span className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
-                  SARFLANGAN VAQT
+                  {t('res_time')}
                 </span>
                 <strong className="timer-mono" style={{ fontSize: 18, color: 'var(--text-primary)' }}>
                   {formatTimer(timeSpentSeconds)}
                 </strong>
               </div>
 
-              {/* Guruhdagi o'rin */}
-              <div style={{ padding: 14, borderRadius: 14, background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
-                <span className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
-                  GURUHDAGI O'RIN
-                </span>
-                <strong className="formula-mono" style={{ fontSize: 18, color: '#38BDF8' }}>
-                  #2 / 24
-                </strong>
-              </div>
+
             </div>
 
             {/* Bo'limlar kesimidagi natija */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {isScience && hasScienceStats && <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {/* 1-32 Test */}
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, marginBottom: 4 }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>Test (1–32)</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>{t('result_test_32')}</span>
                   <span style={{ color: '#10B981', fontWeight: 800 }}>{closedStats.correct_count} / {closedStats.total_count}</span>
                 </div>
                 <div style={{ height: 6, background: 'rgba(255, 255, 255, 0.08)', borderRadius: 4, overflow: 'hidden' }}>
@@ -518,7 +437,7 @@ export default function TestAddictiveResults({
               {/* 33-35 Moslashtirish */}
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, marginBottom: 4 }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>Moslashtirish (33–35)</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>{t('result_matching_35')}</span>
                   <span style={{ color: '#10B981', fontWeight: 800 }}>{matchingStats.correct_count} / {matchingStats.total_count}</span>
                 </div>
                 <div style={{ height: 6, background: 'rgba(255, 255, 255, 0.08)', borderRadius: 4, overflow: 'hidden' }}>
@@ -529,18 +448,18 @@ export default function TestAddictiveResults({
               {/* 36-45 Ochiq masalalar */}
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, marginBottom: 4 }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>Ochiq masalalar (36–45)</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>{t('result_open_45')}</span>
                   <span style={{ color: '#F59E0B', fontWeight: 800 }}>{openCalcStats.correct_count} / {openCalcStats.total_count}</span>
                 </div>
                 <div style={{ height: 6, background: 'rgba(255, 255, 255, 0.08)', borderRadius: 4, overflow: 'hidden' }}>
                   <div style={{ width: `${Math.min(100, Math.max(0, openCalcStats.percentage))}%`, height: '100%', background: '#F59E0B' }} />
                 </div>
               </div>
-            </div>
+            </div>}
           </div>
         </div>
 
-        {/* Pastki Qator Amallar: [📲 Story], [⚔️ Do'stni duelga chaqirish], [🏠 Bosh sahifa] */}
+        {/* Pastki Qator Amallar: [📲 Story], [⚔️ {t('result_duel_action')}], [🏠 {t('result_home_action')}] */}
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center', marginTop: 28, paddingTop: 20, borderTop: '1px solid var(--border-subtle)' }}>
           <button
             type="button"
@@ -548,7 +467,7 @@ export default function TestAddictiveResults({
             className="bento-btn bento-btn-gold"
             style={{ fontWeight: 800 }}
           >
-            <span>📲 Story (Instagram/Telegram uchun rasm)</span>
+            <span>📲 {t('result_story_action')}</span>
           </button>
 
           <Link
@@ -556,7 +475,7 @@ export default function TestAddictiveResults({
             className="bento-btn bento-btn-indigo"
             style={{ fontWeight: 800, textDecoration: 'none' }}
           >
-            <span>⚔️ Do'stni duelga chaqirish</span>
+            <span>⚔️ {t('result_duel_action')}</span>
           </Link>
 
           <Link
@@ -564,7 +483,7 @@ export default function TestAddictiveResults({
             className="bento-btn"
             style={{ fontWeight: 700, background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)', textDecoration: 'none' }}
           >
-            <span>🏠 Bosh sahifa</span>
+            <span>🏠 {t('result_home_action')}</span>
           </Link>
         </div>
       </section>
@@ -572,7 +491,7 @@ export default function TestAddictiveResults({
       {/* ========================================================================= */}
       {/* 1-VAZIFA: FAN XUSUSIYATIGA MOS TAHLIL (BIOLOGY, CHEMISTRY, LAW) */}
       {/* ========================================================================= */}
-      {isScience && (
+      {isScience && hasScienceStats && (
         <div
           style={{
             background: 'linear-gradient(180deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.85) 100%)',
@@ -586,10 +505,10 @@ export default function TestAddictiveResults({
             <span style={{ fontSize: 24 }}>🧬</span>
             <div>
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#F8FAFC' }}>
-                BMB Milliy Sertifikat Standarti Bo'yicha Bo'limlar Tahlili
+                {t('result_science_title')}
               </h3>
               <p style={{ margin: 0, fontSize: 12, color: '#94A3B8' }}>
-                Yopiq testlar, moslashtirish matritsasi va ikki qismli ochiq masalalar taqsimoti
+                {t('result_science_desc')}
               </p>
             </div>
           </div>
@@ -598,14 +517,14 @@ export default function TestAddictiveResults({
             {/* 1. Yopiq testlar 1-32 */}
             <div style={{ background: 'rgba(15, 23, 42, 0.65)', border: '1px solid rgba(148, 163, 184, 0.15)', borderRadius: 14, padding: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, color: '#94A3B8', marginBottom: 6 }}>
-                <span>1–32 Yopiq testlar</span>
+                <span>{t('result_closed_32')}</span>
                 <span style={{ color: '#10B981' }}>{closedStats.correct_count} / {closedStats.total_count} ta</span>
               </div>
               <div style={{ height: 8, background: 'rgba(255, 255, 255, 0.1)', borderRadius: 4, overflow: 'hidden', marginBottom: 8 }}>
                 <div style={{ width: `${Math.min(100, Math.max(0, closedStats.percentage))}%`, height: '100%', background: 'linear-gradient(90deg, #10B981, #34D399)' }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#CBD5E1' }}>
-                <span>To'plangan ball:</span>
+                <span>{t('result_earned')}</span>
                 <b>{Number(closedStats.earned_score).toFixed(1)} / {Number(closedStats.max_score).toFixed(1)} ({closedStats.percentage}%)</b>
               </div>
             </div>
@@ -613,14 +532,14 @@ export default function TestAddictiveResults({
             {/* 2. Moslashtirish 33-35 */}
             <div style={{ background: 'rgba(15, 23, 42, 0.65)', border: '1px solid rgba(148, 163, 184, 0.15)', borderRadius: 14, padding: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, color: '#94A3B8', marginBottom: 6 }}>
-                <span>33–35 Moslashtirish matritsasi</span>
+                <span>{t('result_matching_33')}</span>
                 <span style={{ color: '#38BDF8' }}>{matchingStats.correct_count} / {matchingStats.total_count} ta</span>
               </div>
               <div style={{ height: 8, background: 'rgba(255, 255, 255, 0.1)', borderRadius: 4, overflow: 'hidden', marginBottom: 8 }}>
                 <div style={{ width: `${Math.min(100, Math.max(0, matchingStats.percentage))}%`, height: '100%', background: 'linear-gradient(90deg, #0284C7, #38BDF8)' }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#CBD5E1' }}>
-                <span>To'plangan ball:</span>
+                <span>{t('result_earned')}</span>
                 <b>{Number(matchingStats.earned_score).toFixed(1)} / {Number(matchingStats.max_score).toFixed(1)} ({matchingStats.percentage}%)</b>
               </div>
             </div>
@@ -628,14 +547,14 @@ export default function TestAddictiveResults({
             {/* 3. Ochiq masalalar 36-45 */}
             <div style={{ background: 'rgba(15, 23, 42, 0.65)', border: '1px solid rgba(148, 163, 184, 0.15)', borderRadius: 14, padding: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, color: '#94A3B8', marginBottom: 6 }}>
-                <span>36–45 a/b Ochiq masalalar</span>
+                <span>{t('result_open_36')}</span>
                 <span style={{ color: '#F59E0B' }}>{openCalcStats.correct_count} / {openCalcStats.total_count} ta</span>
               </div>
               <div style={{ height: 8, background: 'rgba(255, 255, 255, 0.1)', borderRadius: 4, overflow: 'hidden', marginBottom: 8 }}>
                 <div style={{ width: `${Math.min(100, Math.max(0, openCalcStats.percentage))}%`, height: '100%', background: 'linear-gradient(90deg, #D97706, #FBBF24)' }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#CBD5E1' }}>
-                <span>To'plangan ball:</span>
+                <span>{t('result_earned')}</span>
                 <b>{Number(openCalcStats.earned_score).toFixed(1)} / {Number(openCalcStats.max_score).toFixed(1)} ({openCalcStats.percentage}%)</b>
               </div>
             </div>
@@ -643,7 +562,7 @@ export default function TestAddictiveResults({
         </div>
       )}
 
-      {isLaw && (
+      {isLaw && hasLawStats && (
         <div
           style={{
             background: 'linear-gradient(180deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.85) 100%)',
@@ -657,26 +576,26 @@ export default function TestAddictiveResults({
             <span style={{ fontSize: 24 }}>⚖️</span>
             <div>
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#F8FAFC' }}>
-                Huquqshunoslik va Yurisprudensiya Tahlili
+                {t('result_law_title')}
               </h3>
               <p style={{ margin: 0, fontSize: 12, color: '#94A3B8' }}>
-                Nazariy savollar, huquqiy kazus amaliyoti hamda xato qilingan qonunchilik sohalari
+                {t('result_law_desc')}
               </p>
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14, marginBottom: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))', gap: 14, marginBottom: 16 }}>
             {/* Nazariy savollar 1-35 */}
             <div style={{ background: 'rgba(15, 23, 42, 0.65)', border: '1px solid rgba(148, 163, 184, 0.15)', borderRadius: 14, padding: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, color: '#94A3B8', marginBottom: 6 }}>
-                <span>📜 Nazariy savollar (1–35)</span>
+                <span>📜 {t('result_theory')}</span>
                 <span style={{ color: '#10B981' }}>{lawTheoryStats.correct_count} / {lawTheoryStats.total_count} ta</span>
               </div>
               <div style={{ height: 8, background: 'rgba(255, 255, 255, 0.1)', borderRadius: 4, overflow: 'hidden', marginBottom: 8 }}>
                 <div style={{ width: `${Math.min(100, Math.max(0, lawTheoryStats.percentage))}%`, height: '100%', background: 'linear-gradient(90deg, #10B981, #34D399)' }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#CBD5E1' }}>
-                <span>Natija foizi:</span>
+                <span>{t('result_percent_label')}</span>
                 <b>{lawTheoryStats.percentage}% ({Number(lawTheoryStats.earned_score).toFixed(1)} ball)</b>
               </div>
             </div>
@@ -684,14 +603,14 @@ export default function TestAddictiveResults({
             {/* Huquqiy kazus 36-45 */}
             <div style={{ background: 'rgba(15, 23, 42, 0.65)', border: '1px solid rgba(148, 163, 184, 0.15)', borderRadius: 14, padding: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, color: '#94A3B8', marginBottom: 6 }}>
-                <span>⚖️ Huquqiy kazus tahlili (36–45)</span>
+                <span>⚖️ {t('result_case')}</span>
                 <span style={{ color: '#F59E0B' }}>{lawCaseStats.correct_count} / {lawCaseStats.total_count} ta</span>
               </div>
               <div style={{ height: 8, background: 'rgba(255, 255, 255, 0.1)', borderRadius: 4, overflow: 'hidden', marginBottom: 8 }}>
                 <div style={{ width: `${Math.min(100, Math.max(0, lawCaseStats.percentage))}%`, height: '100%', background: 'linear-gradient(90deg, #D97706, #FBBF24)' }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#CBD5E1' }}>
-                <span>Natija foizi:</span>
+                <span>{t('result_percent_label')}</span>
                 <b>{lawCaseStats.percentage}% ({Number(lawCaseStats.earned_score).toFixed(1)} ball)</b>
               </div>
             </div>
@@ -702,7 +621,7 @@ export default function TestAddictiveResults({
             <div style={{ background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: 12, padding: '12px 16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 800, color: '#F87171', marginBottom: 8 }}>
                 <AlertTriangle size={15} />
-                <span>Xato qilingan qonunchilik sohalari va kodekslar:</span>
+                <span>{t('result_law_mistakes')}</span>
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {lawMistakes.map((m, idx) => (
@@ -762,7 +681,7 @@ export default function TestAddictiveResults({
             </div>
             <div>
               <h4 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#FFFFFF' }}>
-                Natijani Do'stlar va Guruhga Ulashish
+                {t('result_share_heading')}
               </h4>
               <p style={{ margin: 0, fontSize: 12, color: '#CBD5E1' }}>
                 Instagram/Telegram Story formati, 1-klikda Telegramga yuborish yoki rasmiy PDF yuklab olish
@@ -799,7 +718,7 @@ export default function TestAddictiveResults({
             }}
           >
             <Send size={16} />
-            <span>✈️ Telegramda ulashish</span>
+            <span>✈️ {t('result_share_telegram')}</span>
           </a>
 
           {/* 2. Story Card Modal Trigger */}
@@ -823,7 +742,7 @@ export default function TestAddictiveResults({
             }}
           >
             <Share2 size={16} />
-            <span>🖼 Story Card yuklab olish</span>
+            <span>🖼 {t('result_download_story')}</span>
           </button>
 
           {/* 3. Official PDF Download */}
@@ -848,7 +767,7 @@ export default function TestAddictiveResults({
             }}
           >
             <FileText size={16} />
-            <span>📄 Rasmiy PDF Vedomost</span>
+            <span>📄 {t('result_pdf')}</span>
           </a>
         </div>
       </div>

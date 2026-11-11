@@ -1,7 +1,5 @@
-import { AuthProvider, useAuth as useBaseAuth } from '../auth/AuthContext';
+import { useAuth as useBaseAuth } from '../auth/authState';
 import type { AuthUser } from '../lib/api';
-
-export { AuthProvider };
 
 export function useAuth() {
   const ctx = useBaseAuth();

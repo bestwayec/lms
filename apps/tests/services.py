@@ -54,6 +54,7 @@ from apps.tests.scoring import (
     grade_gap_fill as _grade_gap_fill,
 )
 from apps.tests.scoring import (
+    answers_match as _answers_match,
     evaluate_text_answer as _evaluate_text_answer,
     grade_matching as _grade_matching,
     written_earned as _written_earned,
@@ -1198,9 +1199,10 @@ class SubmitAttemptService:
                 def _eval_subpart(given: str, expected: str) -> bool:
                     if not given or not expected:
                         return False
-                    valid_opts = [opt.strip().lower().replace(",", ".") for opt in expected.split(";") if opt.strip()]
-                    g_clean = given.strip().lower().replace(",", ".")
-                    return g_clean in valid_opts or given.strip().lower() == expected.strip().lower()
+                    return any(
+                        _answers_match(given, opt, case_sensitive=case_sensitive)
+                        for opt in expected.split(";") if opt.strip()
+                    )
 
                 a_ok = _eval_subpart(stud_a, corr_a)
                 b_ok = _eval_subpart(stud_b, corr_b)

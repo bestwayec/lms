@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 import { useLang } from '../i18n/LangContext';
 import { TeacherEssays, canReviewEssays } from '../lib/api';
 import type { TeacherEssayCard } from '../lib/api';

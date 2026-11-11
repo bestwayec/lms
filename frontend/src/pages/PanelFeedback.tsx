@@ -23,7 +23,6 @@ export default function PanelFeedback() {
   useVisualViewport(filtersOpen);
 
   const load = useCallback(() => {
-    setLoading(true);
     const params: Record<string, string> = { page: String(page) };
     Object.entries(filters).forEach(([k, v]) => v && (params[k] = v));
     FeedbackApi.adminList(params)

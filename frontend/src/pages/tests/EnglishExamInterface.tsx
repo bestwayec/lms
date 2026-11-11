@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Tests as TestsApi } from '../../lib/api';
 import { useLang } from '../../i18n/LangContext';
@@ -12,27 +12,22 @@ import { withSyntheticStructure } from './cdAdapter';
  */
 export default function EnglishExamInterface() {
   const { attemptId = '' } = useParams<{ attemptId: string }>();
-  const { t } = useLang();
-  const [attempt, setAttempt] = useState<CdAttempt | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setErr(null);
-    try {
-      const data = (await TestsApi.attempt(attemptId)) as unknown as CdAttempt;
-      setAttempt(data);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : t('error_retry'));
-    } finally {
-      setLoading(false);
-    }
-  }, [attemptId, t]);
+  const { t, lang } = useLang();
+  const [retry, setRetry] = useState(0);
+  const [loaded, setLoaded] = useState<{ key: string; attempt: CdAttempt | null; error: string | null } | null>(null);
+  const key = `${attemptId}:${lang}:${retry}`;
+  const current = loaded?.key === key ? loaded : null;
+  const attempt = current?.attempt ?? null;
+  const loading = !current;
+  const err = current?.error ?? null;
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    let active = true;
+    TestsApi.attempt(attemptId)
+      .then((data) => { if (active) setLoaded({ key, attempt: data as unknown as CdAttempt, error: null }); })
+      .catch((e: unknown) => { if (active) setLoaded({ key, attempt: null, error: e instanceof Error ? e.message : t('error_retry') }); });
+    return () => { active = false; };
+  }, [attemptId, key, t]);
 
   if (loading) {
     return (
@@ -51,7 +46,7 @@ export default function EnglishExamInterface() {
           <h2>{t('error_boundary_exam_title')}</h2>
           <p className="muted">{err}</p>
           <div className="error-boundary-actions">
-            <button type="button" className="btn primary" onClick={() => void load()}>
+            <button type="button" className="btn primary" onClick={() => setRetry((value) => value + 1)}>
               {t('error_retry')}
             </button>
             <Link to="/tests" className="btn">{t('error_boundary_back')}</Link>

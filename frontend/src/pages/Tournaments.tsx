@@ -23,19 +23,13 @@ export default function Tournaments() {
   const [tournaments, setTournaments] = useState<TournamentItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const loadTournaments = async () => {
-    try {
-      const res = await api.get<{ tournaments: TournamentItem[] }>('/tournaments/');
-      setTournaments(res.tournaments || []);
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    void loadTournaments();
+    let active = true;
+    api.get<{ tournaments: TournamentItem[] }>('/tournaments/')
+      .then((res) => { if (active) setTournaments(res.tournaments || []); })
+      .catch(() => {})
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, []);
 
   return (

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 import { PaymentsApi } from './api';
 
 export type CardStatus = 'loading' | 'ready' | 'login' | 'error';

@@ -1,3 +1,4 @@
+import { useLang } from '../i18n/LangContext';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -12,6 +13,7 @@ import TiltCard from '../components/TiltCard';
 import SubjectSwitcher from '../components/SubjectSwitcher';
 
 export default function SpeakingTopics() {
+  const { t: tr } = useLang();
   const [topics, setTopics] = useState<SpeakingTopicItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -49,7 +51,7 @@ export default function SpeakingTopics() {
             </span>
           </div>
           <h1 style={{ fontSize: '1.85rem', fontWeight: 900, margin: 0, color: 'var(--ink)' }}>
-            🎙️ IELTS & Multi-level AI Speaking Simulyatori
+            🎙️ {tr('spk_title')}
           </h1>
           <p className="muted" style={{ fontSize: '0.92rem', marginTop: 4 }}>
             Rasmiy Part 1, Part 2 (Cue Card 1 daqiqa tayyorgarlik) va Part 3 savollariga ovozli javob bering.
@@ -65,7 +67,7 @@ export default function SpeakingTopics() {
       {/* Part Filter Tabs */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
         {[
-          { id: 'all', label: 'Barcha bo\'limlar' },
+          { id: 'all', label: tr('spk_all_parts') },
           { id: 'part1', label: 'Part 1: Introduction' },
           { id: 'part2', label: 'Part 2: Cue Card (2 min speech)' },
           { id: 'part3', label: 'Part 3: Discussion' },
@@ -86,19 +88,19 @@ export default function SpeakingTopics() {
       {/* Error / Loading */}
       {error && (
         <div className="card error" style={{ marginBottom: 20 }}>
-          {error} <button className="btn sm ghost" onClick={fetchTopics}>Qayta urinish</button>
+          {error} <button className="btn sm ghost" onClick={fetchTopics}>{tr('error_retry')}</button>
         </div>
       )}
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--ink-muted)' }}>
           <RefreshCw size={28} className="animate-spin" style={{ margin: '0 auto 12px' }} />
-          <div>Speaking savollari yuklanmoqda...</div>
+          <div>{tr('spk_loading_topics')}</div>
         </div>
       ) : topics.length === 0 ? (
         <div className="card" style={{ textAlign: 'center', padding: '40px 20px' }}>
-          <h3>Ushbu bo'limda hozircha mavzu yo'q</h3>
-          <p className="muted">Boshqa bo'limni tanlang yoki keyinroq qaytib keling.</p>
+          <h3>{tr('spk_empty')}</h3>
+          <p className="muted">{tr('spk_empty_hint')}</p>
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(330px, 100%), 1fr))', gap: 18 }}>
@@ -196,7 +198,7 @@ export default function SpeakingTopics() {
                   }}
                 >
                   <Mic size={15} />
-                  <span>Mashqni boshlash</span>
+                  <span>{tr('spk_start_practice')}</span>
                   <ArrowRight size={14} />
                 </Link>
               </div>

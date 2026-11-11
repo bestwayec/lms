@@ -113,9 +113,6 @@ export default function AttendancePanel() {
 
   const loadForGroup = useCallback(
     async (targetGroupId: number, date: string) => {
-      setErr(null);
-      setNotice(null);
-      setUnmarkedWarning([]);
       try {
         const [sessionList, reportData] = await Promise.all([
           School.attendanceSessions({ group_id: targetGroupId, start: date, end: date }),
@@ -143,8 +140,25 @@ export default function AttendancePanel() {
 
   useEffect(() => {
     if (groupId === null) return;
-    void loadForGroup(groupId, lessonDate);
-  }, [groupId, lessonDate, loadForGroup]);
+    let active = true;
+    Promise.all([
+      School.attendanceSessions({ group_id: groupId, start: lessonDate, end: lessonDate }),
+      School.attendanceReport({ group_id: groupId, daily: true }),
+    ])
+      .then(async ([sessionList, reportData]) => {
+        if (!active) return;
+        const list = Array.isArray(sessionList) ? sessionList : [];
+        setSessions(list);
+        setReport(reportData);
+        const sameDay = list.find((session) => session.lesson_date === lessonDate);
+        const detail = sameDay ? await School.attendanceSession(sameDay.session_id) : null;
+        if (!active) return;
+        setSession(detail);
+        setDraft({});
+      })
+      .catch((error: unknown) => { if (active) setErr(errMessage(error)); });
+    return () => { active = false; };
+  }, [groupId, lessonDate]);
 
   // -- Derived roster with local edits applied -----------------------------
   const roster: AttendanceRosterRow[] = useMemo(() => {
@@ -366,7 +380,7 @@ export default function AttendancePanel() {
           {t('attendance_group')}
           <select
             value={groupId ?? ''}
-            onChange={(e) => setGroupId(Number(e.target.value))}
+            onChange={(e) => { setErr(null); setNotice(null); setUnmarkedWarning([]); setGroupId(Number(e.target.value)); }}
             disabled={busy}
           >
             {groups.map((g) => (
@@ -379,7 +393,7 @@ export default function AttendancePanel() {
           <input
             type="date"
             value={lessonDate}
-            onChange={(e) => setLessonDate(e.target.value)}
+            onChange={(e) => { setErr(null); setNotice(null); setUnmarkedWarning([]); setLessonDate(e.target.value); }}
             disabled={busy}
           />
         </label>

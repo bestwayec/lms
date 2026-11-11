@@ -25,7 +25,6 @@ export default function EssayNew() {
 
   // Local draft (debounced), so a reload or a closed tab loses nothing.
   useEffect(() => {
-    setSaved(false);
     const id = window.setTimeout(() => {
       try {
         localStorage.setItem(DRAFT_KEY, JSON.stringify({ title, text }));
@@ -91,7 +90,7 @@ export default function EssayNew() {
         className="ew-field"
         value={title}
         maxLength={200}
-        onChange={(e) => setTitle(e.target.value)}
+        onChange={(e) => { setSaved(false); setTitle(e.target.value); }}
         onFocus={revealOnFocus}
         autoCapitalize="sentences"
         enterKeyHint="next"
@@ -99,7 +98,7 @@ export default function EssayNew() {
       <AutoGrow
         className="ew-text"
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => { setSaved(false); setText(e.target.value); }}
         onFocus={revealOnFocus}
         placeholder={t('essay_write_ph')}
         aria-label={t('cd_writing_area')}

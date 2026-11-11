@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   GraduationCap,
   Building2,
@@ -12,7 +12,7 @@ import {
   Settings,
 } from 'lucide-react';
 import { TeacherManagementApi, type TeacherManagementItem } from '../lib/api';
-import { useToast } from '../context/ToastContext';
+import { useToast } from '../context/toastState';
 
 const SUBJECT_LABELS: Record<string, string> = {
   biology: '🧬 Biologiya',
@@ -46,23 +46,29 @@ export default function PanelTeachers() {
   const [saving, setSaving] = useState(false);
 
   const toast = useToast();
+  const showLoadError = toast.error;
 
-  const loadTeachers = async () => {
+  const loadTeachers = useCallback(async () => {
     try {
       setLoading(true);
       const res = await TeacherManagementApi.list();
       setTeachers(res.results || []);
       setBranches(res.branches || []);
-    } catch (err) {
-      toast.error('Ustozlar ro‘yxatini yuklashda xatolik');
+    } catch {
+      showLoadError('Ustozlar ro‘yxatini yuklashda xatolik');
     } finally {
       setLoading(false);
     }
-  };
+  }, [showLoadError]);
 
   useEffect(() => {
-    loadTeachers();
-  }, []);
+    let active = true;
+    TeacherManagementApi.list()
+      .then((res) => { if (active) { setTeachers(res.results || []); setBranches(res.branches || []); } })
+      .catch(() => { if (active) showLoadError('Ustozlar ro‘yxatini yuklashda xatolik'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [showLoadError]);
 
   const openCreateModal = () => {
     setEditingTeacher(null);

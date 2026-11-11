@@ -13,7 +13,7 @@ import {
   useCardInfo,
 } from '../lib/useCardInfo';
 
-export const PLAN_PRICES = {
+const PLAN_PRICES = {
   starter: 7000,
   pro: 15000,
   premium: 27000,
@@ -152,16 +152,16 @@ export default function Pricing() {
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <span style={{ fontSize: 32 }}>⚡</span>
-            {selectedPlan === 'starter' && <span className="badge" style={{ background: '#38bdf8', color: '#000' }}>Tanlangan</span>}
+            {selectedPlan === 'starter' && <span className="badge" style={{ background: '#38bdf8', color: '#000' }}>{t('sub_plan_selected')}</span>}
           </div>
           <strong style={{ fontSize: 20 }}>STARTER</strong>
           <p style={{ fontSize: 24, fontWeight: 700, margin: '8px 0 16px', color: 'var(--ink)' }}>
-            7 000 <span style={{ fontSize: 14, color: 'var(--muted)' }}>so'm / oy</span>
+            7 000 <span style={{ fontSize: 14, color: 'var(--muted)' }}>{t('pricing_per_month')}</span>
           </p>
           <ul className="muted small" style={{ paddingLeft: 18, lineHeight: 1.7, margin: '0 0 16px' }}>
-            <li>5 ta to'liq test</li>
-            <li>Haftasiga 3 ta esse tekshirish</li>
-            <li>Xatolar tahlili</li>
+            <li>{t('pricing_starter_tests')}</li>
+            <li>{t('pricing_starter_essays')}</li>
+            <li>{t('pricing_mistake_analysis')}</li>
           </ul>
           <button
             type="button"
@@ -180,7 +180,7 @@ export default function Pricing() {
               setPaymentModalOpen(true);
             }}
           >
-            {selectedPlan === 'starter' ? "To'lov qilish →" : "Tanlash va to'lash"}
+            {selectedPlan === 'starter' ? t('pricing_pay_now') : t('pricing_select_pay')}
           </button>
         </div>
 
@@ -198,20 +198,20 @@ export default function Pricing() {
           }}
         >
           <span style={{ position: 'absolute', top: -10, right: 16, background: '#f59e0b', color: '#000', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10 }}>
-            TAVSIYA ETILADI
+            {t('pricing_recommended')}
           </span>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <span style={{ fontSize: 32 }}>🚀</span>
-            {selectedPlan === 'pro' && <span className="badge yellow">Tanlangan</span>}
+            {selectedPlan === 'pro' && <span className="badge yellow">{t('sub_plan_selected')}</span>}
           </div>
           <strong style={{ fontSize: 20 }}>PRO</strong>
           <p style={{ fontSize: 24, fontWeight: 700, margin: '8px 0 16px', color: 'var(--ink)' }}>
-            15 000 <span style={{ fontSize: 14, color: 'var(--muted)' }}>so'm / oy</span>
+            15 000 <span style={{ fontSize: 14, color: 'var(--muted)' }}>{t('pricing_per_month')}</span>
           </p>
           <ul className="muted small" style={{ paddingLeft: 18, lineHeight: 1.7, margin: '0 0 16px' }}>
-            <li>Haftasiga 15 ta esse</li>
+            <li>{t('pricing_pro_essays')}</li>
             <li>{t('plan_feat_mocks')}</li>
-            <li>AI repetitor izohlari</li>
+            <li>{t('pricing_tutor_explanations')}</li>
           </ul>
           <button
             type="button"
@@ -230,7 +230,7 @@ export default function Pricing() {
               setPaymentModalOpen(true);
             }}
           >
-            {selectedPlan === 'pro' ? "To'lov qilish →" : "Tanlash va to'lash"}
+            {selectedPlan === 'pro' ? t('pricing_pay_now') : t('pricing_select_pay')}
           </button>
         </div>
 
@@ -248,16 +248,16 @@ export default function Pricing() {
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <span style={{ fontSize: 32 }}>👑</span>
-            {selectedPlan === 'premium' && <span className="badge green">Tanlangan</span>}
+            {selectedPlan === 'premium' && <span className="badge green">{t('sub_plan_selected')}</span>}
           </div>
           <strong style={{ fontSize: 20 }}>PREMIUM</strong>
           <p style={{ fontSize: 24, fontWeight: 700, margin: '8px 0 16px', color: 'var(--ink)' }}>
-            27 000 <span style={{ fontSize: 14, color: 'var(--muted)' }}>so'm / oy</span>
+            27 000 <span style={{ fontSize: 14, color: 'var(--muted)' }}>{t('pricing_per_month')}</span>
           </p>
           <ul className="muted small" style={{ paddingLeft: 18, lineHeight: 1.7, margin: '0 0 16px' }}>
-            <li>Cheksiz rasmli va matnli esse</li>
-            <li>Barcha CBT testlar va 1v1 Arena</li>
-            <li>Ustoz tekshiruvi</li>
+            <li>{t('pricing_unlimited_essays')}</li>
+            <li>{t('pricing_cbt_arena')}</li>
+            <li>{t('pricing_teacher_review')}</li>
           </ul>
           <button
             type="button"
@@ -276,7 +276,7 @@ export default function Pricing() {
               setPaymentModalOpen(true);
             }}
           >
-            {selectedPlan === 'premium' ? "To'lov qilish →" : "Tanlash va to'lash"}
+            {selectedPlan === 'premium' ? t('pricing_pay_now') : t('pricing_select_pay')}
           </button>
         </div>
       </div>
@@ -400,16 +400,16 @@ export default function Pricing() {
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
                 <img
                   src={previewUrl}
-                  alt="Chek rasmi"
+                  alt={t('pricing_receipt_alt')}
                   style={{ maxHeight: 200, maxWidth: '100%', borderRadius: 8, border: '1px solid var(--border)' }}
                 />
-                <span className="small muted">Boshqa rasm tanlash uchun bosing</span>
+                <span className="small muted">{t('pricing_choose_another')}</span>
               </div>
             ) : (
               <div>
                 <span style={{ fontSize: 36, display: 'block', marginBottom: 8 }}>📥</span>
-                <strong style={{ display: 'block', marginBottom: 4 }}>Chek rasmini bu yerga tashlang yoki bosing</strong>
-                <span className="small muted">PNG, JPG formatida (maksimal 5 MB)</span>
+                <strong style={{ display: 'block', marginBottom: 4 }}>{t('pricing_drop_receipt')}</strong>
+                <span className="small muted">{t('pricing_file_formats')}</span>
               </div>
             )}
           </div>

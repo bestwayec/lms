@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 
 export type Subject = 'uzbek' | 'english' | 'biology' | 'chemistry' | 'law';
 

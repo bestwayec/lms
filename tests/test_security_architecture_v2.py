@@ -62,6 +62,7 @@ class TestZeroDayAnswerKeyProtection:
                 "explanation": "Secret explanation in config",
                 "evidence": "Paragraph 2",
                 "answer_key": "A",
+                "layout": {"items": [{"label": "visible", "Correct_Answer": "A"}]},
             },
         )
         Choice.objects.create(question=q, text="Tashkent", is_correct=True)
@@ -72,7 +73,7 @@ class TestZeroDayAnswerKeyProtection:
         # Must never expose explanation or answer keys during an active attempt
         assert "explanation" not in payload
         assert "correct_answer" not in payload
-        assert payload["config"] == {"number": 1}
+        assert payload["config"] == {"number": 1, "layout": {"items": [{"label": "visible"}]}}
         for choice in payload["choices"]:
             assert "is_correct" not in choice
 

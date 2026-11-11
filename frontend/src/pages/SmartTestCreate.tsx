@@ -1,3 +1,4 @@
+import { useLang } from '../i18n/LangContext';
 const SAMPLE_BIO = `1. O'simlik hujayrasi qobig'i qaysi moddadan tuzilgan?
 *A) Sellyuloza
 B) Xitin
@@ -255,6 +256,7 @@ B) Determined
 D) Confident`;
 
 export default function SmartTestCreate() {
+  const { t } = useLang();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const paramGroupId = searchParams.get('groupId');
@@ -326,8 +328,10 @@ export default function SmartTestCreate() {
   const [copiedCode, setCopiedCode] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
 
-  // Parse text on change
-  useEffect(() => {
+  // Reparse before committing a render when the source text or subject changes.
+  const [lastParse, setLastParse] = useState<{ rawText: string; subject: SupportedSubject; title: string } | null>(null);
+  if (!lastParse || lastParse.rawText !== rawText || lastParse.subject !== subject || lastParse.title !== title) {
+    setLastParse({ rawText, subject, title });
     const res = parseSmartTestText(rawText, subject);
     setQuestions(res.questions);
     if (res.readingPassage) {
@@ -350,7 +354,7 @@ export default function SmartTestCreate() {
         setTitle(`Ona tili — ${res.questions.length} talik mavzulashtirilgan test`);
       }
     }
-  }, [rawText, subject, title]);
+  }
 
   const unansweredCount = useMemo(() => {
     return questions.filter((q) => !q.correctAnswer).length;
@@ -482,7 +486,7 @@ export default function SmartTestCreate() {
               <ArrowLeft size={14} /> Testlar
             </Link>
             <span>/</span>
-            <span style={{ color: '#0F172A', fontWeight: 600 }}>Yangi test yaratish</span>
+            <span style={{ color: '#0F172A', fontWeight: 600 }}>{t('x_smart_create')}</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div
@@ -501,7 +505,7 @@ export default function SmartTestCreate() {
             </div>
             <div>
               <h1 style={{ fontSize: 24, fontWeight: 900, color: '#0F172A', margin: 0, letterSpacing: '-0.02em' }}>
-                Smart Paste — 1 soniyada test qo‘shish
+                {t('x_smart_title')}
               </h1>
               <p style={{ fontSize: 13.5, color: '#64748B', margin: '4px 0 0' }}>
                 Word yoki Telegram'dan tayyor test matnini nusxalab tashlang. Tizim avtomatik savol va javoblarga ajratadi.
@@ -559,7 +563,7 @@ export default function SmartTestCreate() {
             <Check size={32} color="#10B981" />
           </div>
           <h2 style={{ fontSize: 22, fontWeight: 900, color: '#0F172A', margin: '0 0 6px' }}>
-            🎉 Test muvaffaqiyatli saqlandi va e’lon qilindi!
+            🎉 {t('x_smart_published')}
           </h2>
           <p style={{ fontSize: 14, color: '#64748B', margin: '0 0 24px' }}>
             «{createdResult.title}» testi bazaga yozildi ({createdResult.questions_count} ta savol). O‘quvchilarga havola yoki maxsus kod orqali ulashing:
@@ -694,7 +698,7 @@ export default function SmartTestCreate() {
               }}
             >
               <Send size={16} />
-              <span>Telegram guruhga ulashish</span>
+              <span>{t('x_share_group')}</span>
             </a>
 
             <button
@@ -715,7 +719,7 @@ export default function SmartTestCreate() {
                 boxShadow: '0 4px 16px rgba(217, 119, 6, 0.35)',
               }}
             >
-              <span>Testni ko‘rish</span>
+              <span>{t('x_view_test')}</span>
               <ExternalLink size={16} />
             </button>
 
@@ -738,7 +742,7 @@ export default function SmartTestCreate() {
               }}
             >
               <span>📊</span>
-              <span>Vedomostni ko‘rish</span>
+              <span>{t('x_view_gradebook')}</span>
             </button>
 
             <button
@@ -760,7 +764,7 @@ export default function SmartTestCreate() {
               }}
             >
               <QrCode size={16} />
-              <span>📱 Sinfxona Katta QR-Kodi</span>
+              <span>📱 {t('x_class_qr')}</span>
             </button>
 
             <button
@@ -795,7 +799,7 @@ export default function SmartTestCreate() {
           code={createdResult.mock_code}
           webUrl={createdResult.share_url}
           tmaUrl={`https://t.me/uz_essaygrader_bot/app?startapp=test_${createdResult.test_id}`}
-          subtitle="Sinfxona doskasiga chiqaring yoki Telegram guruhga yuboring"
+          subtitle={t('x_class_qr_hint')}
         />
       )}
 
@@ -812,7 +816,7 @@ export default function SmartTestCreate() {
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, fontSize: 14, fontWeight: 800, color: '#0F172A' }}>
           <Sparkles size={16} color="#D97706" />
-          <span>Moslashuvchan Test Sozlamalari</span>
+          <span>{t('x_test_settings')}</span>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))', gap: 18 }}>
@@ -1096,7 +1100,7 @@ export default function SmartTestCreate() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <BookOpen size={18} color="#D97706" />
-              <strong style={{ fontSize: 15, color: '#0F172A' }}>Xom Test Matnini Tashlash</strong>
+              <strong style={{ fontSize: 15, color: '#0F172A' }}>{t('x_smart_raw_text')}</strong>
             </div>
 
             {/* Quick Demo Fill Buttons */}
@@ -1267,7 +1271,7 @@ export default function SmartTestCreate() {
             <div style={{ marginTop: 12, marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
               {/* Question Templates */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B' }}>Shablon qo'shish:</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B' }}>{t('x_templates')}</span>
                 <button
                   type="button"
                   onClick={() => {
@@ -1490,11 +1494,11 @@ export default function SmartTestCreate() {
               }}
             >
               {busy ? (
-                'Saqlanmoqda…'
+                t('x_saving')
               ) : (
                 <>
                   <Zap size={16} />
-                  <span>Testni saqlash va kod yaratish</span>
+                  <span>{t('x_save_test_code')}</span>
                 </>
               )}
             </button>
@@ -1595,14 +1599,14 @@ export default function SmartTestCreate() {
                           }}
                         >
                           <Edit3 size={14} />
-                          <span>{isEditingThis ? 'Tayyor' : 'Tahrirlash'}</span>
+                          <span>{isEditingThis ? t('x_done') : t('x_edit')}</span>
                         </button>
 
                         {/* Delete Question Button */}
                         <button
                           type="button"
                           onClick={() => handleDeleteQuestion(qIdx)}
-                          title="Savolni o‘chirish"
+                          title={t('x_remove_question')}
                           style={{
                             background: 'transparent',
                             border: 'none',

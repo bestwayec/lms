@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BookOpen, Send, Sparkles, Wallet } from 'lucide-react';
 
-import { useToast } from '../context/ToastContext';
+import { useToast } from '../context/toastState';
 import { useLang } from '../i18n/LangContext';
 import { apiFetch } from '../lib/api';
 

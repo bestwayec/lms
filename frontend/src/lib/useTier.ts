@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 import { Billing, isPlatformAdmin, type BillingEntitlement } from './api';
 
 export interface Tier {

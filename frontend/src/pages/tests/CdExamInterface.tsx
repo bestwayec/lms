@@ -446,8 +446,10 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
 
   // Whole-exam time limit (enforced by the backend too).
   useEffect(() => {
-    if (examEndsAt && now >= examEndsAt) void submit();
-  }, [now, examEndsAt, submit]);
+    if (!examEndsAt) return;
+    const timer = window.setTimeout(() => { void submit(); }, Math.max(0, examEndsAt - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [examEndsAt, submit]);
 
   const save = useCallback(
     (q: CdQuestion, a: Answer) => {
@@ -1416,14 +1418,14 @@ function SpeakingPrompt({ q }: { q: CdQuestion }) {
 
   useEffect(() => {
     if (phase !== 'prep' && phase !== 'speak') return;
-    if (left <= 0) {
-      if (phase === 'prep') {
-        setPhase('speak');
-        setLeft(speak);
-      } else setPhase('done');
-      return;
-    }
-    const id = window.setTimeout(() => setLeft((s) => s - 1), 1000);
+    const id = window.setTimeout(() => {
+      if (left <= 1) {
+        if (phase === 'prep') {
+          setPhase('speak');
+          setLeft(speak);
+        } else setPhase('done');
+      } else setLeft(left - 1);
+    }, left > 0 ? 1000 : 0);
     return () => window.clearTimeout(id);
   }, [phase, left, speak]);
 

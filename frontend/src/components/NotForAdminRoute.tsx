@@ -1,5 +1,5 @@
 import { Navigate, Outlet } from 'react-router-dom';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 import { isPlatformAdmin } from '../lib/api';
 
 /** Plans and checkout are for students and teachers; an administrator is unlimited and goes to the panel. */

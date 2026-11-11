@@ -12,7 +12,7 @@ import {
 import { CopyIcon, CreditCardIcon, CheckIcon } from '../components/icons';
 
 // Strictly 3 commercial subscription plans: START / STARTER (7 000), PRO (15 000 - recommended), PREMIUM (27 000)
-export const PLAN_PRICES = {
+const PLAN_PRICES = {
   starter: 7000,
   pro: 15000,
   premium: 27000,
@@ -130,7 +130,14 @@ export default function Subscribe() {
   const { t, lang } = useLang();
 
   // Selected plan slug: 'starter' | 'pro' | 'premium'
-  const [selectedPlan, setSelectedPlan] = useState<'starter' | 'pro' | 'premium'>('pro');
+  const queryPlan = planQuery === 'pro' || planQuery === 'premium' || planQuery === 'starter'
+    ? planQuery : planQuery === 'start' ? 'starter' : null;
+  const [selectedPlan, setSelectedPlan] = useState<'starter' | 'pro' | 'premium'>(queryPlan ?? 'pro');
+  const [previousPlanQuery, setPreviousPlanQuery] = useState(planQuery);
+  if (planQuery !== previousPlanQuery) {
+    setPreviousPlanQuery(planQuery);
+    if (queryPlan) setSelectedPlan(queryPlan);
+  }
   const card = useCardInfo();
   const cardInfo = {
     card_number: card.info?.card_number || DEFAULT_CARD_NUMBER,
@@ -152,7 +159,7 @@ export default function Subscribe() {
 
   // User receipts history
   const [receipts, setReceipts] = useState<PaymentReceiptItem[]>([]);
-  const [loadingReceipts, setLoadingReceipts] = useState(false);
+  const [loadingReceipts, setLoadingReceipts] = useState(true);
 
   const loadReceipts = async () => {
     setLoadingReceipts(true);
@@ -172,15 +179,17 @@ export default function Subscribe() {
 
   // Fetch initial card info and user receipts
   useEffect(() => {
-    void loadReceipts();
+    let active = true;
+    const safetyTimer = window.setTimeout(() => { if (active) setLoadingReceipts(false); }, 6000);
+    PaymentsApi.myReceipts()
+      .then((res) => { if (active) setReceipts(Array.isArray(res?.results) ? res.results : []); })
+      .catch(() => { if (active) setReceipts([]); })
+      .finally(() => { window.clearTimeout(safetyTimer); if (active) setLoadingReceipts(false); });
 
-    if (planQuery === 'pro' || planQuery === 'premium' || planQuery === 'starter') {
-      setSelectedPlan(planQuery);
-    } else if (planQuery === 'start') {
-      setSelectedPlan('starter');
-    } else if (planId) {
+    if (!queryPlan && planId) {
       Billing.plans()
         .then((res) => {
+          if (!active) return;
           const match = res.results.find(
             (p) => String(p.id) === String(planId) || p.plan_type === planId,
           );
@@ -194,7 +203,8 @@ export default function Subscribe() {
         })
         .catch(() => {});
     }
-  }, [planId, planQuery]);
+    return () => { active = false; window.clearTimeout(safetyTimer); };
+  }, [planId, queryPlan]);
 
   const handleCopy = async (text: string) => {
     const rawDigits = (text || DEFAULT_CARD_NUMBER).replace(/\s+/g, '') || DEFAULT_CARD_NUMBER_RAW;

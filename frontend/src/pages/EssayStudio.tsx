@@ -1,3 +1,4 @@
+import { useLang } from '../i18n/LangContext';
 import { useState, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, Sparkles, Check, RefreshCw, Award } from 'lucide-react';
@@ -58,6 +59,7 @@ Firstly, engaging in voluntary local endeavours exposes teenagers to diverse soc
 In conclusion, although some might prioritize purely theoretical learning, integrating community service into secondary education cultivates well-rounded, socially conscious citizens prepared for future societal challenges.`;
 
 export default function EssayStudio() {
+  const { t } = useLang();
   const { topicId: _topicId } = useParams();
   const [essayText, setEssayText] = useState(INITIAL_TEXT);
   const [analyzing, setAnalyzing] = useState(false);
@@ -201,7 +203,7 @@ export default function EssayStudio() {
               <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>IELTS Academic Writing Task 2</span>
             </div>
             <h1 style={{ fontSize: '1.25rem', fontWeight: 800, margin: '4px 0 0' }}>
-              Akademik Esse Muharriri va Tahlil
+              {t('x_essay_title')}
             </h1>
           </div>
         </div>
@@ -224,11 +226,11 @@ export default function EssayStudio() {
           >
             {analyzing ? (
               <>
-                <RefreshCw size={16} className="animate-spin" /> Tekshirilmoqda...
+                <RefreshCw size={16} className="animate-spin" /> {t('x_checking')}
               </>
             ) : (
               <>
-                <Sparkles size={16} /> 🚀 AI orqali tekshirish
+                <Sparkles size={16} /> 🚀 {t('x_ai_check')}
               </>
             )}
           </button>
@@ -283,7 +285,7 @@ export default function EssayStudio() {
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)' }}>IELTS Natijasi</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)' }}>{t('x_ielts_score')}</span>
               <span
                 style={{
                   fontSize: 18,
@@ -410,14 +412,14 @@ export default function EssayStudio() {
                 className={activeTab === 'editor' ? 'active' : ''}
                 onClick={() => setActiveTab('editor')}
               >
-                Tahrirlash
+                {t('x_edit')}
               </button>
               <button
                 type="button"
                 className={activeTab === 'review' ? 'active' : ''}
                 onClick={() => setActiveTab('review')}
               >
-                Rangli Tahlil
+                {t('x_color_review')}
               </button>
             </div>
           </div>
@@ -447,7 +449,7 @@ export default function EssayStudio() {
             <textarea
               value={essayText}
               onChange={(e) => setEssayText(e.target.value)}
-              placeholder="Essengizni shu yerda yozing..."
+              placeholder={t('x_essay_placeholder')}
               style={{
                 flex: 1,
                 width: '100%',
@@ -509,7 +511,7 @@ export default function EssayStudio() {
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <h2 style={{ fontSize: '1rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Sparkles size={16} color="#D97706" /> IELTS Examiner Tahlili
+              <Sparkles size={16} color="#D97706" /> {t('x_examiner_review')}
             </h2>
             <span className="pill-badge" style={{ fontSize: 11, background: 'var(--bg-elevated)' }}>
               {suggestions.length} ta tavsiya
@@ -584,11 +586,11 @@ export default function EssayStudio() {
                   >
                     {applied ? (
                       <>
-                        <Check size={14} /> Qabul qilindi
+                        <Check size={14} /> {t('x_accepted')}
                       </>
                     ) : (
                       <>
-                        <Sparkles size={14} /> ✨ Qabul qilish
+                        <Sparkles size={14} /> ✨ {t('x_accept')}
                       </>
                     )}
                   </button>

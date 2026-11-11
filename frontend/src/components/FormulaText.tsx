@@ -63,7 +63,7 @@ const mapChars = (value: string, table: Readonly<Record<string, string>>): strin
   Array.from(value, (ch) => table[ch] ?? ch).join('');
 
 /** Removes control / bidi-override characters from untrusted text. */
-export function sanitizeFormulaInput(input: string): string {
+function sanitizeFormulaInput(input: string): string {
   return input.replace(UNSAFE_CHARS_RE, '');
 }
 
@@ -77,7 +77,7 @@ export function sanitizeFormulaInput(input: string): string {
  *
  * Pure string -> string; the result must only ever be rendered as a text node.
  */
-export function formatFormulaString(input: string): string {
+function formatFormulaString(input: string): string {
   if (!input) return '';
 
   const clean = sanitizeFormulaInput(input);

@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 import { useLang } from '../i18n/LangContext';
 import { GoogleAuth, TelegramAuth, landingFor } from '../lib/api';
 import { ArrowLeftIcon } from '../components/icons';
@@ -116,23 +116,23 @@ export default function Login() {
   const [tgDeepLink, setTgDeepLink] = useState<string | null>(null);
   const [tgCode, setTgCode] = useState('');
   const [tgError, setTgError] = useState<string | null>(null);
-  const [tgBusy, setTgBusy] = useState(false);
+  const [tgBusy, setTgBusy] = useState(() => typeof window !== 'undefined' && Boolean(window.Telegram?.WebApp?.initData));
   const pollRef = useRef<number | null>(null);
 
-  const stopPolling = () => {
+  const stopPolling = useCallback(() => {
     if (pollRef.current !== null) {
       window.clearInterval(pollRef.current);
       pollRef.current = null;
     }
-  };
+  }, []);
 
-  const adoptTelegramLogin = (tokens: { access: string; refresh: string }, user: Record<string, unknown>) => {
+  const adoptTelegramLogin = useCallback((tokens: { access: string; refresh: string }, user: Record<string, unknown>) => {
     stopPolling();
     setTgPhase('done');
     const adopted = loginWithTelegram(tokens, user);
     const nextUrl = searchParams.get('next');
     navigate(nextUrl || landingFor(adopted));
-  };
+  }, [stopPolling, loginWithTelegram, searchParams, navigate]);
 
   useEffect(() => {
     // 1-Click Auto-login if inside Telegram Mini App (TMA)
@@ -151,7 +151,6 @@ export default function Login() {
       } catch {
         /* ignore */
       }
-      setTgBusy(true);
       TelegramAuth.loginWithInitData(tgWebApp.initData)
         .then((res) => {
           adoptTelegramLogin(res.tokens, res.user);
@@ -163,7 +162,7 @@ export default function Login() {
     }
 
     return stopPolling;
-  }, []);
+  }, [setLang, adoptTelegramLogin, stopPolling]);
 
 
 

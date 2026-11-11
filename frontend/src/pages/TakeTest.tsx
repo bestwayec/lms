@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, lazy, Suspense } from 'react';
+import { insertAtSelection } from '../lib/insertAtSelection';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -193,7 +194,7 @@ const emptyEntry = (): AnswerEntry => ({
 
 const TEXT_DEBOUNCE_MS = 400;
 
-export function isOpenTextQuestion(q: Question): boolean {
+function isOpenTextQuestion(q: Question): boolean {
   const type = (q.question_type || '').toLowerCase();
   if (['text', 'short_answer', 'inline_gap_fill', 'open', 'fill_blank'].includes(type)) {
     return true;
@@ -317,6 +318,7 @@ export default function TakeTest() {
   const [flagged, setFlagged] = useState<Record<number, boolean>>({});
   const [visited, setVisited] = useState<Record<number, boolean>>({});
   const activePartRef = useRef<Record<number, 'a' | 'b'>>({});
+  const dualInputRefs = useRef<Record<number, Partial<Record<'a' | 'b', HTMLInputElement | null>>>>({});
   const timers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
 
   // Track which questions the candidate has actually opened (for 4-state palette).
@@ -493,7 +495,12 @@ export default function TakeTest() {
               gap_answers: a.gaps,
               matching: a.matching,
               written_text: a.written || undefined,
-            }).catch(() => undefined);
+            }).catch((error: unknown) => {
+              // A manual submission must not discard an answer that failed to save.
+              // At timeout the server may already have closed the attempt, so still
+              // retrieve the result of the automatic submission.
+              if (!auto) throw error;
+            });
           }
         }
         const out = (await TestsApi.submit(attemptId)) as unknown as {
@@ -1236,17 +1243,17 @@ export default function TakeTest() {
               style={{
                 marginTop: 14,
                 padding: '16px',
-                background: 'rgba(0, 0, 0, 0.25)',
+                background: 'var(--card)',
                 borderRadius: 14,
-                border: '1px solid rgba(255, 255, 255, 0.08)',
+                border: '1px solid var(--border)',
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-                <p style={{ margin: 0, fontSize: 13.5, fontWeight: 800, color: '#f59e0b' }}>
-                  🧪 33–35-savollar: Interaktiv Matritsa Jadvali (Radio Matrix Grid)
+                <p style={{ margin: 0, fontSize: 13.5, fontWeight: 800, color: 'var(--ink)' }}>
+                  🧪 {t('exam_matching_matrix')}
                 </p>
-                <span className="pill-badge" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10B981', fontSize: 11, fontWeight: 800 }}>
-                  2.2 ball
+                <span className="pill-badge" style={{ background: 'rgba(16, 185, 129, 0.15)', color: 'var(--ink)', fontSize: 11, fontWeight: 800 }}>
+                  {q.points} {t('exam_points')}
                 </span>
               </div>
 
@@ -1312,15 +1319,15 @@ export default function TakeTest() {
 
                 return (
                   <div>
-                    <div style={{ overflowX: 'auto', marginBottom: 12 }}>
-                      <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '6px', textAlign: 'center' }}>
+                    <div style={{ marginBottom: 12 }}>
+                      <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'separate', borderSpacing: '2px', textAlign: 'center' }}>
                         <thead>
                           <tr>
-                            <th style={{ padding: '8px 12px', fontSize: 12, fontWeight: 800, color: 'var(--text-secondary, #94a3b8)', textAlign: 'left' }}>
-                              Band / Modda
+                            <th style={{ width: '25%', padding: '8px 2px', fontSize: 12, fontWeight: 800, color: 'var(--text-secondary)', textAlign: 'left', overflowWrap: 'anywhere' }}>
+                              {t('exam_matrix_row')}
                             </th>
                             {cols.map((col) => (
-                              <th key={col} style={{ padding: '8px 10px', fontSize: 14, fontWeight: 900, color: '#F59E0B' }}>
+                              <th key={col} style={{ padding: '8px 0', fontSize: 14, fontWeight: 900, color: 'var(--ink)' }}>
                                 {col}
                               </th>
                             ))}
@@ -1329,24 +1336,25 @@ export default function TakeTest() {
                         <tbody>
                           {rows.map((row) => (
                             <tr key={row.id} style={{ background: 'rgba(255, 255, 255, 0.02)', borderRadius: 10 }}>
-                              <td style={{ padding: '10px 14px', fontSize: 13.5, fontWeight: 800, color: '#F8FAFC', textAlign: 'left', whiteSpace: 'nowrap' }}>
+                              <td style={{ padding: '8px 2px', fontSize: 13, fontWeight: 800, color: 'var(--ink)', textAlign: 'left', overflowWrap: 'anywhere' }}>
                                 <FormulaText text={row.label} />
                               </td>
                               {cols.map((col) => {
                                 const isSel = parseMap[row.id] === col;
                                 return (
-                                  <td key={col} style={{ padding: 4 }}>
+                                  <td key={col} style={{ padding: 0 }}>
                                     <button
                                       type="button"
                                       disabled={finished || submitting}
                                       onClick={() => onPickCol(row.id, col)}
                                       style={{
-                                        width: 40,
-                                        height: 40,
+                                        width: '100%',
+                                        maxWidth: 40,
+                                        aspectRatio: '1',
                                         borderRadius: '50%',
-                                        border: isSel ? '2px solid #10B981' : '1.5px solid rgba(255, 255, 255, 0.15)',
-                                        background: isSel ? '#10B981' : 'rgba(255, 255, 255, 0.04)',
-                                        color: isSel ? '#04130D' : '#F8FAFC',
+                                        border: isSel ? '2px solid #10B981' : '1.5px solid var(--border)',
+                                        background: isSel ? '#10B981' : 'var(--card)',
+                                        color: isSel ? '#04130D' : 'var(--ink)',
                                         fontWeight: 800,
                                         fontSize: 13,
                                         cursor: 'pointer',
@@ -1356,6 +1364,8 @@ export default function TakeTest() {
                                         boxShadow: isSel ? '0 0 12px rgba(16, 185, 129, 0.6)' : 'none',
                                         transition: 'all 0.15s ease',
                                       }}
+                                      aria-label={`${row.label}: ${col}`}
+                                      aria-pressed={isSel}
                                     >
                                       {isSel ? '✓' : col}
                                     </button>
@@ -1371,7 +1381,7 @@ export default function TakeTest() {
                     {/* Tanlangan chiplari */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', paddingTop: 10, borderTop: '1px dashed rgba(255, 255, 255, 0.1)' }}>
                       <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary, #94a3b8)' }}>
-                        Tanlangan:
+                        {t('exam_selected')}
                       </span>
                       {rows.map((row) => {
                         const val = parseMap[row.id];
@@ -1405,7 +1415,7 @@ export default function TakeTest() {
               const partB = parts[1] || '';
 
               const handleDualChange = (newA: string, newB: string) => {
-                const combined = `${newA.trim()}|${newB.trim()}`;
+                const combined = `${newA}|${newB}`;
                 editText(q, combined);
                 if (timers.current[q.id]) clearTimeout(timers.current[q.id]);
                 timers.current[q.id] = setTimeout(() => {
@@ -1416,8 +1426,14 @@ export default function TakeTest() {
 
               const addSymbol = (sym: string) => {
                 const target = activePartRef.current[q.id] || 'a';
-                if (target === 'b') handleDualChange(partA, partB + sym);
-                else handleDualChange(partA + sym, partB);
+                const input = dualInputRefs.current[q.id]?.[target];
+                const inserted = insertAtSelection(target === 'a' ? partA : partB, sym, input?.selectionStart ?? null, input?.selectionEnd ?? null);
+                if (target === 'b') handleDualChange(partA, inserted.value);
+                else handleDualChange(inserted.value, partB);
+                requestAnimationFrame(() => {
+                  input?.focus();
+                  input?.setSelectionRange(inserted.caret, inserted.caret);
+                });
               };
 
               return (
@@ -1434,23 +1450,25 @@ export default function TakeTest() {
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
-                    <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#f59e0b' }}>
-                      36–45-savollar: Ikki qismli masala (har bir qism alohida baholanadi):
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>
+                      {t('exam_dual_description')}
                     </p>
                     <span className="pill-badge" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#F59E0B', fontSize: 11, fontWeight: 800 }}>
-                      a va b qismlar
+                      {t('exam_dual_parts')}
                     </span>
                   </div>
 
                   {/* Kimyoviy indeks / belgilar mini-paneli */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', padding: '6px 8px', borderRadius: 10, background: 'rgba(0, 0, 0, 0.25)', border: '1px solid rgba(255, 255, 255, 0.06)' }}>
-                    <span style={{ fontSize: 11.5, color: 'var(--text-secondary, #94a3b8)', fontWeight: 700 }}>Belgilar:</span>
-                    {['₂', '₃', '₄', '⁺', '⁻', '→', '⇌', 'Δ', '℃'].map((sym) => (
+                    <span style={{ fontSize: 11.5, color: 'var(--text-secondary, #94a3b8)', fontWeight: 700 }}>{t('exam_symbols')}</span>
+                    {['₂', '₃', '₄', '⁺', '⁻', '→', '⇌', 'Δ', '°C', '%'].map((sym) => (
                       <button
                         key={sym}
                         type="button"
+                        disabled={finished || submitting}
+                        onMouseDown={(event) => event.preventDefault()}
                         onClick={() => addSymbol(sym)}
-                        title={`Formulaga ${sym} qo'shish`}
+                        aria-label={`${t('exam_insert_symbol')} ${sym}`}
                         style={{
                           height: 28,
                           minWidth: 28,
@@ -1470,24 +1488,25 @@ export default function TakeTest() {
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                    <label style={{ fontSize: '0.88rem', fontWeight: 700, color: '#f59e0b' }}>
-                      a) qism javobi:
+                    <label style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--ink)' }}>
+                      {t('exam_answer_a')}
                     </label>
                     <input
                       type="text"
+                      ref={(element) => { (dualInputRefs.current[q.id] ??= {}).a = element; }}
+                      aria-label={t('exam_answer_a')}
                       disabled={finished || submitting}
                       value={partA}
                       onFocus={() => { activePartRef.current[q.id] = 'a'; }}
                       onChange={(e) => {
-                        const clean = e.target.value.replace(',', '.');
-                        handleDualChange(clean, partB);
+                        handleDualChange(e.target.value, partB);
                       }}
                       onBlur={() => {
                         if (timers.current[q.id]) clearTimeout(timers.current[q.id]);
                         const cur = answers[q.id] ?? emptyEntry();
                         if (cur.text.trim()) save(q, cur);
                       }}
-                      placeholder="Masalan: 12.4 yoki formulalar..."
+                      placeholder={t('exam_dual_placeholder')}
                       style={{
                         padding: '12px 14px',
                         borderRadius: 10,
@@ -1502,24 +1521,25 @@ export default function TakeTest() {
                     />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                    <label style={{ fontSize: '0.88rem', fontWeight: 700, color: '#f59e0b' }}>
-                      b) qism javobi:
+                    <label style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--ink)' }}>
+                      {t('exam_answer_b')}
                     </label>
                     <input
                       type="text"
+                      ref={(element) => { (dualInputRefs.current[q.id] ??= {}).b = element; }}
+                      aria-label={t('exam_answer_b')}
                       disabled={finished || submitting}
                       value={partB}
                       onFocus={() => { activePartRef.current[q.id] = 'b'; }}
                       onChange={(e) => {
-                        const clean = e.target.value.replace(',', '.');
-                        handleDualChange(partA, clean);
+                        handleDualChange(partA, e.target.value);
                       }}
                       onBlur={() => {
                         if (timers.current[q.id]) clearTimeout(timers.current[q.id]);
                         const cur = answers[q.id] ?? emptyEntry();
                         if (cur.text.trim()) save(q, cur);
                       }}
-                      placeholder="Masalan: 5.8 yoki formulalar..."
+                      placeholder={t('exam_dual_placeholder')}
                       style={{
                         padding: '12px 14px',
                         borderRadius: 10,

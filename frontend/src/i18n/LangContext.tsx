@@ -1,6 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
-import { api, getTokens } from '../lib/api';
+import { createContext, useContext } from 'react';
 import data from './translations.json';
 
 export type AppLang = 'uz' | 'ru' | 'en';
@@ -156,7 +154,7 @@ export function translate(key: string, lang: AppLang, fallback?: string): string
   return formatRawKeyFallback(key);
 }
 
-function readStoredLang(): AppLang {
+export function readStoredLang(): AppLang {
   try {
     const v = (localStorage.getItem('i18nextLng') || localStorage.getItem(LANG_KEY)) as AppLang | null;
     if (v === 'ru' || v === 'en' || v === 'uz') return v;
@@ -185,39 +183,7 @@ export interface LangState {
   setLang: (lang: AppLang) => void;
 }
 
-const Ctx = createContext<LangState | null>(null);
-
-export function LangProvider({ children }: { children: ReactNode }) {
-  const [lang, setLangState] = useState<AppLang>(readStoredLang);
-  const langRef = useRef(lang);
-  langRef.current = lang;
-
-  const t = useCallback(
-    (key: string, fallback?: string) => translate(key, lang, fallback),
-    [lang],
-  );
-
-  // Update document.documentElement.lang when language changes
-  useEffect(() => {
-    document.documentElement.lang = lang;
-  }, [lang]);
-
-  const setLang = useCallback(
-    (next: AppLang) => {
-      setLangState(next);
-      storeLang(next);
-      // Sync to profile so backend emails / locale views honor the choice.
-      if (!getTokens().access && !getTokens().refresh) return;
-      void api('/api/auth/me/', {
-        method: 'PATCH',
-        body: JSON.stringify({ language: next }),
-      }).catch(() => undefined);
-    },
-    [],
-  );
-
-  return <Ctx.Provider value={{ t, lang, setLang }}>{children}</Ctx.Provider>;
-}
+export const Ctx = createContext<LangState | null>(null);
 
 export function useLang(): LangState {
   const ctx = useContext(Ctx);

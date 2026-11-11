@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 import { useLang } from '../i18n/LangContext';
 import { TeacherEssays, canReviewEssays, isPlatformAdmin } from '../lib/api';
 import { PencilIcon } from '../components/icons';

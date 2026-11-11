@@ -18,7 +18,7 @@ import {
   QrCode,
 } from 'lucide-react';
 import { StudentGroupDetailApi, type StudentGroupViewData } from '../lib/api';
-import { useToast } from '../context/ToastContext';
+import { useToast } from '../context/toastState';
 import { useLang } from '../i18n/LangContext';
 
 const ClassroomQrModal = lazy(() => import('../components/ClassroomQrModal'));
@@ -53,39 +53,33 @@ function formatDeadline(dueAt?: string | null): { text: string; urgent: boolean 
 export default function StudentGroupDetail() {
   const { groupId } = useParams<{ groupId: string }>();
   const navigate = useNavigate();
-  const { t } = useLang();
-  const [data, setData] = useState<StudentGroupViewData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { t, lang } = useLang();
+  const [loaded, setLoaded] = useState<{ key: string; data: StudentGroupViewData | null; error: string | null } | null>(null);
+  const key = `${groupId}:${lang}`;
+  const current = loaded?.key === key ? loaded : null;
+  const data = current?.data ?? null;
+  const loading = Boolean(groupId && !current);
   const [copied, setCopied] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const error = current?.error ?? null;
   const [qrOpen, setQrOpen] = useState(false);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const toast = useToast();
 
-  const loadData = async () => {
-    if (!groupId) return;
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await StudentGroupDetailApi.getStudentView(Number(groupId));
-      setData(res);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : t('group_load_err');
-      setError(msg);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    loadData();
+    let active = true;
+    if (groupId) {
+      StudentGroupDetailApi.getStudentView(Number(groupId))
+        .then((data) => { if (active) setLoaded({ key, data, error: null }); })
+        .catch((err: unknown) => { if (active) setLoaded({ key, data: null, error: err instanceof Error ? err.message : t('group_load_err') }); });
+    }
     return () => {
+      active = false;
       if (copyTimerRef.current) {
         clearTimeout(copyTimerRef.current);
       }
     };
-  }, [groupId]);
+  }, [groupId, key, t]);
 
   const copyCode = () => {
     if (!data?.group.invite_code) return;

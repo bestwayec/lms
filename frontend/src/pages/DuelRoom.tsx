@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLang } from '../i18n/LangContext';
 import { arenaSocketUrl } from '../lib/api';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 import { FlameIcon, SwordsIcon, TrophyIcon } from '../components/icons';
 import { Check, Link as LinkIcon, Send } from 'lucide-react';
 import confetti from 'canvas-confetti';

@@ -10,6 +10,7 @@ const DJANGO = 'http://127.0.0.1:8000'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   build: {
+    chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
         entryFileNames: 'assets/[name]-[hash].js',
@@ -18,7 +19,7 @@ export default defineConfig({
         manualChunks(id) {
           if (id.includes('node_modules')) {
             if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) {
-              return 'vendor-react';
+              return 'react-vendor';
             }
             if (id.includes('framer-motion')) {
               return 'vendor-motion';
@@ -27,12 +28,15 @@ export default defineConfig({
               return 'vendor-charts';
             }
             if (id.includes('lucide-react')) {
-              return 'vendor-icons';
+              return 'icons-vendor';
             }
             if (id.includes('ogl')) {
               return 'vendor-webgl';
             }
-            if (id.includes('canvas-confetti') || id.includes('qrcode')) {
+            if (id.includes('canvas-confetti') || id.includes('/axios/')) {
+              return 'utils-vendor';
+            }
+            if (id.includes('qrcode')) {
               return 'vendor-fx';
             }
             return 'vendor-libs';

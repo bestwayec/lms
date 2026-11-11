@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 import { useLang } from '../i18n/LangContext';
 import { FeedbackApi, type ApiError, type FeedbackPayload } from '../lib/api';
 import { buildFeedbackContext } from '../lib/feedbackContext';

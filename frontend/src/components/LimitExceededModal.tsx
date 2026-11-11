@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { LockIcon, XIcon, ZapIcon } from './icons';
 import CardPaymentModal from './CardPaymentModal';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 import { useLang } from '../i18n/LangContext';
 import { isPlatformAdmin, PaymentsApi } from '../lib/api';
 

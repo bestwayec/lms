@@ -23,6 +23,9 @@ import type {
 } from '../lib/school';
 import { errMessage } from '../lib/school';
 
+const EMPTY_GROUPS: SchoolGroup[] = [];
+const EMPTY_RECENT_RESULTS: RecentResult[] = [];
+
 export default function TeacherDashboard() {
   const { t } = useLang();
   const [data, setData] = useState<TeacherOverview | null>(null);
@@ -34,18 +37,9 @@ export default function TeacherDashboard() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
-  const [activeMode, setActiveMode] = useState<'converter' | 'live' | 'vedomost'>(
-    tabParam === 'live' ? 'live' : tabParam === 'vedomost' ? 'vedomost' : 'converter'
-  );
-
-  useEffect(() => {
-    if (tabParam === 'live' || tabParam === 'vedomost' || tabParam === 'converter') {
-      setActiveMode(tabParam);
-    }
-  }, [tabParam]);
+  const activeMode = tabParam === 'live' || tabParam === 'vedomost' ? tabParam : 'converter';
 
   const setTab = (mode: 'converter' | 'live' | 'vedomost') => {
-    setActiveMode(mode);
     setSearchParams({ tab: mode });
   };
 
@@ -162,8 +156,8 @@ export default function TeacherDashboard() {
     };
   }, []);
 
-  const groups: SchoolGroup[] = data?.groups ?? [];
-  const recent: RecentResult[] = data?.recent_results ?? [];
+  const groups = data?.groups ?? EMPTY_GROUPS;
+  const recent = data?.recent_results ?? EMPTY_RECENT_RESULTS;
 
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const todaySubmissions = useMemo(
