@@ -157,24 +157,29 @@ export default function SubjectSwitcher({
   };
 
   const isSmall = size === 'sm';
+  const isSeg = variant === 'seg';
 
   return (
     <div
       role="group"
       aria-label={t('subject_label', 'Fan tanlash')}
-      className={`subject-switcher-scroll ${variant === 'seg' ? 'ui-seg' : 'subject-switcher-container'} overflow-x-auto no-scrollbar scroll-smooth ${className}`}
+      className={`subject-switcher-scroll ${
+        isSeg ? 'subject-seg flex items-center gap-2 overflow-x-auto no-scrollbar py-2 px-3' : 'subject-switcher-container overflow-x-auto no-scrollbar'
+      } scroll-smooth ${className}`}
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: '6px',
+        gap: isSeg ? '8px' : '6px',
         maxWidth: '100%',
+        width: isSeg ? '100%' : undefined,
         overflowX: 'auto',
         WebkitOverflowScrolling: 'touch',
         scrollbarWidth: 'none',
         msOverflowStyle: 'none',
-        padding: variant === 'seg' ? '4px 6px' : '3px 4px',
+        scrollSnapType: isSeg ? 'x proximity' : undefined,
+        padding: isSeg ? '8px 12px' : '3px 4px',
         borderRadius: 14,
-        background: variant === 'seg' ? 'rgba(15, 23, 42, 0.45)' : 'transparent',
+        background: 'transparent',
       }}
     >
       {SUBJECT_CONFIGS.map((s) => {
@@ -189,17 +194,26 @@ export default function SubjectSwitcher({
             className={`subject-pill-btn transition-all duration-200 ${isActive ? 'is-active' : ''}`}
             style={{
               whiteSpace: 'nowrap',
+              flex: '0 0 auto',
               flexShrink: 0,
+              minWidth: 'max-content',
+              overflow: 'visible',
+              scrollSnapAlign: isSeg ? 'start' : undefined,
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
-              padding: isSmall ? '4px 10px' : '6px 13px',
-              borderRadius: 10,
+              padding: isSmall ? '4px 10px' : isSeg ? '6px 12px' : '6px 13px',
+              minHeight: isSeg ? 36 : undefined,
+              borderRadius: isSeg ? 999 : 10,
               fontSize: isSmall ? 12 : 13,
-              fontWeight: isActive ? 700 : 500,
-              border: isActive ? `1.5px solid ${s.borderColor}` : '1.5px solid transparent',
-              background: isActive ? s.gradient : 'rgba(255, 255, 255, 0.04)',
-              color: isActive ? s.activeTextColor : 'var(--muted, #94a3b8)',
+              fontWeight: isActive ? 700 : 600,
+              border: isActive
+                ? `1.5px solid ${s.borderColor}`
+                : isSeg
+                  ? '1.5px solid var(--border-subtle, rgba(148,163,184,0.25))'
+                  : '1.5px solid transparent',
+              background: isActive ? s.gradient : isSeg ? 'var(--bg-elevated, rgba(255,255,255,0.04))' : 'rgba(255, 255, 255, 0.04)',
+              color: isActive ? s.activeTextColor : isSeg ? 'var(--text-secondary, #94a3b8)' : 'var(--muted, #94a3b8)',
               boxShadow: isActive ? `0 2px 10px ${s.glowColor}` : 'none',
               cursor: loading ? 'default' : 'pointer',
               userSelect: 'none',

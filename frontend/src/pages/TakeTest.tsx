@@ -315,7 +315,16 @@ export default function TakeTest() {
   const [showCalculatorModal, setShowCalculatorModal] = useState(false);
   const [currentQIndex, setCurrentQIndex] = useState(0);
   const [flagged, setFlagged] = useState<Record<number, boolean>>({});
+  const [visited, setVisited] = useState<Record<number, boolean>>({});
+  const activePartRef = useRef<Record<number, 'a' | 'b'>>({});
   const timers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+
+  // Track which questions the candidate has actually opened (for 4-state palette).
+  useEffect(() => {
+    const q = attempt?.questions?.[currentQIndex];
+    if (!q) return;
+    setVisited((prev) => (prev[q.id] ? prev : { ...prev, [q.id]: true }));
+  }, [attempt, currentQIndex]);
   const submittedRef = useRef(false);
   const [isMobile, setIsMobile] = useState<boolean>(
     typeof window !== 'undefined' ? window.innerWidth < 768 : false
@@ -1034,30 +1043,61 @@ export default function TakeTest() {
             </div>
           </div>
 
-          {q.question_type === 'legal_case_study' && (
-            <div
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '4px 10px',
-                borderRadius: 6,
-                background: 'rgba(234, 179, 8, 0.15)',
-                border: '1px solid rgba(234, 179, 8, 0.4)',
-                color: '#facc15',
-                fontSize: 12,
-                fontWeight: 800,
-                marginBottom: 8,
-              }}
-            >
-              <span>⚖️</span>
-              <span>HUQUQIY KAZUS TAHLILI</span>
-            </div>
-          )}
-
-          <p style={{ fontWeight: 700, fontSize: isSingleView ? '1.12rem' : '1rem', lineHeight: 1.55, whiteSpace: 'pre-line' }}>
-            <FormulaText text={q.text} />
-          </p>
+          {(() => {
+            const isCase = q.question_type === 'legal_case_study';
+            const raw = q.text || '';
+            const splitIdx = isCase ? raw.search(/\n\s*\n|\n\s*(?:Savol|Topshiriq)\s*:/i) : -1;
+            const contextText = splitIdx > 40 ? raw.slice(0, splitIdx).trim() : isCase && !q.passage && raw.length > 180 ? raw : '';
+            const promptText = splitIdx > 40 ? raw.slice(splitIdx).trim() : raw;
+            return (
+              <>
+                {isCase && (
+                  <div
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '4px 10px',
+                      borderRadius: 6,
+                      background: 'rgba(234, 179, 8, 0.15)',
+                      border: '1px solid rgba(234, 179, 8, 0.4)',
+                      color: '#facc15',
+                      fontSize: 12,
+                      fontWeight: 800,
+                      marginBottom: 8,
+                    }}
+                  >
+                    <span>⚖️</span>
+                    <span>HUQUQIY KAZUS VA MATN TAHLILI</span>
+                  </div>
+                )}
+                {contextText && (
+                  <aside
+                    aria-label="Kazus matni"
+                    style={{
+                      padding: '12px 14px',
+                      marginBottom: 12,
+                      borderRadius: 12,
+                      background: 'rgba(139, 92, 246, 0.08)',
+                      border: '1px solid rgba(139, 92, 246, 0.32)',
+                      borderLeft: '4px solid #8b5cf6',
+                      fontSize: '0.94rem',
+                      lineHeight: 1.65,
+                      whiteSpace: 'pre-line',
+                    }}
+                  >
+                    <div style={{ fontSize: 11, fontWeight: 800, color: '#a78bfa', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>
+                      📜 Kontekst / Kazus matni
+                    </div>
+                    <FormulaText text={contextText} />
+                  </aside>
+                )}
+                <p style={{ fontWeight: 700, fontSize: isSingleView ? '1.12rem' : '1rem', lineHeight: 1.55, whiteSpace: 'pre-line' }}>
+                  <FormulaText text={promptText} />
+                </p>
+              </>
+            );
+          })()}
 
           {q.question_type === 'text' || isOpenTextQuestion(q) ? (
             (() => {
@@ -1223,13 +1263,33 @@ export default function TakeTest() {
                   }
                 }
 
-                const rows = [
-                  { id: '1', label: '1. NaOH' },
-                  { id: '2', label: '2. H₂SO₄' },
-                  { id: '3', label: '3. NaCl' },
-                  { id: '4', label: '4. CO₂' },
-                ];
-                const cols = ['A', 'B', 'C', 'D', 'E'];
+                const parsedRows: { id: string; label: string }[] = [];
+                if (q.prompts && q.prompts.length > 0) {
+                  q.prompts.forEach((pr, idx) => {
+                    const id = String(idx + 1);
+                    parsedRows.push({ id, label: `${id}. ${pr.text}` });
+                  });
+                } else {
+                  const rx = /(?:^|\n)\s*([1-4])[.)]\s*([^\n;]+)/g;
+                  let m: RegExpExecArray | null;
+                  while ((m = rx.exec(q.text || '')) !== null) {
+                    const id = m[1];
+                    if (!parsedRows.some((r) => r.id === id)) {
+                      parsedRows.push({ id, label: `${id}. ${m[2].trim().slice(0, 48)}` });
+                    }
+                  }
+                }
+                const rows =
+                  parsedRows.length >= 2
+                    ? parsedRows
+                    : [
+                        { id: '1', label: '1-band' },
+                        { id: '2', label: '2-band' },
+                        { id: '3', label: '3-band' },
+                        { id: '4', label: '4-band' },
+                      ];
+                const hasF = /(?:^|\n|\s)F[.)]\s/m.test(q.text || '') || (q.matching_options?.length ?? 0) >= 6;
+                const cols = hasF ? ['A', 'B', 'C', 'D', 'E', 'F'] : ['A', 'B', 'C', 'D', 'E'];
 
                 const onPickCol = (rowId: string, colLetter: string) => {
                   const nextMap = { ...parseMap };
@@ -1329,7 +1389,7 @@ export default function TakeTest() {
                               color: val ? '#10B981' : 'var(--text-secondary, #94a3b8)',
                             }}
                           >
-                            [{row.id} ➔ {val || '?'}]
+                            [{row.id}-{val || '?'}]
                           </span>
                         );
                       })}
@@ -1355,7 +1415,9 @@ export default function TakeTest() {
               };
 
               const addSymbol = (sym: string) => {
-                handleDualChange(partA + sym, partB);
+                const target = activePartRef.current[q.id] || 'a';
+                if (target === 'b') handleDualChange(partA, partB + sym);
+                else handleDualChange(partA + sym, partB);
               };
 
               return (
@@ -1415,6 +1477,7 @@ export default function TakeTest() {
                       type="text"
                       disabled={finished || submitting}
                       value={partA}
+                      onFocus={() => { activePartRef.current[q.id] = 'a'; }}
                       onChange={(e) => {
                         const clean = e.target.value.replace(',', '.');
                         handleDualChange(clean, partB);
@@ -1446,6 +1509,7 @@ export default function TakeTest() {
                       type="text"
                       disabled={finished || submitting}
                       value={partB}
+                      onFocus={() => { activePartRef.current[q.id] = 'b'; }}
                       onChange={(e) => {
                         const clean = e.target.value.replace(',', '.');
                         handleDualChange(partA, clean);
@@ -2006,6 +2070,12 @@ export default function TakeTest() {
         {attempt.test_title}
       </h1>
 
+      {offline && (
+        <div className="exam-offline-badge" role="status" aria-live="assertive">
+          <span className="exam-offline-badge__dot" aria-hidden="true" />
+          ⚡ Oflayn — javoblar saqlanmoqda
+        </div>
+      )}
       {offline && (
         <div
           role="alert"
@@ -2798,12 +2868,17 @@ export default function TakeTest() {
                 const a = answers[q.id];
                 const isDone = Boolean(a && entryHasContent(q, a));
                 const isFlag = Boolean(flagged[q.id]);
+                const isVis = Boolean(visited[q.id]);
                 const isCur = safeQIndex === i;
 
-                let badgeBg = 'rgba(255, 255, 255, 0.06)';
-                let badgeColor = '#cbd5e1';
-                let borderStyle = '1px solid rgba(255, 255, 255, 0.12)';
-
+                let badgeBg = '#f8fafc';
+                let badgeColor = '#0f172a';
+                let borderStyle = '1.5px solid #cbd5e1';
+                if (isVis && !isDone) {
+                  badgeBg = '#334155';
+                  badgeColor = '#e2e8f0';
+                  borderStyle = '1.5px solid #475569';
+                }
                 if (isDone) {
                   badgeBg = '#10b981';
                   badgeColor = '#ffffff';

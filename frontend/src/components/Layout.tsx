@@ -232,7 +232,7 @@ export default function Layout() {
           pageTitle={pageTitle}
         />
         {/* Phones: subject switcher as a scrollable segmented control under the bar */}
-        <div className="tb-subject md:hidden flex items-center gap-2 overflow-x-auto no-scrollbar py-1.5 px-3 bg-slate-950/70 border-b border-slate-800/60 backdrop-blur-md">
+        <div className="tb-subject md:hidden flex items-center w-full overflow-hidden bg-white/85 dark:bg-slate-950/80 border-b border-slate-200 dark:border-slate-800/60 backdrop-blur-md">
           <SubjectSwitcher variant="seg" />
         </div>
         <main className="content">

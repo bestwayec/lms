@@ -44,7 +44,7 @@ export default function Navbar({ streakData, onOpenProfile, pageTitle: _pageTitl
       aria-label={t('topbar_label', 'Yuqori panel')}
       style={{
         paddingTop: 'max(env(safe-area-inset-top, 0px), 8px)',
-        height: 'calc(60px + max(env(safe-area-inset-top, 0px), 8px))',
+        height: 'calc(56px + max(env(safe-area-inset-top, 0px), 8px))',
         display: 'flex',
         alignItems: 'center',
         position: 'sticky',
@@ -56,7 +56,7 @@ export default function Navbar({ streakData, onOpenProfile, pageTitle: _pageTitl
         borderBottom: '1px solid var(--border-subtle)',
       }}
     >
-      <div className="topbar-inner w-full flex items-center justify-between gap-3" style={{ height: '100%' }}>
+      <div className="topbar-inner w-full h-14 flex items-center justify-between gap-2 md:gap-3 min-w-0" style={{ height: '100%' }}>
         {/* Left: Mobile-only branding (Hidden on Desktop >= 768px where Sidebar is active) */}
         <div className="flex items-center gap-2 shrink-0 md:hidden">
           {!isRootOrDashboard && (

@@ -387,10 +387,10 @@ export default function TestAddictiveResults({
             <span style={{ fontSize: 28 }}>🔥</span>
             <div>
               <strong style={{ fontSize: 16, color: 'var(--text-primary)', display: 'block' }}>
-                Xato qilingan savollarni hoziroq yopish ({wrongCount + unansweredCount} ta)
+                🔥 Xato qilingan savollarni qayta ishlash ({wrongCount + unansweredCount} ta)
               </strong>
               <span style={{ fontSize: 13, color: '#F87171' }}>
-                Har bir xatoni tuzatish <strong>+10 XP</strong> beradi!
+                Faqat xato qilingan savollar va ularning ilmiy yechimlari bilan mini-mashg‘ulot (+10 XP)
               </span>
             </div>
           </div>
@@ -399,9 +399,9 @@ export default function TestAddictiveResults({
             onClick={handleRetestClick}
             disabled={retesting}
             className="bento-btn bento-btn-gold"
-            style={{ fontWeight: 800, padding: '0 24px', height: 44 }}
+            style={{ fontWeight: 800, padding: '0 22px', height: 44 }}
           >
-            {retesting ? 'Yuklanmoqda…' : 'Boshlash →'}
+            {retesting ? 'Yuklanmoqda…' : `🔥 Qayta ishlash (${wrongCount + unansweredCount} ta) →`}
           </button>
         </div>
       )}

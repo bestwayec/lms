@@ -226,3 +226,70 @@ html.dark .cd-cell.answered { color: #04130d; }
   .take-test-sticky-top { top: 0; }
   .take-test-page-container .timer { font-size: 1.05rem; }
 }
+
+/* ── v2.0.0 CBT engine: split-screen, highlighter, font, offline ───────── */
+.cd-body.is-resizable { column-gap: 4px; }
+.cd-split-handle {
+  align-self: stretch; position: sticky; top: 130px; height: calc(100dvh - 150px);
+  display: flex; align-items: center; justify-content: center;
+  cursor: col-resize; touch-action: none; border-radius: 8px; outline: none;
+}
+.cd-split-handle span {
+  width: 4px; height: 56px; border-radius: 999px; background: var(--border-subtle, #cbd5e1);
+  transition: background .15s ease, height .15s ease;
+}
+.cd-split-handle:hover span, .cd-split-handle:focus-visible span { background: #F59E0B; height: 88px; }
+
+.cd-sel-toolbar {
+  position: fixed; z-index: 80; transform: translateX(-50%);
+  display: inline-flex; gap: 4px; padding: 5px; border-radius: 12px;
+  background: #0f172a; border: 1px solid rgba(255,255,255,.12);
+  box-shadow: 0 12px 28px rgba(2,6,23,.35);
+  animation: cdSelIn .14s ease-out;
+}
+.cd-sel-toolbar::after {
+  content: ''; position: absolute; left: 50%; bottom: -6px; width: 10px; height: 10px;
+  transform: translateX(-50%) rotate(45deg); background: #0f172a;
+  border-right: 1px solid rgba(255,255,255,.12); border-bottom: 1px solid rgba(255,255,255,.12);
+}
+.cd-sel-toolbar__btn {
+  height: 32px; padding: 0 10px; border-radius: 8px; border: 0; cursor: pointer;
+  font: inherit; font-size: 12.5px; font-weight: 800; white-space: nowrap;
+}
+.cd-sel-toolbar__btn.is-yellow { background: #FBBF24; color: #111827; }
+.cd-sel-toolbar__btn.is-green { background: #10B981; color: #fff; }
+.cd-sel-toolbar__btn.is-clear { background: rgba(255,255,255,.08); color: #f8fafc; }
+.cd-sel-toolbar__btn:hover { filter: brightness(1.08); }
+@keyframes cdSelIn { from { opacity: 0; transform: translate(-50%, 4px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+.cd-font-btn {
+  min-width: 30px; height: 28px; border-radius: 8px; border: 0; background: transparent;
+  color: var(--text-primary); font-weight: 800; font-size: 12.5px; cursor: pointer;
+}
+.cd-font-btn:hover:not(:disabled) { background: rgba(245, 158, 11, .15); color: #D97706; }
+.cd-font-btn:disabled { opacity: .4; cursor: default; }
+.cd-font-val { font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--text-secondary); min-width: 18px; text-align: center; }
+
+/* Inline gap-fill inputs: monospace, underline-style like CD-IELTS */
+.cd-gap { font-family: var(--font-mono); font-size: 15px; letter-spacing: .01em; }
+
+/* Sticky audio player stays reachable while scrolling questions */
+.cd-audio-bar { top: 0; box-shadow: 0 6px 16px rgba(2, 6, 23, .08); backdrop-filter: blur(12px); }
+
+/* Red pulsing offline badge (shared by CD exam & national CBT) */
+.exam-offline-badge {
+  position: fixed; top: calc(env(safe-area-inset-top, 0px) + 10px); left: 50%; transform: translateX(-50%);
+  z-index: 90; display: inline-flex; align-items: center; gap: 8px;
+  padding: 7px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 800;
+  background: #dc2626; color: #fff; border: 1px solid rgba(255,255,255,.25);
+  box-shadow: 0 0 0 0 rgba(220, 38, 38, .55); animation: examOfflinePulse 1.6s ease-out infinite;
+}
+.exam-offline-badge__dot { width: 8px; height: 8px; border-radius: 50%; background: #fff; }
+@keyframes examOfflinePulse {
+  0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, .55); }
+  70% { box-shadow: 0 0 0 12px rgba(220, 38, 38, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .exam-offline-badge, .cd-sel-toolbar { animation: none; }
+}

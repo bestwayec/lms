@@ -1,0 +1,38 @@
+/* ============================================================================
+   GRANDEC 2.0 — Tailwind v4 utility engine (no preflight)
+   ----------------------------------------------------------------------------
+   The app's markup uses Tailwind-style utility classes (incl. `dark:` and
+   opacity `/80` variants) but historically only a small hand-written subset
+   existed in index.css, so classes such as `dark:bg-slate-900/80`, `absolute`
+   or `overflow-x-auto` silently did nothing (root cause of the white boxes in
+   dark mode on mobile).
+
+   We load ONLY Tailwind's theme + utilities into cascade layers. Preflight
+   (base reset) is intentionally NOT imported, and every hand-written rule in
+   index.css / theme.css / styles/*.css is unlayered, so it always wins over a
+   same-specificity Tailwind utility. Result: legacy design stays 1:1, missing
+   utilities start working.
+   ============================================================================ */
+@layer theme, base, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+/* `dark:` follows ThemeContext, which toggles the `dark` class on <html>. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Scan the SPA sources only. */
+@source "./";
+
+/* Legacy semantic class names that collide with Tailwind utilities but carry
+   their own meaning in hand-written CSS — never generate utilities for them. */
+@source not inline("container collapse visible invisible table");
+
+/* Horizontal scrollers without a visible scrollbar (mobile chips). */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
