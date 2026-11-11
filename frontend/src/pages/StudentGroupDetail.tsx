@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, lazy, Suspense } from 'react';
+import { useCallback, useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   GraduationCap,
@@ -63,7 +63,7 @@ export default function StudentGroupDetail() {
 
   const toast = useToast();
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     if (!groupId) return;
     try {
       setLoading(true);
@@ -76,7 +76,7 @@ export default function StudentGroupDetail() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [groupId, t]);
 
   useEffect(() => {
     loadData();
@@ -85,7 +85,7 @@ export default function StudentGroupDetail() {
         clearTimeout(copyTimerRef.current);
       }
     };
-  }, [groupId]);
+  }, [loadData]);
 
   const copyCode = () => {
     if (!data?.group.invite_code) return;

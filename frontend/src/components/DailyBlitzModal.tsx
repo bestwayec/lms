@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Flame,
   Clock,
@@ -41,85 +41,42 @@ export default function DailyBlitzModal({
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const answersRef = useRef<Record<string, number>>({});
+  const requestRef = useRef(0);
 
   useEffect(() => {
     answersRef.current = answers;
   }, [answers]);
 
-  const startQuiz = async () => {
+  const submittingRef = useRef(false);
+
+  const startQuiz = useCallback(async () => {
+    const request = ++requestRef.current;
     setLoading(true);
     setError(null);
     setResult(null);
     setAnswers({});
+    answersRef.current = {};
     setCurrentIndex(0);
     setTimeLeft(60);
-
     try {
       const data = await DailyBlitzApi.getQuestions(subject);
-      setQuestions(data.questions || []);
-      setLoading(false);
+      if (request === requestRef.current) setQuestions(data.questions || []);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Savollarni yuklashda xatolik yuz berdi';
-      setError(msg);
-      setLoading(false);
+      if (request === requestRef.current) {
+        setError(err instanceof Error ? err.message : 'Savollarni yuklashda xatolik yuz berdi');
+      }
+    } finally {
+      if (request === requestRef.current) setLoading(false);
     }
-  };
+  }, [subject]);
 
-  useEffect(() => {
-    if (isOpen) {
-      startQuiz();
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-    }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [isOpen, subject]);
-
-  // Countdown timer
-  useEffect(() => {
-    if (!isOpen || loading || submitting || result || questions.length === 0) {
-      if (timerRef.current) clearInterval(timerRef.current);
-      return;
-    }
-
-    timerRef.current = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          if (timerRef.current) clearInterval(timerRef.current);
-          handleAutoSubmit();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [isOpen, loading, submitting, result, questions.length]);
-
-  const handleAutoSubmit = async () => {
-    await handleSubmit(answersRef.current);
-  };
-
-  const handleSelectChoice = (questionId: number, choiceId: number) => {
-    hapticSelect();
-    setAnswers((prev) => ({
-      ...prev,
-      [String(questionId)]: choiceId,
-    }));
-  };
-
-  const handleSubmit = async (finalAnswers?: Record<string, number>) => {
-    if (submitting || result) return;
+  const handleSubmit = useCallback(async (finalAnswers?: Record<string, number>) => {
+    if (submittingRef.current || result) return;
+    submittingRef.current = true;
     setSubmitting(true);
-    if (timerRef.current) clearInterval(timerRef.current);
-
-    const payload = finalAnswers || answers;
-
+    if (timerRef.current) clearTimeout(timerRef.current);
     try {
-      const res = await DailyBlitzApi.submitAnswers(subject, payload);
+      const res = await DailyBlitzApi.submitAnswers(subject, finalAnswers ?? answersRef.current);
       setResult(res);
       hapticNotify('success');
       try {
@@ -132,15 +89,41 @@ export default function DailyBlitzModal({
       } catch {
         /* ignore */
       }
-      if (onCompleted) {
-        onCompleted(res);
-      }
+      onCompleted?.(res);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Natijani saqlashda xatolik';
-      setError(msg);
+      setError(err instanceof Error ? err.message : 'Natijani saqlashda xatolik');
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
+  }, [subject, result, onCompleted]);
+
+  useEffect(() => {
+    if (isOpen) void startQuiz();
+    return () => {
+      requestRef.current += 1;
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [isOpen, startQuiz]);
+
+  // Keep side effects outside state updaters: Strict Mode may replay them.
+  useEffect(() => {
+    if (!isOpen || loading || submitting || result || questions.length === 0 || timeLeft <= 0) return;
+    timerRef.current = setTimeout(() => {
+      const remaining = Math.max(0, timeLeft - 1);
+      setTimeLeft(remaining);
+      if (remaining === 0) void handleSubmit(answersRef.current);
+    }, 1000);
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [isOpen, loading, submitting, result, questions.length, timeLeft, handleSubmit]);
+
+  const handleSelectChoice = (questionId: number, choiceId: number) => {
+    hapticSelect();
+    const next = { ...answersRef.current, [String(questionId)]: choiceId };
+    answersRef.current = next;
+    setAnswers(next);
   };
 
   if (!isOpen) return null;

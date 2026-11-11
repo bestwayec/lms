@@ -194,7 +194,7 @@ const emptyEntry = (): AnswerEntry => ({
 
 const TEXT_DEBOUNCE_MS = 400;
 
-export function isOpenTextQuestion(q: Question): boolean {
+function isOpenTextQuestion(q: Question): boolean {
   const type = (q.question_type || '').toLowerCase();
   if (['text', 'short_answer', 'inline_gap_fill', 'open', 'fill_blank'].includes(type)) {
     return true;

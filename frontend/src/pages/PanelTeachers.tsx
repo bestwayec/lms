@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   GraduationCap,
   Building2,
@@ -46,23 +46,24 @@ export default function PanelTeachers() {
   const [saving, setSaving] = useState(false);
 
   const toast = useToast();
+  const showLoadError = toast.error;
 
-  const loadTeachers = async () => {
+  const loadTeachers = useCallback(async () => {
     try {
       setLoading(true);
       const res = await TeacherManagementApi.list();
       setTeachers(res.results || []);
       setBranches(res.branches || []);
     } catch {
-      toast.error('Ustozlar ro‘yxatini yuklashda xatolik');
+      showLoadError('Ustozlar ro‘yxatini yuklashda xatolik');
     } finally {
       setLoading(false);
     }
-  };
+  }, [showLoadError]);
 
   useEffect(() => {
     loadTeachers();
-  }, []);
+  }, [loadTeachers]);
 
   const openCreateModal = () => {
     setEditingTeacher(null);

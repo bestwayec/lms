@@ -36,7 +36,7 @@ export interface SubjectGoalConfig {
   radarAxes: string[];
 }
 
-export const SUBJECT_GOAL_CONFIG: Record<string, SubjectGoalConfig> = {
+const SUBJECT_GOAL_CONFIG: Record<string, SubjectGoalConfig> = {
   chemistry: {
     goalText: '🧪 Kimyo Milliy Sertifikat (A+) / Tibbiyot Yo‘nalishi',
     badgeClass: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/30',
@@ -310,7 +310,7 @@ export default function Dashboard() {
   const hasActivity = Boolean(ind && (ind.tests_taken > 0 || ind.essays.count > 0));
 
   // Daily Goal calculation
-  const storedPlan = useMemo(() => getStoredPlan(), [user?.onboarding_completed, user?.daily_goal_minutes]);
+  const storedPlan = getStoredPlan();
   const trackBadgeLabel = resolveTrackBadge(data?.daily_goal?.target_exam || user?.exam_target || user?.target_exam, storedPlan, subject);
 
   const dateOf = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(lang) : '');

@@ -12,7 +12,7 @@ import {
 import { CopyIcon, CreditCardIcon, CheckIcon } from '../components/icons';
 
 // Strictly 3 commercial subscription plans: START / STARTER (7 000), PRO (15 000 - recommended), PREMIUM (27 000)
-export const PLAN_PRICES = {
+const PLAN_PRICES = {
   starter: 7000,
   pro: 15000,
   premium: 27000,

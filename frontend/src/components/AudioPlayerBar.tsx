@@ -23,13 +23,8 @@ export default function AudioPlayerBar({ src, title, sectionName }: AudioPlayerB
   const [isMuted, setIsMuted] = useState(false);
 
   useEffect(() => {
-    // Reset state on audio src change
-    setIsPlaying(false);
-    setCurrentTime(0);
-    setDuration(0);
     if (audioRef.current) {
       audioRef.current.playbackRate = playbackRate;
-      audioRef.current.load();
     }
   }, [src, playbackRate]);
 
@@ -108,6 +103,11 @@ export default function AudioPlayerBar({ src, title, sectionName }: AudioPlayerB
     >
       <audio
         ref={audioRef}
+        onLoadStart={() => {
+          setIsPlaying(false);
+          setCurrentTime(0);
+          setDuration(0);
+        }}
         src={src}
         preload="metadata"
         onTimeUpdate={handleTimeUpdate}

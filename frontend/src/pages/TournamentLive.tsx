@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../lib/api';
@@ -56,7 +56,7 @@ export default function TournamentLive() {
   const socketRef = useRef<WebSocket | null>(null);
 
   // Load tournament data
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const res = await api.get<{
         tournament: TournamentDetails;
@@ -82,7 +82,7 @@ export default function TournamentLive() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
 
   useEffect(() => {
     void loadData();
@@ -134,7 +134,7 @@ export default function TournamentLive() {
         socketRef.current.close();
       }
     };
-  }, [id, user]);
+  }, [id, user, loadData]);
 
   // Timer effect
   useEffect(() => {

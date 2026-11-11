@@ -24,7 +24,7 @@ export interface SubjectConfig {
   glowColor: string;
 }
 
-export const SUBJECT_CONFIGS: SubjectConfig[] = [
+const SUBJECT_CONFIGS: SubjectConfig[] = [
   {
     id: 'english',
     icon: '🇬🇧',

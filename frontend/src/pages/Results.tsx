@@ -24,7 +24,7 @@ import {
   TestsApi,
 } from '../lib/testing';
 
-export function getBmbBadge(grade?: string, pct?: number, t?: (k: string) => string): {
+function getBmbBadge(grade?: string, pct?: number, t?: (k: string) => string): {
   grade: string;
   color: string;
   desc: string;

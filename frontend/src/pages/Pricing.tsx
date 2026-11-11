@@ -13,7 +13,7 @@ import {
   useCardInfo,
 } from '../lib/useCardInfo';
 
-export const PLAN_PRICES = {
+const PLAN_PRICES = {
   starter: 7000,
   pro: 15000,
   premium: 27000,

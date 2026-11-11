@@ -37,18 +37,9 @@ export default function TeacherDashboard() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
-  const [activeMode, setActiveMode] = useState<'converter' | 'live' | 'vedomost'>(
-    tabParam === 'live' ? 'live' : tabParam === 'vedomost' ? 'vedomost' : 'converter'
-  );
-
-  useEffect(() => {
-    if (tabParam === 'live' || tabParam === 'vedomost' || tabParam === 'converter') {
-      setActiveMode(tabParam);
-    }
-  }, [tabParam]);
+  const activeMode = tabParam === 'live' || tabParam === 'vedomost' ? tabParam : 'converter';
 
   const setTab = (mode: 'converter' | 'live' | 'vedomost') => {
-    setActiveMode(mode);
     setSearchParams({ tab: mode });
   };
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Building2,
   Plus,
@@ -98,21 +98,22 @@ export default function PanelBranches() {
     }
   };
 
-  const loadBranches = async () => {
+  const showLoadError = toast.error;
+  const loadBranches = useCallback(async () => {
     try {
       setLoading(true);
       const data = await BranchApi.list();
       setBranches(Array.isArray(data) ? data : []);
     } catch {
-      toast.error('Filiallar ro‘yxatini yuklashda xatolik yuz berdi');
+      showLoadError('Filiallar ro‘yxatini yuklashda xatolik yuz berdi');
     } finally {
       setLoading(false);
     }
-  };
+  }, [showLoadError]);
 
   useEffect(() => {
     loadBranches();
-  }, []);
+  }, [loadBranches]);
 
   const openCreateModal = () => {
     setEditingBranch(null);
