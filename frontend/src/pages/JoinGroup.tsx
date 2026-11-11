@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowRight,
@@ -33,32 +33,38 @@ export default function JoinGroup() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [joined, setJoined] = useState(false);
+  const previewRequest = useRef(0);
 
-  // If token is in URL, fetch preview immediately
-  useEffect(() => {
-    if (token) {
-      setCodeInput(token);
-      fetchPreview(token);
-    }
-  }, [token]);
-
-  const fetchPreview = async (codeOrToken: string) => {
+  const fetchPreview = useCallback(async (codeOrToken: string) => {
     const raw = codeOrToken.trim();
     if (!raw) return;
+    const request = ++previewRequest.current;
     setLoadingPreview(true);
     setError(null);
     try {
       const data = await GroupInviteApi.preview(raw);
+      if (request !== previewRequest.current) return;
       setGroup(data);
-      if (data.is_member) setJoined(true);
+      setJoined(Boolean(data.is_member));
     } catch (err: unknown) {
+      if (request !== previewRequest.current) return;
       const msg = err instanceof Error ? err.message : t('jg_not_found_text');
       setError(msg);
       setGroup(null);
+      setJoined(false);
     } finally {
-      setLoadingPreview(false);
+      if (request === previewRequest.current) setLoadingPreview(false);
     }
-  };
+  }, [t]);
+
+  // Ignore a previous preview if the route changes or the component unmounts.
+  useEffect(() => {
+    if (token) {
+      setCodeInput(token);
+      void fetchPreview(token);
+    }
+    return () => { previewRequest.current += 1; };
+  }, [token, fetchPreview]);
 
   const handleJoin = async (targetTokenOrCode?: string) => {
     const code = targetTokenOrCode || group?.invite_token || group?.invite_code || codeInput.trim();

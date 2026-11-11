@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { api, getTokens } from '../lib/api';
 import data from './translations.json';
@@ -189,8 +189,6 @@ const Ctx = createContext<LangState | null>(null);
 
 export function LangProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<AppLang>(readStoredLang);
-  const langRef = useRef(lang);
-  langRef.current = lang;
 
   const t = useCallback(
     (key: string, fallback?: string) => translate(key, lang, fallback),

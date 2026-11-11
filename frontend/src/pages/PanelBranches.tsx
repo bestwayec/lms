@@ -103,7 +103,7 @@ export default function PanelBranches() {
       setLoading(true);
       const data = await BranchApi.list();
       setBranches(Array.isArray(data) ? data : []);
-    } catch (err) {
+    } catch {
       toast.error('Filiallar ro‘yxatini yuklashda xatolik yuz berdi');
     } finally {
       setLoading(false);

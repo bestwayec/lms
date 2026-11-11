@@ -203,13 +203,13 @@ export default function Results() {
               textDecoration: 'none',
             }}
           >
-            ← Barcha natijalarim
+            ← {t('result_back_list')}
           </Link>
         </div>
 
         {detailLoading && (
           <div style={{ padding: 40, textAlign: 'center', color: '#94A3B8' }}>
-            Natija yuklanmoqda...
+            {t('result_loading')}
           </div>
         )}
 
@@ -217,7 +217,7 @@ export default function Results() {
           <div className="error" style={{ padding: 20 }}>
             {detailErr}{' '}
             <button className="btn sm ghost" onClick={() => loadDetail(Number(idParam))}>
-              Qayta urinish
+              {t('error_retry')}
             </button>
           </div>
         )}
@@ -295,10 +295,10 @@ export default function Results() {
               lineHeight: 1.6,
               maxWidth: 460,
               margin: '0 auto 24px',
-              color: '#94a3b8',
+              color: 'var(--text-secondary)',
             }}
           >
-            Sizning natijalaringiz shu yerda jamlanadi. Birinchi testni topshirib, o'z rekordingizni o'rnating!
+            {t('result_empty_desc')}
           </p>
           <Link
             className="btn primary"
@@ -317,7 +317,7 @@ export default function Results() {
             }}
           >
             <span>🚀</span>
-            <span>Testlarga o'tish</span>
+            <span>{t('result_go_tests')}</span>
           </Link>
         </div>
       )}
@@ -358,7 +358,7 @@ export default function Results() {
                         ⚡️ Rash: {Number(r.rasch_score).toFixed(1)}
                       </span>
                     )}
-                    {bmbScale && (() => {
+                    {bmbScale && typeof r.bmb_grade === 'string' && r.bmb_grade.length > 0 && (() => {
                       const bmb = getBmbBadge(r.bmb_grade as string | undefined, pct, t);
                       return (
                         <span
@@ -463,7 +463,6 @@ function ResultDetailBody({ detail }: { detail: ResultDetailData }) {
   const { t } = useLang();
   const pct = num(detail.percentage, 0);
   const pending = detail.grading_status === 'pending_grading';
-  const bmb = getBmbBadge(detail.bmb_grade, pct, t);
 
   const [_retesting, setRetesting] = useState(false);
   const [retestErr, setRetestErr] = useState<string | null>(null);
@@ -591,7 +590,7 @@ function ResultDetailBody({ detail }: { detail: ResultDetailData }) {
         timeSpentSeconds={Number(detail.time_taken_seconds ?? 0)}
         raschScore={detail.rasch_score}
         raschGrade={detail.rasch_grade}
-        bmbGrade={detail.bmb_grade || bmb.grade}
+        bmbGrade={detail.bmb_grade}
         courseTitle={detail.test_title}
         subject={detail.test_subject || ((detail.test_title || '').toLowerCase().includes('english') || (detail.test_title || '').toLowerCase().includes('cefr') || (detail.test_title || '').toLowerCase().includes('ielts') ? 'english' : 'uzbek')}
         attemptId={String(detail.attempt_id || detail.id)}
@@ -657,10 +656,10 @@ function ResultDetailBody({ detail }: { detail: ResultDetailData }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
             <div>
               <strong style={{ fontSize: '0.98rem', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--ink)' }}>
-                <span>🧠</span> 24/7 Shaxsiy AI Repetitor Diagnostikasi
+                <span>🧠</span> {t('result_diag_title')}
               </strong>
               <p className="muted small" style={{ margin: '2px 0 0' }}>
-                Xatolar bo&apos;yicha chuqurlashtirilgan tahlil va zaif mavzularni o&apos;rganish.
+                {t('result_diag_desc')}
               </p>
             </div>
             <button
@@ -677,13 +676,13 @@ function ResultDetailBody({ detail }: { detail: ResultDetailData }) {
                 gap: 6,
               }}
             >
-              <span>{showDiag ? '▲ Yopish' : '▼ AI Tahlilini Ko‘rish'}</span>
+              <span>{showDiag ? `▲ ${t('close')}` : `▼ ${t('result_diag_show')}`}</span>
             </button>
           </div>
 
           {showDiag && (
             <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
-              {diagLoading && <p className="muted small">🤖 AI repetitor xatolaringizni tahlil qilmoqda…</p>}
+              {diagLoading && <p className="muted small">🤖 {t('result_diag_loading')}</p>}
               {diagErr && <p className="error small">{diagErr}</p>}
               {diagData && (
                 <div style={{ display: 'grid', gap: 12 }}>
@@ -696,17 +695,17 @@ function ResultDetailBody({ detail }: { detail: ResultDetailData }) {
                     }}
                   >
                     <strong style={{ color: '#d97706', display: 'block', marginBottom: 4 }}>
-                      💡 Shaxsiy AI Repetitor Xulosasi:
+                      💡 {t('result_diag_summary')}
                     </strong>
                     <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: 1.55 }}>
                       {diagData.general_advice}
                     </p>
                   </div>
 
-                  {diagData.weak_topics.length > 0 && (
+                  {(diagData.weak_topics ?? []).length > 0 && (
                     <div>
                       <h5 style={{ margin: '8px 0', fontSize: '0.9rem' }}>
-                        Aniqlangan zaif mavzular ({diagData.weak_topics.length} ta):
+                        {t('result_weak_topics').replace('{n}', String(diagData.weak_topics.length))}
                       </h5>
                       <div style={{ display: 'grid', gap: 8 }}>
                         {diagData.weak_topics.map((wt, idx) => {
@@ -738,12 +737,12 @@ function ResultDetailBody({ detail }: { detail: ResultDetailData }) {
                                     fontWeight: 700,
                                   }}
                                 >
-                                  {wt.incorrect_count} ta xato ·{' '}
+                                  {t('result_mistake_count').replace('{n}', String(wt.incorrect_count))} ·{' '}
                                   {wt.severity === 'high'
-                                    ? 'Yuqori xavf'
+                                    ? t('result_severity_high')
                                     : wt.severity === 'medium'
-                                      ? 'O‘rta xavf'
-                                      : 'Takrorlash lozim'}
+                                      ? t('result_severity_medium')
+                                      : t('result_severity_review')}
                                 </span>
                               </div>
                               <p className="muted small" style={{ margin: '4px 0 0', fontSize: '0.82rem' }}>

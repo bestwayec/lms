@@ -314,9 +314,12 @@ export default function Dashboard() {
   const trackBadgeLabel = resolveTrackBadge(data?.daily_goal?.target_exam || user?.exam_target || user?.target_exam, storedPlan, subject);
 
   const dateOf = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(lang) : '');
-  const sectionName = (code: string, fallback: string) => t(`omr_section_${code}`, fallback || code);
+  const sectionName = useCallback(
+    (code: string, fallback: string) => t(`omr_section_${code}`, fallback || code),
+    [t],
+  );
 
-  const partLabel = (w: DashboardWeakPart) => {
+  const partLabel = useCallback((w: DashboardWeakPart) => {
     if (w.label) return w.label;
     return (
       [
@@ -326,7 +329,7 @@ export default function Dashboard() {
         .filter(Boolean)
         .join(', ') + ` (${t(`rv_type_${w.question_type}`, w.question_type)})`
     );
-  };
+  }, [sectionName, t]);
 
   const weakPracticeUrl = (w: DashboardWeakPart) =>
     `/tests?skill=${encodeURIComponent(w.section_code || '')}&type=${encodeURIComponent(w.question_type || '')}&mode=practice`;
@@ -421,7 +424,7 @@ export default function Dashboard() {
       ...c,
       practiceUrl: `/tests?skill=${encodeURIComponent(c.label)}&mode=practice`,
     }));
-  }, [data?.weak_parts, subject, t, lang]);
+  }, [data?.weak_parts, subject, partLabel]);
 
   const now = new Date();
   const monthNamesByLang: Record<string, string[]> = {

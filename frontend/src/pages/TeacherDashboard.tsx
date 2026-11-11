@@ -23,6 +23,9 @@ import type {
 } from '../lib/school';
 import { errMessage } from '../lib/school';
 
+const EMPTY_GROUPS: SchoolGroup[] = [];
+const EMPTY_RECENT_RESULTS: RecentResult[] = [];
+
 export default function TeacherDashboard() {
   const { t } = useLang();
   const [data, setData] = useState<TeacherOverview | null>(null);
@@ -162,8 +165,8 @@ export default function TeacherDashboard() {
     };
   }, []);
 
-  const groups: SchoolGroup[] = data?.groups ?? [];
-  const recent: RecentResult[] = data?.recent_results ?? [];
+  const groups = data?.groups ?? EMPTY_GROUPS;
+  const recent = data?.recent_results ?? EMPTY_RECENT_RESULTS;
 
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const todaySubmissions = useMemo(

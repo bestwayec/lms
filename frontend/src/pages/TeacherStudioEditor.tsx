@@ -140,8 +140,6 @@ export default function TeacherStudioEditor() {
     [meta.subject],
   );
 
-  const payload = () => ({ ...meta, title: meta.title.trim(), blocks });
-
   const save = useCallback(async (): Promise<StudioDetail | null> => {
     if (!meta.title.trim()) {
       setErr(t('studio_err_title_required'));
@@ -150,7 +148,8 @@ export default function TeacherStudioEditor() {
     setBusy('save');
     setErr(null);
     try {
-      const d = id ? await StudioApi.update(id, payload()) : await StudioApi.create(payload());
+      const payload = { ...meta, title: meta.title.trim(), blocks };
+      const d = id ? await StudioApi.update(id, payload) : await StudioApi.create(payload);
       applyDetail(d);
       setNotice(t('studio_saved'));
       if (!id) navigate(`/teacher/studio/${d.test.id}/edit`, { replace: true });

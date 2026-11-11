@@ -53,7 +53,7 @@ export default function PanelTeachers() {
       const res = await TeacherManagementApi.list();
       setTeachers(res.results || []);
       setBranches(res.branches || []);
-    } catch (err) {
+    } catch {
       toast.error('Ustozlar ro‘yxatini yuklashda xatolik');
     } finally {
       setLoading(false);

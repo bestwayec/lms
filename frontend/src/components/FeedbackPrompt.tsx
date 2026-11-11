@@ -29,8 +29,10 @@ const write = (key: string, value: number) => {
  */
 export default function FeedbackPrompt() {
   const { t, lang } = useLang();
-  const now = Date.now();
-  const [visible, setVisible] = useState(() => read(SNOOZE_KEY) < now && now - read(LAST_KEY) > DAY);
+  const [visible, setVisible] = useState(() => {
+    const now = Date.now();
+    return read(SNOOZE_KEY) < now && now - read(LAST_KEY) > DAY;
+  });
   const [rating, setRating] = useState<number>(0);
   const [hover, setHover] = useState<number>(0);
   const [comment, setComment] = useState('');
@@ -83,7 +85,7 @@ export default function FeedbackPrompt() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
             <strong style={{ fontSize: 14 }}>
-              ⭐ Imtihon va savollar sifati sizga yoqdimi?
+              ⭐ {t('feedback_prompt_q')}
             </strong>
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
               <div className="fb-stars" onMouseLeave={() => setHover(0)}>
