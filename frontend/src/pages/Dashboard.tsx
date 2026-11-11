@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, useRef, lazy, Suspense } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 import { useLang } from '../i18n/LangContext';
 import {
   AuthExpiredError,
@@ -22,7 +22,7 @@ import { useSubject } from '../lib/useSubject';
 import { daysLeft, useEntitlement, useTier } from '../lib/useTier';
 import { Target, KeyRound, Trophy, Settings, Users } from 'lucide-react';
 import { hapticImpact, hapticNotify } from '../lib/haptics';
-import { useToast } from '../context/ToastContext';
+import { useToast } from '../context/toastState';
 import ReferralCard from '../components/ReferralCard';
 
 const GoalModal = lazy(() => import('../components/GoalModal'));
@@ -151,10 +151,19 @@ export default function Dashboard() {
   const tier = useTier();
   const entitlement = useEntitlement();
 
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [failed, setFailed] = useState(false);
+  const [loadedDashboard, setLoadedDashboard] = useState<{ subject: string; data: DashboardData } | null>(null);
+  const [failedSubject, setFailedSubject] = useState<string | null>(null);
+  const data = loadedDashboard?.subject === subject ? loadedDashboard.data : null;
+  const failed = failedSubject === subject;
   const [pendingReceipt, setPendingReceipt] = useState<PaymentReceiptItem | null>(null);
-  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [onboardingDismissed, setOnboardingDismissed] = useState(() => {
+    try {
+      return ['onboarding_dismissed', 'grandec_onboarding_done', 'grand_ed_onboarding_done']
+        .some((key) => localStorage.getItem(key) === 'true');
+    } catch {
+      return false;
+    }
+  });
   const [streakData, setStreakData] = useState<StreakInfoResponse | null>(null);
   const [blitzModalOpen, setBlitzModalOpen] = useState(false);
   const [goalModalOpen, setGoalModalOpen] = useState(false);
@@ -259,18 +268,7 @@ export default function Dashboard() {
   const role = (user?.role || '').toLowerCase();
   const isStudent = !(role === 'teacher' || role === 'admin' || role === 'superadmin' || role === 'center_admin' || user?.is_superuser);
 
-  useEffect(() => {
-    if (!isStudent || !user) {
-      setOnboardingOpen(false);
-      return;
-    }
-    const done =
-      localStorage.getItem('onboarding_dismissed') === 'true' ||
-      localStorage.getItem('grandec_onboarding_done') === 'true' ||
-      localStorage.getItem('grand_ed_onboarding_done') === 'true' ||
-      user.onboarding_completed === true;
-    setOnboardingOpen(!done && user.onboarding_completed === false);
-  }, [user, isStudent]);
+  const onboardingOpen = Boolean(isStudent && user && !onboardingDismissed && user.onboarding_completed === false);
 
   useEffect(() => {
     let alive = true;
@@ -284,13 +282,12 @@ export default function Dashboard() {
 
   const load = useCallback(() => {
     let alive = true;
-    setFailed(false);
     DashboardApi.get(subject)
-      .then((d) => alive && setData(d))
+      .then((d) => { if (alive) { setLoadedDashboard({ subject, data: d }); setFailedSubject(null); } })
       .catch((e) => {
         if (!alive) return;
         if (e instanceof AuthExpiredError) navigate('/login');
-        else setFailed(true);
+        else setFailedSubject(subject);
       });
     return () => {
       alive = false;
@@ -298,7 +295,6 @@ export default function Dashboard() {
   }, [subject, navigate]);
 
   useEffect(() => {
-    setData(null);
     GamificationApi.streak().then(setStreakData).catch(() => {});
     return load();
   }, [load]);
@@ -1022,7 +1018,7 @@ export default function Dashboard() {
       {failed && (
         <div className="dsh-card dsh-empty" role="alert">
           <p>{t('dsh_error')}</p>
-          <button type="button" className="ui-btn" onClick={() => load()}>
+          <button type="button" className="ui-btn" onClick={() => { setFailedSubject(null); load(); }}>
             {t('error_retry')}
           </button>
         </div>
@@ -1200,7 +1196,7 @@ export default function Dashboard() {
 
       {onboardingOpen && (
         <Suspense fallback={null}>
-          <OnboardingModal isOpen={onboardingOpen} onClose={() => setOnboardingOpen(false)} onSuccess={() => setOnboardingOpen(false)} />
+          <OnboardingModal isOpen={onboardingOpen} onClose={() => setOnboardingDismissed(true)} onSuccess={() => setOnboardingDismissed(true)} />
         </Suspense>
       )}
 

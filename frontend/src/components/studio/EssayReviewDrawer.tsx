@@ -23,7 +23,12 @@ interface Props {
  * as they are or override any criterion, and leave feedback. Uses the existing
  * teacher review API (scores are validated server-side).
  */
-export default function EssayReviewDrawer({ submissionId, onClose, onSaved }: Props) {
+export default function EssayReviewDrawer(props: Props) {
+  const { lang } = useLang();
+  return <EssayReviewDrawerBody key={`${props.submissionId}:${lang}`} {...props} />;
+}
+
+function EssayReviewDrawerBody({ submissionId, onClose, onSaved }: Props) {
   const { t } = useLang();
   const [data, setData] = useState<TeacherEssayDetail | null>(null);
   const [scores, setScores] = useState<Record<number, number>>({});
@@ -35,9 +40,6 @@ export default function EssayReviewDrawer({ submissionId, onClose, onSaved }: Pr
 
   useEffect(() => {
     let cancelled = false;
-    setData(null);
-    setErr(null);
-    setSaved(null);
     TeacherEssays.detail(submissionId)
       .then((d) => {
         if (cancelled) return;

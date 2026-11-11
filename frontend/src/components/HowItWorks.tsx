@@ -1,5 +1,5 @@
 import { useLang } from '../i18n/LangContext';
-import { useTheme } from '../theme/ThemeContext';
+import { useTheme } from '../theme/themeState';
 
 export default function HowItWorks() {
   const { t } = useLang();

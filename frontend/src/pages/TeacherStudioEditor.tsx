@@ -42,6 +42,10 @@ const errText = (e: unknown, t: (k: string, fallback?: string) => string) => {
  */
 export default function TeacherStudioEditor() {
   const { id } = useParams<{ id: string }>();
+  return <TeacherStudioEditorBody key={id ?? 'new'} id={id} />;
+}
+
+function TeacherStudioEditorBody({ id }: { id?: string }) {
   const navigate = useNavigate();
   const { t } = useLang();
 
@@ -72,7 +76,6 @@ export default function TeacherStudioEditor() {
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
-    setLoading(true);
     StudioApi.detail(id)
       .then((d) => {
         if (!cancelled) applyDetail(d);

@@ -1,10 +1,10 @@
 import { formatDisplayName, initialsOf } from '../lib/displayName';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 import { useLang, type AppLang } from '../i18n/LangContext';
 import { useTranslation } from '../i18n/useTranslation';
-import { useTheme, type Theme } from '../theme/ThemeContext';
+import { useTheme, type Theme } from '../theme/themeState';
 import { isPlatformAdmin, ProfileApi } from '../lib/api';
 import {
   MonitorIcon,

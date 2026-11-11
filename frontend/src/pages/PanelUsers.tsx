@@ -52,10 +52,9 @@ export default function PanelUsers() {
       .finally(() => setLoading(false));
   }, [q, role, status, joined]);
 
-  const [isDebouncing, setIsDebouncing] = useState(false);
+  const [isDebouncing, setIsDebouncing] = useState(true);
 
   useEffect(() => {
-    setIsDebouncing(true);
     const id = setTimeout(() => {
       setIsDebouncing(false);
       load();
@@ -122,10 +121,10 @@ export default function PanelUsers() {
         <input
           placeholder={t('panel_search_users')}
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => { setIsDebouncing(true); setQ(e.target.value); }}
           style={{ flex: '1 1 200px', width: '100%', fontSize: '16px', minHeight: '42px', boxSizing: 'border-box' }}
         />
-        <select value={role} onChange={(e) => setRole(e.target.value)} style={{ minHeight: '42px' }}>
+        <select value={role} onChange={(e) => { setIsDebouncing(true); setRole(e.target.value); }} style={{ minHeight: '42px' }}>
           <option value="">
             {t('all')} · {t('role')}
           </option>
@@ -135,14 +134,14 @@ export default function PanelUsers() {
             </option>
           ))}
         </select>
-        <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ minHeight: '42px' }}>
+        <select value={status} onChange={(e) => { setIsDebouncing(true); setStatus(e.target.value); }} style={{ minHeight: '42px' }}>
           <option value="">
             {t('all')} · {t('status_header')}
           </option>
           <option value="active">{t('panel_active')}</option>
           <option value="blocked">{t('panel_blocked')}</option>
         </select>
-        <select value={joined} onChange={(e) => setJoined(e.target.value)} style={{ minHeight: '42px' }}>
+        <select value={joined} onChange={(e) => { setIsDebouncing(true); setJoined(e.target.value); }} style={{ minHeight: '42px' }}>
           <option value="">{t('panel_joined')}</option>
           <option value="today">{t('panel_joined_today')}</option>
           <option value="7d">{t('panel_joined_7d')}</option>

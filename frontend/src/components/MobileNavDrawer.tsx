@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { NavLink } from 'react-router-dom';
-import { useAuth } from '../auth/AuthContext';
-import { useTheme } from '../theme/ThemeContext';
+import { useAuth } from '../auth/authState';
+import { useTheme } from '../theme/themeState';
 import { useLang } from '../i18n/LangContext';
 import { canReviewEssays, canTeach, isPlatformAdmin } from '../lib/api';
 import {

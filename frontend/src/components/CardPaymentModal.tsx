@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react';
+import { useRef, useState, type DragEvent, type FormEvent } from 'react';
 import { CheckIcon, CopyIcon, CreditCardIcon, XIcon, ZapIcon } from './icons';
 import { BillingApi, type PaymentReceiptItem } from '../lib/api';
 import {
@@ -70,19 +70,21 @@ export default function CardPaymentModal({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (initialTariff) {
-      setSelectedTariff(initialTariff);
+  const [previousTariff, setPreviousTariff] = useState(initialTariff);
+  if (previousTariff !== initialTariff) {
+    setPreviousTariff(initialTariff);
+    setSelectedTariff(initialTariff);
+  }
+  const [previousOpen, setPreviousOpen] = useState(isOpen);
+  if (previousOpen !== isOpen) {
+    setPreviousOpen(isOpen);
+    if (isOpen) {
+      setErrorMsg(null);
+      setSubmittedReceipt(null);
+      setSelectedFile(null);
+      setPreviewUrl(null);
     }
-  }, [initialTariff]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    setErrorMsg(null);
-    setSubmittedReceipt(null);
-    setSelectedFile(null);
-    setPreviewUrl(null);
-  }, [isOpen]);
+  }
 
   if (!isOpen) return null;
 

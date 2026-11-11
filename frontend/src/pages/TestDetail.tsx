@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import LimitExceededModal from '../components/LimitExceededModal';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 import { useLang } from '../i18n/LangContext';
 import { Tests as TestsApi, canTeach, type ApiError } from '../lib/api';
 import { paywallSubject, type CefrScaleRule } from '../lib/paywall';

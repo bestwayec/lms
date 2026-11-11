@@ -42,7 +42,7 @@ export default function PanelDashboard() {
   const [groups, setGroups] = useState<PanelGroupItem[]>([]);
   const [teachers, setTeachers] = useState<PanelTeacherItem[]>([]);
   const [attendance, setAttendance] = useState<PanelAttendanceItem[]>([]);
-  const [groupsLoading, setGroupsLoading] = useState(false);
+  const [groupsLoading, setGroupsLoading] = useState(true);
 
   // Group Create Modal State
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
@@ -76,7 +76,20 @@ export default function PanelDashboard() {
   };
 
   useEffect(() => {
-    loadGroupsAndAttendance();
+    let active = true;
+    Promise.allSettled([Panel.groups(), Panel.teachers(), Panel.attendance()])
+      .then(([gRes, tRes, aRes]) => {
+        if (!active) return;
+        if (gRes.status === 'fulfilled') setGroups(gRes.value.results || []);
+        if (tRes.status === 'fulfilled') {
+          const list = tRes.value.results || [];
+          setTeachers(list);
+          if (list.length) setGroupTeacherId((prev) => prev || list[0].id);
+        }
+        if (aRes.status === 'fulfilled') setAttendance(aRes.value.results || []);
+        setGroupsLoading(false);
+      });
+    return () => { active = false; };
   }, []);
 
   const handleCreateGroup = async (e: React.FormEvent) => {

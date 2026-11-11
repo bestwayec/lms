@@ -1,14 +1,6 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { ThemeContext, type Theme, type ResolvedTheme } from './themeState';
 import type { ReactNode } from 'react';
-
-export type Theme = 'dark' | 'light' | 'system';
-export type ResolvedTheme = 'dark' | 'light';
-
-interface ThemeState {
-  theme: Theme;
-  resolvedTheme: ResolvedTheme;
-  setTheme: (theme: Theme) => void;
-}
 
 const THEME_KEY = 'theme_v2';
 
@@ -31,8 +23,6 @@ function getStoredTheme(): Theme {
   // Default is STRICTLY light mode (Warm Academic Luxury)
   return 'light';
 }
-
-const ThemeContext = createContext<ThemeState | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(getStoredTheme);
@@ -68,10 +58,4 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       {children}
     </ThemeContext.Provider>
   );
-}
-
-export function useTheme(): ThemeState {
-  const ctx = useContext(ThemeContext);
-  if (!ctx) throw new Error('useTheme must be used within <ThemeProvider>');
-  return ctx;
 }

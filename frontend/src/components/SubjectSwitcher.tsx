@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 import { useLang } from '../i18n/LangContext';
 import { ProfileApi } from '../lib/api';
 import { isValidSubject, type Subject } from '../lib/useSubject';

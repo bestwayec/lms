@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useLang } from '../i18n/LangContext';
 import { ArenaLobby, arenaSocketUrl } from '../lib/api';
 import { SwordsIcon, TrophyIcon } from '../components/icons';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 import TiltCard from '../components/TiltCard';
 import LimitExceededModal from '../components/LimitExceededModal';
 

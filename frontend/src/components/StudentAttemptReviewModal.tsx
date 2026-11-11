@@ -15,25 +15,29 @@ interface StudentAttemptReviewModalProps {
   onClose: () => void;
 }
 
-export default function StudentAttemptReviewModal({
+type ReviewFilter = 'all' | 'mistakes' | 'correct';
+
+export default function StudentAttemptReviewModal(props: StudentAttemptReviewModalProps) {
+  const [filter, setFilter] = useState<ReviewFilter>('all');
+  if (!props.isOpen || !props.attemptId) return null;
+  return <StudentAttemptReviewBody key={props.attemptId} {...props} filter={filter} setFilter={setFilter} />;
+}
+
+function StudentAttemptReviewBody({
   attemptId,
   isOpen,
   onClose,
-}: StudentAttemptReviewModalProps) {
+  filter,
+  setFilter,
+}: StudentAttemptReviewModalProps & { filter: ReviewFilter; setFilter: (filter: ReviewFilter) => void }) {
   const [data, setData] = useState<TeacherAttemptDetailsResponse | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [filter, setFilter] = useState<'all' | 'mistakes' | 'correct'>('all');
 
   useEffect(() => {
-    if (!isOpen || !attemptId) {
-      setData(null);
-      return;
-    }
+    if (!isOpen || !attemptId) return;
 
     let alive = true;
-    setLoading(true);
-    setErr(null);
 
     TeacherGradebookApi.attemptDetails(attemptId)
       .then((res) => {

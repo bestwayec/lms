@@ -1,19 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import { tg, initTelegramWebApp, type TelegramWebApp } from '../pages/tma/telegram';
 import { hapticSelect, hapticImpact, hapticNotify } from '../lib/haptics';
 
+type Snapshot = { webApp: TelegramWebApp | null; isReady: boolean };
+const serverSnapshot: Snapshot = { webApp: null, isReady: false };
+let snapshot: Snapshot = { webApp: tg(), isReady: false };
+const listeners = new Set<() => void>();
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  const webApp = initTelegramWebApp();
+  if (webApp && (snapshot.webApp !== webApp || !snapshot.isReady)) {
+    snapshot = { webApp, isReady: true };
+    listeners.forEach((notify) => notify());
+  }
+  return () => { listeners.delete(listener); };
+}
+
 export function useTelegram() {
-  const [webApp, setWebApp] = useState<TelegramWebApp | null>(() => tg());
-  const [isReady, setIsReady] = useState(false);
-
-  useEffect(() => {
-    const wa = initTelegramWebApp();
-    if (wa) {
-      setWebApp(wa);
-      setIsReady(true);
-    }
-  }, []);
-
+  const { webApp, isReady } = useSyncExternalStore(subscribe, () => snapshot, () => serverSnapshot);
   return {
     webApp,
     isReady,
@@ -24,18 +29,10 @@ export function useTelegram() {
     hapticImpact,
     hapticNotify,
     close: () => {
-      try {
-        webApp?.close();
-      } catch {
-        /* ignore */
-      }
+      try { webApp?.close(); } catch { /* older clients */ }
     },
     expand: () => {
-      try {
-        webApp?.expand();
-      } catch {
-        /* ignore */
-      }
+      try { webApp?.expand(); } catch { /* older clients */ }
     },
   };
 }

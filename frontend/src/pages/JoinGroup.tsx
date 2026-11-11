@@ -11,8 +11,8 @@ import {
   Sparkles,
   CheckCircle2,
 } from 'lucide-react';
-import { useAuth } from '../auth/AuthContext';
-import { useToast } from '../context/ToastContext';
+import { useAuth } from '../auth/authState';
+import { useToast } from '../context/toastState';
 import { useLang } from '../i18n/LangContext';
 import {
   GroupInviteApi,
@@ -21,6 +21,10 @@ import {
 
 export default function JoinGroup() {
   const { token } = useParams<{ token?: string }>();
+  return <JoinGroupContent key={token ?? ''} token={token} />;
+}
+
+function JoinGroupContent({ token }: { token?: string }) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const toast = useToast();
@@ -28,7 +32,7 @@ export default function JoinGroup() {
 
   // Direct Code / Token Flow
   const [codeInput, setCodeInput] = useState(token || '');
-  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [loadingPreview, setLoadingPreview] = useState(Boolean(token));
   const [group, setGroup] = useState<GroupJoinPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -59,12 +63,24 @@ export default function JoinGroup() {
 
   // Ignore a previous preview if the route changes or the component unmounts.
   useEffect(() => {
-    if (token) {
-      setCodeInput(token);
-      void fetchPreview(token);
-    }
+    if (!token) return;
+    const request = ++previewRequest.current;
+    GroupInviteApi.preview(token)
+      .then((data) => {
+        if (request !== previewRequest.current) return;
+        setGroup(data);
+        setJoined(Boolean(data.is_member));
+        setError(null);
+      })
+      .catch((err: unknown) => {
+        if (request !== previewRequest.current) return;
+        setError(err instanceof Error ? err.message : t('jg_not_found_text'));
+        setGroup(null);
+        setJoined(false);
+      })
+      .finally(() => { if (request === previewRequest.current) setLoadingPreview(false); });
     return () => { previewRequest.current += 1; };
-  }, [token, fetchPreview]);
+  }, [token, t]);
 
   const handleJoin = async (targetTokenOrCode?: string) => {
     const code = targetTokenOrCode || group?.invite_token || group?.invite_code || codeInput.trim();

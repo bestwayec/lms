@@ -19,7 +19,7 @@ import {
   CheckCircle,
 } from 'lucide-react';
 import { BranchApi, type BranchItem, type RetentionRiskResponse } from '../lib/api';
-import { useToast } from '../context/ToastContext';
+import { useToast } from '../context/toastState';
 
 const SUBJECT_OPTIONS = [
   { value: 'biology', label: '🧬 Biologiya' },
@@ -112,8 +112,13 @@ export default function PanelBranches() {
   }, [showLoadError]);
 
   useEffect(() => {
-    loadBranches();
-  }, [loadBranches]);
+    let active = true;
+    BranchApi.list()
+      .then((data) => { if (active) setBranches(Array.isArray(data) ? data : []); })
+      .catch(() => { if (active) showLoadError('Filiallar ro‘yxatini yuklashda xatolik yuz berdi'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [showLoadError]);
 
   const openCreateModal = () => {
     setEditingBranch(null);

@@ -13,16 +13,19 @@ import { SpeakingApi, type SpeakingSubmissionDetail } from '../lib/api';
 export default function SpeakingResult() {
   const { t: tr } = useLang();
   const { id } = useParams<{ id: string }>();
-  const [sub, setSub] = useState<SpeakingSubmissionDetail | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState<{ id: string; submission: SpeakingSubmissionDetail | null; error: string | null } | null>(null);
+  const current = loaded?.id === id ? loaded : null;
+  const sub = current?.submission ?? null;
+  const error = current?.error ?? null;
+  const loading = Boolean(id && !current);
 
   useEffect(() => {
     if (!id) return;
-    setLoading(true);
+    let active = true;
     SpeakingApi.submission(id)
       .then((res) => {
-        setSub(res);
+        if (!active) return;
+        setLoaded({ id, submission: res, error: null });
         try {
           confetti({
             particleCount: 80,
@@ -35,9 +38,9 @@ export default function SpeakingResult() {
         }
       })
       .catch((e: unknown) => {
-        setError(e instanceof Error ? e.message : "Natijani yuklashda xatolik.");
-      })
-      .finally(() => setLoading(false));
+        if (active) setLoaded({ id, submission: null, error: e instanceof Error ? e.message : "Natijani yuklashda xatolik." });
+      });
+    return () => { active = false; };
   }, [id]);
 
   if (loading) {

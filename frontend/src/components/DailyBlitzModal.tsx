@@ -24,7 +24,12 @@ interface DailyBlitzModalProps {
   onCompleted?: (result: DailyBlitzResultResponse) => void;
 }
 
-export default function DailyBlitzModal({
+export default function DailyBlitzModal(props: DailyBlitzModalProps) {
+  if (!props.isOpen) return null;
+  return <DailyBlitzModalBody key={props.subject ?? 'uzbek'} {...props} />;
+}
+
+function DailyBlitzModalBody({
   isOpen,
   onClose,
   subject = 'uzbek',
@@ -99,12 +104,19 @@ export default function DailyBlitzModal({
   }, [subject, result, onCompleted]);
 
   useEffect(() => {
-    if (isOpen) void startQuiz();
+    if (!isOpen) return;
+    const request = ++requestRef.current;
+    DailyBlitzApi.getQuestions(subject)
+      .then((data) => { if (request === requestRef.current) setQuestions(data.questions || []); })
+      .catch((err: unknown) => {
+        if (request === requestRef.current) setError(err instanceof Error ? err.message : 'Savollarni yuklashda xatolik yuz berdi');
+      })
+      .finally(() => { if (request === requestRef.current) setLoading(false); });
     return () => {
       requestRef.current += 1;
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [isOpen, startQuiz]);
+  }, [isOpen, subject]);
 
   // Keep side effects outside state updaters: Strict Mode may replay them.
   useEffect(() => {

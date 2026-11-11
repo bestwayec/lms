@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useAuth } from '../auth/AuthContext';
-import { useToast } from '../context/ToastContext';
+import { useAuth } from '../auth/authState';
+import { useToast } from '../context/toastState';
 import { ReferralApi } from '../lib/api';
 import { useLang } from '../i18n/LangContext';
 

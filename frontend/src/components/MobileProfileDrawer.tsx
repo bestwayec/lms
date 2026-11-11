@@ -2,10 +2,10 @@ import { initialsOf } from '../lib/displayName';
 import PlanBadge from './PlanBadge';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 import { useLang, type AppLang } from '../i18n/LangContext';
 import { LayoutGrid } from 'lucide-react';
-import { useTheme } from '../theme/ThemeContext';
+import { useTheme } from '../theme/themeState';
 import { isPlatformAdmin, formatDisplayName } from '../lib/api';
 import {
   CrownIcon,

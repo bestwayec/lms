@@ -1,5 +1,5 @@
 import { Navigate } from 'react-router-dom';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 import { canTeach, isPlatformAdmin } from '../lib/api';
 import Groups from './Groups';
 import JoinGroup from './JoinGroup';

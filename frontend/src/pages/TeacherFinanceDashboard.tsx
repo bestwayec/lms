@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BellRing, CreditCard, Sparkles, Users, Wallet } from 'lucide-react';
 
-import { useToast } from '../context/ToastContext';
+import { useToast } from '../context/toastState';
 import { useLang } from '../i18n/LangContext';
 import { apiFetch } from '../lib/api';
 
@@ -58,11 +58,13 @@ export default function TeacherFinanceDashboard() {
   const [groupsFailed, setGroupsFailed] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
   const [financeData, setFinanceData] = useState<GroupFinanceData | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [financeLoadedKey, setFinanceLoadedKey] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
   const [rowBusy, setRowBusy] = useState<number | null>(null);
   const [reload, setReload] = useState(0);
+  const financeKey = `${selectedGroupId}:${reload}`;
+  const loading = selectedGroupId !== null && financeLoadedKey !== financeKey;
 
   const money = (n: number) => `${Number(n || 0).toLocaleString(lang)} ${t('tf_sum')}`;
   const errText = (err: unknown, key: string) => (err instanceof Error && err.message ? err.message : t(key));
@@ -80,8 +82,17 @@ export default function TeacherFinanceDashboard() {
   }, []);
 
   useEffect(() => {
-    loadGroups();
-  }, [loadGroups]);
+    let active = true;
+    apiFetch<unknown>('/api/v1/school/groups/')
+      .then((res) => {
+        if (!active) return;
+        const list = (Array.isArray(res) ? res : []).map((g: { id: number; name: string }) => ({ id: g.id, name: g.name }));
+        setGroups(list);
+        setSelectedGroupId((current) => current ?? list[0]?.id ?? null);
+      })
+      .catch(() => { if (active) setGroupsFailed(true); });
+    return () => { active = false; };
+  }, []);
 
   const loadFinance = useCallback(async (groupId: number) => {
     const data = await apiFetch<GroupFinanceData>(`/api/v1/courses/groups/${groupId}/finance-summary/`);
@@ -91,15 +102,14 @@ export default function TeacherFinanceDashboard() {
   useEffect(() => {
     if (!selectedGroupId) return;
     let alive = true;
-    setLoading(true);
-    setFailed(false);
-    loadFinance(selectedGroupId)
-      .catch(() => alive && setFailed(true))
-      .finally(() => alive && setLoading(false));
+    apiFetch<GroupFinanceData>(`/api/v1/courses/groups/${selectedGroupId}/finance-summary/`)
+      .then((data) => { if (alive) { setFinanceData(data); setFailed(false); } })
+      .catch(() => { if (alive) setFailed(true); })
+      .finally(() => { if (alive) setFinanceLoadedKey(financeKey); });
     return () => {
       alive = false;
     };
-  }, [selectedGroupId, loadFinance, reload]);
+  }, [selectedGroupId, financeKey]);
 
   const handleSendReminders = async () => {
     if (!selectedGroupId) return;

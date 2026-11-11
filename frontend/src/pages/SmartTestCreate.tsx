@@ -328,8 +328,10 @@ export default function SmartTestCreate() {
   const [copiedCode, setCopiedCode] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
 
-  // Parse text on change
-  useEffect(() => {
+  // Reparse before committing a render when the source text or subject changes.
+  const [lastParse, setLastParse] = useState<{ rawText: string; subject: SupportedSubject; title: string } | null>(null);
+  if (!lastParse || lastParse.rawText !== rawText || lastParse.subject !== subject || lastParse.title !== title) {
+    setLastParse({ rawText, subject, title });
     const res = parseSmartTestText(rawText, subject);
     setQuestions(res.questions);
     if (res.readingPassage) {
@@ -352,7 +354,7 @@ export default function SmartTestCreate() {
         setTitle(`Ona tili — ${res.questions.length} talik mavzulashtirilgan test`);
       }
     }
-  }, [rawText, subject, title]);
+  }
 
   const unansweredCount = useMemo(() => {
     return questions.filter((q) => !q.correctAnswer).length;

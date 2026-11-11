@@ -113,8 +113,13 @@ export default function Groups() {
   }, []);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    let active = true;
+    School.groups()
+      .then((list) => { if (active) setGroups(list as unknown as SchoolGroup[]); })
+      .catch((error: unknown) => { if (active) setErr(errMessage(error)); })
+      .finally(() => { if (active) setLoadingGroups(false); });
+    return () => { active = false; };
+  }, []);
 
   useEffect(
     () => () => {

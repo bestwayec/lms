@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, BarChart3, Clock, Lock, PlayCircle, Plus, RotateCcw, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
 import LimitExceededModal from '../components/LimitExceededModal';
 import MockCodeCard from '../components/MockCodeCard';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 import { useLang } from '../i18n/LangContext';
 import { Billing, DashboardApi, MockTests, type ApiError, type BillingEntitlement } from '../lib/api';
 import { listTestsPage, type TestListItem } from '../lib/testing';
@@ -26,6 +26,7 @@ interface MyStatus {
 }
 
 type Item = TestListItem & { section_names?: string[]; my_status?: MyStatus };
+const EMPTY_ITEMS: Item[] = [];
 
 const lower = (v: unknown) => String(v ?? '').toLowerCase();
 const isEnglishTest = (i: Item) =>
@@ -69,7 +70,7 @@ function SkeletonCard() {
 
 /** Tests: resume → join with a code → the subject's tests (chips, search, filter sheet). */
 export default function Tests() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
@@ -81,13 +82,16 @@ export default function Tests() {
   const isPracticeActive = Boolean(practiceMode === 'practice' || practiceSkill || practiceType);
 
   const [entitlement, setEntitlement] = useState<BillingEntitlement | null>(null);
-  const [tests, setTests] = useState<Item[]>([]);
-  const [count, setCount] = useState<number | null>(null);
   const [page, setPage] = useState(1);
-  const [hasNext, setHasNext] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
+  const [loaded, setLoaded] = useState<{ key: string; tests: Item[]; count: number | null; hasNext: boolean; error: string | null } | null>(null);
+  const loadKey = JSON.stringify([page, subject, reload, lang]);
+  const current = loaded?.key === loadKey ? loaded : null;
+  const tests = current?.tests ?? EMPTY_ITEMS;
+  const count = current?.count ?? null;
+  const hasNext = current?.hasNext ?? false;
+  const loading = !current;
+  const err = current?.error ?? null;
   const [resume, setResume] = useState<{ title: string; route: string } | null>(null);
   const [category, setCategory] = useState<Category>('all');
   const [query, setQuery] = useState('');
@@ -108,34 +112,29 @@ export default function Tests() {
     Billing.entitlement().then(setEntitlement).catch(() => setEntitlement(null));
   }, []);
 
-  // A new subject starts the list from the top.
-  useEffect(() => {
+  // A new subject starts the list from the top before the new render commits.
+  const [previousSubject, setPreviousSubject] = useState(subject);
+  if (subject !== previousSubject) {
+    setPreviousSubject(subject);
     setCategory('all');
     setPage(1);
-  }, [subject]);
+  }
 
   useEffect(() => {
     let alive = true;
-    setLoading(true);
-    setErr(null);
     listTestsPage(page, subject)
       .then((p) => {
         if (!alive) return;
-        setTests((p.results ?? []) as Item[]);
-        setCount(p.count ?? (p.results ?? []).length);
-        setHasNext(Boolean(p.next));
+        setLoaded({ key: loadKey, tests: (p.results ?? []) as Item[], count: p.count ?? (p.results ?? []).length, hasNext: Boolean(p.next), error: null });
       })
       .catch((e: unknown) => {
         if (!alive) return;
-        setTests([]);
-        setCount(null);
-        setErr(e instanceof Error ? e.message : t('err_retry_js'));
-      })
-      .finally(() => alive && setLoading(false));
+        setLoaded({ key: loadKey, tests: [], count: null, hasNext: false, error: e instanceof Error ? e.message : t('err_retry_js') });
+      });
     return () => {
       alive = false;
     };
-  }, [page, subject, reload, t]);
+  }, [page, subject, loadKey, t]);
 
   // Same source as the dashboard: the one unfinished attempt of this subject.
   useEffect(() => {

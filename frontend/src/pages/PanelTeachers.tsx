@@ -12,7 +12,7 @@ import {
   Settings,
 } from 'lucide-react';
 import { TeacherManagementApi, type TeacherManagementItem } from '../lib/api';
-import { useToast } from '../context/ToastContext';
+import { useToast } from '../context/toastState';
 
 const SUBJECT_LABELS: Record<string, string> = {
   biology: '🧬 Biologiya',
@@ -62,8 +62,13 @@ export default function PanelTeachers() {
   }, [showLoadError]);
 
   useEffect(() => {
-    loadTeachers();
-  }, [loadTeachers]);
+    let active = true;
+    TeacherManagementApi.list()
+      .then((res) => { if (active) { setTeachers(res.results || []); setBranches(res.branches || []); } })
+      .catch(() => { if (active) showLoadError('Ustozlar ro‘yxatini yuklashda xatolik'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [showLoadError]);
 
   const openCreateModal = () => {
     setEditingTeacher(null);

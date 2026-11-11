@@ -12,7 +12,7 @@ import './styles/dashboard.css'
 import './styles/arena.css'
 import './styles/studio.css'
 import App from './App.tsx'
-import { LangProvider } from './i18n/LangContext.tsx'
+import { LangProvider } from './i18n/LangProvider.tsx'
 
 /**
  * React equivalent of legacy static/js/push-notifications.js PushManager.init().

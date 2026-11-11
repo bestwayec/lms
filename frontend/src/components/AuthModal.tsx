@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/authState';
 import { GoogleAuth, TelegramAuth, landingFor } from '../lib/api';
 import confetti from 'canvas-confetti';
 import OtpInput from './OtpInput';

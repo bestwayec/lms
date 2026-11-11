@@ -1,18 +1,11 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import { useState, useCallback, type ReactNode } from 'react';
+import { ToastContext } from './toastState';
 
 interface ToastItem {
   id: number;
   message: string;
   type: 'success' | 'error' | 'info';
 }
-
-interface ToastContextValue {
-  success: (msg: string) => void;
-  error: (msg: string) => void;
-  info: (msg: string) => void;
-}
-
-const ToastContext = createContext<ToastContextValue | null>(null);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
@@ -41,22 +34,4 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       </div>
     </ToastContext.Provider>
   );
-}
-
-export function useToast(): ToastContextValue {
-  const ctx = useContext(ToastContext);
-  if (!ctx) {
-    return {
-      success: (msg: string) => {
-        if (typeof window !== 'undefined') console.log('Toast [success]:', msg);
-      },
-      error: (msg: string) => {
-        if (typeof window !== 'undefined') console.error('Toast [error]:', msg);
-      },
-      info: (msg: string) => {
-        if (typeof window !== 'undefined') console.info('Toast [info]:', msg);
-      },
-    };
-  }
-  return ctx;
 }

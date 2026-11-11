@@ -12,20 +12,19 @@ const RANGES = [7, 14, 30, 60, 90];
 export default function Analytics() {
   const { t } = useLang();
   const [days, setDays] = useState(14);
-  const [data, setData] = useState<AnalyticsData | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState<{ days: number; data: AnalyticsData | null; error: string | null } | null>(null);
+  const data = loaded?.days === days ? loaded.data : null;
+  const err = loaded?.days === days ? loaded.error : null;
 
   useEffect(() => {
     let alive = true;
-    setData(null);
-    setErr(null);
     // GET /api/v1/school/analytics/?days=<1..90>
     School.analytics(days)
       .then((r) => {
-        if (alive) setData(r as unknown as AnalyticsData);
+        if (alive) setLoaded({ days, data: r as unknown as AnalyticsData, error: null });
       })
       .catch((e: unknown) => {
-        if (alive) setErr(errMessage(e));
+        if (alive) setLoaded({ days, data: null, error: errMessage(e) });
       });
     return () => {
       alive = false;

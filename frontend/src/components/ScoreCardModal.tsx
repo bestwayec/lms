@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { X, Download, Share2, Send, FileText, Copy, Check } from 'lucide-react';
-import { useToast } from '../context/ToastContext';
+import { useToast } from '../context/toastState';
 import { useTranslation } from '../i18n/useTranslation';
 
 export interface ScoreCardModalProps {

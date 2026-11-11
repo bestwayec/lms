@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckIcon } from './icons';
 import { useLang } from '../i18n/LangContext';
-import { useTheme } from '../theme/ThemeContext';
+import { useTheme } from '../theme/themeState';
 
 interface HeroCarouselProps {
   onAction: (path: string) => void;
