@@ -53,12 +53,12 @@ export async function cacheExamData(attemptId: number | string, examData: unknow
   const normId = String(attemptId);
   try {
     const db = await openDatabase();
-    return new Promise((resolve, reject) => {
+    return await new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_EXAMS, 'readwrite');
       const store = tx.objectStore(STORE_EXAMS);
       const putReq = store.put({ attemptId: normId, data: examData, savedAt: Date.now() });
-      putReq.onsuccess = () => resolve();
-      putReq.onerror = () => reject(putReq.error);
+      tx.oncomplete = () => resolve();
+      tx.onabort = tx.onerror = () => reject(tx.error || putReq.error);
     });
   } catch {
     try {
@@ -122,12 +122,12 @@ export async function saveAnswerOffline(
 
   try {
     const db = await openDatabase();
-    return new Promise((resolve, reject) => {
+    return await new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_ANSWERS, 'readwrite');
       const store = tx.objectStore(STORE_ANSWERS);
       const putReq = store.put(record);
-      putReq.onsuccess = () => resolve();
-      putReq.onerror = () => reject(putReq.error);
+      tx.oncomplete = () => resolve();
+      tx.onabort = tx.onerror = () => reject(tx.error || putReq.error);
     });
   } catch {
     try {
@@ -172,13 +172,13 @@ export async function getUnsyncedAnswers(attemptId: number | string): Promise<Of
 /** Mark answers as synced after server batch acknowledgment. */
 export async function markAnswersSynced(
   attemptId: number | string,
-  questionIds: (number | string)[],
+  acknowledged: OfflineAnswerRecord[],
 ): Promise<void> {
   const normAttempt = String(attemptId);
-  const idsToMark = new Set(questionIds.map((qid) => `${normAttempt}_${qid}`));
+  const snapshots = new Map(acknowledged.map((record) => [record.id, JSON.stringify(record)]));
   try {
     const db = await openDatabase();
-    return new Promise((resolve) => {
+    return await new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_ANSWERS, 'readwrite');
       const store = tx.objectStore(STORE_ANSWERS);
       const index = store.index('attemptId');
@@ -187,22 +187,22 @@ export async function markAnswersSynced(
       request.onsuccess = () => {
         const records = (request.result as OfflineAnswerRecord[]) || [];
         for (const rec of records) {
-          if (idsToMark.has(rec.id)) {
+          if (snapshots.get(rec.id) === JSON.stringify(rec)) {
             rec.synced = true;
             store.put(rec);
           }
         }
-        resolve();
       };
-      request.onerror = () => resolve();
+      tx.oncomplete = () => resolve();
+      tx.onabort = tx.onerror = () => reject(tx.error || request.error);
     });
   } catch {
     try {
       const key = `offline_answers_${normAttempt}`;
       const existing = JSON.parse(localStorage.getItem(key) || '{}');
-      for (const qid of questionIds) {
-        if (existing[qid]) {
-          existing[qid].synced = true;
+      for (const record of acknowledged) {
+        if (JSON.stringify(existing[record.questionId]) === snapshots.get(record.id)) {
+          existing[record.questionId].synced = true;
         }
       }
       localStorage.setItem(key, JSON.stringify(existing));
@@ -249,6 +249,7 @@ export async function syncOfflineBatch(
       body: JSON.stringify(payload),
     });
 
+    let response = res;
     if (!res.ok) {
       // Try global route fallback
       const fallbackRes = await fetch('/api/tests/save-batch/', {
@@ -257,10 +258,13 @@ export async function syncOfflineBatch(
         body: JSON.stringify(payload),
       });
       if (!fallbackRes.ok) return { success: false, syncedCount: 0 };
+      response = fallbackRes;
     }
-
-    const qIds = pending.map((p) => p.questionId);
-    await markAnswersSynced(normAttempt, qIds);
+    const result = await response.json();
+    if (result.success !== true || result.saved_count !== pending.length) {
+      return { success: false, syncedCount: 0 };
+    }
+    await markAnswersSynced(normAttempt, pending);
     return { success: true, syncedCount: pending.length };
   } catch {
     return { success: false, syncedCount: 0 };

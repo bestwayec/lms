@@ -135,6 +135,25 @@ def _passage_payload(passage) -> dict[str, Any] | None:
         return None
 
 
+_ANSWER_KEY_FIELDS = {
+    "correct_answer", "correct_text", "answer", "answers", "accepted_answers",
+    "explanation", "evidence", "is_correct", "answer_key",
+}
+
+
+def _student_safe_config(value):
+    """Remove answer-bearing fields at every level of student-visible config."""
+    if isinstance(value, dict):
+        return {
+            key: _student_safe_config(item)
+            for key, item in value.items()
+            if not isinstance(key, str) or key.lower() not in _ANSWER_KEY_FIELDS
+        }
+    if isinstance(value, list):
+        return [_student_safe_config(item) for item in value]
+    return value
+
+
 def _student_question_payload(
     q,
     *,
@@ -158,26 +177,7 @@ def _student_question_payload(
         passage_obj = q.passage
 
     raw_config = getattr(q, "config", {}) or {}
-    safe_config = (
-        {
-            k: v
-            for k, v in raw_config.items()
-            if k
-            not in {
-                "correct_answer",
-                "correct_text",
-                "answer",
-                "answers",
-                "accepted_answers",
-                "explanation",
-                "evidence",
-                "is_correct",
-                "answer_key",
-            }
-        }
-        if isinstance(raw_config, dict)
-        else {}
-    )
+    safe_config = _student_safe_config(raw_config) if isinstance(raw_config, dict) else {}
 
     payload: dict[str, Any] = {
         "id": getattr(q, "id", 0),

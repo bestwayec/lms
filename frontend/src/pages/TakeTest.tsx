@@ -493,7 +493,12 @@ export default function TakeTest() {
               gap_answers: a.gaps,
               matching: a.matching,
               written_text: a.written || undefined,
-            }).catch(() => undefined);
+            }).catch((error: unknown) => {
+              // A manual submission must not discard an answer that failed to save.
+              // At timeout the server may already have closed the attempt, so still
+              // retrieve the result of the automatic submission.
+              if (!auto) throw error;
+            });
           }
         }
         const out = (await TestsApi.submit(attemptId)) as unknown as {
