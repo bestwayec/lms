@@ -135,3 +135,18 @@ Maqsad: `RECORD MOCK – TEST 1` kabi testlar kodda statik emas, admin/ustoz pan
 **Audit va barqarorlik (2026-11-07, commit qilinmagan):** ELO endi nol yig'indili (ikkinchi o'yinchi yangilangan reytingga qarshi hisoblanardi), forfeit ham XP/statistikani yozadi, javob berishda player qatori bloklanadi. IELTS grade endpointi pre-validatsiya xatosida 500 o'rniga 400 qaytaradi va kvotani qaytaradi. Telegram initData login bitta so'rovga birlashtirildi; imzo hash'i loglanmaydi. Butun ilova va duel/esse/TMA sahifalari ErrorBoundary bilan o'raldi (eskirgan chunk bo'lsa bir marta avtomatik reload). `/tests/run/:id` kabi eski redirektlar haqiqiy id'ni saqlaydi.
 
 **5-bosqich, esse/arena qismi (2026-11-07, commit qilinmagan):** `EssayResult.tsx` qayta yozildi: hero (BMB baho yoki IELTS band + CEFR, so'zlar, sarflangan vaqt) + "keyingi esse uchun 3 qadam", so'ng tablar — guruhlangan mezon akkordeonlari, "asl → to'g'ri" tuzatish kartalari, matn ichida tuzatish, AI namuna. Soxta qiymatlar olib tashlandi (CEFR taxmini, ScoreCard'dagi 70%/250 so'z). Backend natija API'siga haqiqiy `time_spent_seconds` qo'shildi. `EssayWrite.tsx`: min/max belgili so'z hisoblagich, skeleton, mobil tugmalar. `DuelRoom.tsx`: tema tokenlari (kunduzgi rejimda o'qiladi), skeleton, 52px variantlar. Baholash promptlari (BMB + IELTS): JSON sxemasi o'zgarmagan holda, `errors` — "essedan iqtibos" → "tuzatilgan variant", `teacher_recommendation` — 3 ta raqamlangan qadam, sodda tildagi sabab + yechim. Testlar: 1627 o'tdi. Ochiq: tizimga kirgan holda brauzerda ko'rib tekshirish; 5-bosqichning qolgan bandlari (til/fan tanlagichini ajratish, Landing va boshqa sahifalar matni).
+
+## 2026-11-12 — production-quality reliability follow-up
+
+Autonomous work was authorized by the current task; the older per-phase pause instruction does not apply to this request.
+
+- [x] Canonical onboarding persistence, failure/retry/timeout and duplicate-submit handling; backend response cache synchronization and bounded numeric inputs.
+- [x] GoalModal canonical save, reminder editing, valid initial target grade and keyboard focus handling.
+- [x] Remove fabricated dashboard topic/radar scores and forced active weekdays; scope daily answer count to subject.
+- [x] Align center-admin frontend rights with backend and route to scoped enterprise dashboard.
+- [x] Public published-plan catalogue; protected checkout/private billing; sitemap and private-route indexing policy.
+- [x] Replace teacher live-control placeholder IDs/codes with actual created-test data.
+- [x] Add Playwright regressions and CI browser job; verify PostgreSQL grading/quota regressions (59 passed).
+- [ ] Complete remaining dashboard/accessibility/exam-browser/production-provider audit and GitHub PR/Actions workflow after API network access is applied.
+
+Evidence, limitations and exact scope: [PRODUCTION_QUALITY_2026-11-12.md](PRODUCTION_QUALITY_2026-11-12.md). Prior unchecked items above were not marked complete merely because related tests pass.
