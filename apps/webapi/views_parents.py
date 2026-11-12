@@ -4,7 +4,7 @@ Web API views for Parent Monitoring & Smart Alerts.
 
 from __future__ import annotations
 
-import random
+import secrets
 import re
 from typing import Any
 
@@ -74,7 +74,7 @@ def parent_relations_view(request: Any) -> Response:
             )
 
         # Generate 6-digit verification code
-        code = f"{random.randint(100000, 999999)}"
+        code = f"{secrets.randbelow(900000) + 100000}"
 
         relation, created = ParentStudentRelation.objects.get_or_create(
             student=user,
@@ -174,7 +174,7 @@ def parent_verify_code_view(request: Any) -> Response:
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    relation = ParentStudentRelation.objects.filter(verification_code=code).first()
+    relation = ParentStudentRelation.objects.filter(verification_code=code, student=request.user).first()
     if not relation:
         return Response(
             {"error": "Noto'g'ri yoki eskirgan tasdiqlash kodi."},

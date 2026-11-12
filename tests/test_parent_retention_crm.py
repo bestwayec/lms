@@ -67,6 +67,9 @@ class TestParentLinkAndDeepLinkSecurity:
         assert rel.parent_telegram_id == tg_id
         assert rel.parent_name == "Karim aka"
 
+        # Reusing a link must not undo an explicit notification opt-out.
+        rel.notifications_enabled = False
+        rel.save(update_fields=["notifications_enabled"])
         # Calling again should update existing
         rel2, created2 = link_parent_to_student(
             student=student,
@@ -77,6 +80,7 @@ class TestParentLinkAndDeepLinkSecurity:
         assert created2 is False
         assert rel2.id == rel.id
         assert rel2.parent_name == "Karim Karimov"
+        assert rel2.notifications_enabled is False
 
 
 @pytest.mark.django_db

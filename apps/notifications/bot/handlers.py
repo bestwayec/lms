@@ -563,7 +563,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                         return
                     else:
                         await update.message.reply_text(
-                            "❌ O'quvchi topilmadi. Havolani tekshirib qayta urinib ko'ring.",
+                            "❌ O'quvchi topilmadi yoki havola boshqa hisobga ulangan.",
                             parse_mode="HTML",
                         )
                         return

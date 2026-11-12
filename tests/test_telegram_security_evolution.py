@@ -176,3 +176,47 @@ def test_parent_link_requires_signed_invitation_and_cannot_replace_parent():
     async_to_sync(start_handler)(update, context)
     relation.refresh_from_db()
     assert relation.parent_telegram_id == 7441
+    assert ParentStudentRelation.objects.filter(student=student).count() == 1
+
+
+@pytest.mark.django_db
+def test_parent_code_api_cannot_verify_or_disclose_another_students_relation():
+    from apps.accounts.models import ParentStudentRelation
+    from rest_framework.test import APIClient
+    owner = User.objects.create_user(email="code-owner@example.test", password="test")
+    attacker = User.objects.create_user(email="code-attacker@example.test", password="test")
+    relation = ParentStudentRelation.objects.create(student=owner, parent_phone="+998900001111", verification_code="827341")
+    client = APIClient()
+    client.force_authenticate(attacker)
+    response = client.post("/api/v1/parents/verify-code/", {"verification_code": "827341"}, format="json")
+    assert response.status_code == 404
+    assert "+998900001111" not in str(response.data)
+    relation.refresh_from_db()
+    assert not relation.is_verified
+
+
+@pytest.mark.django_db(transaction=True)
+def test_parent_invitation_concurrent_redemption_is_single_use():
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from django.db import close_old_connections, connection
+    from apps.accounts.models import ParentStudentRelation
+    from apps.accounts.services.parent_link import link_parent_to_student
+    if connection.vendor != "postgresql":
+        pytest.skip("PostgreSQL row locking test")
+    student = User.objects.create_user(email="parent-race@example.test", password="test")
+    barrier = Barrier(2)
+    def redeem(telegram_id):
+        close_old_connections()
+        barrier.wait(timeout=20)
+        try:
+            link_parent_to_student(student=student, telegram_id=telegram_id)
+            return True
+        except ValueError:
+            return False
+        finally:
+            close_old_connections()
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(redeem, (8301, 8302)))
+    assert sorted(results) == [False, True]
+    assert ParentStudentRelation.objects.filter(student=student, is_verified=True).count() == 1

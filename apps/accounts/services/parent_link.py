@@ -12,6 +12,7 @@ from typing import Any
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db import transaction
 
 from apps.accounts.models import ParentStudentRelation
 
@@ -41,6 +42,7 @@ def get_parent_deep_link(student_id: int) -> str:
     return f"https://t.me/{bot_username}?start=parent_{student_id}_{token}"
 
 
+@transaction.atomic
 def link_parent_to_student(
     *,
     student: Any,
@@ -52,6 +54,13 @@ def link_parent_to_student(
     Link or update parent Telegram profile to student.
     Ensures unique relations and sets verified status.
     """
+    # One deterministic invitation per student must not silently authorize
+    # additional Telegram accounts. Lock the student to serialize redemption.
+    User.objects.select_for_update().get(pk=student.pk)
+    if not parent_phone and ParentStudentRelation.objects.filter(
+        student=student, parent_phone__startswith="tg:", is_verified=True
+    ).exclude(parent_telegram_id=telegram_id).exists():
+        raise ValueError("Parent invitation is already linked to another Telegram account.")
     phone_val = parent_phone.strip() if parent_phone else f"tg:{telegram_id}"
     relation, created = ParentStudentRelation.objects.get_or_create(
         student=student,
@@ -73,13 +82,11 @@ def link_parent_to_student(
         if parent_name:
             relation.parent_name = parent_name.strip()
         relation.is_verified = True
-        relation.notifications_enabled = True
         relation.save(
             update_fields=[
                 "parent_telegram_id",
                 "parent_name",
                 "is_verified",
-                "notifications_enabled",
                 "updated_at",
             ]
         )
