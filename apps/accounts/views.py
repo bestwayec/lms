@@ -20,6 +20,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from .serializers import (
     ConnectTelegramSerializer,
+    OnboardingPlanSerializer,
     CustomTokenObtainPairSerializer,
     ProfileUpdateSerializer,
     RegisterSerializer,
@@ -845,6 +846,8 @@ def complete_onboarding_view(request: Request) -> Response:
 
     profile, _ = Profile.objects.get_or_create(user=request.user)
     data = request.data or {}
+    validator = OnboardingPlanSerializer(data=data)
+    validator.is_valid(raise_exception=True)
 
     referral_source = str(
         data.get("referral_source") or data.get("heard_from") or profile.referral_source or ""
@@ -981,6 +984,9 @@ def complete_onboarding_view(request: Request) -> Response:
     profile.daily_plan_summary = daily_plan_summary
     profile.onboarding_completed = True
     profile.save()
+    # Authentication/permissions may have cached the previous reverse relation.
+    # Serialize the instance just saved rather than returning stale profile fields.
+    request.user.profile = profile
 
     return Response(
         {

@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import confetti from 'canvas-confetti';
 import { useAuth } from '../context/AuthContext';
-import { api } from '../lib/api';
+import { Auth } from '../lib/api';
+import { useLang } from '../i18n/LangContext';
 
 export interface OnboardingProps {
   isModal?: boolean;
@@ -147,7 +148,10 @@ const REMINDER_OPTIONS: Array<{
 
 export default function Onboarding({ isModal = false, onClose, onSuccess }: OnboardingProps) {
   const navigate = useNavigate();
-  const { user, updateUser } = useAuth();
+  const { updateUser } = useAuth();
+  const { t } = useLang();
+  const saving = useRef(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // 3-step streamlined flow:
   // Step 1: Fan va Imtihon yo'nalishi
@@ -164,151 +168,53 @@ export default function Onboarding({ isModal = false, onClose, onSuccess }: Onbo
 
   const trackObj = EXAM_TRACKS.find((t) => t.id === selectedTrack) || EXAM_TRACKS[0];
 
-  const handleSkip = async () => {
-    try {
-      localStorage.setItem('onboarding_dismissed', 'true');
-      localStorage.setItem('grandec_onboarding_done', 'true');
-      localStorage.setItem('grand_ed_onboarding_done', 'true');
-    } catch {
-      /* ignore */
-    }
-
-    updateUser({
-      ...(user || {}),
-      onboarding_completed: true,
-    });
-
-    try {
-      await api.post('/api/auth/onboarding/', {
-        onboarding_completed: true,
-        target_exam: selectedTrack || 'milliy_sertifikat',
-        active_subject: trackObj.active_subject || 'uzbek',
-        goal_questions: goalQuestions,
-        daily_goal_minutes: goalQuestions,
-      });
-    } catch {
-      /* ignore */
-    }
-
-    if (onClose) onClose();
-    if (onSuccess) onSuccess();
-    if (!isModal) {
-      navigate('/dashboard', { replace: true });
-    }
-  };
-
   const handleBack = () => {
-    if (celebrating || submitting) return;
-    if (step > 1) {
-      setStep((s) => s - 1);
-      return;
-    }
-    handleSkip();
+    if (!saving.current && !celebrating) setStep((s) => Math.max(1, s - 1));
   };
 
-  const submitOnboardingPayload = async (payload: Record<string, unknown>) => {
-    const endpoints = [
-      '/api/v1/users/onboarding/',
-      '/v1/users/onboarding/',
-      '/api/auth/onboarding/',
-      '/auth/onboarding/',
-    ];
-    for (const ep of endpoints) {
-      try {
-        await api.post(ep, payload);
-        return;
-      } catch {
-        /* try fallback */
-      }
-    }
-  };
-
-  const handleNextOrFinish = async () => {
-    if (submitting || celebrating) return;
-
-    if (step < 3) {
-      setStep((s) => s + 1);
-      return;
-    }
-
-    // Step 3 -> Finish & Celebrate
+  const savePlan = async (skip = false) => {
+    if (saving.current || celebrating) return;
+    saving.current = true;
     setSubmitting(true);
-    setCelebrating(true);
-
-    try {
-      confetti({
-        particleCount: 80,
-        spread: 70,
-        origin: { y: 0.6 },
-        colors: ['#C8922A', '#F59E0B', '#10B981', '#FBBF24'],
-      });
-    } catch {
-      /* ignore */
-    }
-
-    const finalSubject: ActiveSubject = trackObj.active_subject;
-    const finalExam: string = trackObj.target_exam;
-    const selectedGoalObj = QUESTION_GOALS.find((q) => q.count === goalQuestions) || QUESTION_GOALS[1];
-
+    setSaveError(null);
     const payload = {
       main_goal: mainGoal,
-      active_subject: finalSubject,
-      target_exam: finalExam,
-      exam_target: finalExam,
-      level: level || 'beginner',
-      daily_goal_minutes: selectedGoalObj.minutes,
+      active_subject: trackObj.active_subject,
+      target_exam: trackObj.target_exam,
+      level,
+      daily_goal_minutes: goalQuestions,
       goal_questions: goalQuestions,
-      daily_goal_questions: goalQuestions,
-      reminder_slot: reminderSlot || 'evening',
+      reminder_slot: reminderSlot,
     };
-
     try {
-      localStorage.setItem('active_subject', finalSubject);
-      localStorage.setItem('lms_subject', finalSubject);
-      localStorage.setItem('landing_subject', finalSubject);
-      localStorage.setItem('grand_ed_onboarding_done', 'true');
-      localStorage.setItem('grandec_onboarding_done', 'true');
-      localStorage.setItem('onboarding_dismissed', 'true');
-      localStorage.setItem(
-        'grandec_user_plan',
-        JSON.stringify({
-          ...payload,
-          completed_minutes: 0,
-          updated_at: new Date().toISOString(),
-        }),
-      );
-      window.dispatchEvent(new CustomEvent('subject-changed', { detail: finalSubject }));
+      // The canonical endpoint returns the persisted profile. Never commit a
+      // local completion flag, celebrate or navigate before it confirms save.
+      const savedUser = await Auth.saveOnboarding(payload);
+      updateUser(savedUser);
+      try {
+        localStorage.setItem('lms_subject', savedUser.active_subject || trackObj.active_subject);
+        window.dispatchEvent(new CustomEvent('subject-changed', { detail: savedUser.active_subject }));
+      } catch { /* Storage is optional; the database remains authoritative. */ }
+      setCelebrating(true);
+      if (!skip && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        try { confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } }); } catch { /* cosmetic */ }
+      }
+      onSuccess?.();
+      onClose?.();
+      if (!isModal) navigate('/dashboard', { replace: true });
     } catch {
-      /* ignore */
+      setSaveError(t('plan_save_error'));
+    } finally {
+      saving.current = false;
+      setSubmitting(false);
     }
+  };
 
-    void submitOnboardingPayload(payload);
-
-    updateUser({
-      ...(user || {}),
-      onboarding_completed: true,
-      active_subject: finalSubject,
-      exam_target: finalExam,
-      target_exam: finalExam,
-      level: level || 'beginner',
-      daily_goal_minutes: selectedGoalObj.minutes,
-      reminder_slot: reminderSlot || 'evening',
-      daily_plan_summary: {
-        ...((user?.daily_plan_summary as Record<string, unknown>) || {}),
-        goal_questions: goalQuestions,
-        daily_minutes: selectedGoalObj.minutes,
-        target_exam: finalExam,
-        level: level || 'beginner',
-        reminder_slot: reminderSlot || 'evening',
-      },
-    });
-
-    await new Promise((resolve) => setTimeout(resolve, 900));
-
-    setSubmitting(false);
-    if (onSuccess) onSuccess();
-    if (onClose) onClose();
-    navigate('/dashboard', { replace: true });
+  const handleSkip = () => savePlan(true);
+  const handleNextOrFinish = () => {
+    if (saving.current || celebrating) return;
+    if (step < 3) setStep((s) => s + 1);
+    else void savePlan();
   };
 
   const progressPercent = celebrating ? 100 : Math.round((step / 3) * 100);
@@ -443,6 +349,7 @@ export default function Onboarding({ isModal = false, onClose, onSuccess }: Onbo
           <button
             type="button"
             onClick={handleSkip}
+            disabled={submitting || celebrating}
             aria-label="O‘tkazib yuborish"
             title="O‘tkazib yuborish"
             style={{
@@ -522,6 +429,8 @@ export default function Onboarding({ isModal = false, onClose, onSuccess }: Onbo
                     key={t.id}
                     type="button"
                     onClick={() => setSelectedTrack(t.id)}
+                    aria-pressed={isSelected}
+                    disabled={submitting}
                     className={`onb-card ${isSelected ? 'is-selected' : ''}`}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -565,6 +474,8 @@ export default function Onboarding({ isModal = false, onClose, onSuccess }: Onbo
                     key={g.id}
                     type="button"
                     onClick={() => setMainGoal(g.id)}
+                    aria-pressed={isSelected}
+                    disabled={submitting}
                     className={`onb-card ${isSelected ? 'is-selected' : ''}`}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -594,6 +505,8 @@ export default function Onboarding({ isModal = false, onClose, onSuccess }: Onbo
                     key={l.id}
                     type="button"
                     onClick={() => setLevel(l.id)}
+                    aria-pressed={isSelected}
+                    disabled={submitting}
                     className={`onb-card ${isSelected ? 'is-selected' : ''}`}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -638,7 +551,9 @@ export default function Onboarding({ isModal = false, onClose, onSuccess }: Onbo
                       key={q.count}
                       type="button"
                       onClick={() => setGoalQuestions(q.count)}
-                      className={`onb-card ${isSelected ? 'is-selected' : ''}`}
+                      aria-pressed={isSelected}
+                    disabled={submitting}
+                    className={`onb-card ${isSelected ? 'is-selected' : ''}`}
                       style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, fontSize: 14 }}>
@@ -666,6 +581,8 @@ export default function Onboarding({ isModal = false, onClose, onSuccess }: Onbo
                     key={r.id}
                     type="button"
                     onClick={() => setReminderSlot(r.id)}
+                    aria-pressed={isSelected}
+                    disabled={submitting}
                     className={`onb-card ${isSelected ? 'is-selected' : ''}`}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -686,6 +603,7 @@ export default function Onboarding({ isModal = false, onClose, onSuccess }: Onbo
         )}
       </main>
 
+      {saveError && <div className="ui-error" role="alert">{saveError}</div>}
       {/* BOTTOM ACTION BUTTON */}
       <footer style={{ width: '100%', maxWidth: 620, display: 'flex', justifyContent: 'center' }}>
         <button
@@ -711,7 +629,7 @@ export default function Onboarding({ isModal = false, onClose, onSuccess }: Onbo
             ? 'Reja tayyorlanmoqda...'
             : step < 3
             ? 'Davom etish →'
-            : '🎉 Tayyor! LMS Dashboardga o‘tish'}
+            : saveError ? t('retry') : '🎉 Tayyor! LMS Dashboardga o‘tish'}
         </button>
       </footer>
     </div>

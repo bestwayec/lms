@@ -212,3 +212,18 @@ html.dark .dsh-skeleton {
 .dsh-goal__ok { color: var(--emerald); font-weight: 800; }
 .dsh-empty-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; }
 .dsh-empty-row p { margin: 0; font-size: var(--fs-sm); color: var(--muted); }
+
+/* Public catalogue shares the app's surfaces and works without an account. */
+.public-plans { max-width: 1120px; margin: 0 auto; padding: 32px 16px; color: var(--ink); }
+.public-plans header { margin-bottom: 32px; }
+.public-plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 20px; }
+.public-plan-grid .card { min-width: 0; padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+.public-plan-grid ul { padding-inline-start: 20px; flex: 1; line-height: 1.7; }
+.public-plan-price { font-size: 1.5rem; font-weight: 800; }
+.onb-root button:focus-visible, .public-plans a:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.onb-root button:disabled { cursor: wait; opacity: .65; }
+@media (prefers-reduced-motion: reduce) {
+  .onb-root *, .dsh * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+.dsh .dsh-group-code { min-width: 0; width: 0; }

@@ -47,7 +47,7 @@ const PasswordReset = lazyPage(() => import('./pages/PasswordReset'));
 const PasswordResetConfirm = lazyPage(() => import('./pages/PasswordResetConfirm'));
 const MyCertificates = lazyPage(() => import('./pages/MyCertificates'));
 const Plans = lazyPage(() => import('./pages/Plans'));
-const Pricing = lazyPage(() => import('./pages/Pricing'));
+const PublicPlans = lazyPage(() => import('./pages/PublicPlans'));
 const Profile = lazyPage(() => import('./pages/Profile'));
 const Register = lazyPage(() => import('./pages/Register'));
 const Results = lazyPage(() => import('./pages/Results'));
@@ -133,6 +133,9 @@ function AnimatedRoutes() {
         <Routes>
         {/* Public */}
         <Route path="/" element={<Landing />} />
+        <Route element={<NotForAdminRoute />}>
+          <Route path="/pricing" element={<PublicPlans />} />
+        </Route>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/join" element={<JoinGroup />} />
@@ -275,7 +278,6 @@ function AnimatedRoutes() {
             <Route path="/games/:slug" element={<PlayGame />} />
             {/* Billing (legacy /subscribe/* shapes) */}
             <Route element={<NotForAdminRoute />}>
-              <Route path="/pricing" element={<Pricing />} />
               <Route path="/plans" element={<Plans />} />
               <Route path="/premium" element={<Plans />} />
               <Route path="/subscribe" element={<Plans />} />
@@ -399,6 +401,13 @@ function ScrollTop() {
   const { pathname, hash } = useLocation();
   useEffect(() => {
     if (!hash) window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+    // Private routes must not inherit indexable metadata from the landing page.
+    const isPublic = pathname === '/' || pathname === '/pricing';
+    let robots = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
+    if (!robots) { robots = document.createElement('meta'); robots.name = 'robots'; document.head.appendChild(robots); }
+    robots.content = isPublic ? 'index, follow' : 'noindex, follow';
+    if (!isPublic) document.getElementById('seo-json-ld')?.remove();
+
   }, [pathname, hash]);
   return null;
 }

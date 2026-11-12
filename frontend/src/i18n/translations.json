@@ -3097,7 +3097,17 @@
     "dsh_group_card_header": "GURUH • AʼZO BOʼLISH",
     "dsh_group_not_member_badge": "Aʼzo emassiz",
     "dsh_group_not_member_title": "Guruhga aʼzo emassiz",
-    "dsh_group_not_member_desc": "Guruh darslarida qatnashish, uy vazifalarini topshirish va umumiy reytingda qatnashish uchun oʼqituvchingiz bergan 6 xonali guruh kodini kiriting."
+    "dsh_group_not_member_desc": "Guruh darslarida qatnashish, uy vazifalarini topshirish va umumiy reytingda qatnashish uchun oʼqituvchingiz bergan 6 xonali guruh kodini kiriting.",
+    "plan_save_error": "Reja saqlanmadi. Tanlovlaringiz saqlandi — qayta urinib ko‘ring.",
+    "plan_reminder": "Eslatma vaqti",
+    "plan_morning": "Ertalab (09:00)",
+    "plan_afternoon": "Tushdan so‘ng (14:00)",
+    "plan_evening": "Kechqurun (19:00)",
+    "dsh_analysis_empty": "Tahlil uchun hali yetarli natijalar yo‘q. Test topshirgach, haqiqiy natijalaringiz shu yerda ko‘rinadi.",
+    "public_plans_empty": "Hozircha e’lon qilingan tariflar yo‘q.",
+    "teacher_live_hint": "QR va jonli natijalar uchun avval quyida test yarating.",
+    "teacher_live_ready": "Test sahifasini oching va kirish kodidan foydalaning.",
+    "teacher_live_qr": "Test QR-kodi va kirish kodi"
   },
   "ru": {
     "spk_practise_again": "Повторить эту тему",
@@ -6197,7 +6207,17 @@
     "dsh_group_card_header": "ГРУППА • ВСТУПЛЕНИЕ",
     "dsh_group_not_member_badge": "Не в группе",
     "dsh_group_not_member_title": "Вы не состоите в группе",
-    "dsh_group_not_member_desc": "Введите 6-значный код группы от преподавателя, чтобы участвовать в занятиях, сдавать задания и соревноваться в рейтинге."
+    "dsh_group_not_member_desc": "Введите 6-значный код группы от преподавателя, чтобы участвовать в занятиях, сдавать задания и соревноваться в рейтинге.",
+    "plan_save_error": "Не удалось сохранить план. Ваш выбор сохранён на экране — попробуйте ещё раз.",
+    "plan_reminder": "Время напоминания",
+    "plan_morning": "Утро (09:00)",
+    "plan_afternoon": "День (14:00)",
+    "plan_evening": "Вечер (19:00)",
+    "dsh_analysis_empty": "Пока недостаточно результатов для анализа. Пройдите тест, чтобы увидеть свои реальные результаты.",
+    "public_plans_empty": "Пока нет опубликованных тарифов.",
+    "teacher_live_hint": "Создайте тест ниже, чтобы поделиться QR-кодом и открыть результаты.",
+    "teacher_live_ready": "Откройте страницу теста и используйте код доступа.",
+    "teacher_live_qr": "QR-код теста и код доступа"
   },
   "en": {
     "spk_practise_again": "Practise this topic again",
@@ -9297,6 +9317,16 @@
     "dsh_group_card_header": "GROUP • CLASSROOM",
     "dsh_group_not_member_badge": "Not in a group",
     "dsh_group_not_member_title": "You are not in a group yet",
-    "dsh_group_not_member_desc": "Enter the 6-digit group code from your teacher to join lessons, submit assignments, and compete on the leaderboard."
+    "dsh_group_not_member_desc": "Enter the 6-digit group code from your teacher to join lessons, submit assignments, and compete on the leaderboard.",
+    "plan_save_error": "Your plan could not be saved. Your selections are still here — please retry.",
+    "plan_reminder": "Study reminder",
+    "plan_morning": "Morning (09:00)",
+    "plan_afternoon": "Afternoon (14:00)",
+    "plan_evening": "Evening (19:00)",
+    "dsh_analysis_empty": "There are no results to analyse yet. Complete a test to see your actual performance here.",
+    "public_plans_empty": "No plans have been published yet.",
+    "teacher_live_hint": "Create a test below to share its QR code and view live results.",
+    "teacher_live_ready": "Open the test page and use the access code.",
+    "teacher_live_qr": "Test QR and access code"
   }
 }

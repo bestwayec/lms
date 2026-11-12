@@ -657,3 +657,23 @@ class CustomTokenRefreshSerializer(TokenRefreshSerializer):
             # let super()'s error surface — ignore decode errors here
             pass
         return data
+
+
+class OnboardingPlanSerializer(serializers.Serializer):
+    """Validate bounded inputs before changing the persisted study plan."""
+
+    active_subject = serializers.ChoiceField(
+        choices=("uzbek", "english", "biology", "chemistry", "law"), required=False
+    )
+    daily_goal_minutes = serializers.IntegerField(min_value=1, max_value=1440, required=False)
+    goal_questions = serializers.IntegerField(min_value=1, max_value=1000, required=False)
+    daily_goal_questions = serializers.IntegerField(min_value=1, max_value=1000, required=False)
+
+    def validate(self, attrs):
+        if (
+            "goal_questions" in attrs
+            and "daily_goal_questions" in attrs
+            and attrs["goal_questions"] != attrs["daily_goal_questions"]
+        ):
+            raise serializers.ValidationError("Question goals must agree.")
+        return attrs

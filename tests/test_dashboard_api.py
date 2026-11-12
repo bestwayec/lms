@@ -207,3 +207,16 @@ def test_recent_essays_are_real_per_subject_and_pending_has_no_score(world):
 
     en = client(world["student"]).get(URL, {"subject": "english"}).json()["indicators"]["essays"]
     assert [e["title"] for e in en["recent"]] == ["IELTS T2"] and en["recent"][0]["overall_band"] == 6.5
+
+
+@pytest.mark.django_db
+def test_daily_question_count_is_subject_scoped_and_excludes_preview(world):
+    for subject, preview, count in (("english", False, 2), ("uzbek", False, 3), ("english", True, 4)):
+        exam = world["new_test"](f"Daily {subject} {preview}", subject)
+        attempt, _ = world["finish"](world["student"], exam, 50, preview=preview)
+        for number in range(count):
+            question = Question.objects.create(test=exam, text=f"Q{number}", position=number + 1, question_type="MULTIPLE_CHOICE")
+            StudentAnswer.objects.create(attempt=attempt, question=question, is_correct=True)
+    c = client(world["student"])
+    assert c.get(URL, {"subject": "english"}).json()["daily_goal"]["completed_questions"] == 2
+    assert c.get(URL, {"subject": "uzbek"}).json()["daily_goal"]["completed_questions"] == 3

@@ -13,7 +13,7 @@ from rest_framework.decorators import (
     permission_classes,
 )
 from rest_framework.parsers import FormParser, MultiPartParser
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
@@ -51,7 +51,7 @@ from .serializers import (
 
 
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def plans_view(request):
     """Public plan catalogue.
 
