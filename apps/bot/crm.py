@@ -169,10 +169,14 @@ async def davomat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not update.effective_user or not update.message:
         return
 
+    if not update.effective_chat or update.effective_chat.type != "private":
+        await update.message.reply_text("🔒 Bu ma'lumot faqat shaxsiy chatda mavjud.")
+        return
+
     from asgiref.sync import sync_to_async
 
     user = await sync_to_async(
-        lambda: User.objects.filter(telegram_chat_id=update.effective_user.id).first()
+        lambda: User.objects.filter(telegram_chat_id=update.effective_user.id, telegram_identity_verified_at__isnull=False, is_active=True).first()
     )()
     if not user:
         await update.message.reply_text(
@@ -252,10 +256,14 @@ async def tolovlar_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if not update.effective_user or not update.message:
         return
 
+    if not update.effective_chat or update.effective_chat.type != "private":
+        await update.message.reply_text("🔒 Bu ma'lumot faqat shaxsiy chatda mavjud.")
+        return
+
     from asgiref.sync import sync_to_async
 
     user = await sync_to_async(
-        lambda: User.objects.filter(telegram_chat_id=update.effective_user.id).first()
+        lambda: User.objects.filter(telegram_chat_id=update.effective_user.id, telegram_identity_verified_at__isnull=False, is_active=True).first()
     )()
     if not user:
         await update.message.reply_text(
@@ -339,12 +347,40 @@ async def handle_crm_callback(
         return
 
     from asgiref.sync import sync_to_async
+    from apps.accounts.access import is_platform_admin
+
+    tg_user, chat = update.effective_user, update.effective_chat
+    if not tg_user or not chat or chat.type != "private":
+        await query.answer("⛔️ Bu amal faqat shaxsiy chatda mavjud.", show_alert=True)
+        return
+    def authorize():
+        actor = User.objects.filter(telegram_chat_id=tg_user.id, telegram_identity_verified_at__isnull=False, is_active=True).first()
+        if not actor or (actor.role != User.Role.TEACHER and not is_platform_admin(actor)):
+            return False
+        try:
+            if data.startswith(("dav_grp_", "dav_tog_", "dav_all_", "dav_save_")):
+                group_id = int(data.split("_")[2])
+            elif data.startswith("crm_remind_grp_"):
+                group_id = int(data.split("_")[3])
+            else:
+                return True
+        except (ValueError, IndexError):
+            return False
+        return StudentGroup.objects.filter(pk=group_id).filter(teacher=actor).exists() or (is_platform_admin(actor) and StudentGroup.objects.filter(pk=group_id).exists())
+    if not await sync_to_async(authorize)():
+        await query.answer("⛔️ Bu guruhni boshqarish huquqingiz yo'q.", show_alert=True)
+        return
+    # Legacy callbacks carry only an enrollment and an arbitrary amount: they
+    # cannot identify or atomically consume a receipt. Use the audited web flow.
+    if data.startswith(("rcpt_appr_", "rcpt_rej_")):
+        await query.answer("Chekni LMS boshqaruv panelida tekshiring.", show_alert=True)
+        return
 
     # 1. dav_groups — Guruhlar ro'yxatini ko'rsatish
     if data == "dav_groups":
         user = await sync_to_async(
             lambda: User.objects.filter(
-                telegram_chat_id=update.effective_user.id
+                telegram_chat_id=update.effective_user.id, telegram_identity_verified_at__isnull=False, is_active=True
             ).first()
         )()
         groups = await sync_to_async(get_teacher_groups)(user) if user else []
@@ -469,7 +505,7 @@ async def handle_crm_callback(
             return
         user = await sync_to_async(
             lambda: User.objects.filter(
-                telegram_chat_id=update.effective_user.id
+                telegram_chat_id=update.effective_user.id, telegram_identity_verified_at__isnull=False, is_active=True
             ).first()
         )()
         target_group = await sync_to_async(
@@ -513,7 +549,7 @@ async def handle_crm_callback(
 
         user = await sync_to_async(
             lambda: User.objects.filter(
-                telegram_chat_id=update.effective_user.id
+                telegram_chat_id=update.effective_user.id, telegram_identity_verified_at__isnull=False, is_active=True
             ).first()
         )()
         if user:

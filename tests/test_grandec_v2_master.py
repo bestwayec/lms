@@ -23,11 +23,13 @@ from __future__ import annotations
 import os
 import re
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from asgiref.sync import async_to_sync
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from django.core.management import call_command
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -201,6 +203,7 @@ class TestTelegramGroupBinding:
             last_name="Nurmatov",
             role="teacher",
             telegram_chat_id=900100200,
+            telegram_identity_verified_at=timezone.now(),
         )
         self.group = StudentGroup.objects.create(
             teacher=self.teacher,
@@ -225,6 +228,7 @@ class TestTelegramGroupBinding:
         update.message.reply_text = AsyncMock()
 
         context = MagicMock()
+        context.bot.get_chat_member = AsyncMock(return_value=SimpleNamespace(status="administrator"))
         context.args = [f"link_{self.group.invite_code}"]
 
         async_to_sync(start_handler)(update, context)
@@ -250,6 +254,7 @@ class TestTelegramGroupBinding:
         update_ulash.message.reply_text = AsyncMock()
 
         context_ulash = MagicMock()
+        context_ulash.bot.get_chat_member = AsyncMock(return_value=SimpleNamespace(status="administrator"))
         context_ulash.args = [self.group.invite_code]
 
         async_to_sync(cmd_link_group)(update_ulash, context_ulash)
@@ -271,15 +276,16 @@ class TestTelegramGroupBinding:
         update_link.message.reply_text = AsyncMock()
 
         context_link = MagicMock()
+        context_link.bot.get_chat_member = AsyncMock(return_value=SimpleNamespace(status="administrator"))
         context_link.args = [self.group.invite_code]
 
         async_to_sync(cmd_link_group)(update_link, context_link)
 
         self.group.refresh_from_db()
-        assert self.group.telegram_chat_id == -10066778899
-        assert self.group.telegram_chat_title == "BMB Ona Tili Guruh 2"
+        assert self.group.telegram_chat_id == -10055443322
+        assert self.group.telegram_chat_title == "BMB Ona Tili Guruh 1"
         reply_link = update_link.message.reply_text.call_args[0][0]
-        assert "✅ Ushbu Telegram guruh Grand Education platformasidagi" in reply_link
+        assert "boshqa Telegram chatga ulangan" in reply_link
 
     def test_school_groups_api_returns_group_code_and_telegram_metadata(self):
         self.group.telegram_chat_id = -10099887766

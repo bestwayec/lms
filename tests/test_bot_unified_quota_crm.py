@@ -341,6 +341,7 @@ class BotHandlersEndToEndTests(TestCase):
             last_name="Muallim",
             role=User.Role.TEACHER,
             telegram_chat_id=88990011,
+            telegram_identity_verified_at=timezone.now(),
         )
         self.student = User.objects.create_user(
             email="student_e2e@grandec.uz",
@@ -364,6 +365,7 @@ class BotHandlersEndToEndTests(TestCase):
         # Mock update for /davomat
         update = MagicMock()
         update.effective_user.id = self.teacher.telegram_chat_id
+        update.effective_chat.type = "private"
         update.message.reply_text = AsyncMock()
 
         context = MagicMock()
@@ -384,6 +386,7 @@ class BotHandlersEndToEndTests(TestCase):
         # Test dav_save callback
         query_update = MagicMock()
         query_update.effective_user.id = self.teacher.telegram_chat_id
+        query_update.effective_chat.type = "private"
         query_update.callback_query.edit_message_text = AsyncMock()
         context.user_data[f"dav_statuses_{self.group.id}"] = {
             self.student.id: "present"
