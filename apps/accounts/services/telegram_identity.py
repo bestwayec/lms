@@ -34,40 +34,7 @@ def _numeric_telegram_id(value: Any) -> int:
 def check_and_promote_superadmin_telegram(
     user: Any, telegram_id: int | None = None
 ) -> bool:
-    """Ensure designated superadmin Telegram IDs automatically hold full superadmin powers."""
-    from django.conf import settings
-
-    admin_ids = set(getattr(settings, "SUPERADMIN_TELEGRAM_IDS", {5582178765}))
-    tid = telegram_id or getattr(user, "telegram_chat_id", None)
-    if tid and int(tid) in admin_ids:
-        updated = False
-        if not user.is_superuser:
-            user.is_superuser = True
-            updated = True
-        if not user.is_staff:
-            user.is_staff = True
-            updated = True
-        if user.role != getattr(user.Role, "ADMIN", "admin"):
-            user.role = getattr(user.Role, "ADMIN", "admin")
-            updated = True
-        if not user.telegram_identity_verified_at:
-            user.telegram_identity_verified_at = timezone.now()
-            updated = True
-        if updated:
-            user.save(
-                update_fields=[
-                    "is_superuser",
-                    "is_staff",
-                    "role",
-                    "telegram_identity_verified_at",
-                ]
-            )
-
-        if hasattr(user, "profile"):
-            if user.profile.plan != "pro":
-                user.profile.plan = "pro"
-                user.profile.save(update_fields=["plan"])
-        return True
+    """Legacy compatibility: Telegram identifiers never grant Django privileges."""
     return False
 
 

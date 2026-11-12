@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 from django.contrib.auth import get_user_model
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
@@ -30,8 +30,8 @@ class Command(BaseCommand):
         parser.add_argument(
             "--telegram-id",
             type=int,
-            default=5582178765,
-            help="Numeric Telegram Chat ID (default: 5582178765).",
+            required=True,
+            help="Explicit numeric Telegram user ID.",
         )
         parser.add_argument(
             "--email",
@@ -49,6 +49,8 @@ class Command(BaseCommand):
     @transaction.atomic
     def handle(self, *args: Any, **options: Any) -> None:
         telegram_id: int = options["telegram_id"]
+        if telegram_id <= 0:
+            raise CommandError("Telegram ID must be positive.")
         email_arg: str | None = options.get("email")
         name_arg: str = options.get("name") or "Grand Admin"
 
@@ -63,6 +65,9 @@ class Command(BaseCommand):
         # If not found by telegram_chat_id, check by email if provided
         if not user and email_arg:
             user = User.objects.filter(email=email_arg).first()
+
+        if user and user.telegram_chat_id not in (None, telegram_id):
+            raise CommandError("Account is linked to another Telegram identity.")
 
         created = False
         if not user:

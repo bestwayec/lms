@@ -183,33 +183,17 @@ async def send_friendly_error(
     )
 
 
-SUPERADMIN_TELEGRAM_ID = 5582178765
-
-
 def _get_user_role(user: "User | None", tg_id: int | None = None) -> str:
-    """Determine role: 'admin', 'teacher', or 'student'.
-
-    Superadmin ID (5582178765) or platform admins always resolve to 'admin'.
-    """
-    from django.conf import settings as _settings
-
-    admin_tg_id = int(getattr(_settings, "ADMIN_TELEGRAM_ID", SUPERADMIN_TELEGRAM_ID))
-    if tg_id and int(tg_id) == admin_tg_id:
-        return "admin"
-    if not user:
+    """Map verified, active LMS accounts to bot roles."""
+    if not user or not getattr(user, "is_active", False):
         return "student"
-    if (
-        getattr(user, "telegram_chat_id", None)
-        and int(user.telegram_chat_id) == admin_tg_id
-    ):
+    if not getattr(user, "telegram_identity_verified_at", None):
+        return "student"
+    if tg_id is not None and getattr(user, "telegram_chat_id", None) != tg_id:
+        return "student"
+    if is_platform_admin(user):
         return "admin"
-    if (
-        getattr(user, "is_superuser", False)
-        or (getattr(user, "role", "") or "").lower() == "admin"
-        or is_platform_admin(user)
-    ):
-        return "admin"
-    if (getattr(user, "role", "") or "").lower() == "teacher":
+    if getattr(user, "role", "") == "teacher":
         return "teacher"
     return "student"
 
@@ -238,36 +222,16 @@ def require_role(*roles: str):
 
                 tg_user = getattr(update, "effective_user", None)
                 tg_id = tg_user.id if tg_user else None
-                from django.conf import settings as _settings
-
-                admin_id = int(
-                    getattr(_settings, "ADMIN_TELEGRAM_ID", SUPERADMIN_TELEGRAM_ID)
-                )
-
-                is_superadmin = tg_id is not None and int(tg_id) == admin_id
-
                 user = await _get_or_create_user_async(update) if tg_user else None
-
-                if user is None and not is_superadmin:
-                    await send_reply(
-                        update, "Hisobni aniqlab bo'lmadi. /start ni bosing."
-                    )
+                if user is None or not user.is_active or not user.telegram_identity_verified_at or user.telegram_chat_id != tg_id:
+                    await send_reply(update, "Hisobni aniqlab bo'lmadi. /start ni bosing.")
                     return
-
                 user_role = _get_user_role(user, tg_id)
-
-                has_access = False
-                if is_superadmin:
-                    has_access = True
-                elif "admin" in normalized_roles and user_role == "admin":
-                    has_access = True
-                elif "teacher" in normalized_roles and user_role in (
-                    "teacher",
-                    "admin",
-                ):
-                    has_access = True
-                elif "student" in normalized_roles:
-                    has_access = True
+                has_access = (
+                    ("admin" in normalized_roles and user_role == "admin")
+                    or ("teacher" in normalized_roles and user_role in ("teacher", "admin"))
+                    or "student" in normalized_roles
+                )
 
                 if not has_access:
                     if "admin" in normalized_roles:
@@ -834,10 +798,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text("Xatolik yuz berdi. Qayta urinib ko'ring.")
         return
 
-    from django.conf import settings as _settings
-
-    admin_tg_id = int(getattr(_settings, "ADMIN_TELEGRAM_ID", SUPERADMIN_TELEGRAM_ID))
-    is_superadmin = tg_user.id == admin_tg_id
+    is_superadmin = False
 
     # Check if user is already registered in DB
     from apps.accounts.models import User as UserModel
@@ -971,10 +932,10 @@ def _authenticate_or_provision_tg_user(auth_token_str: str, tg_user_data: dict):
 
         user = User.objects.filter(telegram_chat_id=tg_id).first()
         is_new = False
-        if not user and tg_username:
-            user = User.objects.filter(telegram_username=tg_username).first()
 
         if user:
+            if not user.is_active or not user.telegram_identity_verified_at:
+                return None, False
             # Existing user - ensure telegram_chat_id and verified status
             update_fields = []
             if not user.telegram_chat_id:
@@ -986,9 +947,6 @@ def _authenticate_or_provision_tg_user(auth_token_str: str, tg_user_data: dict):
             if not user.telegram_identity_verified_at:
                 user.telegram_identity_verified_at = timezone.now()
                 update_fields.append("telegram_identity_verified_at")
-            if not user.is_active:
-                user.is_active = True
-                update_fields.append("is_active")
             if update_fields:
                 user.save(update_fields=update_fields)
         else:
@@ -1622,52 +1580,16 @@ async def auth_conversation_handler(
             )
             return
 
-    # Check for teacher phone verification contact
+    # Phone contacts alone cannot claim a teacher account. Use the existing
+    # authenticated web account-link flow, which verifies ownership explicitly.
     contact = getattr(update.message, "contact", None)
     if contact and context.user_data.get("awaiting_teacher_contact"):
         context.user_data.pop("awaiting_teacher_contact", None)
-        contact_phone = getattr(contact, "phone_number", "") or ""
-        import re
-
-        digits = re.sub(r"\D", "", contact_phone)
-        clean_9 = digits[-9:] if len(digits) >= 9 else ""
-
-        def _verify_teacher_phone(phone_tail: str, chat_id: int):
-            from apps.accounts.models import User as UserModel
-
-            t = UserModel.objects.filter(
-                profile__phone__endswith=phone_tail, role=UserModel.Role.TEACHER
-            ).first()
-            if t:
-                t.telegram_chat_id = chat_id
-                t.telegram_identity_verified_at = timezone.now()
-                t.save(
-                    update_fields=["telegram_chat_id", "telegram_identity_verified_at"]
-                )
-                return t
-            return None
-
-        t_user = await _run_db(_verify_teacher_phone, clean_9, update.effective_user.id)
-        if t_user:
-            await update.message.reply_text(
-                f"✅ *O'qituvchi hisobingiz muvaffaqiyatli tasdiqlandi!*\n\n"
-                f"Xush kelibsiz, Ustoz {t_user.first_name}!",
-                parse_mode="Markdown",
-                reply_markup=_persistent_menu_keyboard("teacher"),
-            )
-            await update.message.reply_text(
-                "👨‍🏫 *O'qituvchi boshqaruv paneli:*",
-                parse_mode="Markdown",
-                reply_markup=_teacher_main_menu_keyboard(),
-            )
-            return
-        else:
-            await update.message.reply_text(
-                "Telefon raqamingiz bo'yicha bazada o'qituvchi hisobi topilmadi. "
-                "Arizangiz administrator tomonidan tasdiqlanishini kuting.",
-                reply_markup=_persistent_menu_keyboard("student"),
-            )
-            return
+        await update.message.reply_text(
+            "O'qituvchi hisobini ulash uchun avval LMS hisobingizga kiring va "
+            "profilingizdagi Telegram ulash funksiyasidan foydalaning."
+        )
+        return
 
     # Check for 6-digit parent code input or awaiting_parent_code
     is_awaiting_parent = bool(context.user_data.get("awaiting_parent_code"))
@@ -6695,14 +6617,12 @@ async def approve_receipt_callback(
     query = update.callback_query
     from django.conf import settings
 
-    admin_id = str(getattr(settings, "ADMIN_TELEGRAM_ID", "5582178765"))
-    tg_uid = str(update.effective_user.id) if update.effective_user else ""
     admin_user = await _get_or_create_user_async(update)
 
     from apps.payments.access import can_manage_payments
 
-    is_authorized = tg_uid == admin_id or (
-        admin_user
+    is_authorized = (
+        admin_user and admin_user.is_active and admin_user.telegram_identity_verified_at
         and (
             admin_user.is_superuser
             or getattr(admin_user, "role", "") == "admin"
@@ -6785,14 +6705,12 @@ async def reject_receipt_callback(
     query = update.callback_query
     from django.conf import settings
 
-    admin_id = str(getattr(settings, "ADMIN_TELEGRAM_ID", "5582178765"))
-    tg_uid = str(update.effective_user.id) if update.effective_user else ""
     admin_user = await _get_or_create_user_async(update)
 
     from apps.payments.access import can_manage_payments
 
-    is_authorized = tg_uid == admin_id or (
-        admin_user
+    is_authorized = (
+        admin_user and admin_user.is_active and admin_user.telegram_identity_verified_at
         and (
             admin_user.is_superuser
             or getattr(admin_user, "role", "") == "admin"
@@ -7136,24 +7054,12 @@ _ESSAY_PAGE_SIZE = 10
 
 
 def _is_teacher_account(user, tg_id: int | None = None) -> bool:
-    """Teachers, superadmin and platform admins may use the group commands."""
-    from apps.accounts.access import is_platform_admin
-    from django.conf import settings as _settings
-
-    admin_id = int(getattr(_settings, "ADMIN_TELEGRAM_ID", SUPERADMIN_TELEGRAM_ID))
-
-    if tg_id and int(tg_id) == admin_id:
-        return True
-    if user is None:
+    """Teachers and platform administrators with a verified Telegram link."""
+    if not user or not user.is_active or not user.telegram_identity_verified_at:
         return False
-    if (
-        getattr(user, "telegram_chat_id", None)
-        and int(user.telegram_chat_id) == admin_id
-    ):
-        return True
-    if (getattr(user, "role", None) or "").lower() in ("teacher", "admin"):
-        return True
-    return is_platform_admin(user)
+    if tg_id is not None and user.telegram_chat_id != tg_id:
+        return False
+    return user.role == "teacher" or is_platform_admin(user)
 
 
 async def _teacher_from_update(update: Update):
@@ -8140,7 +8046,7 @@ async def role_select_teacher_callback(
 
     from django.conf import settings as _settings
 
-    admin_id = int(getattr(_settings, "ADMIN_TELEGRAM_ID", SUPERADMIN_TELEGRAM_ID))
+    admin_id = int(getattr(_settings, "ADMIN_TELEGRAM_ID", 0))
     # Notify admin
     try:
         tg_uname = tg_user.username or "yo'q"
@@ -8199,10 +8105,8 @@ async def admin_approve_teacher_callback(
 ) -> None:
     """Admin approves a teacher application."""
     query = update.callback_query
-    from django.conf import settings as _settings
-
-    admin_id = int(getattr(_settings, "ADMIN_TELEGRAM_ID", SUPERADMIN_TELEGRAM_ID))
-    if not (update.effective_user and update.effective_user.id == admin_id):
+    actor = await _get_or_create_user_async(update)
+    if not actor or _get_user_role(actor, update.effective_user.id if update.effective_user else None) != "admin":
         if query:
             await query.answer("Sizda ruxsat yo'q.", show_alert=True)
         return
@@ -8248,10 +8152,8 @@ async def admin_reject_teacher_callback(
 ) -> None:
     """Admin rejects a teacher application."""
     query = update.callback_query
-    from django.conf import settings as _settings
-
-    admin_id = int(getattr(_settings, "ADMIN_TELEGRAM_ID", SUPERADMIN_TELEGRAM_ID))
-    if not (update.effective_user and update.effective_user.id == admin_id):
+    actor = await _get_or_create_user_async(update)
+    if not actor or _get_user_role(actor, update.effective_user.id if update.effective_user else None) != "admin":
         if query:
             await query.answer("Sizda ruxsat yo'q.", show_alert=True)
         return
@@ -8280,11 +8182,9 @@ async def admin_publish_feedback_callback(
 ) -> None:
     """Admin approves and publishes a user feedback on the landing page."""
     query = update.callback_query
-    from django.conf import settings as _settings
-
-    admin_id = int(getattr(_settings, "ADMIN_TELEGRAM_ID", SUPERADMIN_TELEGRAM_ID))
     tg_user = update.effective_user
-    if not tg_user or tg_user.id != admin_id:
+    actor = await _get_or_create_user_async(update)
+    if not actor or _get_user_role(actor, tg_user.id if tg_user else None) != "admin":
         if query:
             await query.answer("⛔️ Sizda ushbu amalni bajarish huquqi yo'q.", show_alert=True)
         return
@@ -8324,11 +8224,9 @@ async def admin_reject_feedback_callback(
 ) -> None:
     """Admin rejects a user feedback (will not appear on the landing page)."""
     query = update.callback_query
-    from django.conf import settings as _settings
-
-    admin_id = int(getattr(_settings, "ADMIN_TELEGRAM_ID", SUPERADMIN_TELEGRAM_ID))
     tg_user = update.effective_user
-    if not tg_user or tg_user.id != admin_id:
+    actor = await _get_or_create_user_async(update)
+    if not actor or _get_user_role(actor, tg_user.id if tg_user else None) != "admin":
         if query:
             await query.answer("⛔️ Sizda ushbu amalni bajarish huquqi yo'q.", show_alert=True)
         return
@@ -8501,7 +8399,7 @@ async def admin_settings_handler(
         "⚙️ *TIZIM SOZLAMALARI (GRAND EDUCATION)*\n\n"
         "• Bot: `@uz_essaygrader_bot`\n"
         "• Platforma: `grandec.uz`\n"
-        "• Superadmin ID: `5582178765`\n"
+        "• Administrator huquqlari LMS hisobida belgilanadi\n"
         "• RBAC Holati: *Faol (Strict Mode)*\n"
         "• Ma'lumotlar bazasi: PostgreSQL (Healthy)\n"
         "• Kesh & Navbat: Redis + Celery (Healthy)\n"

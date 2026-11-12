@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from asgiref.sync import async_to_sync
 from rest_framework.test import APIClient
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from apps.notifications.models import UserFeedback
 from apps.notifications.bot.handlers import (
     admin_publish_feedback_callback,
@@ -105,6 +106,7 @@ class TestFeedbackApprovalFlow:
         assert results[0]["message"] == "Tasdiqlangan ajoyib sharh!"
 
     def test_admin_approves_feedback_via_bot(self):
+        User.objects.create_superuser(email="feedback-admin@test.example", password="test", telegram_chat_id=5582178765, telegram_identity_verified_at=timezone.now())
         fb = UserFeedback.objects.create(
             user=self.user,
             user_name="Bekzod Aliyev",
@@ -134,6 +136,7 @@ class TestFeedbackApprovalFlow:
         update.callback_query.answer.assert_called()
 
     def test_admin_cannot_publish_feedback_without_author_consent_via_bot(self):
+        User.objects.create_superuser(email="feedback-admin@test.example", password="test", telegram_chat_id=5582178765, telegram_identity_verified_at=timezone.now())
         fb = UserFeedback.objects.create(
             user=self.user,
             user_name="Bekzod Aliyev",
@@ -160,6 +163,7 @@ class TestFeedbackApprovalFlow:
         update.callback_query.answer.assert_called()
 
     def test_admin_rejects_feedback_via_bot(self):
+        User.objects.create_superuser(email="feedback-admin@test.example", password="test", telegram_chat_id=5582178765, telegram_identity_verified_at=timezone.now())
         fb = UserFeedback.objects.create(
             user=self.user,
             user_name="Bekzod Aliyev",

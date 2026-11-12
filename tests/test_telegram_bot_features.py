@@ -14,7 +14,6 @@ from apps.attendance.models import AttendanceRecord, AttendanceSession
 from apps.courses.models import Course, StudentGroup
 from apps.essays.models import EssaySubmission, EssayTopic
 from apps.notifications.bot.handlers import (
-    SUPERADMIN_TELEGRAM_ID,
     _arena_keyboard,
     _main_menu_keyboard,
     _persistent_menu_keyboard,
@@ -690,9 +689,10 @@ class TelegramBotFeaturesTests(TestCase):
         self.assertTrue(any("natijalari" in b.lower() or "hisobot" in b.lower() for b in buttons))
         self.assertNotIn("📥 Yangi to'lov cheklari (Tasdiqlash)", buttons)
 
-    # 18. Superadmin Role Access (ID: 5582178765)
+    # 18. Verified platform administrator role access
     def test_superadmin_role_access(self):
-        admin_tg_id = SUPERADMIN_TELEGRAM_ID
+        admin_tg_id = 778899001
+        User.objects.create_superuser(email="bot-admin@example.test", password="localtest123", telegram_chat_id=admin_tg_id, telegram_identity_verified_at=timezone.now())
         a_msg = SimpleNamespace(
             text="",
             reply_text=AsyncMock(),
