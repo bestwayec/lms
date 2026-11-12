@@ -473,6 +473,7 @@ class StudentDashboardView(APIView):
         today_questions = StudentAnswer.objects.filter(
             attempt__student=user,
             attempt__is_preview=False,
+            attempt__test__subject=subject,
         ).filter(
             Q(answered_at__date=today) | Q(attempt__completed_at__date=today)
         ).count()

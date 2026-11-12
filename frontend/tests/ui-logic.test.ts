@@ -177,3 +177,10 @@ test('plan price is grouped in threes', () => {
   assert.equal(formatPrice('27000.00'), '27 000');
   assert.equal(formatPrice(null), '0');
 });
+
+// Never invent a nonzero result or clamp real endpoint values to a nicer range.
+test('dashboard percentages require measured counts and preserve 0% and 100%', async () => {
+  const { measuredParts } = await import('../src/lib/dashboardMetrics.ts');
+  const data = measuredParts([{ total: 10, correct: 0 }, { total: 10, correct: 10 }, { total: 3, correct: 1 }, { total: 0, correct: 0 }, { total: 2, correct: 3 }, { total: 3 }]);
+  assert.deepEqual(data.map((p) => p.percentage), [0, 100, 33]);
+});

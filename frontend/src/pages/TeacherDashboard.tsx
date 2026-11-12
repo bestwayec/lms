@@ -43,14 +43,13 @@ export default function TeacherDashboard() {
     setSearchParams({ tab: mode });
   };
 
-  const openClassroomModal = (code: string = 'MOCK-42', title: string = 'Kimyo • 11-A Milliy Sertifikat Test') => {
+  const openClassroomModal = (mock: MockTestCreateResponse) => {
     setQrModalData({
       isOpen: true,
-      title,
-      code,
-      webUrl: `https://grandec.uz/pin?code=${code}`,
-      tmaUrl: `https://t.me/grandec_bot/app?startapp=join_${code}`,
-      subtitle: "Doskada proyektor qiling — o'quvchilar QR-kod yoki 6 xonali kod orqali ulanishadi",
+      title: mock.title,
+      code: mock.mock_code,
+      webUrl: `${window.location.origin}/tests/${mock.test_id}`,
+      subtitle: t('teacher_live_ready'),
     });
   };
 
@@ -444,27 +443,29 @@ export default function TeacherDashboard() {
               </h2>
             </div>
             <p className="muted" style={{ margin: 0, fontSize: '0.92rem', maxWidth: 540 }}>
-              Testni sinf doskasida katta ekran rejimida ko'rsating. O'quvchilar <strong>QR-kod</strong> yoki 6 xonali PIN-kod (<strong>MOCK-42</strong>) orqali darhol ulanishadi.
+              {t('teacher_live_hint')}
             </p>
           </div>
 
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <button
               type="button"
-              onClick={() => openClassroomModal('MOCK-42', 'Kimyo • 11-A Milliy Sertifikat Test')}
+              onClick={() => mockCreated && openClassroomModal(mockCreated)}
+              disabled={!mockCreated}
               className="bento-btn bento-btn-gold"
               style={{ fontWeight: 800, padding: '0 22px', height: 46 }}
             >
               <QrCode size={18} />
-              <span>📱 Classroom QR & PIN (MOCK-42)</span>
+              <span>{t('teacher_live_qr')}</span>
             </button>
             <button
               type="button"
               onClick={() => {
-                if (data?.published_tests) {
-                  viewMockLeaderboard(1);
+                if (mockCreated) {
+                  viewMockLeaderboard(mockCreated.test_id);
                 }
               }}
+              disabled={!mockCreated}
               className="bento-btn bento-btn-indigo"
               style={{ fontWeight: 800, padding: '0 20px', height: 46 }}
             >
@@ -599,18 +600,7 @@ export default function TeacherDashboard() {
                     alignItems: 'center',
                     gap: 5,
                   }}
-                  onClick={() => {
-                    const webUrl = `${window.location.origin}/test/${mockCreated.test_id}?code=${mockCreated.mock_code}`;
-                    const tmaUrl = `https://t.me/grandec_bot/app?startapp=mock_${mockCreated.mock_code}`;
-                    setQrModalData({
-                      isOpen: true,
-                      title: mockCreated.title,
-                      code: mockCreated.mock_code,
-                      webUrl,
-                      tmaUrl,
-                      subtitle: "O'quvchilar proyektor orqali skanerlab darhol imtihonni boshlashlari mumkin",
-                    });
-                  }}
+                  onClick={() => openClassroomModal(mockCreated)}
                 >
                   <QrCode size={14} />
                   <span>📱 Katta QR-Kod</span>

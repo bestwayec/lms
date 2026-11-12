@@ -16,6 +16,7 @@ import {
   type StreakInfoResponse,
 } from '../lib/api';
 import { formatDisplayName, initialsOf } from '../lib/displayName';
+import { measuredParts } from '../lib/dashboardMetrics';
 import { splitRadarLabel } from '../lib/radarLabel';
 import { essayKind, essayStatus, scoreLabel } from '../lib/essays';
 import { useSubject } from '../lib/useSubject';
@@ -33,7 +34,6 @@ export interface SubjectGoalConfig {
   goalText: string;
   badgeClass: string;
   badgeStyle: { color: string; backgroundColor: string; borderColor: string };
-  radarAxes: string[];
 }
 
 const SUBJECT_GOAL_CONFIG: Record<string, SubjectGoalConfig> = {
@@ -41,88 +41,37 @@ const SUBJECT_GOAL_CONFIG: Record<string, SubjectGoalConfig> = {
     goalText: '🧪 Kimyo Milliy Sertifikat (A+) / Tibbiyot Yo‘nalishi',
     badgeClass: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/30',
     badgeStyle: { color: '#10B981', backgroundColor: 'rgba(16, 185, 129, 0.12)', borderColor: 'rgba(16, 185, 129, 0.3)' },
-    radarAxes: ['Organik', 'Anorganik', 'Masalalar (36-45)', 'Reaksiyalar', 'Nazariya'],
   },
   uzbek: {
     goalText: '🇺🇿 BMB Milliy Sertifikat (A+) / BMBA Majburiy va Asosiy Fan',
     badgeClass: 'text-sky-600 dark:text-sky-400 bg-sky-500/10 border-sky-500/30',
     badgeStyle: { color: '#0EA5E9', backgroundColor: 'rgba(14, 165, 233, 0.12)', borderColor: 'rgba(14, 165, 233, 0.3)' },
-    radarAxes: ['Grammatika', 'Sintaksis', 'Adabiyot', 'Matn tahlili', 'Imlo va uslub'],
   },
   biology: {
     goalText: '🧬 Biologiya Milliy Sertifikat (A+) / 45 talik CBT',
     badgeClass: 'text-teal-600 dark:text-teal-400 bg-teal-500/10 border-teal-500/30',
     badgeStyle: { color: '#06B6D4', backgroundColor: 'rgba(6, 182, 212, 0.12)', borderColor: 'rgba(6, 182, 212, 0.3)' },
-    radarAxes: ['Botanika', 'Zoologiya', 'Odam anatomiyasi', 'Genetika', 'Ekologiya'],
   },
   law: {
     goalText: '⚖️ Davlat va Huquq Asoslari (Milliy Sertifikat / BMBA)',
     badgeClass: 'text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/30',
     badgeStyle: { color: '#8B5CF6', backgroundColor: 'rgba(139, 92, 246, 0.12)', borderColor: 'rgba(139, 92, 246, 0.3)' },
-    radarAxes: ['Konstitutsiya', 'Fuqarolik', 'Jinoyat huquqi', 'Mehnat huquqi', 'Davlat nazariyasi'],
   },
   english: {
     goalText: '🇬🇧 IELTS Academic (Band 7.5) / CEFR C1',
     badgeClass: 'text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/20',
     badgeStyle: { color: '#3B82F6', backgroundColor: 'rgba(59, 130, 246, 0.12)', borderColor: 'rgba(59, 130, 246, 0.3)' },
-    radarAxes: ['Reading', 'Listening', 'Writing', 'Grammar', 'Vocabulary'],
   },
 };
 
-const CURATED_RADAR_TOPICS: Record<string, { label: string; percentage: number; needsReview: boolean }[]> = {
-  biology: [
-    { label: 'Mitoz va Meyoz bosqichlari', percentage: 42, needsReview: true },
-    { label: 'Genetika va irsiyat masalalari', percentage: 88, needsReview: false },
-    { label: 'Hujayra nafas olishi va ATF sintezi', percentage: 54, needsReview: true },
-    { label: 'Evolutsiya va biogeosenoz', percentage: 76, needsReview: false },
-  ],
-  chemistry: [
-    { label: 'Eritmalar konsentratsiyasi va eruvchanlik', percentage: 46, needsReview: true },
-    { label: 'Organik kimyo reaksiyalari', percentage: 85, needsReview: false },
-    { label: 'Elektroliz va oksidlanish-qaytarilish', percentage: 52, needsReview: true },
-    { label: 'Davriy qonun va atom tuzilishi', percentage: 80, needsReview: false },
-  ],
-  law: [
-    { label: 'Konstitutsiyaviy huquq normalari', percentage: 86, needsReview: false },
-    { label: 'Jinoyat va maʼmuriy javobgarlik', percentage: 48, needsReview: true },
-    { label: 'Mehnat shartnomasi va kafolatlar', percentage: 58, needsReview: true },
-    { label: 'Fuqarolik huquqi va shartnomalar', percentage: 79, needsReview: false },
-  ],
-  uzbek: [
-    { label: 'Morfologiya va soʻz yasalishi', percentage: 84, needsReview: false },
-    { label: 'Tinish belgilari va murakkab sintaksis', percentage: 45, needsReview: true },
-    { label: 'Matn ustida ishlash va tahlil', percentage: 55, needsReview: true },
-    { label: 'Leksikologiya va iboralar', percentage: 82, needsReview: false },
-  ],
-  english: [
-    { label: 'Reading: True / False / Not Given', percentage: 48, needsReview: true },
-    { label: 'Listening: Section 3 Multiple Choice', percentage: 52, needsReview: true },
-    { label: 'Lexical Resource & Collocations', percentage: 82, needsReview: false },
-    { label: 'Grammar: Complex Clauses', percentage: 68, needsReview: false },
-  ],
-};
-
-function getStoredPlan(): Record<string, unknown> {
-  try {
-    const raw = localStorage.getItem('grandec_user_plan');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object') return parsed as Record<string, unknown>;
-    }
-  } catch {
-    /* ignore */
-  }
-  return {};
-}
-
-function resolveTrackBadge(userExamTarget?: string, storedPlan?: Record<string, unknown>, subject?: string): string {
+function resolveTrackBadge(userExamTarget?: string, subject?: string): string {
   const currentSub = subject || 'uzbek';
   const cfg = SUBJECT_GOAL_CONFIG[currentSub] || SUBJECT_GOAL_CONFIG.uzbek;
-  const target = String(userExamTarget || storedPlan?.target_exam || storedPlan?.exam_target || storedPlan?.target || '').toLowerCase();
+  const target = String(userExamTarget || '').toLowerCase();
 
   if (currentSub === 'english') {
-    if (target === 'ielts') return '🎓 IELTS Academic (Band 7.5)';
-    if (target === 'cefr' || target === 'multilevel') return '🇬🇧 CEFR Multi-level (C1)';
+    if (target === 'ielts') return '🎓 IELTS Academic';
+    if (target === 'cefr' || target === 'multilevel') return '🇬🇧 CEFR Multi-level';
     return cfg.goalText;
   }
   if (currentSub === 'chemistry') {
@@ -156,14 +105,7 @@ export default function Dashboard() {
   const data = loadedDashboard?.subject === subject ? loadedDashboard.data : null;
   const failed = failedSubject === subject;
   const [pendingReceipt, setPendingReceipt] = useState<PaymentReceiptItem | null>(null);
-  const [onboardingDismissed, setOnboardingDismissed] = useState(() => {
-    try {
-      return ['onboarding_dismissed', 'grandec_onboarding_done', 'grand_ed_onboarding_done']
-        .some((key) => localStorage.getItem(key) === 'true');
-    } catch {
-      return false;
-    }
-  });
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
   const [streakData, setStreakData] = useState<StreakInfoResponse | null>(null);
   const [blitzModalOpen, setBlitzModalOpen] = useState(false);
   const [goalModalOpen, setGoalModalOpen] = useState(false);
@@ -306,8 +248,7 @@ export default function Dashboard() {
   const hasActivity = Boolean(ind && (ind.tests_taken > 0 || ind.essays.count > 0));
 
   // Daily Goal calculation
-  const storedPlan = getStoredPlan();
-  const trackBadgeLabel = resolveTrackBadge(data?.daily_goal?.target_exam || user?.exam_target || user?.target_exam, storedPlan, subject);
+  const trackBadgeLabel = resolveTrackBadge(data?.daily_goal?.target_exam || user?.exam_target || user?.target_exam, subject);
 
   const dateOf = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(lang) : '');
   const sectionName = useCallback(
@@ -377,19 +318,16 @@ export default function Dashboard() {
     rawCandidate.length > 1
       ? rawCandidate.charAt(0).toUpperCase() + rawCandidate.slice(1)
       : t('dsh_scholar_name');
-  const streakDays = streakData?.current_streak ?? data?.indicators?.streak ?? 1;
 
   const goalQuestions = useMemo(() => {
     const fromApi = Number(data?.daily_goal?.goal_questions);
     if (Number.isFinite(fromApi) && fromApi > 0) return fromApi;
     const fromSummary = (user?.daily_plan_summary as Record<string, unknown> | undefined)?.goal_questions;
     if (Number.isFinite(Number(fromSummary)) && Number(fromSummary) > 0) return Number(fromSummary);
-    const fromStored = Number(storedPlan.goal_questions || storedPlan.daily_goal_questions);
-    if (Number.isFinite(fromStored) && fromStored > 0) return fromStored;
     const fromMins = Number(user?.daily_goal_minutes);
     if (Number.isFinite(fromMins) && fromMins > 0) return fromMins;
     return 30;
-  }, [data?.daily_goal?.goal_questions, user?.daily_plan_summary, storedPlan, user?.daily_goal_minutes]);
+  }, [data?.daily_goal?.goal_questions, user?.daily_plan_summary, user?.daily_goal_minutes]);
 
   const completedQuestions = useMemo(() => {
     const fromApi = Number(data?.daily_goal?.completed_questions);
@@ -403,24 +341,11 @@ export default function Dashboard() {
   );
 
 
-  const radarTopics = useMemo(() => {
-    if (data?.weak_parts && data.weak_parts.length > 0) {
-      return data.weak_parts.map((w) => {
-        const pct = w.total ? Math.round(((w.correct || 0) / w.total) * 100) : 42;
-        return {
-          label: partLabel(w),
-          percentage: pct,
-          needsReview: pct < 60,
-          practiceUrl: weakPracticeUrl(w),
-        };
-      });
-    }
-    const curated = CURATED_RADAR_TOPICS[subject] || CURATED_RADAR_TOPICS.biology;
-    return curated.map((c) => ({
-      ...c,
-      practiceUrl: `/tests?skill=${encodeURIComponent(c.label)}&mode=practice`,
-    }));
-  }, [data?.weak_parts, subject, partLabel]);
+  const radarTopics = useMemo(() => measuredParts(data?.weak_parts || []).map((w) => ({
+    label: partLabel(w),
+    percentage: w.percentage,
+    practiceUrl: weakPracticeUrl(w),
+  })), [data?.weak_parts, partLabel]);
 
   const now = new Date();
   const monthNamesByLang: Record<string, string[]> = {
@@ -452,31 +377,18 @@ export default function Dashboard() {
   const ringOffset = ringCircumference - (Math.min(100, Math.max(0, questionsProgressPct)) / 100) * ringCircumference;
 
   const weekdayLabels = t('dsh_weekdays_short').split(',');
-  const weekDays = [
-    { label: weekdayLabels[0] || 'Du', active: true },
-    { label: weekdayLabels[1] || 'Se', active: true },
-    { label: weekdayLabels[2] || 'Ch', active: streakDays >= 3 },
-    { label: weekdayLabels[3] || 'Pa', active: streakDays >= 4 },
-    { label: weekdayLabels[4] || 'Ju', active: streakDays >= 5 },
-    { label: weekdayLabels[5] || 'Sh', active: streakDays >= 6 },
-    { label: weekdayLabels[6] || 'Ya', active: streakDays >= 7 },
-  ];
+  const weekDays = (streakData?.week_days || []).map((day, i) => ({
+    label: weekdayLabels[i] || day.day,
+    active: day.is_active,
+  }));
 
   const radarData = useMemo(() => {
-    const axes = (SUBJECT_GOAL_CONFIG[subject] || SUBJECT_GOAL_CONFIG.uzbek).radarAxes;
-    const defaultScores = [75, 64, 80, 58, 71];
-    const categories = axes.map((name, i) => {
-      const wp = data?.weak_parts?.[i];
-      const score = wp
-        ? (wp.total ? Math.round(((wp.correct ?? 0) / wp.total) * 100) : 70)
-        : defaultScores[i % defaultScores.length];
-      return { name, score: Math.max(35, Math.min(95, score)) };
-    });
+    const categories = radarTopics.map((part) => ({ name: part.label, score: part.percentage }));
     const cx = 100;
     const cy = 100;
     const r = 68;
     const points = categories.map((cat, i) => {
-      const angle = -Math.PI / 2 + (i * 2 * Math.PI) / 5;
+      const angle = -Math.PI / 2 + (i * 2 * Math.PI) / categories.length;
       const dist = (cat.score / 100) * r;
       return {
         x: cx + dist * Math.cos(angle),
@@ -489,16 +401,16 @@ export default function Dashboard() {
     });
     const polygonStr = points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
     return { categories, points, polygonStr };
-  }, [subject, data?.weak_parts]);
+  }, [radarTopics]);
 
-  const userInitials = initialsOf(user?.full_name, user?.email) || 'KR';
+  const userInitials = initialsOf(user?.full_name, user?.email) || '?';
 
   return (
     <div className="dsh max-w-[1440px] mx-auto w-full px-2 sm:px-4 py-2">
       {/* ======================================================================
           GRANDEC 2.0 BENTO GRID (2x2 Layout)
           ====================================================================== */}
-      {isStudent && (
+      {isStudent && data && !failed && (
         <section className="bento-grid grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8" aria-label={todayBadgeText}>
           {/* BENTO BOX 1: Yuqori Chap — Katta Salomlashuv va Kunlik Reja Kartasi */}
           <div className="bento-card p-5 sm:p-6 flex flex-col justify-between relative overflow-hidden">
@@ -737,9 +649,11 @@ export default function Dashboard() {
               </Link>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-5 items-center">
-              {/* 5-burchakli SVG Spider/Radar Chart */}
-              <div className="sm:col-span-6 flex items-center justify-center">
+            {radarTopics.length === 0 ? (
+              <div className="ui-empty" role="status"><p>{t('dsh_analysis_empty')}</p><Link className="btn" to="/tests">{t('nav_tests')}</Link></div>
+            ) : <div className="grid grid-cols-1 sm:grid-cols-12 gap-5 items-center">
+              {/* Axes use the same measured labels and percentages as the list. */}
+              {radarTopics.length >= 3 && <div className="sm:col-span-6 flex items-center justify-center">
                 <div className="relative flex items-center justify-center w-full" style={{ maxWidth: 260, aspectRatio: '290 / 270' }}>
                   <svg
                     className="dsh-radar w-full h-full overflow-visible"
@@ -756,9 +670,9 @@ export default function Dashboard() {
                     </defs>
                     {/* Concentric Pentagons */}
                     {[0.25, 0.5, 0.75, 1.0].map((scale) => {
-                      const pts = [0, 1, 2, 3, 4]
+                      const pts = radarData.categories.map((_, i) => i)
                         .map((i) => {
-                          const a = -Math.PI / 2 + (i * 2 * Math.PI) / 5;
+                          const a = -Math.PI / 2 + (i * 2 * Math.PI) / radarData.categories.length;
                           const x = 100 + 68 * scale * Math.cos(a);
                           const y = 100 + 68 * scale * Math.sin(a);
                           return `${x.toFixed(1)},${y.toFixed(1)}`;
@@ -777,8 +691,8 @@ export default function Dashboard() {
                     })}
 
                     {/* Spokes */}
-                    {[0, 1, 2, 3, 4].map((i) => {
-                      const a = -Math.PI / 2 + (i * 2 * Math.PI) / 5;
+                    {radarData.categories.map((_, i) => {
+                      const a = -Math.PI / 2 + (i * 2 * Math.PI) / radarData.categories.length;
                       const x = 100 + 68 * Math.cos(a);
                       const y = 100 + 68 * Math.sin(a);
                       return (
@@ -828,10 +742,10 @@ export default function Dashboard() {
                     })}
                   </svg>
                 </div>
-              </div>
+              </div>}
 
-              {/* 3 ta zaif mavzu qatori */}
-              <div className="sm:col-span-6 space-y-3">
+              {/* Measured weak parts */}
+              <div className={`${radarTopics.length >= 3 ? 'sm:col-span-6' : 'sm:col-span-12'} space-y-3`}>
                 {radarTopics.slice(0, 3).map((item) => {
                   const critical = item.percentage < 50;
                   return (
@@ -870,7 +784,7 @@ export default function Dashboard() {
                   );
                 })}
               </div>
-            </div>
+            </div>}
           </div>
 
           {/* BENTO BOX 4: Pastki O'ng — Real Guruh Holati yoki Kod Kiritish */}
@@ -907,7 +821,7 @@ export default function Dashboard() {
                       }}
                       placeholder="GRP-104 / MOCK42"
                       maxLength={12}
-                      className="flex-1 h-11 px-3.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 text-slate-900 dark:text-white font-mono font-bold text-sm tracking-wider uppercase placeholder:normal-case placeholder:font-sans placeholder:font-normal placeholder:text-xs placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all"
+                      className="dsh-group-code flex-1 h-11 px-3.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 text-slate-900 dark:text-white font-mono font-bold text-sm tracking-wider uppercase placeholder:normal-case placeholder:font-sans placeholder:font-normal placeholder:text-xs placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all"
                     />
                     <button
                       type="submit"

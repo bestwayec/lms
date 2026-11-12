@@ -297,7 +297,7 @@ export interface AuthUser {
 }
 
 /**
- * Platform admin = active + (superuser or role==admin or center_admin)
+ * Platform admin = active + (superuser or role==admin)
  * (mirrors apps/accounts/access.py). is_staff alone is NOT admin: it only
  * opens Django /admin/.
  */
@@ -311,8 +311,7 @@ function adminShape(raw: { is_superuser?: unknown; is_platform_admin?: unknown; 
   return (
     raw.is_superuser === true ||
     raw.is_platform_admin === true ||
-    raw.role === 'admin' ||
-    raw.role === 'center_admin'
+    raw.role === 'admin'
   );
 }
 
@@ -572,12 +571,16 @@ export const Auth = {
   me: async () => normalizeUser((await api<Record<string, unknown>>('/api/auth/me/'))),
   updateProfile: async (data: Record<string, unknown>) =>
     normalizeUser(await api.patch<Record<string, unknown>>('/api/auth/me/', data)),
-  saveOnboarding: async (data: Record<string, unknown>) =>
-    api<Record<string, unknown>>('/api/auth/onboarding/', {
+  saveOnboarding: async (data: Record<string, unknown>) => {
+    const response = await api<{ onboarding_completed: boolean; user: Record<string, unknown> }>('/api/auth/onboarding/', {
       method: 'POST',
       body: JSON.stringify(data),
       headers: { 'Content-Type': 'application/json' },
-    }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.onboarding_completed || !response.user) throw new Error(translate('plan_save_error', currentLang()));
+    return normalizeUser(response.user);
+  },
   requestPasswordReset: async (email: string) => {
     const res = await fetch(`${API_BASE}/api/auth/password-reset/`, {
       method: 'POST',

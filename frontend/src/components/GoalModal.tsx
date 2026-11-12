@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Auth } from '../lib/api';
+import { useLang } from '../i18n/LangContext';
 import { useAuth } from '../context/AuthContext';
 
 export interface GoalModalProps {
@@ -165,6 +166,9 @@ const GoalModalContent: React.FC<GoalModalProps> = ({
   subject,
 }) => {
   const { user, updateUser } = useAuth();
+  const { t } = useLang();
+  const saving = useRef(false);
+  const [reminderSlot, setReminderSlot] = useState(user?.reminder_slot || 'evening');
   const [selectedExam, setSelectedExam] = useState<string>(() => {
     const fallback = subject ? EXAM_OPTIONS.find((e) => e.subject === subject)?.id : undefined;
     const match = EXAM_OPTIONS.find((e) =>
@@ -172,7 +176,10 @@ const GoalModalContent: React.FC<GoalModalProps> = ({
     );
     return match?.id || fallback || 'milliy_sertifikat';
   });
-  const [selectedGrade, setSelectedGrade] = useState<string>(currentGrade || 'A+');
+  const [selectedGrade, setSelectedGrade] = useState<string>(() => {
+    const exam = EXAM_OPTIONS.find((e) => e.id === currentExam && (!subject || e.subject === subject)) || EXAM_OPTIONS.find((e) => !subject || e.subject === subject) || EXAM_OPTIONS[0];
+    return exam.grades.some((g) => g.id === currentGrade) ? currentGrade : exam.grades[0].id;
+  });
   const [selectedQuestions, setSelectedQuestions] = useState<number>(currentQuestions || 30);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -181,15 +188,24 @@ const GoalModalContent: React.FC<GoalModalProps> = ({
   const closeBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => closeBtnRef.current?.focus(), 50);
-    return () => window.clearTimeout(timer);
+    const trigger = document.activeElement as HTMLElement | null;
+    closeBtnRef.current?.focus();
+    return () => trigger?.focus();
   }, []);
 
   // Handle ESC key to close
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Tab') {
+        const nodes = modalRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), select:not(:disabled), input:not(:disabled), [tabindex="0"]');
+        if (nodes?.length) {
+          const first = nodes[0], last = nodes[nodes.length - 1];
+          if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+          else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        }
+      }
+      if (e.key === 'Escape' && !saving.current) {
         e.preventDefault();
         onClose();
       }
@@ -216,6 +232,8 @@ const GoalModalContent: React.FC<GoalModalProps> = ({
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving.current) return;
+    saving.current = true;
     setLoading(true);
     setError(null);
 
@@ -224,7 +242,7 @@ const GoalModalContent: React.FC<GoalModalProps> = ({
 
     const payload = {
       target_exam: selectedExam,
-      exam_target: selectedExam,
+      reminder_slot: reminderSlot,
       target_grade: selectedGrade,
       daily_goal_minutes: goalObj.minutes,
       goal_questions: selectedQuestions,
@@ -233,52 +251,12 @@ const GoalModalContent: React.FC<GoalModalProps> = ({
     };
 
     try {
-      // 1. Persist to backend via updateProfile and saveOnboarding
-      await Auth.updateProfile({
-        target_exam: selectedExam,
-        exam_target: selectedExam,
-        target_grade: selectedGrade,
-        daily_goal_minutes: goalObj.minutes,
-        active_subject: targetSubject,
-      });
-
+      const savedUser = await Auth.saveOnboarding(payload);
+      updateUser(savedUser);
       try {
-        await Auth.saveOnboarding(payload);
-      } catch {
-        /* best-effort fallback */
-      }
-
-      // 2. Persist locally
-      try {
-        localStorage.setItem(
-          'grandec_user_plan',
-          JSON.stringify({
-            ...payload,
-            updated_at: new Date().toISOString(),
-          }),
-        );
-        localStorage.setItem('active_subject', targetSubject);
-        window.dispatchEvent(new CustomEvent('subject-changed', { detail: targetSubject }));
-      } catch {
-        /* storage ignore */
-      }
-
-      // 3. Update Auth context state
-      updateUser({
-        ...(user || {}),
-        target_exam: selectedExam,
-        exam_target: selectedExam,
-        target_grade: selectedGrade,
-        daily_goal_minutes: goalObj.minutes,
-        active_subject: targetSubject,
-        daily_plan_summary: {
-          ...((user?.daily_plan_summary as Record<string, unknown>) || {}),
-          goal_questions: selectedQuestions,
-          target_exam: selectedExam,
-          target_grade: selectedGrade,
-          daily_minutes: goalObj.minutes,
-        },
-      });
+        localStorage.setItem('lms_subject', savedUser.active_subject || targetSubject);
+        window.dispatchEvent(new CustomEvent('subject-changed', { detail: savedUser.active_subject }));
+      } catch { /* optional local preference */ }
 
       // 4. Notify parent Dashboard
       onSaved?.({
@@ -291,9 +269,10 @@ const GoalModalContent: React.FC<GoalModalProps> = ({
       onClose();
     } catch (err: unknown) {
       setError(
-        err instanceof Error ? err.message : 'Rejani saqlashda xatolik yuz berdi. Qaytadan urinib ko‘ring.',
+        err instanceof Error && err.name !== 'TimeoutError' ? err.message : t('plan_save_error'),
       );
     } finally {
+      saving.current = false;
       setLoading(false);
     }
   };
@@ -371,7 +350,7 @@ const GoalModalContent: React.FC<GoalModalProps> = ({
         </div>
 
         {error && (
-          <div
+          <div role="alert"
             style={{
               padding: '12px 14px',
               borderRadius: '12px',
@@ -392,7 +371,7 @@ const GoalModalContent: React.FC<GoalModalProps> = ({
             <label style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--ink, #0f172a)' }}>
               1. Asosiy yo‘nalish / Imtihon turi
             </label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '8px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: '8px' }}>
               {(subject
                 ? [...EXAM_OPTIONS].sort((a, b) => {
                     if (a.subject === subject && b.subject !== subject) return -1;
@@ -406,6 +385,8 @@ const GoalModalContent: React.FC<GoalModalProps> = ({
                   <button
                     key={exam.id}
                     type="button"
+                    aria-pressed={isSelected}
+                    disabled={loading}
                     onClick={() => handleSelectExam(exam.id)}
                     style={{
                       display: 'flex',
@@ -443,6 +424,8 @@ const GoalModalContent: React.FC<GoalModalProps> = ({
                   <button
                     key={grade.id}
                     type="button"
+                    aria-pressed={isSelected}
+                    disabled={loading}
                     onClick={() => setSelectedGrade(grade.id)}
                     style={{
                       display: 'flex',
@@ -479,6 +462,8 @@ const GoalModalContent: React.FC<GoalModalProps> = ({
                   <button
                     key={goal.count}
                     type="button"
+                    aria-pressed={isSelected}
+                    disabled={loading}
                     onClick={() => setSelectedQuestions(goal.count)}
                     style={{
                       display: 'flex',
@@ -506,6 +491,14 @@ const GoalModalContent: React.FC<GoalModalProps> = ({
             </p>
           </div>
 
+          <label className="ui-field">
+            {t('plan_reminder')}
+            <select className="ui-input" value={reminderSlot} onChange={(e) => setReminderSlot(e.target.value)} disabled={loading}>
+              <option value="morning">{t('plan_morning')}</option>
+              <option value="afternoon">{t('plan_afternoon')}</option>
+              <option value="evening">{t('plan_evening')}</option>
+            </select>
+          </label>
           {/* Action buttons */}
           <div
             style={{

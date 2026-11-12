@@ -15,13 +15,7 @@ export default function OnboardingModal({ isOpen, onClose, onSuccess }: Onboardi
     role === 'admin' || role === 'teacher' || role === 'superadmin' || role === 'center_admin' || Boolean(user?.is_superuser);
   const isStudent = role === 'student' && !isStaffOrTeacher;
 
-  const isDismissed =
-    typeof window !== 'undefined' &&
-    (localStorage.getItem('onboarding_dismissed') === 'true' ||
-      localStorage.getItem('grandec_onboarding_done') === 'true' ||
-      localStorage.getItem('grand_ed_onboarding_done') === 'true');
-
-  if (!isOpen || !isStudent || isDismissed) return null;
+  if (!isOpen || !isStudent || user?.onboarding_completed) return null;
 
   return (
     <div
@@ -40,14 +34,7 @@ export default function OnboardingModal({ isOpen, onClose, onSuccess }: Onboardi
     >
       <Onboarding
         isModal
-        onClose={() => {
-          try {
-            localStorage.setItem('onboarding_dismissed', 'true');
-          } catch {
-            /* ignore */
-          }
-          onClose();
-        }}
+        onClose={onClose}
         onSuccess={onSuccess}
       />
     </div>

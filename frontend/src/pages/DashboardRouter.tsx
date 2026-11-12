@@ -24,7 +24,8 @@ export default function DashboardRouter() {
   }
 
   // 1. Admins & Center Admins route directly to the Admin Control Panel
-  if (isPlatformAdmin(user) || user?.role === 'center_admin') {
+  if (user?.role === 'center_admin' && !isPlatformAdmin(user)) return <Navigate to="/enterprise" replace />;
+  if (isPlatformAdmin(user)) {
     return <Navigate to="/panel" replace />;
   }
 
