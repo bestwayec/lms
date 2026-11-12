@@ -1,3 +1,4 @@
+import SEO from '../components/SEO';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -35,6 +36,7 @@ export default function PasswordResetConfirm() {
 
   return (
     <div className="auth-wrap">
+      <SEO title={t('pr_title')} robots="noindex, nofollow" canonical="/password-reset" />
       <div className="auth-card">
         <img src="/logo-mark.png" alt="GRANDEC" className="auth-logo" />
         <h1>{t('pr_title')}</h1>

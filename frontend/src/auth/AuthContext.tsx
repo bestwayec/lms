@@ -23,7 +23,7 @@ import { storeLang } from '../i18n/LangContext';
 import { initTelegramWebApp } from '../pages/tma/telegram';
 
 /** Public SPA paths where an expired session must NOT force a /login bounce. */
-const PUBLIC_PREFIXES = ['/login', '/register', '/password-reset', '/verify', '/certificates/verify'];
+const PUBLIC_PREFIXES = ['/pricing', '/login', '/register', '/password-reset', '/verify', '/certificates/verify'];
 
 function isProtectedPath(pathname: string): boolean {
   if (pathname === '/') return false;

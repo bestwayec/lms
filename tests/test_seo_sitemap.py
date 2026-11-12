@@ -37,12 +37,12 @@ class TestSeoSitemap(TestCase):
         assert '<?xml version="1.0" encoding="UTF-8"?>' in content
         assert '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' in content
         assert "<loc>https://grandec.uz/</loc>" in content
-        assert "<loc>https://grandec.uz/tests</loc>" in content
+        assert "<loc>https://grandec.uz/tests</loc>" not in content
         assert "<loc>https://grandec.uz/pricing</loc>" in content
-        assert "<loc>https://grandec.uz/arena</loc>" in content
-        assert "<loc>https://grandec.uz/faq</loc>" in content
+        assert "<loc>https://grandec.uz/arena</loc>" not in content
+        assert "<loc>https://grandec.uz/faq</loc>" not in content
 
-    def test_sitemap_xml_includes_published_tests(self):
+    def test_sitemap_xml_excludes_auth_required_tests(self):
         teacher = User.objects.create_user(
             email="teacher_seo@grandec.uz",
             password="testpass12345",
@@ -76,7 +76,7 @@ class TestSeoSitemap(TestCase):
         assert response.status_code == 200
         content = response.content.decode("utf-8")
 
-        # Published test must be present
-        assert f"<loc>https://grandec.uz/tests/{test_pub.id}</loc>" in content
+        # Publication alone does not make the route public.
+        assert f"<loc>https://grandec.uz/tests/{test_pub.id}</loc>" not in content
         # Draft test must not be present
         assert f"<loc>https://grandec.uz/tests/{test_draft.id}</loc>" not in content

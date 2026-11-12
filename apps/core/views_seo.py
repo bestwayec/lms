@@ -5,7 +5,6 @@ Serves dynamic /sitemap.xml and /robots.txt.
 
 from __future__ import annotations
 
-import datetime
 from xml.sax.saxutils import escape
 
 from django.http import HttpRequest, HttpResponse
@@ -22,50 +21,11 @@ def sitemap_xml_view(request: HttpRequest) -> HttpResponse:
     # Static core routes: (loc, lastmod, changefreq, priority)
     urls = [
         (f"{site_url}/", today_str, "daily", "1.0"),
-        (f"{site_url}/tests", today_str, "daily", "0.9"),
         (f"{site_url}/pricing", today_str, "weekly", "0.8"),
-        (f"{site_url}/arena", today_str, "weekly", "0.7"),
-        (f"{site_url}/faq", today_str, "monthly", "0.7"),
     ]
 
-    # Dynamic published tests
-    try:
-        from apps.tests.models import Test
-
-        tests = Test.objects.filter(
-            is_active=True, status=Test.Status.PUBLISHED
-        ).values_list("id", "updated_at")
-        for test_id, updated_at in tests:
-            lastmod = (
-                updated_at.strftime("%Y-%m-%d")
-                if isinstance(updated_at, (datetime.date, datetime.datetime))
-                else today_str
-            )
-            urls.append(
-                (f"{site_url}/tests/{test_id}", lastmod, "weekly", "0.8")
-            )
-    except Exception:
-        pass
-
-    # Dynamic published courses
-    try:
-        from apps.courses.models import Course
-
-        courses = Course.objects.filter(
-            status=Course.Status.PUBLISHED
-        ).values_list("id", "updated_at")
-        for course_id, updated_at in courses:
-            lastmod = (
-                updated_at.strftime("%Y-%m-%d")
-                if isinstance(updated_at, (datetime.date, datetime.datetime))
-                else today_str
-            )
-            urls.append(
-                (f"{site_url}/courses/{course_id}", lastmod, "weekly", "0.8")
-            )
-    except Exception:
-        pass
-
+    # Learning content requires authentication and has no public detail route.
+    # A published test/course is not, by itself, a publicly indexable page.
     xml_parts = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',

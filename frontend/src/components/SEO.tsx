@@ -50,7 +50,7 @@ export default function SEO({
   canonical,
   image = DEFAULT_IMAGE,
   type = 'website',
-  robots = 'index, follow',
+  robots,
   jsonLd,
 }: SEOProps) {
   useEffect(() => {
@@ -63,10 +63,10 @@ export default function SEO({
     // Standard Meta Tags
     setMetaTag('meta[name="description"]', 'name', 'description', description);
     setMetaTag('meta[name="keywords"]', 'name', 'keywords', keywords);
-    setMetaTag('meta[name="robots"]', 'name', 'robots', robots);
+    setMetaTag('meta[name="robots"]', 'name', 'robots', robots || (['/', '/pricing'].includes(window.location.pathname) ? 'index, follow' : 'noindex, follow'));
 
     // Canonical URL
-    const canonicalUrl = canonical ? `${SITE_URL}${canonical}` : window.location.href;
+    const canonicalUrl = `${SITE_URL}${canonical || window.location.pathname}`;
     setLinkTag('canonical', canonicalUrl);
 
     // OpenGraph
