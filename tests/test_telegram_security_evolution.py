@@ -220,3 +220,20 @@ def test_parent_invitation_concurrent_redemption_is_single_use():
         results = list(executor.map(redeem, (8301, 8302)))
     assert sorted(results) == [False, True]
     assert ParentStudentRelation.objects.filter(student=student, is_verified=True).count() == 1
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("path", ["/api/auth/telegram/direct-link/", "/api/v1/accounts/link-telegram/"])
+def test_direct_telegram_id_link_is_rejected_without_mutating_accounts(path):
+    from rest_framework.test import APIClient
+    victim = User.objects.create_user(email="raw-id-victim@example.test", password="test", telegram_chat_id=9713, telegram_identity_verified_at=timezone.now())
+    admin = User.objects.create_superuser(email="raw-id-admin@example.test", password="test")
+    client = APIClient()
+    client.force_authenticate(admin)
+    response = client.post(path, {"telegram_chat_id": victim.telegram_chat_id}, format="json")
+    assert response.status_code == 400
+    assert response.data["challenge_endpoint"] == "/api/auth/telegram/connect/"
+    victim.refresh_from_db()
+    admin.refresh_from_db()
+    assert victim.telegram_chat_id == 9713 and victim.telegram_identity_verified_at is not None
+    assert admin.telegram_chat_id is None and admin.telegram_identity_verified_at is None
