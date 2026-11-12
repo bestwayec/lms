@@ -225,6 +225,7 @@ class TelegramGroupBotAssistantTests(TestCase):
             course=course,
             title="BMB Milliy Sertifikat Variant 1",
             time_limit_minutes=60,
+            access_pin="1234",
         )
 
         group = StudentGroup.objects.create(
@@ -248,7 +249,8 @@ class TelegramGroupBotAssistantTests(TestCase):
         self.assertTrue(update_test.message.reply_text.called)
         msg_text = update_test.message.reply_text.call_args[0][0]
         self.assertIn("BMB Milliy Sertifikat Variant 1", msg_text)
-        self.assertIn("Kirish PIN-kodi:", msg_text)
+        self.assertIn("Kirish kodi:", msg_text)
+        self.assertIn("1234", msg_text)
         reply_markup = update_test.message.reply_text.call_args[1]["reply_markup"]
         self.assertIsNotNone(reply_markup.inline_keyboard[0][0].web_app)
 

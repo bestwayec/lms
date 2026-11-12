@@ -154,3 +154,25 @@ def test_receipt_alert_has_no_hardcoded_recipient(settings, monkeypatch):
     settings.ADMIN_TELEGRAM_ID = 4422
     notify_admin_new_receipt(receipt)
     assert send.call_args.kwargs["json"]["chat_id"] == 4422
+
+
+@pytest.mark.django_db(transaction=True)
+def test_parent_link_requires_signed_invitation_and_cannot_replace_parent():
+    from apps.accounts.models import ParentStudentRelation
+    from apps.accounts.services.parent_link import generate_parent_deep_link_token
+    from apps.notifications.bot.handlers import parent_start_handler, start_handler
+    student = User.objects.create_user(email="parent-child@example.test", password="test", role="student")
+    message = SimpleNamespace(reply_text=AsyncMock(), text="")
+    tg_user = SimpleNamespace(id=7441, full_name="Parent", first_name="Parent", last_name="", username="")
+    update = SimpleNamespace(effective_user=tg_user, effective_chat=SimpleNamespace(id=7441, type="private"), message=message, callback_query=None)
+    context = SimpleNamespace(args=[str(student.id)], user_data={})
+    async_to_sync(parent_start_handler)(update, context)
+    assert not ParentStudentRelation.objects.filter(student=student).exists()
+    context.args = [f"parent_{student.id}_{generate_parent_deep_link_token(student.id)}"]
+    async_to_sync(start_handler)(update, context)
+    relation = ParentStudentRelation.objects.get(student=student)
+    assert relation.parent_telegram_id == 7441 and relation.is_verified
+    tg_user.id = 7442
+    async_to_sync(start_handler)(update, context)
+    relation.refresh_from_db()
+    assert relation.parent_telegram_id == 7441

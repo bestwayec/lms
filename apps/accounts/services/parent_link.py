@@ -67,6 +67,8 @@ def link_parent_to_student(
     )
 
     if not created:
+        if relation.parent_telegram_id not in (None, telegram_id):
+            raise ValueError("Parent relation is already linked to another Telegram account.")
         relation.parent_telegram_id = telegram_id
         if parent_name:
             relation.parent_name = parent_name.strip()

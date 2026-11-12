@@ -542,11 +542,14 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                         student = User.objects.filter(id=student_id).first()
                         if not student:
                             return None
-                        rel, _ = link_parent_to_student(
-                            student=student,
-                            telegram_id=tg_user.id,
-                            parent_name=tg_user.full_name or tg_user.first_name,
-                        )
+                        try:
+                            link_parent_to_student(
+                                student=student,
+                                telegram_id=tg_user.id,
+                                parent_name=tg_user.full_name or tg_user.first_name,
+                            )
+                        except ValueError:
+                            return None
                         return student.get_full_name() or student.email
 
                     student_name = await _run_db(_do_link)
@@ -570,27 +573,10 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                         parse_mode="HTML",
                     )
                     return
-            elif len(parts) == 2:
-                code_val = parts[1]
-                def _do_link_code():
-                    rel = ParentStudentRelation.objects.filter(verification_code=code_val).select_related("student").first()
-                    if not rel:
-                        return None
-                    rel.parent_telegram_id = tg_user.id
-                    rel.parent_name = tg_user.full_name or tg_user.first_name
-                    rel.is_verified = True
-                    rel.notifications_enabled = True
-                    rel.save(update_fields=["parent_telegram_id", "parent_name", "is_verified", "notifications_enabled", "updated_at"])
-                    return rel.student.get_full_name() or rel.student.email
-
-                student_name = await _run_db(_do_link_code)
-                if student_name:
-                    await update.message.reply_text(
-                        f"👨‍👩‍👧 <b>Muvaffaqiyatli bog'landi!</b>\n\n"
-                        f"Assalomu alaykum! Siz farzandingiz <b>{student_name}</b> ning GRAND EDUCATION platformasidagi o'quv natijalari va davomatiga ulandingiz.",
-                        parse_mode="HTML",
-                    )
-                    return
+            await update.message.reply_text(
+                "❌ Ota-ona ulanishi uchun o'quvchidan xavfsiz havola oling."
+            )
+            return
 
     if args and args[0].startswith("link_"):
         from apps.accounts.services.telegram_link import confirm_link_challenge
@@ -1591,84 +1577,11 @@ async def auth_conversation_handler(
         )
         return
 
-    # Check for 6-digit parent code input or awaiting_parent_code
-    is_awaiting_parent = bool(context.user_data.get("awaiting_parent_code"))
-    if contact and is_awaiting_parent:
-        contact_phone = getattr(contact, "phone_number", "") or ""
-        import re
-
-        digits = re.sub(r"\D", "", contact_phone)
-        clean_9 = digits[-9:] if len(digits) >= 9 else ""
-
-        def _link_by_phone(phone_tail: str, chat_id: int):
-            from apps.accounts.models import ParentStudentRelation
-
-            rels = ParentStudentRelation.objects.filter(
-                parent_phone__endswith=phone_tail
-            ).select_related("student")
-            if not rels.exists():
-                return None
-            names = []
-            for r in rels:
-                r.parent_telegram_id = chat_id
-                r.is_verified = True
-                r.save(
-                    update_fields=["parent_telegram_id", "is_verified", "updated_at"]
-                )
-                names.append(r.student.get_full_name() or r.student.email)
-            return names
-
-        linked_names = await _run_db(_link_by_phone, clean_9, update.effective_user.id)
+    # A phone suffix or reusable six-digit code is not proof of guardianship.
+    if context.user_data.get("awaiting_parent_code") and (contact or (raw_text.isdigit() and len(raw_text) == 6)):
         context.user_data.pop("awaiting_parent_code", None)
-        if linked_names:
-            names_str = ", ".join(linked_names)
-            await update.message.reply_text(
-                f"✅ <b>Telefon raqamingiz muvaffaqiyatli bog'landi!</b>\n\n"
-                f"Farzandingiz: <b>{names_str}</b>\n\n"
-                f"Test natijalari va haftalik hisobotlar endi ushbu chatga yuboriladi.",
-                parse_mode="HTML",
-                reply_markup=_persistent_menu_keyboard(),
-            )
-            return
-        else:
-            await update.message.reply_text(
-                "Telefon raqamingiz bo'yicha kutilayotgan o'quvchi topilmadi. "
-                "Iltimos, farzandingizdan 6 xonali tasdiqlash kodini olib yuboring (masalan: <code>/parent_start 123456</code>).",
-                parse_mode="HTML",
-                reply_markup=_persistent_menu_keyboard(),
-            )
-            return
-
-    if raw_text.isdigit() and len(raw_text) == 6:
-
-        def _check_and_link(code_val: str, chat_id: int):
-            from apps.accounts.models import ParentStudentRelation
-
-            rel = (
-                ParentStudentRelation.objects.filter(verification_code=code_val)
-                .select_related("student")
-                .first()
-            )
-            if not rel:
-                return None
-            rel.parent_telegram_id = chat_id
-            rel.is_verified = True
-            rel.save(update_fields=["parent_telegram_id", "is_verified", "updated_at"])
-            return rel.student.get_full_name() or rel.student.email
-
-        student_name = await _run_db(
-            _check_and_link, raw_text, update.effective_user.id
-        )
-        if student_name:
-            context.user_data.pop("awaiting_parent_code", None)
-            await update.message.reply_text(
-                f"✅ <b>Muvaffaqiyatli bog'landi!</b>\n\n"
-                f"Siz o'quvchi <b>{student_name}</b> ga ota-ona sifatida biriktirildingiz.\n\n"
-                f"Endi barcha test va mock natijalari hamda haftalik hisobotlar ushbu chatga boradi.",
-                parse_mode="HTML",
-                reply_markup=_persistent_menu_keyboard(),
-            )
-            return
+        await update.message.reply_text("O'quvchidan xavfsiz ota-ona ulanish havolasini oling.")
+        return
 
     # Teacher /newmock command with strict RBAC
     if raw_text.lower().startswith("/newmock") or raw_text.lower().startswith(
@@ -9360,65 +9273,9 @@ async def parent_start_handler(
     if code.startswith("parent_"):
         code = code.removeprefix("parent_")
 
-    def _link_by_code(code_val: str, chat_id: int):
-        import re
-        from django.db.models import Q
-        from apps.accounts.models import ParentStudentRelation, User
-        from apps.accounts.services.parent_link import link_parent_to_student
-
-        # 1. By verification code
-        rel = (
-            ParentStudentRelation.objects.filter(verification_code=code_val)
-            .select_related("student")
-            .first()
-        )
-        if rel:
-            rel.parent_telegram_id = chat_id
-            rel.is_verified = True
-            rel.notifications_enabled = True
-            rel.save(update_fields=["parent_telegram_id", "is_verified", "notifications_enabled", "updated_at"])
-            return rel.student.get_full_name() or rel.student.email
-
-        # 2. By student ID
-        if code_val.isdigit():
-            student = User.objects.filter(id=int(code_val), role=User.Role.STUDENT).first()
-            if student:
-                link_parent_to_student(student=student, telegram_id=chat_id)
-                return student.get_full_name() or student.email
-
-        # 3. By phone number
-        digits = re.sub(r"\D", "", code_val)
-        if len(digits) >= 9:
-            tail = digits[-9:]
-            student = User.objects.filter(role=User.Role.STUDENT).filter(
-                Q(phone_number__endswith=tail) | Q(email__startswith=tail)
-            ).first()
-            if student:
-                link_parent_to_student(student=student, telegram_id=chat_id, parent_phone=code_val)
-                return student.get_full_name() or student.email
-
-        return None
-
     if code:
-        student_name = await _run_db(_link_by_code, code, tg_user.id)
-        if student_name:
-            await update.message.reply_text(
-                f"✅ <b>Muvaffaqiyatli bog'landi!</b>\n\n"
-                f"Siz o'quvchi <b>{student_name}</b> ga ota-ona sifatida biriktirildingiz.\n\n"
-                f"Endi farzandingizning:\n"
-                f"• Mock va test natijalari (ball, foiz, BMB darajasi)\n"
-                f"• Esse baholari\n"
-                f"• Har yakshanba 18:00 dagi haftalik o'sish hisoboti\n"
-                f"to'g'ridan-to'g'ri ushbu chatga avtomatik yuboriladi.",
-                parse_mode="HTML",
-            )
-            return
-        else:
-            await update.message.reply_text(
-                "❌ Tasdiqlash kodi noto'g'ri yoki eskirgan. Farzandingizdan yangi kod olishini so'rang.",
-                parse_mode="HTML",
-            )
-            return
+        await update.message.reply_text("O'quvchidan xavfsiz ota-ona ulanish havolasini oling.")
+        return
 
     # Check if this telegram user already has linked students
     def _get_linked_students(chat_id: int):
@@ -9438,7 +9295,7 @@ async def parent_start_handler(
             f"👨‍👩‍👧 <b>OTA-ONALAR NAZORATI TIZIMI</b>\n\n"
             f"Sizga quyidagi o'quvchilar biriktirilgan:\n{names_str}\n\n"
             f"🔔 Tezkor xabarnomalar va haftalik hisobotlar faol.\n"
-            f"Yangi o'quvchini ulash uchun: <code>/parent_start KOD</code>"
+            f"Yangi o'quvchini ulash uchun undan xavfsiz havola oling."
         )
         if update.callback_query:
             await update.callback_query.message.reply_text(msg_text, parse_mode="HTML")
@@ -9446,23 +9303,12 @@ async def parent_start_handler(
             await update.message.reply_text(msg_text, parse_mode="HTML")
         return
 
-    context.user_data["awaiting_parent_code"] = True
     welcome_msg = (
-        "👨‍👩‍👧 <b>OTA-ONALAR NAZORATI TIZIMIGA XUSH KELIBSIZ!</b>\n\n"
-        "Farzandingizning test natijalari, BMB darajalari va davomatini ushbu Telegram bot orqali kuzatib boring.\n\n"
-        "📌 <b>Ulanish uchun:</b>\n"
-        "1. Farzandingiz veb-saytda yoki botda <code>/parent_link</code> orqali olingan <b>6 xonali kod</b>ni bu yerga yuboring.\n"
-        "Masalan: <code>123456</code> yoki <code>/parent_start 123456</code>\n"
-        "2. Yoki pastdagi tugma orqali telefon raqamingizni yuboring."
+        "👨‍👩‍👧 <b>OTA-ONALAR NAZORATI</b>\n\n"
+        "Farzandingizdan botdagi /parent_link buyrug'i orqali olingan "
+        "shaxsiy ulanish havolasini so'rang."
     )
-    keyboard = ReplyKeyboardMarkup(
-        [
-            [KeyboardButton("📱 Telefon raqamni yuborish", request_contact=True)],
-            [KeyboardButton("🔙 Asosiy menyu")],
-        ],
-        resize_keyboard=True,
-        one_time_keyboard=True,
-    )
+    keyboard = _persistent_menu_keyboard()
     if update.callback_query:
         await update.callback_query.message.reply_text(
             welcome_msg, parse_mode="HTML", reply_markup=keyboard
@@ -9476,63 +9322,17 @@ async def parent_start_handler(
 async def parent_link_handler(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
-    """Handle /parent_link <phone> — Student initiates linking parent phone."""
-    args = context.args if context.args else []
+    """Send the student's parent invitation only in a private chat."""
+    if not await _require_private_chat(update):
+        return
     user = await _get_or_create_user_async(update)
-    if not user:
-        await update.message.reply_text("Xatolik: foydalanuvchi topilmadi.")
+    if not user or not user.is_active or user.role != "student":
+        await update.message.reply_text("Tasdiqlangan o'quvchi hisobi talab qilinadi.")
         return
-
-    if not args:
-        await update.message.reply_text(
-            "👨‍👩‍👧 <b>Ota-ona raqamini ulash</b>\n\n"
-            "Ota-onangiz telefon raqamini quyidagicha yuboring:\n"
-            "<code>/parent_link +998901234567</code>\n\n"
-            "Tizim sizga 6 xonali tasdiqlash kodini beradi. Ota-onangiz ushbu botga kirib, "
-            "kodni kiritishi bilan natijalaringiz ularga boradi.",
-            parse_mode="HTML",
-        )
-        return
-
-    raw_phone = args[0].strip()
-    import re
-
-    digits = re.sub(r"\D", "", raw_phone)
-    if len(digits) < 9:
-        await update.message.reply_text(
-            "Telefon raqami noto'g'ri. Masalan: <code>/parent_link +998901234567</code>",
-            parse_mode="HTML",
-        )
-        return
-
-    clean_phone = "+998" + digits[-9:]
-
-    def _create_relation(student_user, phone: str):
-        import random
-        from apps.accounts.models import ParentStudentRelation
-
-        code_val = f"{random.randint(100000, 999999)}"
-        rel, _ = ParentStudentRelation.objects.get_or_create(
-            student=student_user,
-            parent_phone=phone,
-            defaults={
-                "verification_code": code_val,
-                "weekly_report_enabled": True,
-                "instant_alerts_enabled": True,
-            },
-        )
-        if not rel.is_verified:
-            rel.verification_code = code_val
-            rel.save(update_fields=["verification_code"])
-        return rel.verification_code
-
-    code = await _run_db(_create_relation, user, clean_phone)
+    from apps.accounts.services.parent_link import get_parent_deep_link
+    link = get_parent_deep_link(user.pk)
     await update.message.reply_text(
-        f"✅ <b>Ota-ona raqami saqlandi:</b> <code>{clean_phone}</code>\n\n"
-        f"🔑 <b>Tasdiqlash kodi:</b> <code>{code}</code>\n\n"
-        f"Ota-onangizga ushbu xabarni yuboring:\n"
-        f"<i>«Botga kiring va <code>/parent_start {code}</code> deb yuboring!»</i>",
-        parse_mode="HTML",
+        f"Ota-onangizga ushbu shaxsiy havolani yuboring: {link}"
     )
 
 

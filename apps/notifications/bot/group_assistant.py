@@ -570,14 +570,15 @@ async def group_yangi_test_command(update: Update, context: ContextTypes.DEFAULT
         await _send_group_reply(update, context, "⚠️ Hozircha platformada faol test mavjud emas.")
         return
 
-    test_url = f"https://grandec.uz/tests/{info['test_id']}?pin={info['pin']}"
+    test_url = f"https://grandec.uz/tests/{info['test_id']}"
+    pin_text = f"🔑 <b>Kirish kodi:</b> <code>{escape(info['pin'])}</code>\n" if info["pin"] else ""
 
     text = (
         f"📢 <b>Diqqat, {escape(info['group_name'])} o'quvchilari!</b>\n"
         "Yangi test ochildi!\n\n"
         f"📝 <b>Test nomi:</b> {escape(info['title'])}\n"
         f"⏱ <b>Vaqt:</b> {info['duration']} daqiqa | {info['questions_count']} ta savol\n"
-        f"🔑 <b>Kirish PIN-kodi:</b> <code>{info['pin']}</code>\n\n"
+        f"{pin_text}\n"
         "👇 Testni topshirish uchun quyidagi tugmani bosing:"
     )
 
