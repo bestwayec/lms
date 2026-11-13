@@ -4058,21 +4058,32 @@ async def cancel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if context.user_data.pop("payment_state", None):
         cleared.append("to'lov")
     context.user_data.pop("selected_plan_id", None)
+    context.user_data.pop("selected_plan_slug", None)
+    for key, label in (
+        ("awaiting_mock_code", "test kodi"),
+        ("awaiting_create_group", "guruh yaratish"),
+        ("awaiting_teacher_contact", "ustozni bog'lash"),
+        ("awaiting_parent_code", "ota-onani bog'lash"),
+    ):
+        if context.user_data.pop(key, None):
+            cleared.append(label)
     if context.user_data.get("auth_state"):
         _clear_auth_state(context)
         cleared.append("kirish")
 
+    user = await _get_or_create_user_async(update)
+    role = _get_user_role(user, update.effective_user.id if update.effective_user else None)
     if cleared:
         await send_reply(
             update,
             "✅ Bekor qilindi: " + ", ".join(cleared) + ".",
-            reply_markup=_main_menu_keyboard(),
+            reply_markup=_main_menu_keyboard(role),
         )
     else:
         await send_reply(
             update,
             "Bekor qilinadigan amal yo'q.",
-            reply_markup=_main_menu_keyboard(),
+            reply_markup=_main_menu_keyboard(role),
         )
 
 
