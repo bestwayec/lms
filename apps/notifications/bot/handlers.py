@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING
 
 import telegram
 from asgiref.sync import sync_to_async
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
 from django.db import transaction
 
 from apps.accounts.access import is_platform_admin
@@ -341,55 +341,34 @@ def _persistent_menu_keyboard(role: str = "student", is_admin: bool = False) -> 
 
 def _student_main_menu_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
     """Main menu inline keyboard for students."""
-    from django.conf import settings as _settings
-
-    _site_url = getattr(_settings, "SITE_URL", "https://grandec.uz").rstrip("/")
     buttons = [
-        [
-            InlineKeyboardButton(
-                "📝 Mock Test (#kod)", callback_data="menu_mock_join"
-            ),
-            InlineKeyboardButton(
-                "📱 Fast CBT Test", web_app={"url": f"{_site_url}/tma/#/tests"}
-            ),
-        ],
-        [
-            InlineKeyboardButton("✍️ Esse yozish", callback_data="menu_essays"),
-            InlineKeyboardButton("⚔️ Arena (1v1)", callback_data="menu_arena"),
-        ],
-        [
-            InlineKeyboardButton("🧠 Telegram Quiz", callback_data="menu_quiz"),
-            InlineKeyboardButton(
-                "📜 Sertifikatlarim (PDF)", callback_data="menu_certificates"
-            ),
-        ],
-        [
-            InlineKeyboardButton("📊 Natijalarim", callback_data="menu_results"),
-            InlineKeyboardButton("👤 Profilim", callback_data="menu_profile"),
-        ],
-        [
-            InlineKeyboardButton("💳 Tarif / To'lov", callback_data="cb_myplan"),
-            InlineKeyboardButton(
-                "🏆 ELO Reyting", callback_data="menu_leaderboard"
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                "🏆 Yakshanba Turniri", callback_data="menu_tournament"
-            ),
-            InlineKeyboardButton(
-                "👨‍👩‍👧 Ota-onalar nazorati", callback_data="menu_parents"
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                "🌐 Web Platformaga o'tish", url=f"{_site_url}/dashboard/"
-            ),
-        ],
+        [InlineKeyboardButton("📚 Testlar", callback_data="menu_tests"),
+         InlineKeyboardButton("🧠 Tezkor quiz", callback_data="menu_quiz")],
+        [InlineKeyboardButton("✍️ Esse yozish", callback_data="menu_essays"),
+         InlineKeyboardButton("📊 Natijalarim", callback_data="menu_results")],
+        [InlineKeyboardButton("👤 Profilim", callback_data="menu_profile"),
+         InlineKeyboardButton("💳 Obunam", callback_data="cb_myplan")],
+        [InlineKeyboardButton("✨ Boshqa imkoniyatlar", callback_data="menu_student_more")],
     ]
     if is_admin:
         buttons.append([InlineKeyboardButton("👑 Admin panelga qaytish", callback_data="menu_admin")])
     return InlineKeyboardMarkup(buttons)
+
+
+def _student_more_keyboard() -> InlineKeyboardMarkup:
+    """Less frequent actions remain available without crowding the home menu."""
+    from django.conf import settings as _settings
+
+    site_url = getattr(_settings, "SITE_URL", "https://grandec.uz").rstrip("/")
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📜 Sertifikatlarim", callback_data="menu_certs"),
+         InlineKeyboardButton("⚔️ Arena", callback_data="menu_arena")],
+        [InlineKeyboardButton("🏆 ELO reyting", callback_data="menu_leaderboard"),
+         InlineKeyboardButton("🏆 Turnir", callback_data="menu_tournament")],
+        [InlineKeyboardButton("👨‍👩‍👧 Ota-onalar nazorati", callback_data="menu_parents")],
+        [InlineKeyboardButton("🌐 Web platforma", url=f"{site_url}/dashboard/")],
+        [InlineKeyboardButton("🔙 Bosh menyu", callback_data="menu_main")],
+    ])
 
 
 def _teacher_main_menu_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
@@ -4058,21 +4037,32 @@ async def cancel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if context.user_data.pop("payment_state", None):
         cleared.append("to'lov")
     context.user_data.pop("selected_plan_id", None)
+    context.user_data.pop("selected_plan_slug", None)
+    for key, label in (
+        ("awaiting_mock_code", "test kodi"),
+        ("awaiting_create_group", "guruh yaratish"),
+        ("awaiting_teacher_contact", "ustozni bog'lash"),
+        ("awaiting_parent_code", "ota-onani bog'lash"),
+    ):
+        if context.user_data.pop(key, None):
+            cleared.append(label)
     if context.user_data.get("auth_state"):
         _clear_auth_state(context)
         cleared.append("kirish")
 
+    user = await _get_or_create_user_async(update)
+    role = _get_user_role(user, update.effective_user.id if update.effective_user else None)
     if cleared:
         await send_reply(
             update,
             "✅ Bekor qilindi: " + ", ".join(cleared) + ".",
-            reply_markup=_main_menu_keyboard(),
+            reply_markup=_main_menu_keyboard(role),
         )
     else:
         await send_reply(
             update,
             "Bekor qilinadigan amal yo'q.",
-            reply_markup=_main_menu_keyboard(),
+            reply_markup=_main_menu_keyboard(role),
         )
 
 
@@ -5194,6 +5184,8 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     try:
         if data == "menu_main":
+            # Leaving the code-entry screen must not treat the next message as a code.
+            context.user_data.pop("awaiting_mock_code", None)
             user = await _get_or_create_user_async(update)
             role = _get_user_role(
                 user, update.effective_user.id if update.effective_user else None
@@ -5208,6 +5200,11 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 title,
                 parse_mode="Markdown",
                 reply_markup=_main_menu_keyboard(role),
+            )
+        elif data == "menu_student_more":
+            await query.edit_message_text(
+                "✨ Qo'shimcha imkoniyatlar\n\nKerakli bo'limni tanlang.",
+                reply_markup=_student_more_keyboard(),
             )
         elif data == "role_select_student":
             await role_select_student_callback(update, context)
@@ -5304,7 +5301,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 "📝 *MILLIY SERTIFIKAT MOCK TESTGA ULANISH*\n\n"
                 "Ustozingiz bergan Mock kodini botga yuboring:\n"
                 "Masalan: `#MOCK-401` yoki `MOCK-401`\n\n"
-                "📌 Kodni yuborganingizdan so'ng, test darhol ochiladi va rasmiy BMB darajangiz (A+, A, B+...) hisoblab beriladi."
+                "Kodni yuboring yoki /cancel orqali bekor qiling."
             )
             buttons = InlineKeyboardMarkup(
                 [[InlineKeyboardButton("🔙 Bosh menyu", callback_data="menu_main")]]
@@ -5317,11 +5314,11 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
             site_url = getattr(_settings, "SITE_URL", "https://grandec.uz").rstrip("/")
             text = (
-                "📚 *ONA TILI VA ADABIYOTIDAN TEST TOPSHIRISH*\n\n"
-                "O'zingizga qulay test formatini tanlang:\n\n"
-                "1️⃣ *📱 Fast CBT (Telegram Mini App)* — Telegram ichida sahifadan chiqmasdan tezkor '1 tadan ishlash' interfeysi.\n\n"
-                "2️⃣ *🧠 Telegram Chat Quiz* — Telegram chatida savollar birma-bir beriladi, rasmiy BMB daraja hisoblanadi va AI xatolar tahlili beriladi.\n\n"
-                "3️⃣ *📝 Mock Test (#kod)* — Ustozingiz bergan kod orqali mock imtihon topshirish."
+                "📚 *Testlar*\n\n"
+                "O'zingizga qulay usulni tanlang:\n\n"
+                "📱 Mini App — mavjud testlarni ko'rish va ishlash.\n"
+                "🧠 Quiz — savollarga Telegram chatida javob berish.\n"
+                "📝 Test kodi — ustozingiz bergan kod orqali kirish."
             )
             buttons = [
                 [
@@ -5350,7 +5347,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             from apps.notifications.bot.quiz import quiz_handler
 
             await _dispatch_handler(update, context, quiz_handler)
-        elif data in ("menu_certs", "cb_certs"):
+        elif data in ("menu_certs", "menu_certificates", "cb_certs"):
             await _dispatch_handler(update, context, certificates_handler)
         elif data in ("menu_myplan", "cb_myplan"):
             await _dispatch_handler(update, context, myplan_handler)
@@ -5518,6 +5515,31 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             group_id = _safe_callback_int(data, prefix="tgrp_")
             if group_id is not None:
                 await _group_card_callback(update, context, group_id)
+        elif data.startswith("taslist_"):
+            group_id = _safe_callback_int(data, prefix="taslist_")
+            if group_id is not None:
+                await _assignment_list(update, context, group_id)
+        elif data.startswith("taspage_"):
+            parts = data.removeprefix("taspage_").split("_")
+            if len(parts) == 2 and all(part.isdigit() for part in parts):
+                await _assignment_list(update, context, int(parts[0]), int(parts[1]))
+            else:
+                await edit_or_reply(update, "Havola eskirgan. Guruhdan qayta boshlang.")
+        elif data.startswith(("tasreview_", "tasconfirm_")):
+            action, _, payload = data.partition("_")
+            parts = payload.split("_")
+            if len(parts) == 2 and all(part.isdigit() for part in parts):
+                await _assignment_action(update, context, int(parts[0]), int(parts[1]), action == "tasconfirm")
+            else:
+                await edit_or_reply(update, "Havola eskirgan. Guruhlar ro'yxatidan qayta boshlang.")
+        elif data.startswith("tpage_"):
+            parts = data.removeprefix("tpage_").split("_")
+            if len(parts) == 2 and all(part.isdigit() for part in parts):
+                await _attendance_page_callback(update, context, int(parts[0]), int(parts[1]))
+        elif data.startswith("tconfirm_"):
+            session_id = _safe_callback_int(data, prefix="tconfirm_")
+            if session_id is not None:
+                await _attendance_review_callback(update, context, session_id)
         elif data.startswith("tatt_"):
             group_id = _safe_callback_int(data, prefix="tatt_")
             if group_id is not None:
@@ -6996,10 +7018,10 @@ def _group_list_keyboard(
     return InlineKeyboardMarkup(rows)
 
 
-def _attendance_keyboard(session, rows) -> InlineKeyboardMarkup:
+def _attendance_keyboard(session, rows, page=0) -> InlineKeyboardMarkup:
     """One status row per student, in the same order as the numbered roster."""
     keyboard = []
-    for row in rows[:_ATTENDANCE_PAGE_SIZE]:
+    for row in rows[page * _ATTENDANCE_PAGE_SIZE:(page + 1) * _ATTENDANCE_PAGE_SIZE]:
         student_id = row["student_id"]
         keyboard.append(
             [
@@ -7010,6 +7032,13 @@ def _attendance_keyboard(session, rows) -> InlineKeyboardMarkup:
                 for status in ("present", "late", "excused", "absent")
             ]
         )
+    navigation = []
+    if page > 0:
+        navigation.append(InlineKeyboardButton("⬅️ Oldingi", callback_data=f"tpage_{session.id}_{page - 1}"))
+    if (page + 1) * _ATTENDANCE_PAGE_SIZE < len(rows):
+        navigation.append(InlineKeyboardButton("Keyingi ➡️", callback_data=f"tpage_{session.id}_{page + 1}"))
+    if navigation:
+        keyboard.append(navigation)
     keyboard.append(
         [
             InlineKeyboardButton(
@@ -7019,14 +7048,14 @@ def _attendance_keyboard(session, rows) -> InlineKeyboardMarkup:
     )
     keyboard.append(
         [
-            InlineKeyboardButton("💾 Yakunlash", callback_data=f"tfin_{session.id}"),
+            InlineKeyboardButton("🔍 Ko‘rib chiqish", callback_data=f"tconfirm_{session.id}"),
             InlineKeyboardButton("🏠 Guruh", callback_data=f"tgrp_{session.group_id}"),
         ]
     )
     return InlineKeyboardMarkup(keyboard)
 
 
-def _attendance_text(session, rows, data) -> str:
+def _attendance_text(session, rows, data, page=0) -> str:
     lines = [
         f"🗓 *{data['group_name']}* — {data['lesson_date']} {data['time_label']}",
         "",
@@ -7036,15 +7065,12 @@ def _attendance_text(session, rows, data) -> str:
     if data["unmarked"]:
         lines.append(f"⚠️ Belgilanmagan: {data['unmarked']}")
     lines.append("")
-    for index, row in enumerate(rows[:_ATTENDANCE_PAGE_SIZE], 1):
+    start = page * _ATTENDANCE_PAGE_SIZE
+    for index, row in enumerate(rows[start:start + _ATTENDANCE_PAGE_SIZE], start + 1):
         emoji = _STATUS_EMOJI.get(row["status"], "➖") if row["marked"] else "➖"
         lines.append(f"{index}. {row['name']} — {emoji} {row['status_label']}")
     if len(rows) > _ATTENDANCE_PAGE_SIZE:
-        lines.append("")
-        lines.append(
-            f"_(Qolgan {len(rows) - _ATTENDANCE_PAGE_SIZE} o'quvchi panel orqali "
-            "belgilanadi.)_"
-        )
+        lines.append(f"Sahifa {page + 1} / {(len(rows) + _ATTENDANCE_PAGE_SIZE - 1) // _ATTENDANCE_PAGE_SIZE}")
     lines.append("")
     lines.append(_STATUS_LEGEND)
     return "\n".join(lines)
@@ -7056,11 +7082,14 @@ async def _render_attendance(update: Update, context, session) -> None:
 
     rows = await _run_db(roster, session)
     data = await _run_db(summary, session)
+    page_key = f"attendance_page_{session.id}"
+    page = min(max(0, context.user_data.get(page_key, 0)), max(0, (len(rows) - 1) // _ATTENDANCE_PAGE_SIZE))
+    context.user_data[page_key] = page
     await edit_or_reply(
         update,
-        _attendance_text(session, rows, data),
+        _attendance_text(session, rows, data, page),
         parse_mode="Markdown",
-        reply_markup=_attendance_keyboard(session, rows),
+        reply_markup=_attendance_keyboard(session, rows, page),
     )
 
 
@@ -7112,6 +7141,11 @@ async def _send_group_card(update: Update, context, user, group) -> None:
     else:
         attendance_line = "Bugun davomat olinmagan."
     essays = await _run_db(group_essay_summary, group)
+    def _assigned_tests():
+        tests = group.assigned_tests.filter(is_active=True).order_by("title", "id")
+        return tests.count(), list(tests.values_list("title", flat=True)[:5])
+
+    assigned_count, assigned_titles = await _run_db(_assigned_tests)
 
     invite_code = getattr(group, "invite_code", "") or f"GR-{group.id}"
     text = (
@@ -7119,12 +7153,22 @@ async def _send_group_card(update: Update, context, user, group) -> None:
         f"📌 Taklif kodi: `#{invite_code}`\n"
         f"_(O'quvchilar botga `#{invite_code}` deb yozsa, avtomatik guruhga qo'shiladi)_\n\n"
         f"👥 O'quvchilar soni: *{count} nafar*\n"
+        f"📚 Biriktirilgan testlar: *{assigned_count} ta*\n"
         f"🗓 Bugungi davomat: {attendance_line}\n"
         f"📝 Esse — baholangan: *{essays['graded']}*, kutilmoqda: "
         f"*{essays['pending']}*, topshirilmagan: *{essays['not_submitted']}*"
     )
+    if assigned_titles:
+        from telegram.helpers import escape_markdown
+
+        text += "\n\n📚 *Guruh testlari:*\n" + "\n".join(
+            f"• {escape_markdown(title, version=1)}" for title in assigned_titles
+        )
+        if assigned_count > len(assigned_titles):
+            text += f"\nYana {assigned_count - len(assigned_titles)} ta test."
     keyboard = InlineKeyboardMarkup(
         [
+            [InlineKeyboardButton("📝 Test biriktirish", callback_data=f"taslist_{group.id}")],
             [
                 InlineKeyboardButton(
                     "🗓 Davomat olish", callback_data=f"tatt_{group.id}"
@@ -8354,7 +8398,7 @@ async def attendance_handler(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
     """/attendance — choose a group, then take the register."""
-    user = await _teacher_from_update(update)
+    user = await _attendance_actor(update)
     if not user:
         return
     from apps.attendance.services import teacher_groups
@@ -8439,7 +8483,7 @@ async def _mark_student(
     from apps.attendance.services import (
         AttendanceError,
         get_session_for_user,
-        mark,
+        mark_from_bot,
     )
 
     if status not in dict(AttendanceRecord.Status.choices):
@@ -8447,29 +8491,26 @@ async def _mark_student(
         return
     try:
         session = await _run_db(get_session_for_user, user, session_id)
-        student = await _run_db(
-            lambda: session.group.students.filter(pk=student_id).first()
-        )
-        if student is None:
-            await send_reply(update, "O'quvchi topilmadi.")
-            return
-        await _run_db(mark, session, student, status, actor=user)
+        await _run_db(mark_from_bot, session.id, student_id, status, actor=user)
     except AttendanceError as exc:
         await send_reply(update, exc.messages[0] if exc.messages else "Xatolik.")
         return
-    except PermissionDenied:
+    except (PermissionDenied, ObjectDoesNotExist):
         await send_reply(update, "Bu davomat darsi sizga tegishli emas.")
         return
     await _render_attendance(update, context, session)
 
 
 async def _mark_all_present(update: Update, context, user, session_id: int) -> None:
-    from apps.attendance.services import get_session_for_user, mark_all_present
+    from apps.attendance.services import AttendanceError, get_session_for_user, mark_all_present_from_bot
 
     try:
         session = await _run_db(get_session_for_user, user, session_id)
-        await _run_db(mark_all_present, session, actor=user)
-    except PermissionDenied:
+        await _run_db(mark_all_present_from_bot, session.id, actor=user)
+    except AttendanceError as exc:
+        await send_reply(update, exc.messages[0] if exc.messages else "Xatolik.")
+        return
+    except (PermissionDenied, ObjectDoesNotExist):
         await send_reply(update, "Bu davomat darsi sizga tegishli emas.")
         return
     await _render_attendance(update, context, session)
@@ -8498,7 +8539,7 @@ async def _finalize_attendance(
     except AttendanceError as exc:
         await send_reply(update, exc.messages[0] if exc.messages else "Xatolik.")
         return
-    except PermissionDenied:
+    except (PermissionDenied, ObjectDoesNotExist):
         await send_reply(update, "Bu davomat darsi sizga tegishli emas.")
         return
 
@@ -8541,18 +8582,19 @@ async def _finalize_attendance(
         f"• ❌ {result['absent']} kelmadi"
     )
 
-    # Kelmagan o'quvchilar ota-onalariga ogohlantirish yuborish
-    def _notify_absences(sess):
-        from apps.notifications.tasks_parent import send_parent_absence_alert_task
+    # Preserve legacy guardian-relation alerts, but do not dispatch them again
+    # when an already-finalized callback is replayed.
+    if not result.get("already_finalized"):
+        def _notify_legacy_absences():
+            from apps.notifications.tasks_parent import send_parent_absence_alert_task
 
-        absent_recs = sess.records.filter(status="absent")
-        for rec in absent_recs:
-            try:
-                send_parent_absence_alert_task.delay(sess.id, rec.student_id)
-            except Exception:
-                pass
+            for student_id in session.records.filter(status="absent").values_list("student_id", flat=True):
+                try:
+                    send_parent_absence_alert_task.delay(session.id, student_id)
+                except Exception:
+                    logger.exception("Legacy absence alert dispatch failed for session %s", session.id)
 
-    await _run_db(_notify_absences, session)
+        await _run_db(_notify_legacy_absences)
 
     await edit_or_reply(
         update,
@@ -8961,8 +9003,85 @@ async def _group_card_callback(update: Update, context, group_id: int) -> None:
     await _send_group_card(update, context, user, group)
 
 
+async def _assignment_actor(update):
+    chat = update.effective_chat
+    if not chat or chat.type != "private":
+        await send_reply(update, "Test biriktirish uchun bot bilan shaxsiy chatni oching.")
+        return None
+    return await _teacher_from_update(update)
+
+
+async def _assignment_list(update, context, group_id, page=0):
+    from apps.notifications.bot.teacher_assignments import available_tests
+
+    actor = await _assignment_actor(update)
+    if not actor:
+        return
+    group = await _load_managed_group(actor, group_id)
+    if not group:
+        await edit_or_reply(update, "Guruh topilmadi yoki sizga tegishli emas.")
+        return
+    page_size = 8
+    page = min(max(page, 0), 10000)
+    tests = await _run_db(lambda: list(available_tests(actor, group)[page * page_size:page * page_size + page_size + 1]))
+    has_next = len(tests) > page_size
+    tests = tests[:page_size]
+    rows = [[InlineKeyboardButton(test.title[:45], callback_data=f"tasreview_{group_id}_{test.id}")] for test in tests]
+    navigation = []
+    if page:
+        navigation.append(InlineKeyboardButton("⬅️ Oldingi", callback_data=f"taspage_{group_id}_{page - 1}"))
+    if has_next:
+        navigation.append(InlineKeyboardButton("Keyingi ➡️", callback_data=f"taspage_{group_id}_{page + 1}"))
+    if navigation:
+        rows.append(navigation)
+    rows.append([InlineKeyboardButton("🔙 Guruh", callback_data=f"tgrp_{group_id}")])
+    text = "📝 Biriktirish uchun testni tanlang:" if tests else "Biriktirish uchun mos testingiz yo'q."
+    await edit_or_reply(update, text, reply_markup=InlineKeyboardMarkup(rows))
+
+
+async def _assignment_action(update, context, group_id, test_id, confirm):
+    from html import escape
+    from apps.notifications.bot.teacher_assignments import AssignmentError, assign_test, available_tests
+
+    actor = await _assignment_actor(update)
+    if not actor:
+        return
+    group = await _load_managed_group(actor, group_id)
+    if not group:
+        await edit_or_reply(update, "Guruh topilmadi yoki sizga tegishli emas.")
+        return
+    if confirm:
+        try:
+            test, created = await _run_db(assign_test, actor, group_id, test_id)
+        except AssignmentError as exc:
+            await edit_or_reply(update, str(exc), reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 Testlar", callback_data=f"taslist_{group_id}")],
+            ]))
+            return
+        from django.conf import settings
+        url = f"{getattr(settings, 'SITE_URL', 'https://grandec.uz').rstrip('/')}/tests/{test.id}"
+        text = "✅ Test biriktirildi." if created else "ℹ️ Bu test allaqachon biriktirilgan."
+        await edit_or_reply(update, f"{text}\n\n{escape(test.title)} — {escape(group.name)}",
+                            parse_mode="HTML", reply_markup=InlineKeyboardMarkup([
+                                [InlineKeyboardButton("🔗 Testni ochish", url=url)],
+                                [InlineKeyboardButton("🏠 Guruh", callback_data=f"tgrp_{group_id}")],
+                            ]))
+        return
+    test = await _run_db(lambda: available_tests(actor, group).filter(pk=test_id).first())
+    if not test:
+        await edit_or_reply(update, "Test mavjud emas yoki sizga tegishli emas.", reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 Testlar", callback_data=f"taslist_{group_id}")],
+        ]))
+        return
+    await edit_or_reply(update, f"📝 <b>{escape(test.title)}</b>\n👥 {escape(group.name)}\n\nTestni guruhga biriktirasizmi?",
+                        parse_mode="HTML", reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("✅ Tasdiqlash", callback_data=f"tasconfirm_{group_id}_{test_id}")],
+                            [InlineKeyboardButton("🔙 Testlar", callback_data=f"taslist_{group_id}")],
+                        ]))
+
+
 async def _attendance_callback(update: Update, context, group_id: int) -> None:
-    user = await _teacher_from_update(update)
+    user = await _attendance_actor(update)
     if not user:
         return
     group = await _load_managed_group(user, group_id)
@@ -8975,14 +9094,58 @@ async def _attendance_callback(update: Update, context, group_id: int) -> None:
 async def _mark_callback(
     update: Update, context, session_id: int, student_id: int, status: str
 ) -> None:
-    user = await _teacher_from_update(update)
+    user = await _attendance_actor(update)
     if not user:
         return
     await _mark_student(update, context, user, session_id, student_id, status)
 
 
+async def _attendance_actor(update):
+    if not update.effective_chat or update.effective_chat.type != "private":
+        await send_reply(update, "Davomat uchun bot bilan shaxsiy chatni oching.")
+        return None
+    return await _teacher_from_update(update)
+
+
+async def _attendance_page_callback(update, context, session_id, page):
+    from apps.attendance.services import get_session_for_user
+
+    user = await _attendance_actor(update)
+    if not user:
+        return
+    try:
+        session = await _run_db(get_session_for_user, user, session_id)
+    except (PermissionDenied, ObjectDoesNotExist):
+        await send_reply(update, "Bu davomat sizga tegishli emas.")
+        return
+    context.user_data[f"attendance_page_{session.id}"] = min(page, 10000)
+    await _render_attendance(update, context, session)
+
+
+async def _attendance_review_callback(update, context, session_id):
+    from apps.attendance.services import get_session_for_user, summary
+
+    user = await _attendance_actor(update)
+    if not user:
+        return
+    try:
+        session = await _run_db(get_session_for_user, user, session_id)
+    except (PermissionDenied, ObjectDoesNotExist):
+        await send_reply(update, "Bu davomat sizga tegishli emas.")
+        return
+    data = await _run_db(summary, session)
+    text = (f"🔍 Davomatni tekshiring\n\n👥 Jami: {data['roster_size']}\n"
+            f"✅ Keldi: {data['present']} · ⏰ Kech: {data['late']}\n"
+            f"📄 Sababli: {data['excused']} · ❌ Kelmadi: {data['absent']}\n"
+            f"⚠️ Belgilanmagan: {data['unmarked']}\n\nYakunlashni tasdiqlaysizmi?")
+    await edit_or_reply(update, text, reply_markup=InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Yakunlash", callback_data=f"tfin_{session.id}")],
+        [InlineKeyboardButton("🔙 Davomatga qaytish", callback_data=f"tpage_{session.id}_0")],
+    ]))
+
+
 async def _all_present_callback(update: Update, context, session_id: int) -> None:
-    user = await _teacher_from_update(update)
+    user = await _attendance_actor(update)
     if not user:
         return
     await _mark_all_present(update, context, user, session_id)
@@ -8991,7 +9154,7 @@ async def _all_present_callback(update: Update, context, session_id: int) -> Non
 async def _finalize_callback(
     update: Update, context, session_id: int, mark_unmarked_absent: bool = False
 ) -> None:
-    user = await _teacher_from_update(update)
+    user = await _attendance_actor(update)
     if not user:
         return
     await _finalize_attendance(
