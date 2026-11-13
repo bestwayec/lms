@@ -601,31 +601,39 @@ class TestRealTimeGroupAutoBroadcastAndVedomost:
         assert "Describe a memorable journey you have taken" in caption
         assert "Band 7.0" in caption
 
-    def test_4d_web_trigger_group_leaderboard_and_vedomost_broadcast(self):
+    def test_4d_web_report_is_sent_only_to_verified_teacher_privately(self):
+        from django.utils import timezone
+        self.teacher.telegram_chat_id = 771234567
+        self.teacher.telegram_identity_verified_at = timezone.now()
+        self.teacher.save(update_fields=["telegram_chat_id", "telegram_identity_verified_at"])
         self.client.force_authenticate(user=self.teacher)
         url = f"/api/v1/school/groups/{self.group.id}/broadcast-vedomost/"
 
-        with (
-            patch.object(TelegramService, "send_document", return_value={"ok": True, "success": True}) as mock_doc,
-            patch.object(TelegramService, "_call_api", return_value={"ok": True, "success": True}) as mock_api,
-        ):
+        def send_private(**kwargs):
+            assert os.path.exists(kwargs["file_path"])
+            assert kwargs["chat_id"] == self.teacher.telegram_chat_id
+            return {"success": True}
+
+        with patch.object(TelegramService, "_send_document", side_effect=send_private) as mock_doc:
             resp = self.client.post(url, {}, format="json")
 
         assert resp.status_code == status.HTTP_200_OK
         data = resp.json()
         assert data["status"] == "ok"
 
-        assert mock_api.called
-        msg_payload = mock_api.call_args.args[1]
-        assert msg_payload["chat_id"] == -100123456789
-        assert "GURUH REYTINGI VA VEDOMOST" in msg_payload["text"]
-        assert self.group.name in msg_payload["text"]
-
         assert mock_doc.called
         doc_kwargs = mock_doc.call_args.kwargs
-        assert doc_kwargs["chat_id"] == -100123456789
-        assert os.path.exists(doc_kwargs["file_path"])
+        assert doc_kwargs["chat_id"] == self.teacher.telegram_chat_id
+        assert not os.path.exists(doc_kwargs["file_path"])
         assert doc_kwargs["file_path"].endswith(".pdf")
+
+    def test_4d_web_report_rejects_unverified_telegram(self):
+        self.client.force_authenticate(user=self.teacher)
+        url = f"/api/v1/school/groups/{self.group.id}/broadcast-vedomost/"
+        with patch.object(TelegramService, "_send_document") as send:
+            response = self.client.post(url, {}, format="json")
+        assert response.status_code == 400
+        send.assert_not_called()
 
 
 # ===========================================================================

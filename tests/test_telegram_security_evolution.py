@@ -16,6 +16,56 @@ from apps.notifications.models import TelegramAuthToken
 User = get_user_model()
 
 
+@pytest.mark.django_db(transaction=True)
+def test_teacher_menu_is_private_and_only_shows_assigned_group_tests():
+    from apps.courses.models import Course
+    from apps.tests.models import Test, TestAttempt
+    from apps.notifications.bot.group_assistant import ustoz_menu_command
+    teacher = User.objects.create_user(email="menu-teacher@example.test", password="test", role="teacher", telegram_chat_id=85201, telegram_identity_verified_at=timezone.now())
+    student = User.objects.create_user(email="menu-student@example.test", password="test")
+    group = StudentGroup.objects.create(name="Private group", teacher=teacher)
+    group.students.add(student)
+    course = Course.objects.create(title="Course", slug="menu-private-course", teacher=teacher)
+    assigned = Test.objects.create(title="Assigned", course=course, assigned_group=group)
+    unrelated = Test.objects.create(title="Unrelated", course=course)
+    for test, score in ((assigned, 42), (unrelated, 99)):
+        TestAttempt.objects.create(student=student, test=test, score=score, percentage=score, status=TestAttempt.Status.COMPLETED)
+    update = SimpleNamespace(
+        effective_user=SimpleNamespace(id=85201, username="teacher"),
+        effective_chat=SimpleNamespace(id=-100, type="supergroup"),
+        message=SimpleNamespace(reply_text=AsyncMock()), callback_query=None,
+    )
+    async_to_sync(ustoz_menu_command)(update, SimpleNamespace())
+    group_reply = update.message.reply_text.await_args.args[0]
+    assert "Private group" not in group_reply and "99" not in group_reply
+    update.effective_chat = SimpleNamespace(id=85201, type="private")
+    async_to_sync(ustoz_menu_command)(update, SimpleNamespace())
+    private_reply = update.message.reply_text.await_args.args[0]
+    assert "42" in private_reply and "99" not in private_reply
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("action", ["adj_5", "adj_9999", "pass", "set_100", "grade"])
+def test_old_grade_buttons_do_not_modify_scores(action):
+    from apps.courses.models import Course
+    from apps.tests.models import Test, TestAttempt
+    from apps.notifications.bot.group_assistant import group_assistant_callback_handler
+    teacher = User.objects.create_user(email="override-teacher@example.test", password="test", role="teacher")
+    student = User.objects.create_user(email="override-student@example.test", password="test")
+    course = Course.objects.create(title="Course", slug="override-private-course", teacher=teacher)
+    test = Test.objects.create(title="Test", course=course)
+    attempt = TestAttempt.objects.create(student=student, test=test, score=30, percentage=30, status=TestAttempt.Status.COMPLETED)
+    parts = action.split("_", 1)
+    payload = f"ustoz_{parts[0]}_{attempt.id}" + (f"_{parts[1]}" if len(parts) > 1 else "")
+    query = SimpleNamespace(data=payload, answer=AsyncMock(), edit_message_text=AsyncMock())
+    update = SimpleNamespace(callback_query=query)
+    async_to_sync(group_assistant_callback_handler)(update, SimpleNamespace())
+    assert query.answer.await_args.kwargs["show_alert"] is True
+    query.edit_message_text.assert_not_awaited()
+    attempt.refresh_from_db()
+    assert attempt.score == 30 and attempt.percentage == 30 and not attempt.teacher_overridden
+
+
 @pytest.mark.django_db
 def test_parent_invitation_expiry_replay_and_revocation():
     from datetime import timedelta

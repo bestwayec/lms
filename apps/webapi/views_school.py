@@ -158,106 +158,38 @@ def group_export_pdf_view(request, group_id: int):
 @api_view(["POST"])
 @permission_classes([IsTeacherOrAdmin])
 def group_broadcast_vedomost_view(request, group_id: int):
-    """
-    POST /api/v1/school/groups/<int:group_id>/broadcast-vedomost/
-    Guruh reytingini va PDF Vedomost hujjatini ulangan Telegram guruhga yuboradi.
-    """
-    from apps.courses.group_service import get_group_full_analytics
+    """Deliver a group report privately to the authenticated, verified actor."""
+    import os
     from apps.notifications.services.telegram_service import TelegramService
     from apps.results.pdf_generator import generate_group_vedomost_pdf
 
     group = get_object_or_404(_teacher_groups(request.user), id=group_id)
-    if not group.telegram_chat_id:
-        return Response(
-            {
-                "error": (
-                    "Ushbu guruhga Telegram guruh ulanmagan. "
-                    "Avval 1-klik orqali yoki /ulash kodi bilan ulang."
-                )
-            },
-            status=400,
-        )
-
-    analytics = get_group_full_analytics(group)
-    students_rows = analytics.get("students", [])
-    medals = ["🥇", "🥈", "🥉"]
-    student_count_val = analytics.get("student_count", analytics.get("total_students", 0))
-    group_avg_val = analytics.get("group_avg_test", analytics.get("group_avg_percentage", 0))
-    lines = [
-        f"📊 <b>GURUH REYTINGI VA VEDOMOST — «{group.name}»</b>",
-        f"👨‍🏫 Ustoz: <b>{group.teacher.get_full_name() or group.teacher.email}</b>",
-        f"👥 O'quvchilar soni: <b>{student_count_val} ta</b> | "
-        f"📈 O'rtacha ko'rsatkich: <b>{group_avg_val}%</b>",
-        "──────────────────────",
-    ]
-    if students_rows:
-        for idx, row in enumerate(students_rows[:15]):
-            rank_icon = medals[idx] if idx < 3 else f"{idx + 1}."
-            test_avg = row.get("test_avg", row.get("avg_test_pct", 0))
-            test_count = row.get("test_count", row.get("tests_count", 0))
-            lines.append(
-                f"{rank_icon} <b>{row['full_name']}</b> — {test_avg}% "
-                f"({test_count} ta test)"
-            )
-    else:
-        lines.append("Hozircha yakunlangan test natijalari mavjud emas.")
-
-    lines.append("──────────────────────")
-    lines.append("📎 To'liq rasmiy PDF Vedomost quyida ilova qilingan 👇")
-    leaderboard_text = "\n".join(lines)
-
+    actor = request.user
+    if not actor.telegram_chat_id or not actor.telegram_identity_verified_at:
+        return Response({"error": "Hisobot uchun tasdiqlangan Telegram hisobini bog'lang."}, status=400)
     test_id = request.data.get("test_id") if isinstance(request.data, dict) else None
+    if test_id is not None:
+        try:
+            test_id = int(test_id)
+            if test_id <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            return Response({"error": "Noto'g'ri test identifikatori."}, status=400)
     try:
-        test_id = int(test_id) if test_id else None
-    except (TypeError, ValueError):
-        test_id = None
-
-    pdf_path = generate_group_vedomost_pdf(group.id, test_id=test_id)
-    caption = (
-        f"📄 <b>«{group.name}» — Rasmiy PDF Vedomost</b>\n"
-        f"🏛 GRAND EDUCATION (grandec.uz)"
-    )
-
-    if hasattr(TelegramService, "_call_api"):
-        TelegramService._call_api(
-            "sendMessage",
-            {
-                "chat_id": group.telegram_chat_id,
-                "text": leaderboard_text,
-                "parse_mode": "HTML",
-            },
+        pdf_path = generate_group_vedomost_pdf(group.id, test_id=test_id)
+    except Test.DoesNotExist:
+        return Response({"error": "Test bu guruhga biriktirilmagan."}, status=404)
+    try:
+        result = TelegramService._send_document(
+            chat_id=actor.telegram_chat_id, file_path=pdf_path,
+            caption="Guruh hisoboti", recipient=actor, parse_mode="HTML",
         )
-    else:
-        TelegramService.send_message(
-            chat_id=group.telegram_chat_id,
-            text=leaderboard_text,
-            parse_mode="HTML",
-            recipient=request.user,
-        )
-
-    if hasattr(TelegramService, "send_document"):
-        TelegramService.send_document(
-            chat_id=group.telegram_chat_id,
-            file_path=pdf_path,
-            caption=caption,
-        )
-    else:
-        TelegramService._send_document(
-            chat_id=group.telegram_chat_id,
-            file_path=pdf_path,
-            caption=caption,
-            recipient=request.user,
-            parse_mode="HTML",
-        )
-
-    chat_label = group.telegram_chat_title or group.name
-    return Response(
-        {
-            "status": "ok",
-            "message": f"Reyting va PDF Vedomost «{chat_label}» Telegram guruhiga muvaffaqiyatli yuborildi!",
-        },
-        status=200,
-    )
+    finally:
+        if os.path.exists(pdf_path):
+            os.unlink(pdf_path)
+    if not result.get("success"):
+        return Response({"error": "Hisobotni yuborib bo'lmadi. Bot bilan shaxsiy suhbatni tekshiring."}, status=502)
+    return Response({"status": "ok", "message": "Hisobot shaxsiy Telegram suhbatingizga yuborildi."})
 
 
 @api_view(["POST"])

@@ -15,7 +15,6 @@ from __future__ import annotations
 import logging
 from html import escape
 import os
-from decimal import Decimal
 from typing import Any
 
 from asgiref.sync import sync_to_async
@@ -839,6 +838,9 @@ async def ustoz_menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     chat = update.effective_chat
     if not user or not chat:
         return
+    if chat.type != "private" or chat.id != user.id:
+        await _send_group_reply(update, context, "🔒 Ustoz menyusi faqat shaxsiy suhbatda mavjud.")
+        return
 
     from apps.accounts.models import User as UserModel
     from apps.courses.models import StudentGroup
@@ -868,11 +870,17 @@ async def ustoz_menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         # Fetch recent 5 completed attempts for students in teacher's groups
         from apps.tests.models import TestAttempt
+        from django.db.models import Q
+        group_scope = Q(pk__in=[])
+        for group in groups:
+            group_scope |= Q(student__student_groups=group, test__assigned_group=group)
+            group_scope |= Q(student__student_groups=group, test__homework_assignments__group=group)
         recent_attempts = list(
             TestAttempt.objects.filter(
-                student__student_groups__in=groups,
+                group_scope,
                 status__in=[TestAttempt.Status.COMPLETED, TestAttempt.Status.PENDING_GRADING],
             )
+            .distinct()
             .select_related("student", "test")
             .order_by("-completed_at", "-started_at")[:5]
         )
@@ -930,12 +938,6 @@ async def ustoz_menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             chk = "✅" if att["passed"] else "⚠️"
             ovr = " ✏️" if att["overridden"] else ""
             lines.append(f"• {att['student_name']}: {att['score']:g} ball ({att['pct']}%) {chk}{ovr}")
-            keyboard_rows.append([
-                InlineKeyboardButton(
-                    f"✏️ {att['student_name']} ({att['pct']}%) ballini tahrirlash",
-                    callback_data=f"ustoz_grade_{att['id']}",
-                )
-            ])
 
     if not data["groups"]:
         lines.append("<i>Hozircha sizda guruhlar mavjud emas. Saytda yangi guruh yarating.</i>")
@@ -972,27 +974,32 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
         return
 
     data = query.data
-    if data.startswith(("grp_cmd_vedomost_", "ustoz_grade_", "ustoz_adj_", "ustoz_pass_", "ustoz_set_")):
+    # Existing score buttons are unversioned and unaudited: retries can change
+    # a grade repeatedly and concurrent requests can overwrite each other.
+    # Reject old buttons until an auditable, idempotent workflow is available.
+    if data.startswith(("ustoz_adj_", "ustoz_pass_", "ustoz_set_", "ustoz_grade_")):
+        await query.answer("⛔️ Ballni Telegram orqali tahrirlash vaqtincha mavjud emas.", show_alert=True)
+        return
+    if data.startswith("grp_cmd_vedomost_"):
         chat, tg_user = update.effective_chat, update.effective_user
-        if not chat or chat.type != "private" or not tg_user:
+        if not chat or chat.type != "private" or not tg_user or chat.id != tg_user.id:
             await query.answer("⛔️ Bu amal faqat tasdiqlangan ustozning shaxsiy chatida mavjud.", show_alert=True)
             return
         def authorized():
             from apps.accounts.models import User
             from apps.accounts.access import is_platform_admin
             from apps.courses.models import StudentGroup
-            from apps.tests.models import TestAttempt
             actor = User.objects.filter(telegram_chat_id=tg_user.id, telegram_identity_verified_at__isnull=False, is_active=True).first()
             if not actor:
                 return False
             try:
-                object_id = int(data.split("_")[3] if data.startswith("grp_cmd_vedomost_") else data.split("_")[2])
+                suffix = data.removeprefix("grp_cmd_vedomost_")
+                if not suffix.isascii() or not suffix.isdigit():
+                    return False
+                object_id = int(suffix)
             except (IndexError, ValueError):
                 return False
-            if data.startswith("grp_cmd_vedomost_"):
-                return StudentGroup.objects.filter(pk=object_id).filter(teacher=actor).exists() or (is_platform_admin(actor) and StudentGroup.objects.filter(pk=object_id).exists())
-            attempt = TestAttempt.objects.filter(pk=object_id).first()
-            return bool(attempt and (is_platform_admin(actor) or (actor.role == "teacher" and StudentGroup.objects.filter(teacher=actor, students=attempt.student).exists())))
+            return StudentGroup.objects.filter(pk=object_id).filter(teacher=actor).exists() and actor.role == "teacher" or (is_platform_admin(actor) and StudentGroup.objects.filter(pk=object_id).exists())
         if not await _run_db(authorized):
             await query.answer("⛔️ Sizda ushbu ma'lumotga ruxsat yo'q.", show_alert=True)
             return
@@ -1011,11 +1018,12 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
             path = generate_group_vedomost_pdf(g_id)
             return grp.name, path
 
+        pdf_path = None
         try:
             grp_name, pdf_path = await _run_db(_build_pdf, gid)
             with open(pdf_path, "rb") as f:
                 await context.bot.send_document(
-                    chat_id=query.message.chat_id,
+                    chat_id=tg_user.id,
                     document=f,
                     filename=os.path.basename(pdf_path),
                     caption=f"📄 <b>{grp_name} Guruhi Imtihon Vedomosti (PDF)</b>",
@@ -1024,105 +1032,9 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
         except Exception as exc:
             logger.exception("Failed to generate/send vedomost PDF: %s", exc)
             await query.message.reply_text("❌ Vedomost faylini yaratishda xatolik yuz berdi.")
-    elif data.startswith("ustoz_grade_"):
-        attempt_id = int(data.split("_")[-1])
-        await query.answer()
-
-        from apps.tests.models import TestAttempt
-
-        def _get_att_info(a_id):
-            att = TestAttempt.objects.select_related("test", "student").get(id=a_id)
-            return {
-                "id": att.id,
-                "student_name": att.student.get_full_name() or att.student.email,
-                "test_title": att.test.title,
-                "score": float(att.score),
-                "percentage": float(att.percentage),
-                "is_passed": att.is_passed,
-                "teacher_overridden": att.teacher_overridden,
-            }
-
-        att_info = await _run_db(_get_att_info, attempt_id)
-        status_str = "✅ O'tgan" if att_info["is_passed"] else "⚠️ O'tmagan"
-        override_str = " (Ustoz tasdiqlagan)" if att_info["teacher_overridden"] else ""
-
-        text = (
-            f"✏️ <b>O'quvchi ballini baholash va tahrirlash</b>\n\n"
-            f"👤 <b>O'quvchi:</b> {att_info['student_name']}\n"
-            f"📝 <b>Test:</b> {att_info['test_title']}\n"
-            f"🎯 <b>Joriy ball:</b> {att_info['score']} ({att_info['percentage']}%) {status_str}{override_str}\n\n"
-            f"Quyidagi tezkor amallardan birini tanlang:"
-        )
-
-        buttons = [
-            [
-                InlineKeyboardButton("➕ +5 ball qo'shish", callback_data=f"ustoz_adj_{attempt_id}_5"),
-                InlineKeyboardButton("➖ -5 ball ayirish", callback_data=f"ustoz_adj_{attempt_id}_-5"),
-            ],
-            [
-                InlineKeyboardButton("✅ O'tdi deb tasdiqlash", callback_data=f"ustoz_pass_{attempt_id}"),
-                InlineKeyboardButton("💯 100% (A+) qo'yish", callback_data=f"ustoz_set_{attempt_id}_100"),
-            ],
-            [
-                InlineKeyboardButton("⬅️ Orqaga", callback_data="grp_cmd_refresh"),
-            ],
-        ]
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
-    elif data.startswith("ustoz_adj_") or data.startswith("ustoz_pass_") or data.startswith("ustoz_set_"):
-        from apps.tests.models import TestAttempt
-        from apps.results.models import Result
-        from apps.accounts.models import User as UserModel
-
-        parts = data.split("_")
-        action = parts[1]
-        attempt_id = int(parts[2])
-
-        def _apply_override(a_id, act, extra_val, tg_user):
-            att = TestAttempt.objects.select_related("test", "student").get(id=a_id)
-            teacher = UserModel.objects.filter(telegram_chat_id=tg_user.id).first() if tg_user else None
-
-            if act == "adj":
-                delta = Decimal(extra_val)
-                att.score = max(Decimal("0.00"), att.score + delta)
-                all_q = att.test.questions.all()
-                max_pts = sum(q.points for q in all_q) or 100
-                att.percentage = min(
-                    Decimal("100.00"),
-                    max(Decimal("0.00"), round((att.score / Decimal(str(max_pts))) * Decimal("100.0"), 2)),
-                )
-                att.is_passed = att.percentage >= Decimal(str(att.test.pass_percentage or 60))
-            elif act == "pass":
-                att.is_passed = True
-                if att.percentage < Decimal(str(att.test.pass_percentage or 60)):
-                    att.percentage = Decimal(str(att.test.pass_percentage or 60))
-            elif act == "set":
-                all_q = att.test.questions.all()
-                max_pts = sum(q.points for q in all_q) or 100
-                att.score = Decimal(str(max_pts))
-                att.percentage = Decimal("100.00")
-                att.is_passed = True
-
-            att.teacher_overridden = True
-            if teacher:
-                att.graded_by = teacher
-            att.save()
-
-            # Sync Result
-            res = Result.objects.filter(attempt=att).first()
-            if res:
-                res.score = att.score
-                res.percentage = att.percentage
-                res.is_passed = att.is_passed
-                res.grading_status = "graded"
-                res.save()
-            return att.score, att.percentage, att.is_passed
-
-        extra = parts[3] if len(parts) > 3 else ""
-        new_score, new_pct, passed = await _run_db(
-            _apply_override, attempt_id, action, extra, update.effective_user
-        )
-        await query.answer(f"✅ Saqlandi: {new_score:g} ball ({new_pct:.1f}%)", show_alert=True)
-        await ustoz_menu_command(update, context)
+        finally:
+            if pdf_path and os.path.exists(pdf_path):
+                os.unlink(pdf_path)
     elif data == "grp_cmd_refresh":
         await ustoz_menu_command(update, context)
         await query.answer("Yangilandi")

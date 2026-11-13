@@ -277,6 +277,26 @@ class TestPDFVedomostGenerator:
             header = f.read(5)
             assert header == b"%PDF-"
 
+    def test_group_report_rejects_unrelated_test_and_uses_private_file(self):
+        from pypdf import PdfReader
+        from django.conf import settings
+        unrelated = Test.objects.create(title="Unrelated private exam", course=self.course)
+        TestAttempt.objects.create(
+            student=self.student, test=unrelated, status=TestAttempt.Status.COMPLETED,
+            score=73, percentage=73,
+        )
+        with pytest.raises(Test.DoesNotExist):
+            generate_group_vedomost_pdf(self.group.id, test_id=unrelated.id)
+        path = generate_group_vedomost_pdf(self.group.id)
+        try:
+            assert not os.path.realpath(path).startswith(os.path.realpath(settings.MEDIA_ROOT) + os.sep)
+            assert os.stat(path).st_mode & 0o077 == 0
+            content = " ".join(page.extract_text() for page in PdfReader(path).pages)
+            assert "Unrelated private exam" not in content
+            assert "73.0%" not in content
+        finally:
+            os.unlink(path)
+
 
 @pytest.mark.django_db
 class TestGroupBroadcastTask:
