@@ -413,6 +413,28 @@ def mark_all_present(session: AttendanceSession, *, actor=None) -> int:
     return len(unmarked)
 
 
+@transaction.atomic
+def mark_from_bot(session_id, student_id, status, *, actor):
+    """Reject stale bot buttons after finalization, including concurrent taps."""
+    session = AttendanceSession.objects.select_for_update().select_related("group").get(pk=session_id)
+    assert_can_manage_group(actor, session.group)
+    if session.status != AttendanceSession.Status.DRAFT:
+        raise AttendanceError("Yakunlangan davomatni bot orqali o'zgartirib bo'lmaydi.")
+    student = session.group.students.filter(pk=student_id, is_active=True).first()
+    if student is None:
+        raise AttendanceError("O'quvchi topilmadi.")
+    return mark(session, student, status, actor=actor)
+
+
+@transaction.atomic
+def mark_all_present_from_bot(session_id, *, actor):
+    session = AttendanceSession.objects.select_for_update().select_related("group").get(pk=session_id)
+    assert_can_manage_group(actor, session.group)
+    if session.status != AttendanceSession.Status.DRAFT:
+        raise AttendanceError("Yakunlangan davomatni bot orqali o'zgartirib bo'lmaydi.")
+    return mark_all_present(session, actor=actor)
+
+
 def finalize(
     session: AttendanceSession,
     *,
@@ -428,6 +450,12 @@ def finalize(
     """
     with transaction.atomic():
         locked = AttendanceSession.objects.select_for_update().get(pk=session.pk)
+        if locked.status == AttendanceSession.Status.FINALIZED:
+            result = summary(locked)
+            result.update(ok=True, already_finalized=True)
+            return result
+        if locked.status == AttendanceSession.Status.CANCELLED:
+            raise AttendanceError("Bekor qilingan davomatni yakunlab bo'lmaydi.")
         rows = roster(locked)
         unmarked_ids = [row["student_id"] for row in rows if not row["marked"]]
 
@@ -505,7 +533,7 @@ def finalize_and_notify(
         mark_unmarked_as_absent=mark_unmarked_as_absent,
         reason=reason,
     )
-    if not result.get("ok"):
+    if not result.get("ok") or result.get("already_finalized"):
         return result
 
     from django.db import transaction as _tx

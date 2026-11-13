@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING
 
 import telegram
 from asgiref.sync import sync_to_async
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
 from django.db import transaction
 
 from apps.accounts.access import is_platform_admin
@@ -5532,6 +5532,14 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 await _assignment_action(update, context, int(parts[0]), int(parts[1]), action == "tasconfirm")
             else:
                 await edit_or_reply(update, "Havola eskirgan. Guruhlar ro'yxatidan qayta boshlang.")
+        elif data.startswith("tpage_"):
+            parts = data.removeprefix("tpage_").split("_")
+            if len(parts) == 2 and all(part.isdigit() for part in parts):
+                await _attendance_page_callback(update, context, int(parts[0]), int(parts[1]))
+        elif data.startswith("tconfirm_"):
+            session_id = _safe_callback_int(data, prefix="tconfirm_")
+            if session_id is not None:
+                await _attendance_review_callback(update, context, session_id)
         elif data.startswith("tatt_"):
             group_id = _safe_callback_int(data, prefix="tatt_")
             if group_id is not None:
@@ -7010,10 +7018,10 @@ def _group_list_keyboard(
     return InlineKeyboardMarkup(rows)
 
 
-def _attendance_keyboard(session, rows) -> InlineKeyboardMarkup:
+def _attendance_keyboard(session, rows, page=0) -> InlineKeyboardMarkup:
     """One status row per student, in the same order as the numbered roster."""
     keyboard = []
-    for row in rows[:_ATTENDANCE_PAGE_SIZE]:
+    for row in rows[page * _ATTENDANCE_PAGE_SIZE:(page + 1) * _ATTENDANCE_PAGE_SIZE]:
         student_id = row["student_id"]
         keyboard.append(
             [
@@ -7024,6 +7032,13 @@ def _attendance_keyboard(session, rows) -> InlineKeyboardMarkup:
                 for status in ("present", "late", "excused", "absent")
             ]
         )
+    navigation = []
+    if page > 0:
+        navigation.append(InlineKeyboardButton("⬅️ Oldingi", callback_data=f"tpage_{session.id}_{page - 1}"))
+    if (page + 1) * _ATTENDANCE_PAGE_SIZE < len(rows):
+        navigation.append(InlineKeyboardButton("Keyingi ➡️", callback_data=f"tpage_{session.id}_{page + 1}"))
+    if navigation:
+        keyboard.append(navigation)
     keyboard.append(
         [
             InlineKeyboardButton(
@@ -7033,14 +7048,14 @@ def _attendance_keyboard(session, rows) -> InlineKeyboardMarkup:
     )
     keyboard.append(
         [
-            InlineKeyboardButton("💾 Yakunlash", callback_data=f"tfin_{session.id}"),
+            InlineKeyboardButton("🔍 Ko‘rib chiqish", callback_data=f"tconfirm_{session.id}"),
             InlineKeyboardButton("🏠 Guruh", callback_data=f"tgrp_{session.group_id}"),
         ]
     )
     return InlineKeyboardMarkup(keyboard)
 
 
-def _attendance_text(session, rows, data) -> str:
+def _attendance_text(session, rows, data, page=0) -> str:
     lines = [
         f"🗓 *{data['group_name']}* — {data['lesson_date']} {data['time_label']}",
         "",
@@ -7050,15 +7065,12 @@ def _attendance_text(session, rows, data) -> str:
     if data["unmarked"]:
         lines.append(f"⚠️ Belgilanmagan: {data['unmarked']}")
     lines.append("")
-    for index, row in enumerate(rows[:_ATTENDANCE_PAGE_SIZE], 1):
+    start = page * _ATTENDANCE_PAGE_SIZE
+    for index, row in enumerate(rows[start:start + _ATTENDANCE_PAGE_SIZE], start + 1):
         emoji = _STATUS_EMOJI.get(row["status"], "➖") if row["marked"] else "➖"
         lines.append(f"{index}. {row['name']} — {emoji} {row['status_label']}")
     if len(rows) > _ATTENDANCE_PAGE_SIZE:
-        lines.append("")
-        lines.append(
-            f"_(Qolgan {len(rows) - _ATTENDANCE_PAGE_SIZE} o'quvchi panel orqali "
-            "belgilanadi.)_"
-        )
+        lines.append(f"Sahifa {page + 1} / {(len(rows) + _ATTENDANCE_PAGE_SIZE - 1) // _ATTENDANCE_PAGE_SIZE}")
     lines.append("")
     lines.append(_STATUS_LEGEND)
     return "\n".join(lines)
@@ -7070,11 +7082,14 @@ async def _render_attendance(update: Update, context, session) -> None:
 
     rows = await _run_db(roster, session)
     data = await _run_db(summary, session)
+    page_key = f"attendance_page_{session.id}"
+    page = min(max(0, context.user_data.get(page_key, 0)), max(0, (len(rows) - 1) // _ATTENDANCE_PAGE_SIZE))
+    context.user_data[page_key] = page
     await edit_or_reply(
         update,
-        _attendance_text(session, rows, data),
+        _attendance_text(session, rows, data, page),
         parse_mode="Markdown",
-        reply_markup=_attendance_keyboard(session, rows),
+        reply_markup=_attendance_keyboard(session, rows, page),
     )
 
 
@@ -8383,7 +8398,7 @@ async def attendance_handler(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
     """/attendance — choose a group, then take the register."""
-    user = await _teacher_from_update(update)
+    user = await _attendance_actor(update)
     if not user:
         return
     from apps.attendance.services import teacher_groups
@@ -8468,7 +8483,7 @@ async def _mark_student(
     from apps.attendance.services import (
         AttendanceError,
         get_session_for_user,
-        mark,
+        mark_from_bot,
     )
 
     if status not in dict(AttendanceRecord.Status.choices):
@@ -8476,29 +8491,26 @@ async def _mark_student(
         return
     try:
         session = await _run_db(get_session_for_user, user, session_id)
-        student = await _run_db(
-            lambda: session.group.students.filter(pk=student_id).first()
-        )
-        if student is None:
-            await send_reply(update, "O'quvchi topilmadi.")
-            return
-        await _run_db(mark, session, student, status, actor=user)
+        await _run_db(mark_from_bot, session.id, student_id, status, actor=user)
     except AttendanceError as exc:
         await send_reply(update, exc.messages[0] if exc.messages else "Xatolik.")
         return
-    except PermissionDenied:
+    except (PermissionDenied, ObjectDoesNotExist):
         await send_reply(update, "Bu davomat darsi sizga tegishli emas.")
         return
     await _render_attendance(update, context, session)
 
 
 async def _mark_all_present(update: Update, context, user, session_id: int) -> None:
-    from apps.attendance.services import get_session_for_user, mark_all_present
+    from apps.attendance.services import AttendanceError, get_session_for_user, mark_all_present_from_bot
 
     try:
         session = await _run_db(get_session_for_user, user, session_id)
-        await _run_db(mark_all_present, session, actor=user)
-    except PermissionDenied:
+        await _run_db(mark_all_present_from_bot, session.id, actor=user)
+    except AttendanceError as exc:
+        await send_reply(update, exc.messages[0] if exc.messages else "Xatolik.")
+        return
+    except (PermissionDenied, ObjectDoesNotExist):
         await send_reply(update, "Bu davomat darsi sizga tegishli emas.")
         return
     await _render_attendance(update, context, session)
@@ -8527,7 +8539,7 @@ async def _finalize_attendance(
     except AttendanceError as exc:
         await send_reply(update, exc.messages[0] if exc.messages else "Xatolik.")
         return
-    except PermissionDenied:
+    except (PermissionDenied, ObjectDoesNotExist):
         await send_reply(update, "Bu davomat darsi sizga tegishli emas.")
         return
 
@@ -8570,18 +8582,19 @@ async def _finalize_attendance(
         f"• ❌ {result['absent']} kelmadi"
     )
 
-    # Kelmagan o'quvchilar ota-onalariga ogohlantirish yuborish
-    def _notify_absences(sess):
-        from apps.notifications.tasks_parent import send_parent_absence_alert_task
+    # Preserve legacy guardian-relation alerts, but do not dispatch them again
+    # when an already-finalized callback is replayed.
+    if not result.get("already_finalized"):
+        def _notify_legacy_absences():
+            from apps.notifications.tasks_parent import send_parent_absence_alert_task
 
-        absent_recs = sess.records.filter(status="absent")
-        for rec in absent_recs:
-            try:
-                send_parent_absence_alert_task.delay(sess.id, rec.student_id)
-            except Exception:
-                pass
+            for student_id in session.records.filter(status="absent").values_list("student_id", flat=True):
+                try:
+                    send_parent_absence_alert_task.delay(session.id, student_id)
+                except Exception:
+                    logger.exception("Legacy absence alert dispatch failed for session %s", session.id)
 
-    await _run_db(_notify_absences, session)
+        await _run_db(_notify_legacy_absences)
 
     await edit_or_reply(
         update,
@@ -9068,7 +9081,7 @@ async def _assignment_action(update, context, group_id, test_id, confirm):
 
 
 async def _attendance_callback(update: Update, context, group_id: int) -> None:
-    user = await _teacher_from_update(update)
+    user = await _attendance_actor(update)
     if not user:
         return
     group = await _load_managed_group(user, group_id)
@@ -9081,14 +9094,58 @@ async def _attendance_callback(update: Update, context, group_id: int) -> None:
 async def _mark_callback(
     update: Update, context, session_id: int, student_id: int, status: str
 ) -> None:
-    user = await _teacher_from_update(update)
+    user = await _attendance_actor(update)
     if not user:
         return
     await _mark_student(update, context, user, session_id, student_id, status)
 
 
+async def _attendance_actor(update):
+    if not update.effective_chat or update.effective_chat.type != "private":
+        await send_reply(update, "Davomat uchun bot bilan shaxsiy chatni oching.")
+        return None
+    return await _teacher_from_update(update)
+
+
+async def _attendance_page_callback(update, context, session_id, page):
+    from apps.attendance.services import get_session_for_user
+
+    user = await _attendance_actor(update)
+    if not user:
+        return
+    try:
+        session = await _run_db(get_session_for_user, user, session_id)
+    except (PermissionDenied, ObjectDoesNotExist):
+        await send_reply(update, "Bu davomat sizga tegishli emas.")
+        return
+    context.user_data[f"attendance_page_{session.id}"] = min(page, 10000)
+    await _render_attendance(update, context, session)
+
+
+async def _attendance_review_callback(update, context, session_id):
+    from apps.attendance.services import get_session_for_user, summary
+
+    user = await _attendance_actor(update)
+    if not user:
+        return
+    try:
+        session = await _run_db(get_session_for_user, user, session_id)
+    except (PermissionDenied, ObjectDoesNotExist):
+        await send_reply(update, "Bu davomat sizga tegishli emas.")
+        return
+    data = await _run_db(summary, session)
+    text = (f"🔍 Davomatni tekshiring\n\n👥 Jami: {data['roster_size']}\n"
+            f"✅ Keldi: {data['present']} · ⏰ Kech: {data['late']}\n"
+            f"📄 Sababli: {data['excused']} · ❌ Kelmadi: {data['absent']}\n"
+            f"⚠️ Belgilanmagan: {data['unmarked']}\n\nYakunlashni tasdiqlaysizmi?")
+    await edit_or_reply(update, text, reply_markup=InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Yakunlash", callback_data=f"tfin_{session.id}")],
+        [InlineKeyboardButton("🔙 Davomatga qaytish", callback_data=f"tpage_{session.id}_0")],
+    ]))
+
+
 async def _all_present_callback(update: Update, context, session_id: int) -> None:
-    user = await _teacher_from_update(update)
+    user = await _attendance_actor(update)
     if not user:
         return
     await _mark_all_present(update, context, user, session_id)
@@ -9097,7 +9154,7 @@ async def _all_present_callback(update: Update, context, session_id: int) -> Non
 async def _finalize_callback(
     update: Update, context, session_id: int, mark_unmarked_absent: bool = False
 ) -> None:
-    user = await _teacher_from_update(update)
+    user = await _attendance_actor(update)
     if not user:
         return
     await _finalize_attendance(
