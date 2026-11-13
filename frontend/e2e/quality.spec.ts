@@ -243,3 +243,23 @@ test('subject changes only after server confirmation and preserves goal on failu
   await expect(biology).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByLabel('Imtihon maqsadi').first()).toHaveValue('undecided');
 });
+
+for (const width of [375, 1440]) {
+  test(`OMR lists only the active subject and requires explicit test selection at ${width}px`, async ({ page }) => {
+    await mockApp(page);
+    await page.route('**/api/v1/tests/scan-omr/', (route) => route.fulfill({ json: { ok: true, count: 2, tests: [
+      { id: 1, title: 'English test', mock_code: '', exam_type: 'cefr', subject: 'english', total_questions: 10, time_limit_minutes: 30 },
+      { id: 2, title: 'Biology test', mock_code: '', exam_type: 'national', subject: 'biology', total_questions: 10, time_limit_minutes: 30 },
+    ] } }));
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/tests/scan-omr');
+    const select = page.locator('select.omr-input').first();
+    await expect(select).toBeVisible();
+    await expect(select).toHaveValue('');
+    await expect(select.locator('option')).toContainText(['Testni tanlang', 'English test']);
+    await expect(select.locator('option', { hasText: 'Biology test' })).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await select.selectOption('1');
+    await expect(select).toHaveValue('1');
+  });
+}
