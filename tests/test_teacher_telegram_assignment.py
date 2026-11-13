@@ -108,3 +108,26 @@ def test_concurrent_assignments_cannot_move_test():
     assert sorted(outcomes) == ["rejected", "saved"]
     test.refresh_from_db()
     assert test.assigned_group_id in [group.id for group in groups]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_assignment_list_pages_include_all_owned_tests():
+    from apps.notifications.bot.handlers import _assignment_list
+
+    User = get_user_model()
+    teacher = User.objects.create_user(email="assignment-pages@example.test", password="x", role="teacher", telegram_chat_id=34114, telegram_identity_verified_at=timezone.now())
+    group = StudentGroup.objects.create(name="My group", teacher=teacher)
+    course = Course.objects.create(title="My course", slug="assignment-pages", teacher=teacher)
+    for number in range(10):
+        Test.objects.create(title=f"Test {number:02d}", course=course, is_active=True)
+    query = SimpleNamespace(answer=AsyncMock(), edit_message_text=AsyncMock(), message=SimpleNamespace(reply_text=AsyncMock()))
+    update = SimpleNamespace(effective_chat=SimpleNamespace(type="private"), effective_user=SimpleNamespace(id=34114), callback_query=query)
+    with patch("apps.notifications.bot.handlers._get_or_create_user_async", new=AsyncMock(return_value=teacher)):
+        async_to_sync(_assignment_list)(update, SimpleNamespace(), group.id)
+        buttons = [b for row in query.edit_message_text.await_args.kwargs["reply_markup"].inline_keyboard for b in row]
+        assert len([b for b in buttons if b.callback_data.startswith("tasreview_")]) == 8
+        assert any(b.callback_data == f"taspage_{group.id}_1" for b in buttons)
+        async_to_sync(_assignment_list)(update, SimpleNamespace(), group.id, 1)
+        buttons = [b for row in query.edit_message_text.await_args.kwargs["reply_markup"].inline_keyboard for b in row]
+        assert len([b for b in buttons if b.callback_data.startswith("tasreview_")]) == 2
+        assert any(b.callback_data == f"taspage_{group.id}_0" for b in buttons)

@@ -5519,6 +5519,12 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             group_id = _safe_callback_int(data, prefix="taslist_")
             if group_id is not None:
                 await _assignment_list(update, context, group_id)
+        elif data.startswith("taspage_"):
+            parts = data.removeprefix("taspage_").split("_")
+            if len(parts) == 2 and all(part.isdigit() for part in parts):
+                await _assignment_list(update, context, int(parts[0]), int(parts[1]))
+            else:
+                await edit_or_reply(update, "Havola eskirgan. Guruhdan qayta boshlang.")
         elif data.startswith(("tasreview_", "tasconfirm_")):
             action, _, payload = data.partition("_")
             parts = payload.split("_")
@@ -8992,7 +8998,7 @@ async def _assignment_actor(update):
     return await _teacher_from_update(update)
 
 
-async def _assignment_list(update, context, group_id):
+async def _assignment_list(update, context, group_id, page=0):
     from apps.notifications.bot.teacher_assignments import available_tests
 
     actor = await _assignment_actor(update)
@@ -9002,8 +9008,19 @@ async def _assignment_list(update, context, group_id):
     if not group:
         await edit_or_reply(update, "Guruh topilmadi yoki sizga tegishli emas.")
         return
-    tests = await _run_db(lambda: list(available_tests(actor, group)[:30]))
+    page_size = 8
+    page = min(max(page, 0), 10000)
+    tests = await _run_db(lambda: list(available_tests(actor, group)[page * page_size:page * page_size + page_size + 1]))
+    has_next = len(tests) > page_size
+    tests = tests[:page_size]
     rows = [[InlineKeyboardButton(test.title[:45], callback_data=f"tasreview_{group_id}_{test.id}")] for test in tests]
+    navigation = []
+    if page:
+        navigation.append(InlineKeyboardButton("⬅️ Oldingi", callback_data=f"taspage_{group_id}_{page - 1}"))
+    if has_next:
+        navigation.append(InlineKeyboardButton("Keyingi ➡️", callback_data=f"taspage_{group_id}_{page + 1}"))
+    if navigation:
+        rows.append(navigation)
     rows.append([InlineKeyboardButton("🔙 Guruh", callback_data=f"tgrp_{group_id}")])
     text = "📝 Biriktirish uchun testni tanlang:" if tests else "Biriktirish uchun mos testingiz yo'q."
     await edit_or_reply(update, text, reply_markup=InlineKeyboardMarkup(rows))
