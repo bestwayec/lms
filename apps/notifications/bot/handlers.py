@@ -5515,6 +5515,17 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             group_id = _safe_callback_int(data, prefix="tgrp_")
             if group_id is not None:
                 await _group_card_callback(update, context, group_id)
+        elif data.startswith("taslist_"):
+            group_id = _safe_callback_int(data, prefix="taslist_")
+            if group_id is not None:
+                await _assignment_list(update, context, group_id)
+        elif data.startswith(("tasreview_", "tasconfirm_")):
+            action, _, payload = data.partition("_")
+            parts = payload.split("_")
+            if len(parts) == 2 and all(part.isdigit() for part in parts):
+                await _assignment_action(update, context, int(parts[0]), int(parts[1]), action == "tasconfirm")
+            else:
+                await edit_or_reply(update, "Havola eskirgan. Guruhlar ro'yxatidan qayta boshlang.")
         elif data.startswith("tatt_"):
             group_id = _safe_callback_int(data, prefix="tatt_")
             if group_id is not None:
@@ -7109,6 +7120,11 @@ async def _send_group_card(update: Update, context, user, group) -> None:
     else:
         attendance_line = "Bugun davomat olinmagan."
     essays = await _run_db(group_essay_summary, group)
+    def _assigned_tests():
+        tests = group.assigned_tests.filter(is_active=True).order_by("title", "id")
+        return tests.count(), list(tests.values_list("title", flat=True)[:5])
+
+    assigned_count, assigned_titles = await _run_db(_assigned_tests)
 
     invite_code = getattr(group, "invite_code", "") or f"GR-{group.id}"
     text = (
@@ -7116,12 +7132,22 @@ async def _send_group_card(update: Update, context, user, group) -> None:
         f"📌 Taklif kodi: `#{invite_code}`\n"
         f"_(O'quvchilar botga `#{invite_code}` deb yozsa, avtomatik guruhga qo'shiladi)_\n\n"
         f"👥 O'quvchilar soni: *{count} nafar*\n"
+        f"📚 Biriktirilgan testlar: *{assigned_count} ta*\n"
         f"🗓 Bugungi davomat: {attendance_line}\n"
         f"📝 Esse — baholangan: *{essays['graded']}*, kutilmoqda: "
         f"*{essays['pending']}*, topshirilmagan: *{essays['not_submitted']}*"
     )
+    if assigned_titles:
+        from telegram.helpers import escape_markdown
+
+        text += "\n\n📚 *Guruh testlari:*\n" + "\n".join(
+            f"• {escape_markdown(title, version=1)}" for title in assigned_titles
+        )
+        if assigned_count > len(assigned_titles):
+            text += f"\nYana {assigned_count - len(assigned_titles)} ta test."
     keyboard = InlineKeyboardMarkup(
         [
+            [InlineKeyboardButton("📝 Test biriktirish", callback_data=f"taslist_{group.id}")],
             [
                 InlineKeyboardButton(
                     "🗓 Davomat olish", callback_data=f"tatt_{group.id}"
@@ -8956,6 +8982,72 @@ async def _group_card_callback(update: Update, context, group_id: int) -> None:
         await edit_or_reply(update, "🏫 Guruh topilmadi yoki sizga tegishli emas.")
         return
     await _send_group_card(update, context, user, group)
+
+
+async def _assignment_actor(update):
+    chat = update.effective_chat
+    if not chat or chat.type != "private":
+        await send_reply(update, "Test biriktirish uchun bot bilan shaxsiy chatni oching.")
+        return None
+    return await _teacher_from_update(update)
+
+
+async def _assignment_list(update, context, group_id):
+    from apps.notifications.bot.teacher_assignments import available_tests
+
+    actor = await _assignment_actor(update)
+    if not actor:
+        return
+    group = await _load_managed_group(actor, group_id)
+    if not group:
+        await edit_or_reply(update, "Guruh topilmadi yoki sizga tegishli emas.")
+        return
+    tests = await _run_db(lambda: list(available_tests(actor, group)[:30]))
+    rows = [[InlineKeyboardButton(test.title[:45], callback_data=f"tasreview_{group_id}_{test.id}")] for test in tests]
+    rows.append([InlineKeyboardButton("🔙 Guruh", callback_data=f"tgrp_{group_id}")])
+    text = "📝 Biriktirish uchun testni tanlang:" if tests else "Biriktirish uchun mos testingiz yo'q."
+    await edit_or_reply(update, text, reply_markup=InlineKeyboardMarkup(rows))
+
+
+async def _assignment_action(update, context, group_id, test_id, confirm):
+    from html import escape
+    from apps.notifications.bot.teacher_assignments import AssignmentError, assign_test, available_tests
+
+    actor = await _assignment_actor(update)
+    if not actor:
+        return
+    group = await _load_managed_group(actor, group_id)
+    if not group:
+        await edit_or_reply(update, "Guruh topilmadi yoki sizga tegishli emas.")
+        return
+    if confirm:
+        try:
+            test, created = await _run_db(assign_test, actor, group_id, test_id)
+        except AssignmentError as exc:
+            await edit_or_reply(update, str(exc), reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 Testlar", callback_data=f"taslist_{group_id}")],
+            ]))
+            return
+        from django.conf import settings
+        url = f"{getattr(settings, 'SITE_URL', 'https://grandec.uz').rstrip('/')}/tests/{test.id}"
+        text = "✅ Test biriktirildi." if created else "ℹ️ Bu test allaqachon biriktirilgan."
+        await edit_or_reply(update, f"{text}\n\n{escape(test.title)} — {escape(group.name)}",
+                            parse_mode="HTML", reply_markup=InlineKeyboardMarkup([
+                                [InlineKeyboardButton("🔗 Testni ochish", url=url)],
+                                [InlineKeyboardButton("🏠 Guruh", callback_data=f"tgrp_{group_id}")],
+                            ]))
+        return
+    test = await _run_db(lambda: available_tests(actor, group).filter(pk=test_id).first())
+    if not test:
+        await edit_or_reply(update, "Test mavjud emas yoki sizga tegishli emas.", reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 Testlar", callback_data=f"taslist_{group_id}")],
+        ]))
+        return
+    await edit_or_reply(update, f"📝 <b>{escape(test.title)}</b>\n👥 {escape(group.name)}\n\nTestni guruhga biriktirasizmi?",
+                        parse_mode="HTML", reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("✅ Tasdiqlash", callback_data=f"tasconfirm_{group_id}_{test_id}")],
+                            [InlineKeyboardButton("🔙 Testlar", callback_data=f"taslist_{group_id}")],
+                        ]))
 
 
 async def _attendance_callback(update: Update, context, group_id: int) -> None:
