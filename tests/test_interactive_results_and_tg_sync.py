@@ -301,18 +301,36 @@ def test_law_subject_analysis_and_mistakes(db, auth_users):
 
 
 @pytest.mark.django_db
-def test_result_vedomost_pdf_download_endpoint(setup_branch_and_test):
+def test_result_vedomost_pdf_download_endpoint(setup_branch_and_test, settings, tmp_path):
+    from apps.results.pdf_generator import generate_student_vedomost_pdf
+
+    settings.MEDIA_ROOT = tmp_path
     branch, group, test, res1, res2, student1, student2 = setup_branch_and_test
 
     client = Client()
     client.force_login(student1)
 
     url = f"/api/results/{res1.id}/pdf/"
-    resp = client.get(url)
+    paths = []
+
+    def generate_private_pdf(attempt_id):
+        path = generate_student_vedomost_pdf(attempt_id)
+        paths.append(path)
+        assert os.stat(path).st_mode & 0o777 == 0o600
+        assert not os.path.commonpath([str(tmp_path), path]) == str(tmp_path)
+        return path
+
+    with patch("apps.results.pdf_generator.generate_student_vedomost_pdf", side_effect=generate_private_pdf):
+        resp = client.get(url)
     assert resp.status_code == status.HTTP_200_OK
     assert resp["Content-Type"] == "application/pdf"
     assert "attachment" in resp["Content-Disposition"]
     assert f"grandec_natija_{res1.id}.pdf" in resp["Content-Disposition"]
+    assert resp["Cache-Control"] == "private, no-store"
+    assert b"".join(resp.streaming_content).startswith(b"%PDF")
+    resp.close()
+    assert paths and all(not os.path.exists(path) for path in paths)
+    assert not list(tmp_path.rglob("*.pdf"))
 
     # Other student cannot access without permission
     client2 = Client()
@@ -322,35 +340,60 @@ def test_result_vedomost_pdf_download_endpoint(setup_branch_and_test):
 
 
 @pytest.mark.django_db
-def test_send_group_result_telegram_broadcast_with_rank_and_branch(setup_branch_and_test):
-    branch, group, test, res1, res2, student1, student2 = setup_branch_and_test
+def test_pdf_errors_do_not_expose_internal_paths(setup_branch_and_test):
+    _, _, _, result, _, student, _ = setup_branch_and_test
+    client = Client()
+    client.force_login(student)
+    with patch("apps.results.pdf_generator.generate_student_vedomost_pdf", side_effect=RuntimeError("/private/internal/path")):
+        response = client.get(f"/api/results/{result.id}/pdf/")
+    assert response.status_code == 500
+    assert "/private/internal/path" not in response.content.decode()
 
-    with patch("apps.notifications.services.telegram_service.TelegramService.send_document") as mock_send_doc, \
-         patch("apps.notifications.services.telegram_service.TelegramService._call_api"):
 
-        mock_send_doc.return_value = {"success": True, "message_id": 12345}
-
-        # Broadcast for Student 1 (Highest score -> 1-o'rin)
+@pytest.mark.django_db
+def test_individual_results_are_not_broadcast_to_linked_groups(setup_branch_and_test):
+    _, _, _, res1, res2, _, _ = setup_branch_and_test
+    with patch("apps.notifications.services.telegram_service.TelegramService.send_document") as doc, \
+         patch("apps.notifications.services.telegram_service.TelegramService._call_api") as api:
         _send_group_result_and_vedomost(res1)
-
-        assert mock_send_doc.called
-        call_args = mock_send_doc.call_args[1]
-        caption = call_args["caption"]
-
-        assert "Biologiya" in caption
-        assert "🧬" in caption
-        assert "Samarqand Markaziy Filiali" in caption
-        assert "Guruhda 1-o'rin!" in caption
-        assert "Zilola Karimova" in caption
-        assert f"results/{res1.id}" in caption
-
-        # Broadcast for Student 2 (Lower score -> 2-o'rin)
-        mock_send_doc.reset_mock()
         _send_group_result_and_vedomost(res2)
+    doc.assert_not_called()
+    api.assert_not_called()
 
-        assert mock_send_doc.called
-        call_args2 = mock_send_doc.call_args[1]
-        caption2 = call_args2["caption"]
 
-        assert "Guruhda 2-o'rin" in caption2
-        assert "Bekzod Shodiyev" in caption2
+@pytest.mark.django_db
+@pytest.mark.parametrize("kind", ["essay", "speaking"])
+def test_ai_scorecard_files_are_private(setup_branch_and_test, settings, tmp_path, kind):
+    from apps.essays.models import EssaySubmission, EssayTopic
+    from apps.results.pdf_generator import generate_essay_vedomost_pdf, generate_speaking_vedomost_pdf
+    from apps.speaking.models import SpeakingSubmission, SpeakingTopic
+
+    settings.MEDIA_ROOT = tmp_path
+    student = setup_branch_and_test[5]
+    if kind == "essay":
+        topic = EssayTopic.objects.create(title="Test topic", description="Test prompt")
+        submission = EssaySubmission.objects.create(
+            student=student, topic=topic, essay_text="Isolated test essay.",
+            word_count=3, status=EssaySubmission.Status.GRADED,
+            total_score=Decimal("12"), max_score=24,
+        )
+        generate = lambda: generate_essay_vedomost_pdf(submission)
+    else:
+        topic = SpeakingTopic.objects.create(title="Test topic", prompt="Test prompt")
+        submission = SpeakingSubmission.objects.create(
+            user=student, topic=topic, status=SpeakingSubmission.Status.COMPLETED,
+            overall_band=Decimal("6"), transcript="Isolated test transcript.",
+        )
+        generate = lambda: generate_speaking_vedomost_pdf(submission)
+    paths = []
+    try:
+        paths.extend([generate(), generate()])
+        assert paths[0] != paths[1]
+        for path in paths:
+            assert os.stat(path).st_mode & 0o777 == 0o600
+            with open(path, "rb") as report:
+                assert report.read(4) == b"%PDF"
+        assert not list(tmp_path.rglob("*.pdf"))
+    finally:
+        for path in paths:
+            os.unlink(path)

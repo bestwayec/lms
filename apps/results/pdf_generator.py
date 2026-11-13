@@ -209,11 +209,8 @@ def generate_student_vedomost_pdf(attempt_id: int) -> str:
     # Result lookup
     result = Result.objects.filter(attempt=attempt).first()
 
-    # Create target directory
-    vedomost_dir = os.path.join(settings.MEDIA_ROOT, "vedomost")
-    os.makedirs(vedomost_dir, exist_ok=True)
-    filename = f"vedomost_student_{attempt.id}_{int(timezone.now().timestamp())}.pdf"
-    file_path = os.path.join(vedomost_dir, filename)
+    fd, file_path = tempfile.mkstemp(prefix="lms-student-report-", suffix=".pdf")
+    os.close(fd)
 
     doc = SimpleDocTemplate(
         file_path,
@@ -731,7 +728,7 @@ def generate_group_vedomost_pdf(group_id: int, test_id: int | None = None) -> st
 # ---------------------------------------------------------------------------
 def generate_essay_vedomost_pdf(submission_or_id: Any) -> str:
     """
-    Generates an official A4 portrait essay scorecard PDF and writes it to media/vedomost/.
+    Generates a private temporary essay scorecard PDF; caller must unlink it.
     Returns the absolute path to the generated PDF.
     """
     from apps.essays.models import EssaySubmission
@@ -744,10 +741,8 @@ def generate_essay_vedomost_pdf(submission_or_id: Any) -> str:
     else:
         submission = submission_or_id
 
-    vedomost_dir = os.path.join(settings.MEDIA_ROOT, "vedomost")
-    os.makedirs(vedomost_dir, exist_ok=True)
-    filename = f"essay_vedomost_{submission.id}.pdf"
-    file_path = os.path.join(vedomost_dir, filename)
+    fd, file_path = tempfile.mkstemp(prefix="lms-essay-report-", suffix=".pdf")
+    os.close(fd)
 
     pdf_buffer = generate_essay_result_pdf(submission)
     pdf_bytes = pdf_buffer.getvalue() if hasattr(pdf_buffer, "getvalue") else bytes(pdf_buffer)
@@ -782,10 +777,8 @@ def generate_speaking_vedomost_pdf(submission_or_id: Any) -> str:
     group_name = group.name if group else "Mustaqil ta'lim (Individual)"
     student_name = user.get_full_name() or getattr(user, "username", "") or user.email
 
-    vedomost_dir = os.path.join(settings.MEDIA_ROOT, "vedomost")
-    os.makedirs(vedomost_dir, exist_ok=True)
-    filename = f"speaking_vedomost_{sub.id}.pdf"
-    file_path = os.path.join(vedomost_dir, filename)
+    fd, file_path = tempfile.mkstemp(prefix="lms-speaking-report-", suffix=".pdf")
+    os.close(fd)
 
     doc = SimpleDocTemplate(
         file_path,

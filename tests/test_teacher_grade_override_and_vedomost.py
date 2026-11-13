@@ -370,10 +370,5 @@ class TestGroupBroadcastTask:
 
         _send_group_result_and_vedomost(self.result)
 
-        assert mock_send_doc.called
-        call_args = mock_send_doc.call_args[1]
-        assert call_args["chat_id"] == self.group.telegram_chat_id
-        assert "YANGI IMTIHON NATIJASI" in call_args["caption"]
-        assert "Madina Toshmatova" in call_args["caption"]
-        assert "80" in call_args["caption"]
-        assert os.path.exists(call_args["file_path"])
+        mock_send_doc.assert_not_called()
+        mock_send_msg.assert_not_called()

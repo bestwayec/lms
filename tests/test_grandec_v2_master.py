@@ -10,7 +10,7 @@ Covers:
    `GET /api/v1/school/groups/` serializer fields (`group_code`, `telegram_chat_id`, `telegram_chat_title`).
 3. Student Joining Group by Code (`POST /api/v1/school/groups/join/`) and by Invite Token
    (`GET` & `POST /api/v1/groups/join/<invite_token>/`).
-4. Real-Time Auto-Broadcast of Results + PDF Vedomost to Linked Telegram Groups:
+4. Individual result privacy: legacy group broadcasts must not send reports:
    - 4a. Test Attempt Completion (`process_test_result_task` & `_send_group_result_and_vedomost`)
    - 4b. AI Essay Grading Completion (`notify_student_essay_graded` & `broadcast_essay_result_to_groups`)
    - 4c. AI Speaking Evaluation Completion (`broadcast_speaking_result_to_groups`)
@@ -489,21 +489,9 @@ class TestRealTimeGroupAutoBroadcastAndVedomost:
             task_out = process_test_result_task(result.id)
 
         assert task_out["status"] == "completed"
-        assert mock_doc.called
-        call_kwargs = mock_doc.call_args.kwargs
-        assert call_kwargs["chat_id"] == -100123456789
-        assert os.path.exists(call_kwargs["file_path"])
-        assert call_kwargs["file_path"].endswith(".pdf")
+        mock_doc.assert_not_called()
 
-        caption = call_kwargs["caption"]
-        assert "Dilnoza Qodirova" in caption
-        assert "IELTS &amp; BMB Pro Group" in caption  # Telegram HTML-escaped
-        assert "CEFR Multi-Level Diagnostic Mock #1" in caption
-        assert "Listening: 44/50" in caption
-        assert "Reading: 42/50" in caption
-        assert f"https://grandec.uz/results/{result.id}" in caption
-
-    def test_4b_ai_essay_grading_completion_broadcasts_pdf_scorecard(self):
+    def test_4b_ai_essay_grading_completion_does_not_broadcast_private_scorecard(self):
         topic = EssayTopic.objects.create(
             title="Artificial Intelligence in Modern Education",
             description="Discuss both views and give your opinion.",
@@ -540,20 +528,9 @@ class TestRealTimeGroupAutoBroadcastAndVedomost:
         ):
             notify_student_essay_graded(submission)
 
-        assert mock_doc.called
-        call_kwargs = mock_doc.call_args.kwargs
-        assert call_kwargs["chat_id"] == -100123456789
-        assert os.path.exists(call_kwargs["file_path"])
-        assert call_kwargs["file_path"].endswith(".pdf")
+        mock_doc.assert_not_called()
 
-        caption = call_kwargs["caption"]
-        assert "YANGI AI ESSE NATIJASI" in caption
-        assert "Dilnoza Qodirova" in caption
-        assert "IELTS &amp; BMB Pro Group" in caption or "IELTS & BMB Pro Group" in caption
-        assert "Artificial Intelligence in Modern Education" in caption
-        assert f"https://grandec.uz/essays/result/{submission.id}" in caption
-
-    def test_4c_ai_speaking_evaluation_completion_broadcasts_pdf_scorecard(self):
+    def test_4c_ai_speaking_evaluation_completion_does_not_broadcast_private_scorecard(self):
         sp_topic = SpeakingTopic.objects.create(
             title="Describe a memorable journey you have taken",
             subject="english",
@@ -587,19 +564,8 @@ class TestRealTimeGroupAutoBroadcastAndVedomost:
         ):
             res = broadcast_speaking_result_to_groups(speaking_sub)
 
-        assert res["status"] == "sent"
-        assert res["sent_groups"] == 1
-        assert mock_doc.called
-        call_kwargs = mock_doc.call_args.kwargs
-        assert call_kwargs["chat_id"] == -100123456789
-        assert os.path.exists(call_kwargs["file_path"])
-        assert call_kwargs["file_path"].endswith(".pdf")
-
-        caption = call_kwargs["caption"]
-        assert "YANGI AI SPEAKING NATIJASI" in caption
-        assert "Dilnoza Qodirova" in caption
-        assert "Describe a memorable journey you have taken" in caption
-        assert "Band 7.0" in caption
+        assert res == {"status": "skipped", "reason": "private_results_only", "sent_groups": 0}
+        mock_doc.assert_not_called()
 
     def test_4d_web_report_is_sent_only_to_verified_teacher_privately(self):
         from django.utils import timezone
