@@ -620,12 +620,21 @@ class TelegramPhoneMatchingTests(TestCase):
         found = find_users_by_phone("+998901234567")
         self.assertEqual([u.pk for u in found], [self.user.pk])
 
-    def test_resolve_by_phone_links_identity(self):
-        user, how = resolve_bot_auth_user(777000111, "+998901234567")
-        self.assertEqual(user.pk, self.user.pk)
-        self.assertEqual(how, "phone")
+    def test_resolve_by_phone_requires_authenticated_linking(self):
+        with self.assertRaises(TelegramAuthConflict):
+            resolve_bot_auth_user(777000111, "+998901234567")
         self.user.refresh_from_db()
-        self.assertEqual(self.user.telegram_chat_id, 777000111)
+        self.assertIsNone(self.user.telegram_chat_id)
+        self.assertIsNone(self.user.telegram_identity_verified_at)
+
+    def test_phone_match_cannot_replace_an_existing_verified_link(self):
+        from django.utils import timezone
+
+        self._set_user_fields(self.user, telegram_chat_id=777000112, telegram_identity_verified_at=timezone.now())
+        with self.assertRaises(TelegramAuthConflict):
+            resolve_bot_auth_user(777000111, "+998901234567")
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.telegram_chat_id, 777000112)
         self.assertIsNotNone(self.user.telegram_identity_verified_at)
 
     def test_resolve_by_telegram_link_wins(self):

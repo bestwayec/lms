@@ -136,10 +136,9 @@ def find_users_by_phone(clean_phone: str) -> list:
 
 
 def resolve_bot_auth_user(telegram_id: int, clean_phone: str) -> tuple[Any | None, str]:
-    """Match a bot-login attempt to an account: Telegram ID first, then phone.
+    """Match a bot-login attempt to an account by verified Telegram ID.
 
     Returns (user, how) where how is "tg" (verified Telegram link),
-    "phone" (found by verified contact number, link attached) or
     ("none", None) when no account exists yet and the caller must ask for
     a name and provision one.
 
@@ -186,20 +185,12 @@ def resolve_bot_auth_user(telegram_id: int, clean_phone: str) -> tuple[Any | Non
         if phone_user is not None:
             if not phone_user.is_active:
                 raise ValueError("Hisob faol emas.")
-            try:
-                with transaction.atomic():
-                    phone_user.telegram_chat_id = numeric_id
-                    phone_user.telegram_identity_verified_at = timezone.now()
-                    phone_user.save(
-                        update_fields=[
-                            "telegram_chat_id",
-                            "telegram_identity_verified_at",
-                        ]
-                    )
-            except IntegrityError:
-                raise TelegramAuthConflict(
-                    "Bu Telegram boshqa hisobga bog'langan. "
-                    "Administratorga murojaat qiling."
-                )
-            return phone_user, "phone"
+            # A Telegram contact proves control of a phone number, not of the
+            # LMS account that happens to store it. Numbers can be reassigned
+            # and profiles may contain unverified numbers. Require the
+            # authenticated two-channel linking flow instead of claiming it.
+            raise TelegramAuthConflict(
+                "Bu raqamda hisob mavjud. Saytga kirib Telegram hisobingizni "
+                "sozlamalardan tasdiqlangan usulda bog'lang."
+            )
         return None, "none"

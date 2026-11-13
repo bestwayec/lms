@@ -616,19 +616,7 @@ async def group_results_leaderboard_command(update: Update, context: ContextType
     def _calc_group_stats(chat_id):
         group = StudentGroup.objects.filter(telegram_chat_id=chat_id).first()
         if not group:
-            recent = Result.objects.select_related("student", "test").order_by("-percentage")[:5]
-            board = []
-            for r in recent:
-                uname = r.student.get_full_name() or r.student.email
-                pct = round(float(r.percentage or 0), 1)
-                grd = calculate_bmb_grade(pct)["grade"]
-                board.append({"name": uname, "score": pct, "grade": grd})
-            return {
-                "group_name": "Grand Education",
-                "board": board,
-                "avg_score": 82.0,
-                "mistake_topic": "Murakkab qo'shma gaplar tahlili",
-            }
+            return None
 
         students = list(group.students.filter(is_active=True))
         st_ids = [s.id for s in students]
@@ -655,15 +643,6 @@ async def group_results_leaderboard_command(update: Update, context: ContextType
             avg_res = results.aggregate(avg=Avg("percentage"))["avg"]
             avg_pct = round(float(avg_res), 1) if avg_res else 0.0
 
-        # Sample mock data if students have just been purged / fresh start
-        if not board:
-            board = [
-                {"name": "Diyorbek Xoldorov", "score": 94.0, "grade": "A+"},
-                {"name": "Malika Rustamova", "score": 88.0, "grade": "A"},
-                {"name": "Jasur Kenjayev", "score": 78.0, "grade": "B+"},
-            ]
-            avg_pct = 86.7
-
         branch = getattr(group, "branch", None)
         branch_name = branch.name if branch else "Grand Education Bosh Filiali"
         if branch and getattr(branch, "branch_code", None):
@@ -684,17 +663,19 @@ async def group_results_leaderboard_command(update: Update, context: ContextType
             "branch_name": branch_name,
             "subject_title": subj_title,
             "board": board[:10],
-            "avg_score": avg_pct or 82.0,
-            "mistake_topic": "Murakkab qo'shma gaplar tahlili",
+            "avg_score": avg_pct,
         }
 
     stats = await _run_db(_calc_group_stats, chat.id)
+    if stats is None:
+        await _send_group_reply(update, context, "Bu guruh LMS guruhiga bog'lanmagan.")
+        return
     medals = ["🥇 1.", "🥈 2.", "🥉 3.", "4.", "5.", "6.", "7.", "8.", "9.", "10."]
 
     rows = []
     for i, item in enumerate(stats["board"]):
         prefix = medals[i] if i < len(medals) else f"{i + 1}."
-        rows.append(f"{prefix} {item['name']} — <b>{item['score']} ball</b> ({item['grade']})")
+        rows.append(f"{prefix} {escape(item['name'])} — <b>{item['score']} ball</b> ({item['grade']})")
 
     leaderboard_content = "\n".join(rows) if rows else "<i>Hozircha test topshirganlar yo'q</i>"
 
@@ -702,12 +683,11 @@ async def group_results_leaderboard_command(update: Update, context: ContextType
     s_title = stats.get('subject_title', 'Fan')
     text = (
         f"🏆 <b>Guruh Natijalari va Jonli Reyting:</b>\n"
-        f"🏛 <b>Filial (Kursxona):</b> {b_name}\n"
-        f"👥 <b>Guruh:</b> {stats['group_name']}\n"
-        f"📚 <b>Fan yo'nalishi:</b> {s_title}\n\n"
+        f"🏛 <b>Filial (Kursxona):</b> {escape(b_name)}\n"
+        f"👥 <b>Guruh:</b> {escape(stats['group_name'])}\n"
+        f"📚 <b>Fan yo'nalishi:</b> {escape(s_title)}\n\n"
         f"{leaderboard_content}\n\n"
-        f"📊 <b>Guruh o'rtacha ko'rsatkichi:</b> {stats['avg_score']}%\n"
-        f"⚠️ <b>Eng ko'p xato qilingan mavzu:</b> \"{stats['mistake_topic']}\""
+        f"📊 <b>Guruh o'rtacha ko'rsatkichi:</b> {stats['avg_score']}%"
     )
 
     await _send_group_reply(update, context, text, parse_mode=ParseMode.HTML)

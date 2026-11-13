@@ -115,7 +115,7 @@ class PanelGroupsAndAttendanceTests(TestCase):
         )
         self.assertGreater(len(res_export.content), 1000)
 
-    def test_direct_telegram_link(self):
+    def test_direct_telegram_link_requires_verified_challenge(self):
         self.client.force_authenticate(user=self.admin)
         payload = {"telegram_chat_id": 5582178765}
         res = self.client.post(
@@ -124,13 +124,12 @@ class PanelGroupsAndAttendanceTests(TestCase):
             format="json",
             HTTP_HOST="localhost",
         )
-        self.assertEqual(res.status_code, status.HTTP_200_OK)
-        self.assertEqual(res.data["ok"], True)
-        self.assertEqual(res.data["telegram_chat_id"], 5582178765)
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(res.data["challenge_endpoint"], "/api/auth/telegram/connect/")
 
         self.admin.refresh_from_db()
-        self.assertEqual(self.admin.telegram_chat_id, 5582178765)
-        self.assertIsNotNone(self.admin.telegram_identity_verified_at)
+        self.assertIsNone(self.admin.telegram_chat_id)
+        self.assertIsNone(self.admin.telegram_identity_verified_at)
 
     def test_student_forbidden_from_panel_groups(self):
         self.client.force_authenticate(user=self.student)

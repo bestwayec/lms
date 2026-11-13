@@ -287,7 +287,18 @@ class TelegramGroupBotAssistantTests(TestCase):
         self.assertIn("Guruh Natijalari va Jonli Reyting:", lb_text)
         self.assertIn("94", lb_text)
         self.assertIn("Guruh o'rtacha ko'rsatkichi:", lb_text)
-        self.assertIn("Murakkab qo'shma gaplar tahlili", lb_text)
+        self.assertNotIn("Murakkab qo'shma gaplar tahlili", lb_text)
+
+    def test_unbound_group_leaderboard_never_queries_platform_results(self):
+        from unittest.mock import patch
+
+        update = MagicMock()
+        update.effective_chat.id = -100987654321
+        update.effective_chat.type = "supergroup"
+        update.message.reply_text = AsyncMock()
+        with patch.object(Result.objects, "select_related", side_effect=AssertionError("global result query")):
+            async_to_sync(group_results_leaderboard_command)(update, MagicMock())
+        self.assertIn("bog'lanmagan", update.message.reply_text.call_args.args[0])
 
     def test_ustoz_menu_command(self):
         """Verify /ustoz menu command shows teacher groups."""

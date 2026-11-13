@@ -1748,9 +1748,8 @@ async def auth_conversation_handler(
             )
             return
 
-        # Match the verified number against existing accounts FIRST — a
-        # website-registered user must log into THEIR account, not get a new
-        # tg_* duplicate. Only a genuinely new number proceeds to name.
+        # Check for an existing account before provisioning. A phone match
+        # requires authenticated linking; only a new number proceeds to name.
         from apps.accounts.services.telegram_identity import (
             TelegramAuthAmbiguous,
             TelegramAuthConflict,
@@ -1789,7 +1788,7 @@ async def auth_conversation_handler(
             )
             return
 
-        # Existing account (Telegram link or phone match): fast code.
+        # Existing account with a verified Telegram link: fast code.
         await _finish_existing_account(
             update,
             context,
