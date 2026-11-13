@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../auth/authState';
 import { useLang } from '../i18n/LangContext';
 import { ProfileApi } from '../lib/api';
-import { isValidSubject, type Subject } from '../lib/useSubject';
+import { useSubject, type Subject } from '../lib/useSubject';
 import { hapticImpact } from '../lib/haptics';
 
 interface SubjectSwitcherProps {
@@ -95,18 +95,13 @@ export default function SubjectSwitcher({
   const { t } = useLang();
   const [loading, setLoading] = useState(false);
 
-  // Active subject from user profile or local storage fallback
-  const currentSubject: Subject = isValidSubject(user?.active_subject)
-    ? user.active_subject
-    : (() => {
-        try {
-          const stored = localStorage.getItem('lms_subject');
-          if (isValidSubject(stored)) return stored;
-        } catch {
-          /* ignore */
-        }
-        return 'english';
-      })();
+  const currentSubject = useSubject();
+  const [error, setError] = useState<string | null>(null);
+  const examOptions = currentSubject === 'english'
+    ? [['undecided', t('exam_undecided', 'Hali tanlanmagan')], ['ielts', 'IELTS'], ['multilevel', 'CEFR Multilevel']]
+    : currentSubject === 'uzbek'
+      ? [['undecided', t('exam_undecided', 'Hali tanlanmagan')], ['national_certificate', t('exam_national', 'Milliy sertifikat')], ['attestation', t('exam_attestation', 'Attestatsiya')]]
+      : [['undecided', t('exam_undecided', 'Hali tanlanmagan')], ['national_certificate', t('exam_national', 'Milliy sertifikat')]];
 
   // Keep data-subject synchronized on root document for CSS Chameleon Token
   useEffect(() => {
@@ -115,51 +110,36 @@ export default function SubjectSwitcher({
     }
   }, [currentSubject]);
 
-  const handleSelect = async (nextSubject: Subject) => {
-    if (nextSubject === currentSubject || loading) return;
+  const handleSelect = async (nextSubject: Subject, target?: string) => {
+    if (loading || (nextSubject === currentSubject && !target)) return;
     hapticImpact('light');
-    if (typeof document !== 'undefined') {
-      document.documentElement.setAttribute('data-subject', nextSubject);
-    }
-
+    setError(null);
     setLoading(true);
     try {
-      localStorage.setItem('lms_subject', nextSubject);
-    } catch {
-      /* ignore */
-    }
-
-    const nextTarget = nextSubject === 'english' ? 'ielts' : 'national_certificate';
-    const nextGrade = nextSubject === 'english' ? 'Band 7.5' : 'A+';
-
-    if (user) {
-      try {
-        const res = await ProfileApi.switchSubject(nextSubject, nextTarget);
+      if (user) {
+        const res = await ProfileApi.switchSubject(nextSubject, target);
         updateUserLocal({
-          active_subject: (res.active_subject as Subject) || nextSubject,
-          exam_target: res.exam_target || nextTarget,
-          target_grade: res.target_grade || nextGrade,
-          daily_plan_summary: res.daily_plan_summary || undefined,
-        });
-      } catch (err) {
-        console.error('Failed to switch subject on server:', err);
-        updateUserLocal({
-          active_subject: nextSubject,
-          exam_target: nextTarget,
-          target_grade: nextGrade,
+          active_subject: res.active_subject,
+          exam_target: res.exam_target,
+          target_grade: res.target_grade,
+          daily_plan_summary: res.daily_plan_summary,
         });
       }
+      try { localStorage.setItem('lms_subject', nextSubject); } catch { /* storage is optional */ }
+      window.dispatchEvent(new CustomEvent('subject-changed', { detail: nextSubject }));
+      onSwitch?.(nextSubject);
+    } catch {
+      setError(t('subject_switch_failed', 'Fan yoki maqsad saqlanmadi. Qayta urinib ko‘ring.'));
+    } finally {
+      setLoading(false);
     }
-
-    window.dispatchEvent(new CustomEvent('subject-changed', { detail: nextSubject }));
-    onSwitch?.(nextSubject);
-    setLoading(false);
   };
 
   const isSmall = size === 'sm';
   const isSeg = variant === 'seg';
 
   return (
+    <div>
     <div
       role="group"
       aria-label={t('subject_label', 'Fan tanlash')}
@@ -239,6 +219,17 @@ export default function SubjectSwitcher({
           </button>
         );
       })}
+    </div>
+    {user && <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px', fontSize: 12 }}>
+      <span>{t('exam_goal_label', 'Imtihon maqsadi')}</span>
+      <select aria-label={t('exam_goal_label', 'Imtihon maqsadi')} disabled={loading}
+        value={examOptions.some(([value]) => value === user.exam_target) ? user.exam_target : ''}
+        onChange={(event) => handleSelect(currentSubject, event.target.value)}>
+        {!examOptions.some(([value]) => value === user.exam_target) && <option value="">{t('exam_goal_select', 'Maqsadni tanlang')}</option>}
+        {examOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+      </select>
+    </label>}
+    {error && <p role="alert" style={{ color: 'var(--text-danger, #b91c1c)', fontSize: 12 }}>{error}</p>}
     </div>
   );
 }

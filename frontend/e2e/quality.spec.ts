@@ -219,3 +219,27 @@ test('teacher live controls use the created test identity and canonical QR route
   await expect(modal.locator('a[href="http://127.0.0.1:5173/tests/1007"]')).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('subject changes only after server confirmation and preserves goal on failure', async ({ page }) => {
+  await mockApp(page);
+  let fail = true;
+  await page.route('**/api/v1/profile/switch-subject/', async (route) => {
+    if (fail) return route.fulfill({ status: 503, json: { detail: 'Unavailable' } });
+    const payload = route.request().postDataJSON();
+    return route.fulfill({ json: { ok: true, active_subject: payload.subject, exam_target: 'undecided', target_grade: '', daily_plan_summary: {} } });
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/dashboard');
+  const switcher = page.locator('.subject-switcher-scroll:visible').first();
+  const english = switcher.getByRole('button', { name: /Ingliz/i });
+  const biology = switcher.getByRole('button', { name: /Biolog/i });
+  await expect(english).toHaveAttribute('aria-pressed', 'true');
+  await biology.click();
+  await expect(page.getByRole('alert').filter({ hasText: 'saqlanmadi' }).first()).toBeVisible();
+  await expect(english).toHaveAttribute('aria-pressed', 'true');
+  expect(await page.evaluate(() => localStorage.getItem('lms_subject'))).not.toBe('biology');
+  fail = false;
+  await biology.click();
+  await expect(biology).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByLabel('Imtihon maqsadi').first()).toHaveValue('undecided');
+});

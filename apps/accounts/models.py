@@ -362,6 +362,11 @@ class Profile(models.Model):
         help_text=_("Foydalanuvchining hozirgi tanlagan fani: uzbek yoki english"),
     )
 
+    subject_study_preferences = models.JSONField(
+        default=dict, blank=True,
+        help_text=_("Har bir fan uchun saqlangan imtihon maqsadi va o'quv rejasi."),
+    )
+
     class ExamTarget(models.TextChoices):
         NATIONAL_CERTIFICATE = "national_certificate", _("Milliy sertifikat")
         ATTESTATION = "attestation", _("Attestatsiya 2026")
