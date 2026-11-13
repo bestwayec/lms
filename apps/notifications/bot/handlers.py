@@ -341,55 +341,34 @@ def _persistent_menu_keyboard(role: str = "student", is_admin: bool = False) -> 
 
 def _student_main_menu_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
     """Main menu inline keyboard for students."""
-    from django.conf import settings as _settings
-
-    _site_url = getattr(_settings, "SITE_URL", "https://grandec.uz").rstrip("/")
     buttons = [
-        [
-            InlineKeyboardButton(
-                "📝 Mock Test (#kod)", callback_data="menu_mock_join"
-            ),
-            InlineKeyboardButton(
-                "📱 Fast CBT Test", web_app={"url": f"{_site_url}/tma/#/tests"}
-            ),
-        ],
-        [
-            InlineKeyboardButton("✍️ Esse yozish", callback_data="menu_essays"),
-            InlineKeyboardButton("⚔️ Arena (1v1)", callback_data="menu_arena"),
-        ],
-        [
-            InlineKeyboardButton("🧠 Telegram Quiz", callback_data="menu_quiz"),
-            InlineKeyboardButton(
-                "📜 Sertifikatlarim (PDF)", callback_data="menu_certificates"
-            ),
-        ],
-        [
-            InlineKeyboardButton("📊 Natijalarim", callback_data="menu_results"),
-            InlineKeyboardButton("👤 Profilim", callback_data="menu_profile"),
-        ],
-        [
-            InlineKeyboardButton("💳 Tarif / To'lov", callback_data="cb_myplan"),
-            InlineKeyboardButton(
-                "🏆 ELO Reyting", callback_data="menu_leaderboard"
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                "🏆 Yakshanba Turniri", callback_data="menu_tournament"
-            ),
-            InlineKeyboardButton(
-                "👨‍👩‍👧 Ota-onalar nazorati", callback_data="menu_parents"
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                "🌐 Web Platformaga o'tish", url=f"{_site_url}/dashboard/"
-            ),
-        ],
+        [InlineKeyboardButton("📚 Testlar", callback_data="menu_tests"),
+         InlineKeyboardButton("🧠 Tezkor quiz", callback_data="menu_quiz")],
+        [InlineKeyboardButton("✍️ Esse yozish", callback_data="menu_essays"),
+         InlineKeyboardButton("📊 Natijalarim", callback_data="menu_results")],
+        [InlineKeyboardButton("👤 Profilim", callback_data="menu_profile"),
+         InlineKeyboardButton("💳 Obunam", callback_data="cb_myplan")],
+        [InlineKeyboardButton("✨ Boshqa imkoniyatlar", callback_data="menu_student_more")],
     ]
     if is_admin:
         buttons.append([InlineKeyboardButton("👑 Admin panelga qaytish", callback_data="menu_admin")])
     return InlineKeyboardMarkup(buttons)
+
+
+def _student_more_keyboard() -> InlineKeyboardMarkup:
+    """Less frequent actions remain available without crowding the home menu."""
+    from django.conf import settings as _settings
+
+    site_url = getattr(_settings, "SITE_URL", "https://grandec.uz").rstrip("/")
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📜 Sertifikatlarim", callback_data="menu_certs"),
+         InlineKeyboardButton("⚔️ Arena", callback_data="menu_arena")],
+        [InlineKeyboardButton("🏆 ELO reyting", callback_data="menu_leaderboard"),
+         InlineKeyboardButton("🏆 Turnir", callback_data="menu_tournament")],
+        [InlineKeyboardButton("👨‍👩‍👧 Ota-onalar nazorati", callback_data="menu_parents")],
+        [InlineKeyboardButton("🌐 Web platforma", url=f"{site_url}/dashboard/")],
+        [InlineKeyboardButton("🔙 Bosh menyu", callback_data="menu_main")],
+    ])
 
 
 def _teacher_main_menu_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
@@ -5205,6 +5184,8 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     try:
         if data == "menu_main":
+            # Leaving the code-entry screen must not treat the next message as a code.
+            context.user_data.pop("awaiting_mock_code", None)
             user = await _get_or_create_user_async(update)
             role = _get_user_role(
                 user, update.effective_user.id if update.effective_user else None
@@ -5219,6 +5200,11 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 title,
                 parse_mode="Markdown",
                 reply_markup=_main_menu_keyboard(role),
+            )
+        elif data == "menu_student_more":
+            await query.edit_message_text(
+                "✨ Qo'shimcha imkoniyatlar\n\nKerakli bo'limni tanlang.",
+                reply_markup=_student_more_keyboard(),
             )
         elif data == "role_select_student":
             await role_select_student_callback(update, context)
@@ -5315,7 +5301,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 "📝 *MILLIY SERTIFIKAT MOCK TESTGA ULANISH*\n\n"
                 "Ustozingiz bergan Mock kodini botga yuboring:\n"
                 "Masalan: `#MOCK-401` yoki `MOCK-401`\n\n"
-                "📌 Kodni yuborganingizdan so'ng, test darhol ochiladi va rasmiy BMB darajangiz (A+, A, B+...) hisoblab beriladi."
+                "Kodni yuboring yoki /cancel orqali bekor qiling."
             )
             buttons = InlineKeyboardMarkup(
                 [[InlineKeyboardButton("🔙 Bosh menyu", callback_data="menu_main")]]
@@ -5328,11 +5314,11 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
             site_url = getattr(_settings, "SITE_URL", "https://grandec.uz").rstrip("/")
             text = (
-                "📚 *ONA TILI VA ADABIYOTIDAN TEST TOPSHIRISH*\n\n"
-                "O'zingizga qulay test formatini tanlang:\n\n"
-                "1️⃣ *📱 Fast CBT (Telegram Mini App)* — Telegram ichida sahifadan chiqmasdan tezkor '1 tadan ishlash' interfeysi.\n\n"
-                "2️⃣ *🧠 Telegram Chat Quiz* — Telegram chatida savollar birma-bir beriladi, rasmiy BMB daraja hisoblanadi va AI xatolar tahlili beriladi.\n\n"
-                "3️⃣ *📝 Mock Test (#kod)* — Ustozingiz bergan kod orqali mock imtihon topshirish."
+                "📚 *Testlar*\n\n"
+                "O'zingizga qulay usulni tanlang:\n\n"
+                "📱 Mini App — mavjud testlarni ko'rish va ishlash.\n"
+                "🧠 Quiz — savollarga Telegram chatida javob berish.\n"
+                "📝 Test kodi — ustozingiz bergan kod orqali kirish."
             )
             buttons = [
                 [
@@ -5361,7 +5347,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             from apps.notifications.bot.quiz import quiz_handler
 
             await _dispatch_handler(update, context, quiz_handler)
-        elif data in ("menu_certs", "cb_certs"):
+        elif data in ("menu_certs", "menu_certificates", "cb_certs"):
             await _dispatch_handler(update, context, certificates_handler)
         elif data in ("menu_myplan", "cb_myplan"):
             await _dispatch_handler(update, context, myplan_handler)
