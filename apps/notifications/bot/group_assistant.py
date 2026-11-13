@@ -611,18 +611,27 @@ async def group_results_leaderboard_command(update: Update, context: ContextType
     from apps.courses.models import StudentGroup
     from apps.results.models import Result
     from apps.tests.bmb_grading import calculate_bmb_grade
-    from django.db.models import Avg
+    from django.db.models import Avg, Q
+    from apps.accounts.models import User
+    from apps.accounts.access import is_platform_admin
 
-    def _calc_group_stats(chat_id):
+    def _calc_group_stats(chat_id, actor_id):
         group = StudentGroup.objects.filter(telegram_chat_id=chat_id).first()
         if not group:
-            return None
+            return "unbound", None
+        actor = User.objects.filter(
+            telegram_chat_id=actor_id, telegram_identity_verified_at__isnull=False, is_active=True,
+        ).first()
+        if not actor or not (is_platform_admin(actor) or (actor.role == "teacher" and group.teacher_id == actor.id)):
+            return "forbidden", None
 
         students = list(group.students.filter(is_active=True))
         st_ids = [s.id for s in students]
 
         results = (
             Result.objects.filter(student_id__in=st_ids)
+            .filter(Q(test__assigned_group=group) | Q(test__homework_assignments__group=group))
+            .distinct()
             .select_related("student")
             .order_by("-percentage")
         )
@@ -658,7 +667,7 @@ async def group_results_leaderboard_command(update: Update, context: ContextType
         }
         subj_title = subj_map.get(subj_slug, str(subj_slug).title())
 
-        return {
+        return "ok", {
             "group_name": group.name,
             "branch_name": branch_name,
             "subject_title": subj_title,
@@ -666,9 +675,13 @@ async def group_results_leaderboard_command(update: Update, context: ContextType
             "avg_score": avg_pct,
         }
 
-    stats = await _run_db(_calc_group_stats, chat.id)
-    if stats is None:
+    actor = update.effective_user
+    result, stats = await _run_db(_calc_group_stats, chat.id, actor.id if actor else None)
+    if result == "unbound":
         await _send_group_reply(update, context, "Bu guruh LMS guruhiga bog'lanmagan.")
+        return
+    if result != "ok":
+        await _send_group_reply(update, context, "Bu hisobot faqat guruhning tasdiqlangan ustoziga beriladi.")
         return
     medals = ["🥇 1.", "🥈 2.", "🥉 3.", "4.", "5.", "6.", "7.", "8.", "9.", "10."]
 
@@ -690,7 +703,13 @@ async def group_results_leaderboard_command(update: Update, context: ContextType
         f"📊 <b>Guruh o'rtacha ko'rsatkichi:</b> {stats['avg_score']}%"
     )
 
-    await _send_group_reply(update, context, text, parse_mode=ParseMode.HTML)
+    try:
+        await context.bot.send_message(chat_id=actor.id, text=text, parse_mode=ParseMode.HTML)
+    except Exception:
+        logger.exception("Could not send group leaderboard privately")
+        await _send_group_reply(update, context, "Hisobotni olish uchun bot bilan shaxsiy suhbatni boshlang.")
+        return
+    await _send_group_reply(update, context, "Hisobot shaxsiy suhbatga yuborildi.")
 
 
 cmd_reyting = group_results_leaderboard_command

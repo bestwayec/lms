@@ -6,33 +6,60 @@ Provides HMAC-backed deep linking and verification for Telegram bot integration.
 from __future__ import annotations
 
 import hashlib
-import hmac
 import logging
+import secrets
+from datetime import timedelta
 from typing import Any
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.utils import timezone
 
-from apps.accounts.models import ParentStudentRelation
+from apps.accounts.models import ParentInvitation, ParentStudentRelation
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
 def generate_parent_deep_link_token(student_id: int) -> str:
-    """Generate deterministic HMAC hash token for student's parent link."""
-    secret = getattr(settings, "SECRET_KEY", "grandec-parent-secret")
-    raw = f"grandec_parent_link:{student_id}:{secret[:16]}"
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
+    """Issue a random invitation that expires after 24 hours."""
+    token = secrets.token_hex(16)
+    with transaction.atomic():
+        student = User.objects.select_for_update().get(pk=student_id, role=User.Role.STUDENT, is_active=True)
+        ParentInvitation.objects.create(
+            student=student, token_hash=hashlib.sha256(token.encode()).hexdigest(),
+            expires_at=timezone.now() + timedelta(hours=24),
+        )
+    return token
 
 
 def verify_parent_deep_link_token(student_id: int, token: str) -> bool:
-    """Safely verify HMAC hash token."""
-    if not token or not student_id:
+    """Check whether an invitation is currently usable (redemption rechecks under lock)."""
+    if not token or not student_id or not isinstance(token, str):
         return False
-    expected = generate_parent_deep_link_token(student_id)
-    return hmac.compare_digest(expected.lower(), str(token).lower())
+    return ParentInvitation.objects.filter(
+        student_id=student_id, token_hash=hashlib.sha256(token.encode()).hexdigest(),
+        expires_at__gt=timezone.now(), consumed_at__isnull=True, revoked_at__isnull=True,
+    ).exists()
+
+
+@transaction.atomic
+def redeem_parent_invitation(*, student_id: int, token: str, telegram_id: int, parent_name: str = "") -> Any:
+    """Serialize redemption, revocation and relation changes on the student row."""
+    student = User.objects.select_for_update().filter(pk=student_id, role=User.Role.STUDENT, is_active=True).first()
+    if not student:
+        raise ValueError("Invalid student.")
+    invite = ParentInvitation.objects.select_for_update().filter(
+        student=student, token_hash=hashlib.sha256(token.encode()).hexdigest(),
+        expires_at__gt=timezone.now(), consumed_at__isnull=True, revoked_at__isnull=True,
+    ).first()
+    if not invite:
+        raise ValueError("Invalid or expired invitation.")
+    link_parent_to_student(student=student, telegram_id=telegram_id, parent_name=parent_name)
+    invite.consumed_at = timezone.now()
+    invite.save(update_fields=["consumed_at"])
+    return student
 
 
 def get_parent_deep_link(student_id: int) -> str:
@@ -40,6 +67,14 @@ def get_parent_deep_link(student_id: int) -> str:
     token = generate_parent_deep_link_token(student_id)
     bot_username = getattr(settings, "TELEGRAM_BOT_USERNAME", "grandec_bot")
     return f"https://t.me/{bot_username}?start=parent_{student_id}_{token}"
+
+
+@transaction.atomic
+def revoke_parent_invitations(student_id: int) -> int:
+    User.objects.select_for_update().get(pk=student_id)
+    return ParentInvitation.objects.filter(
+        student_id=student_id, consumed_at__isnull=True, revoked_at__isnull=True,
+    ).update(revoked_at=timezone.now())
 
 
 @transaction.atomic

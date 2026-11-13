@@ -772,6 +772,11 @@ urlpatterns = [
         name="parent_relation_detail",
     ),
     path(
+        "parents/invitations/",
+        views_parents.parent_invitations_view,
+        name="parent_invitations",
+    ),
+    path(
         "parents/verify-code/",
         views_parents.parent_verify_code_view,
         name="parent_verify_code",

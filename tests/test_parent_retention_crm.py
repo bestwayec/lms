@@ -38,15 +38,15 @@ class TestParentLinkAndDeepLinkSecurity:
     """Test HMAC deep-link generation, verification, and database linking."""
 
     def test_deep_link_token_generation_and_verification(self):
-        student_id = 42
+        student_id = User.objects.create_user(email="invite-test@example.test", password="test", role="student").pk
         token = generate_parent_deep_link_token(student_id)
-        assert len(token) == 12
+        assert len(token) == 32
         assert verify_parent_deep_link_token(student_id, token) is True
         assert verify_parent_deep_link_token(student_id, "invalid_tok") is False
         assert verify_parent_deep_link_token(999, token) is False
 
         url = get_parent_deep_link(student_id)
-        assert f"start=parent_{student_id}_{token}" in url
+        assert f"start=parent_{student_id}_" in url
 
     def test_link_parent_to_student_service(self):
         student = User.objects.create_user(

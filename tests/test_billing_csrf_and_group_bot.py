@@ -235,6 +235,8 @@ class TelegramGroupBotAssistantTests(TestCase):
             telegram_chat_id=-1001112223334,
         )
         group.students.add(self.student)
+        test_obj.assigned_group = group
+        test_obj.save(update_fields=["assigned_group"])
 
         # 1. Test announcement
         update_test = MagicMock()
@@ -276,18 +278,38 @@ class TelegramGroupBotAssistantTests(TestCase):
             is_passed=True,
         )
 
+        unrelated_test = Test.objects.create(course=course, title="Private unrelated", time_limit_minutes=30)
+        unrelated_attempt = TestAttempt.objects.create(
+            student=self.student, test=unrelated_test, status=TestAttempt.Status.COMPLETED,
+        )
+        Result.objects.create(
+            attempt=unrelated_attempt, student=self.student, test=unrelated_test, course=course,
+            total_questions=10, correct_answers=10, wrong_answers=0, score=100,
+            max_score=100, percentage=100, is_passed=True,
+        )
+
         update_lb = MagicMock()
         update_lb.effective_chat.id = -1001112223334
         update_lb.effective_chat.type = "supergroup"
+        update_lb.effective_user.id = self.teacher.telegram_chat_id
         update_lb.message.reply_text = AsyncMock()
+        context.bot.send_message = AsyncMock()
 
         async_to_sync(group_results_leaderboard_command)(update_lb, context)
         self.assertTrue(update_lb.message.reply_text.called)
-        lb_text = update_lb.message.reply_text.call_args[0][0]
+        self.assertNotIn("94", update_lb.message.reply_text.call_args.args[0])
+        lb_text = context.bot.send_message.await_args.kwargs["text"]
+        self.assertEqual(context.bot.send_message.await_args.kwargs["chat_id"], self.teacher.telegram_chat_id)
         self.assertIn("Guruh Natijalari va Jonli Reyting:", lb_text)
         self.assertIn("94", lb_text)
+        self.assertNotIn("100", lb_text)
         self.assertIn("Guruh o'rtacha ko'rsatkichi:", lb_text)
         self.assertNotIn("Murakkab qo'shma gaplar tahlili", lb_text)
+
+        update_lb.effective_user.id = 1122334455
+        context.bot.send_message.reset_mock()
+        async_to_sync(group_results_leaderboard_command)(update_lb, context)
+        context.bot.send_message.assert_not_awaited()
 
     def test_unbound_group_leaderboard_never_queries_platform_results(self):
         from unittest.mock import patch

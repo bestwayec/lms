@@ -527,52 +527,32 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         raw_parent_arg = args[0]
         tg_user = update.effective_user
         if tg_user:
-            from apps.accounts.services.parent_link import (
-                verify_parent_deep_link_token,
-                link_parent_to_student,
-            )
-            from apps.accounts.models import ParentStudentRelation, User
+            from apps.accounts.services.parent_link import redeem_parent_invitation
 
             parts = raw_parent_arg.split("_")
-            if len(parts) >= 3 and parts[1].isdigit():
+            if len(parts) == 3 and parts[1].isdigit():
                 student_id = int(parts[1])
                 token = parts[2]
-                if verify_parent_deep_link_token(student_id, token):
-                    def _do_link():
-                        student = User.objects.filter(id=student_id).first()
-                        if not student:
-                            return None
-                        try:
-                            link_parent_to_student(
-                                student=student,
-                                telegram_id=tg_user.id,
-                                parent_name=tg_user.full_name or tg_user.first_name,
-                            )
-                        except ValueError:
-                            return None
-                        return student.get_full_name() or student.email
+                def _do_link():
+                    try:
+                        student = redeem_parent_invitation(
+                            student_id=student_id, token=token, telegram_id=tg_user.id,
+                            parent_name=tg_user.full_name or tg_user.first_name,
+                        )
+                    except ValueError:
+                        return None
+                    return student.get_full_name() or student.email
 
-                    student_name = await _run_db(_do_link)
-                    if student_name:
-                        await update.message.reply_text(
-                            f"👨‍👩‍👧 <b>Muvaffaqiyatli bog'landi!</b>\n\n"
-                            f"Assalomu alaykum! Siz farzandingiz <b>{student_name}</b> ning GRAND EDUCATION platformasidagi o'quv natijalari va davomatiga ulandingiz.\n\n"
-                            f"Endi farzandingiz yangi test topshirganda, uning ballari, BMB darajasi, zaif mavzulari va haftalik hisoboti to'g'ridan-to'g'ri sizga yuboriladi.",
-                            parse_mode="HTML",
-                        )
-                        return
-                    else:
-                        await update.message.reply_text(
-                            "❌ O'quvchi topilmadi yoki havola boshqa hisobga ulangan.",
-                            parse_mode="HTML",
-                        )
-                        return
-                else:
+                student_name = await _run_db(_do_link)
+                if student_name:
                     await update.message.reply_text(
-                        "❌ Xavfsizlik kaliti eskirgan yoki yaroqsiz. Farzandingizdan yangi havola olishini so'rang.",
-                        parse_mode="HTML",
+                        "👨‍👩‍👧 Muvaffaqiyatli bog'landi!"
                     )
                     return
+                await update.message.reply_text(
+                    "❌ O'quvchi topilmadi yoki havola eskirgan, bekor qilingan yoki ishlatilgan."
+                )
+                return
             await update.message.reply_text(
                 "❌ Ota-ona ulanishi uchun o'quvchidan xavfsiz havola oling."
             )
@@ -9329,7 +9309,7 @@ async def parent_link_handler(
         await update.message.reply_text("Tasdiqlangan o'quvchi hisobi talab qilinadi.")
         return
     from apps.accounts.services.parent_link import get_parent_deep_link
-    link = get_parent_deep_link(user.pk)
+    link = await _run_db(get_parent_deep_link, user.pk)
     await update.message.reply_text(
         f"Ota-onangizga ushbu shaxsiy havolani yuboring: {link}"
     )

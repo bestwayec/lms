@@ -17,6 +17,72 @@ User = get_user_model()
 
 
 @pytest.mark.django_db
+def test_parent_invitation_expiry_replay_and_revocation():
+    from datetime import timedelta
+    from apps.accounts.models import ParentInvitation
+    from apps.accounts.services.parent_link import (
+        generate_parent_deep_link_token, redeem_parent_invitation,
+        revoke_parent_invitations, verify_parent_deep_link_token,
+    )
+    student = User.objects.create_user(email="invite-lifecycle@example.test", password="test", role="student")
+    expired = generate_parent_deep_link_token(student.id)
+    ParentInvitation.objects.filter(student=student).update(expires_at=timezone.now() - timedelta(seconds=1))
+    assert not verify_parent_deep_link_token(student.id, expired)
+    with pytest.raises(ValueError):
+        redeem_parent_invitation(student_id=student.id, token=expired, telegram_id=21311)
+
+    revoked = generate_parent_deep_link_token(student.id)
+    revoke_parent_invitations(student.id)
+    with pytest.raises(ValueError):
+        redeem_parent_invitation(student_id=student.id, token=revoked, telegram_id=21311)
+
+    valid = generate_parent_deep_link_token(student.id)
+    redeem_parent_invitation(student_id=student.id, token=valid, telegram_id=21311)
+    with pytest.raises(ValueError):
+        redeem_parent_invitation(student_id=student.id, token=valid, telegram_id=21311)
+
+
+@pytest.mark.django_db
+def test_parent_invitation_revocation_is_scoped_to_current_student():
+    from rest_framework.test import APIClient
+    from apps.accounts.services.parent_link import generate_parent_deep_link_token, verify_parent_deep_link_token
+    one = User.objects.create_user(email="invite-one@example.test", password="test", role="student")
+    two = User.objects.create_user(email="invite-two@example.test", password="test", role="student")
+    one_token = generate_parent_deep_link_token(one.id)
+    two_token = generate_parent_deep_link_token(two.id)
+    client = APIClient()
+    client.force_authenticate(one)
+    assert client.delete("/api/v1/parents/invitations/").status_code == 200
+    assert not verify_parent_deep_link_token(one.id, one_token)
+    assert verify_parent_deep_link_token(two.id, two_token)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_invitation_redemption_only_one_succeeds():
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from django.db import close_old_connections, connection
+    from apps.accounts.services.parent_link import generate_parent_deep_link_token, redeem_parent_invitation
+    if connection.vendor != "postgresql":
+        pytest.skip("PostgreSQL row locking test")
+    student = User.objects.create_user(email="invite-race@example.test", password="test", role="student")
+    token = generate_parent_deep_link_token(student.id)
+    barrier = Barrier(2)
+    def redeem(telegram_id):
+        close_old_connections()
+        try:
+            barrier.wait(timeout=20)
+            redeem_parent_invitation(student_id=student.id, token=token, telegram_id=telegram_id)
+            return True
+        except ValueError:
+            return False
+        finally:
+            close_old_connections()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert sorted(pool.map(redeem, (21321, 21322))) == [False, True]
+
+
+@pytest.mark.django_db
 def test_sso_never_claims_a_matching_username_or_reactivates_accounts():
     victim = User.objects.create_user(email="victim@example.test", password="test", telegram_username="sharedname")
     token = TelegramAuthToken.objects.create(token="safe-sso-regression")
