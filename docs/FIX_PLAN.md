@@ -150,3 +150,13 @@ Autonomous work was authorized by the current task; the older per-phase pause in
 - [ ] Complete remaining dashboard/accessibility/exam-browser/production-provider audit and GitHub PR/Actions workflow after API network access is applied.
 
 Evidence, limitations and exact scope: [PRODUCTION_QUALITY_2026-11-12.md](PRODUCTION_QUALITY_2026-11-12.md). Prior unchecked items above were not marked complete merely because related tests pass.
+
+## 2026-11-13 — GRANDEC 4.0, Telegram security continuation
+
+- [x] Recover PR #131 security head c3499e9 and preserve earlier fixes; confirm initial draft/green checks through GitHub HTML.
+- [x] Stop individual test/essay/speaking group scorecards, including legacy queued jobs; preserve private test/essay paths.
+- [x] Move report PDFs outside public media; clean up authenticated student downloads and hide internal error details.
+- [x] Add privacy regressions; repair settings-fixture teardown contamination and preserve grading query ceiling.
+- [ ] Complete remaining Phase 1 command/callback, grade override, webhook/session and notification audit. Phase 2 remains gated.
+
+See PRODUCT_READINESS_MATRIX.md and PRODUCTION_READINESS_4_0.md for actual execution evidence and release limitations. No production/BESTWAY changes, merge, deployment, real broadcasts, paid AI or financial actions.
