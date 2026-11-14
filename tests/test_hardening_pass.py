@@ -214,10 +214,16 @@ class GradingTests(TestCase):
         # through tables, 1 bulk_update, profile get_or_create, result
         # get_or_create+update, per-section update_or_create, 1 milliy EXISTS
         # check in the cert gate). Bound guards N+1.
-        with self.assertNumQueries(56):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        with CaptureQueriesContext(connection) as queries:
             outcome = SubmitAttemptService.execute(
                 attempt_id=attempt.id, student=student
             )
+        # Fewer queries are valid when notification paths are retired. Keep
+        # the existing ceiling so additional per-question work still fails.
+        self.assertLessEqual(len(queries), 56)
         self.assertEqual(outcome.correct_answers, 3)
         self.assertEqual(outcome.score, Decimal("10"))
 

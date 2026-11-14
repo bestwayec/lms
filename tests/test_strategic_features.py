@@ -115,15 +115,14 @@ def test_parent_student_relation_flow(student_user):
     assert len(data["verification_code"]) == 6
     code = data["verification_code"]
 
-    # 2. Verify code via API
+    # 2. The student cannot prove guardian consent by entering their own code.
     verify_resp = client.post(
         "/api/v1/parents/verify-code/", {"verification_code": code}
     )
-    assert verify_resp.status_code == 200
-    assert verify_resp.json()["success"] is True
+    assert verify_resp.status_code == 400
 
     rel = ParentStudentRelation.objects.get(student=student_user)
-    assert rel.is_verified is True
+    assert rel.is_verified is False
 
     # 3. Toggle settings
     patch_resp = client.patch(

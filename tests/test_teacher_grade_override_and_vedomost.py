@@ -277,6 +277,26 @@ class TestPDFVedomostGenerator:
             header = f.read(5)
             assert header == b"%PDF-"
 
+    def test_group_report_rejects_unrelated_test_and_uses_private_file(self):
+        from pypdf import PdfReader
+        from django.conf import settings
+        unrelated = Test.objects.create(title="Unrelated private exam", course=self.course)
+        TestAttempt.objects.create(
+            student=self.student, test=unrelated, status=TestAttempt.Status.COMPLETED,
+            score=73, percentage=73,
+        )
+        with pytest.raises(Test.DoesNotExist):
+            generate_group_vedomost_pdf(self.group.id, test_id=unrelated.id)
+        path = generate_group_vedomost_pdf(self.group.id)
+        try:
+            assert not os.path.realpath(path).startswith(os.path.realpath(settings.MEDIA_ROOT) + os.sep)
+            assert os.stat(path).st_mode & 0o077 == 0
+            content = " ".join(page.extract_text() for page in PdfReader(path).pages)
+            assert "Unrelated private exam" not in content
+            assert "73.0%" not in content
+        finally:
+            os.unlink(path)
+
 
 @pytest.mark.django_db
 class TestGroupBroadcastTask:
@@ -350,10 +370,5 @@ class TestGroupBroadcastTask:
 
         _send_group_result_and_vedomost(self.result)
 
-        assert mock_send_doc.called
-        call_args = mock_send_doc.call_args[1]
-        assert call_args["chat_id"] == self.group.telegram_chat_id
-        assert "YANGI IMTIHON NATIJASI" in call_args["caption"]
-        assert "Madina Toshmatova" in call_args["caption"]
-        assert "80" in call_args["caption"]
-        assert os.path.exists(call_args["file_path"])
+        mock_send_doc.assert_not_called()
+        mock_send_msg.assert_not_called()

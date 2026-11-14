@@ -5,6 +5,7 @@ from asgiref.sync import async_to_sync
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from PIL import Image
 from rest_framework.test import APIClient
 
@@ -39,7 +40,7 @@ class BillingReceiptCSRFTests(TestCase):
         self.client.force_authenticate(user=self.user)
 
     # The admin alert is skipped without a bot token; don't depend on .env.
-    @override_settings(TELEGRAM_BOT_TOKEN="test-bot-token")
+    @override_settings(TELEGRAM_BOT_TOKEN="test-bot-token", ADMIN_TELEGRAM_ID=5582178765)
     def test_receipt_upload_csrf_exempt_and_instant_trial(self):
         """Verify that uploading a receipt succeeds without CSRF token and activates 24h trial."""
         buf = BytesIO()
@@ -92,6 +93,7 @@ class TelegramGroupBotAssistantTests(TestCase):
             last_name="Olimjon",
             role="teacher",
             telegram_chat_id=987654321,
+            telegram_identity_verified_at=timezone.now(),
         )
         self.student = User.objects.create_user(
             email="student_group_test@grandec.uz",
@@ -100,6 +102,7 @@ class TelegramGroupBotAssistantTests(TestCase):
             last_name="Xoldorov",
             role="student",
             telegram_chat_id=555666777,
+            telegram_identity_verified_at=timezone.now(),
         )
 
     def test_telegram_bot_link_group(self):
@@ -118,6 +121,7 @@ class TelegramGroupBotAssistantTests(TestCase):
         update.message.reply_text = AsyncMock()
 
         context = MagicMock()
+        context.bot.get_chat_member = AsyncMock(return_value=MagicMock(status="administrator"))
         context.args = ["GR-11A"]
 
         async_to_sync(link_group_command)(update, context)
@@ -143,11 +147,12 @@ class TelegramGroupBotAssistantTests(TestCase):
         update.effective_user.username = "diyorbek"
         update.message.reply_text = AsyncMock()
         context = MagicMock()
+        context.bot.get_chat_member = AsyncMock(return_value=MagicMock(status="administrator"))
         context.args = ["GR-11B"]
 
         async_to_sync(link_group_command)(update, context)
 
-        self.assertIn("Faqat shu guruh ustozi", update.message.reply_text.call_args[0][0])
+        self.assertIn("Faqat guruhning o'z ustozi", update.message.reply_text.call_args[0][0])
         group.refresh_from_db()
         self.assertIsNone(group.telegram_chat_id)
 
@@ -165,6 +170,7 @@ class TelegramGroupBotAssistantTests(TestCase):
         update_dav = MagicMock()
         update_dav.effective_chat.id = -1009876543210
         update_dav.effective_chat.type = "supergroup"
+        update_dav.effective_user.id = self.teacher.telegram_chat_id
         msg_mock = MagicMock()
         msg_mock.message_id = 42
         update_dav.message.reply_text = AsyncMock(return_value=msg_mock)
@@ -194,6 +200,7 @@ class TelegramGroupBotAssistantTests(TestCase):
         update_yakun = MagicMock()
         update_yakun.effective_chat.id = -1009876543210
         update_yakun.effective_chat.type = "supergroup"
+        update_yakun.effective_user.id = self.teacher.telegram_chat_id
         update_yakun.message.reply_text = AsyncMock()
 
         async_to_sync(group_davomat_yakun_command)(update_yakun, context)
@@ -218,6 +225,7 @@ class TelegramGroupBotAssistantTests(TestCase):
             course=course,
             title="BMB Milliy Sertifikat Variant 1",
             time_limit_minutes=60,
+            access_pin="1234",
         )
 
         group = StudentGroup.objects.create(
@@ -227,11 +235,14 @@ class TelegramGroupBotAssistantTests(TestCase):
             telegram_chat_id=-1001112223334,
         )
         group.students.add(self.student)
+        test_obj.assigned_group = group
+        test_obj.save(update_fields=["assigned_group"])
 
         # 1. Test announcement
         update_test = MagicMock()
         update_test.effective_chat.id = -1001112223334
         update_test.effective_chat.type = "supergroup"
+        update_test.effective_user.id = self.teacher.telegram_chat_id
         update_test.message.reply_text = AsyncMock()
 
         context = MagicMock()
@@ -240,7 +251,8 @@ class TelegramGroupBotAssistantTests(TestCase):
         self.assertTrue(update_test.message.reply_text.called)
         msg_text = update_test.message.reply_text.call_args[0][0]
         self.assertIn("BMB Milliy Sertifikat Variant 1", msg_text)
-        self.assertIn("Kirish PIN-kodi:", msg_text)
+        self.assertIn("Kirish kodi:", msg_text)
+        self.assertIn("1234", msg_text)
         reply_markup = update_test.message.reply_text.call_args[1]["reply_markup"]
         self.assertIsNotNone(reply_markup.inline_keyboard[0][0].web_app)
 
@@ -266,18 +278,49 @@ class TelegramGroupBotAssistantTests(TestCase):
             is_passed=True,
         )
 
+        unrelated_test = Test.objects.create(course=course, title="Private unrelated", time_limit_minutes=30)
+        unrelated_attempt = TestAttempt.objects.create(
+            student=self.student, test=unrelated_test, status=TestAttempt.Status.COMPLETED,
+        )
+        Result.objects.create(
+            attempt=unrelated_attempt, student=self.student, test=unrelated_test, course=course,
+            total_questions=10, correct_answers=10, wrong_answers=0, score=100,
+            max_score=100, percentage=100, is_passed=True,
+        )
+
         update_lb = MagicMock()
         update_lb.effective_chat.id = -1001112223334
         update_lb.effective_chat.type = "supergroup"
+        update_lb.effective_user.id = self.teacher.telegram_chat_id
         update_lb.message.reply_text = AsyncMock()
+        context.bot.send_message = AsyncMock()
 
         async_to_sync(group_results_leaderboard_command)(update_lb, context)
         self.assertTrue(update_lb.message.reply_text.called)
-        lb_text = update_lb.message.reply_text.call_args[0][0]
+        self.assertNotIn("94", update_lb.message.reply_text.call_args.args[0])
+        lb_text = context.bot.send_message.await_args.kwargs["text"]
+        self.assertEqual(context.bot.send_message.await_args.kwargs["chat_id"], self.teacher.telegram_chat_id)
         self.assertIn("Guruh Natijalari va Jonli Reyting:", lb_text)
         self.assertIn("94", lb_text)
+        self.assertNotIn("100", lb_text)
         self.assertIn("Guruh o'rtacha ko'rsatkichi:", lb_text)
-        self.assertIn("Murakkab qo'shma gaplar tahlili", lb_text)
+        self.assertNotIn("Murakkab qo'shma gaplar tahlili", lb_text)
+
+        update_lb.effective_user.id = 1122334455
+        context.bot.send_message.reset_mock()
+        async_to_sync(group_results_leaderboard_command)(update_lb, context)
+        context.bot.send_message.assert_not_awaited()
+
+    def test_unbound_group_leaderboard_never_queries_platform_results(self):
+        from unittest.mock import patch
+
+        update = MagicMock()
+        update.effective_chat.id = -100987654321
+        update.effective_chat.type = "supergroup"
+        update.message.reply_text = AsyncMock()
+        with patch.object(Result.objects, "select_related", side_effect=AssertionError("global result query")):
+            async_to_sync(group_results_leaderboard_command)(update, MagicMock())
+        self.assertIn("bog'lanmagan", update.message.reply_text.call_args.args[0])
 
     def test_ustoz_menu_command(self):
         """Verify /ustoz menu command shows teacher groups."""

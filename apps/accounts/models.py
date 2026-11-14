@@ -362,6 +362,11 @@ class Profile(models.Model):
         help_text=_("Foydalanuvchining hozirgi tanlagan fani: uzbek yoki english"),
     )
 
+    subject_study_preferences = models.JSONField(
+        default=dict, blank=True,
+        help_text=_("Har bir fan uchun saqlangan imtihon maqsadi va o'quv rejasi."),
+    )
+
     class ExamTarget(models.TextChoices):
         NATIONAL_CERTIFICATE = "national_certificate", _("Milliy sertifikat")
         ATTESTATION = "attestation", _("Attestatsiya 2026")
@@ -585,6 +590,17 @@ class ParentStudentLink(models.Model):
 
     def __str__(self) -> str:
         return f"{self.parent.get_full_name()} → {self.student.get_full_name()}"
+
+
+class ParentInvitation(models.Model):
+    """Short-lived, single-use guardian invitation; only its digest is stored."""
+
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="parent_invitations")
+    token_hash = models.CharField(max_length=64, unique=True)
+    expires_at = models.DateTimeField()
+    consumed_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
 
 class ParentStudentRelation(models.Model):

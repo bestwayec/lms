@@ -4,18 +4,19 @@ Web API views for Parent Monitoring & Smart Alerts.
 
 from __future__ import annotations
 
-import random
+import secrets
 import re
 from typing import Any
 
 from django.shortcuts import get_object_or_404
+from django.db import transaction
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.accounts.models import ParentStudentRelation
-from apps.accounts.services.parent_link import get_parent_deep_link
+from apps.accounts.services.parent_link import get_parent_deep_link, revoke_parent_invitations
 
 
 def _clean_phone(phone: str) -> str:
@@ -35,6 +36,8 @@ def parent_relations_view(request: Any) -> Response:
     POST: Yangi ota-ona telefon raqamini kiritish va tasdiqlash kodini generatsiya qilish.
     """
     user = request.user
+    if not user.is_active or user.role != "student":
+        return Response({"error": "O'quvchi hisobi talab qilinadi."}, status=status.HTTP_403_FORBIDDEN)
 
     if request.method == "GET":
         relations = ParentStudentRelation.objects.filter(student=user).order_by("-created_at")
@@ -74,7 +77,7 @@ def parent_relations_view(request: Any) -> Response:
             )
 
         # Generate 6-digit verification code
-        code = f"{random.randint(100000, 999999)}"
+        code = f"{secrets.randbelow(900000) + 100000}"
 
         relation, created = ParentStudentRelation.objects.get_or_create(
             student=user,
@@ -123,7 +126,9 @@ def parent_relation_detail_view(request: Any, pk: int) -> Response:
     relation = get_object_or_404(ParentStudentRelation, id=pk, student=request.user)
 
     if request.method == "DELETE":
-        relation.delete()
+        with transaction.atomic():
+            revoke_parent_invitations(request.user.pk)
+            relation.delete()
         return Response({"deleted": True})
 
     if request.method == "PATCH":
@@ -161,6 +166,15 @@ def parent_relation_detail_view(request: Any, pk: int) -> Response:
         )
 
 
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def parent_invitations_view(request: Any) -> Response:
+    if not request.user.is_active or request.user.role != "student":
+        return Response(status=status.HTTP_403_FORBIDDEN)
+    revoke_parent_invitations(request.user.pk)
+    return Response({"revoked": True})
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def parent_verify_code_view(request: Any) -> Response:
@@ -174,21 +188,14 @@ def parent_verify_code_view(request: Any) -> Response:
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    relation = ParentStudentRelation.objects.filter(verification_code=code).first()
+    relation = ParentStudentRelation.objects.filter(verification_code=code, student=request.user).first()
     if not relation:
         return Response(
             {"error": "Noto'g'ri yoki eskirgan tasdiqlash kodi."},
             status=status.HTTP_404_NOT_FOUND,
         )
 
-    relation.is_verified = True
-    relation.notifications_enabled = True
-    relation.save(update_fields=["is_verified", "notifications_enabled", "updated_at"])
-
     return Response(
-        {
-            "success": True,
-            "message": f"Ota-ona ({relation.parent_phone}) va o'quvchi ({relation.student.get_full_name()}) muvaffaqiyatli bog'landi!",
-            "relation_id": relation.id,
-        }
+        {"error": "Ota-ona Telegram orqali shaxsiy taklif havolasini ochishi kerak."},
+        status=status.HTTP_400_BAD_REQUEST,
     )

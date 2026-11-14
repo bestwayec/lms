@@ -10,6 +10,7 @@ Endpoints:
 
 import logging
 import os
+from io import BytesIO
 
 from django.db.models import Avg, Count, Exists, OuterRef, Q, Sum
 from django.http import FileResponse, Http404
@@ -146,6 +147,7 @@ class ResultVedomostPdfView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        pdf_path = None
         try:
             pdf_path = generate_student_vedomost_pdf(result.attempt_id)
             if not pdf_path or not os.path.exists(pdf_path):
@@ -154,18 +156,28 @@ class ResultVedomostPdfView(APIView):
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
-            return FileResponse(
-                open(pdf_path, "rb"),
+            with open(pdf_path, "rb") as report:
+                content = BytesIO(report.read())
+            response = FileResponse(
+                content,
                 content_type="application/pdf",
                 as_attachment=True,
                 filename=f"grandec_natija_{result.id}.pdf",
             )
-        except Exception as e:
+            response["Cache-Control"] = "private, no-store"
+            return response
+        except Exception:
             logger.exception("Failed to serve vedomost PDF for result_id=%s", pk)
             return Response(
-                {"error": f"PDF generatsiyasida xatolik: {str(e)}"},
+                {"error": "PDF tayyorlanmadi. Iltimos, qayta urinib ko‘ring."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+        finally:
+            if pdf_path:
+                try:
+                    os.unlink(pdf_path)
+                except FileNotFoundError:
+                    pass
 
 
 # ---------------------------------------------------------------------------

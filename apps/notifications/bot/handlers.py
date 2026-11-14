@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING
 
 import telegram
 from asgiref.sync import sync_to_async
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
 from django.db import transaction
 
 from apps.accounts.access import is_platform_admin
@@ -183,33 +183,17 @@ async def send_friendly_error(
     )
 
 
-SUPERADMIN_TELEGRAM_ID = 5582178765
-
-
 def _get_user_role(user: "User | None", tg_id: int | None = None) -> str:
-    """Determine role: 'admin', 'teacher', or 'student'.
-
-    Superadmin ID (5582178765) or platform admins always resolve to 'admin'.
-    """
-    from django.conf import settings as _settings
-
-    admin_tg_id = int(getattr(_settings, "ADMIN_TELEGRAM_ID", SUPERADMIN_TELEGRAM_ID))
-    if tg_id and int(tg_id) == admin_tg_id:
-        return "admin"
-    if not user:
+    """Map verified, active LMS accounts to bot roles."""
+    if not user or not getattr(user, "is_active", False):
         return "student"
-    if (
-        getattr(user, "telegram_chat_id", None)
-        and int(user.telegram_chat_id) == admin_tg_id
-    ):
+    if not getattr(user, "telegram_identity_verified_at", None):
+        return "student"
+    if tg_id is not None and getattr(user, "telegram_chat_id", None) != tg_id:
+        return "student"
+    if is_platform_admin(user):
         return "admin"
-    if (
-        getattr(user, "is_superuser", False)
-        or (getattr(user, "role", "") or "").lower() == "admin"
-        or is_platform_admin(user)
-    ):
-        return "admin"
-    if (getattr(user, "role", "") or "").lower() == "teacher":
+    if getattr(user, "role", "") == "teacher":
         return "teacher"
     return "student"
 
@@ -238,36 +222,16 @@ def require_role(*roles: str):
 
                 tg_user = getattr(update, "effective_user", None)
                 tg_id = tg_user.id if tg_user else None
-                from django.conf import settings as _settings
-
-                admin_id = int(
-                    getattr(_settings, "ADMIN_TELEGRAM_ID", SUPERADMIN_TELEGRAM_ID)
-                )
-
-                is_superadmin = tg_id is not None and int(tg_id) == admin_id
-
                 user = await _get_or_create_user_async(update) if tg_user else None
-
-                if user is None and not is_superadmin:
-                    await send_reply(
-                        update, "Hisobni aniqlab bo'lmadi. /start ni bosing."
-                    )
+                if user is None or not user.is_active or not user.telegram_identity_verified_at or user.telegram_chat_id != tg_id:
+                    await send_reply(update, "Hisobni aniqlab bo'lmadi. /start ni bosing.")
                     return
-
                 user_role = _get_user_role(user, tg_id)
-
-                has_access = False
-                if is_superadmin:
-                    has_access = True
-                elif "admin" in normalized_roles and user_role == "admin":
-                    has_access = True
-                elif "teacher" in normalized_roles and user_role in (
-                    "teacher",
-                    "admin",
-                ):
-                    has_access = True
-                elif "student" in normalized_roles:
-                    has_access = True
+                has_access = (
+                    ("admin" in normalized_roles and user_role == "admin")
+                    or ("teacher" in normalized_roles and user_role in ("teacher", "admin"))
+                    or "student" in normalized_roles
+                )
 
                 if not has_access:
                     if "admin" in normalized_roles:
@@ -377,55 +341,34 @@ def _persistent_menu_keyboard(role: str = "student", is_admin: bool = False) -> 
 
 def _student_main_menu_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
     """Main menu inline keyboard for students."""
-    from django.conf import settings as _settings
-
-    _site_url = getattr(_settings, "SITE_URL", "https://grandec.uz").rstrip("/")
     buttons = [
-        [
-            InlineKeyboardButton(
-                "📝 Mock Test (#kod)", callback_data="menu_mock_join"
-            ),
-            InlineKeyboardButton(
-                "📱 Fast CBT Test", web_app={"url": f"{_site_url}/tma/#/tests"}
-            ),
-        ],
-        [
-            InlineKeyboardButton("✍️ Esse yozish", callback_data="menu_essays"),
-            InlineKeyboardButton("⚔️ Arena (1v1)", callback_data="menu_arena"),
-        ],
-        [
-            InlineKeyboardButton("🧠 Telegram Quiz", callback_data="menu_quiz"),
-            InlineKeyboardButton(
-                "📜 Sertifikatlarim (PDF)", callback_data="menu_certificates"
-            ),
-        ],
-        [
-            InlineKeyboardButton("📊 Natijalarim", callback_data="menu_results"),
-            InlineKeyboardButton("👤 Profilim", callback_data="menu_profile"),
-        ],
-        [
-            InlineKeyboardButton("💳 Tarif / To'lov", callback_data="cb_myplan"),
-            InlineKeyboardButton(
-                "🏆 ELO Reyting", callback_data="menu_leaderboard"
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                "🏆 Yakshanba Turniri", callback_data="menu_tournament"
-            ),
-            InlineKeyboardButton(
-                "👨‍👩‍👧 Ota-onalar nazorati", callback_data="menu_parents"
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                "🌐 Web Platformaga o'tish", url=f"{_site_url}/dashboard/"
-            ),
-        ],
+        [InlineKeyboardButton("📚 Testlar", callback_data="menu_tests"),
+         InlineKeyboardButton("🧠 Tezkor quiz", callback_data="menu_quiz")],
+        [InlineKeyboardButton("✍️ Esse yozish", callback_data="menu_essays"),
+         InlineKeyboardButton("📊 Natijalarim", callback_data="menu_results")],
+        [InlineKeyboardButton("👤 Profilim", callback_data="menu_profile"),
+         InlineKeyboardButton("💳 Obunam", callback_data="cb_myplan")],
+        [InlineKeyboardButton("✨ Boshqa imkoniyatlar", callback_data="menu_student_more")],
     ]
     if is_admin:
         buttons.append([InlineKeyboardButton("👑 Admin panelga qaytish", callback_data="menu_admin")])
     return InlineKeyboardMarkup(buttons)
+
+
+def _student_more_keyboard() -> InlineKeyboardMarkup:
+    """Less frequent actions remain available without crowding the home menu."""
+    from django.conf import settings as _settings
+
+    site_url = getattr(_settings, "SITE_URL", "https://grandec.uz").rstrip("/")
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📜 Sertifikatlarim", callback_data="menu_certs"),
+         InlineKeyboardButton("⚔️ Arena", callback_data="menu_arena")],
+        [InlineKeyboardButton("🏆 ELO reyting", callback_data="menu_leaderboard"),
+         InlineKeyboardButton("🏆 Turnir", callback_data="menu_tournament")],
+        [InlineKeyboardButton("👨‍👩‍👧 Ota-onalar nazorati", callback_data="menu_parents")],
+        [InlineKeyboardButton("🌐 Web platforma", url=f"{site_url}/dashboard/")],
+        [InlineKeyboardButton("🔙 Bosh menyu", callback_data="menu_main")],
+    ])
 
 
 def _teacher_main_menu_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
@@ -563,70 +506,36 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         raw_parent_arg = args[0]
         tg_user = update.effective_user
         if tg_user:
-            from apps.accounts.services.parent_link import (
-                verify_parent_deep_link_token,
-                link_parent_to_student,
-            )
-            from apps.accounts.models import ParentStudentRelation, User
+            from apps.accounts.services.parent_link import redeem_parent_invitation
 
             parts = raw_parent_arg.split("_")
-            if len(parts) >= 3 and parts[1].isdigit():
+            if len(parts) == 3 and parts[1].isdigit():
                 student_id = int(parts[1])
                 token = parts[2]
-                if verify_parent_deep_link_token(student_id, token):
-                    def _do_link():
-                        student = User.objects.filter(id=student_id).first()
-                        if not student:
-                            return None
-                        rel, _ = link_parent_to_student(
-                            student=student,
-                            telegram_id=tg_user.id,
+                def _do_link():
+                    try:
+                        student = redeem_parent_invitation(
+                            student_id=student_id, token=token, telegram_id=tg_user.id,
                             parent_name=tg_user.full_name or tg_user.first_name,
                         )
-                        return student.get_full_name() or student.email
-
-                    student_name = await _run_db(_do_link)
-                    if student_name:
-                        await update.message.reply_text(
-                            f"👨‍👩‍👧 <b>Muvaffaqiyatli bog'landi!</b>\n\n"
-                            f"Assalomu alaykum! Siz farzandingiz <b>{student_name}</b> ning GRAND EDUCATION platformasidagi o'quv natijalari va davomatiga ulandingiz.\n\n"
-                            f"Endi farzandingiz yangi test topshirganda, uning ballari, BMB darajasi, zaif mavzulari va haftalik hisoboti to'g'ridan-to'g'ri sizga yuboriladi.",
-                            parse_mode="HTML",
-                        )
-                        return
-                    else:
-                        await update.message.reply_text(
-                            "❌ O'quvchi topilmadi. Havolani tekshirib qayta urinib ko'ring.",
-                            parse_mode="HTML",
-                        )
-                        return
-                else:
-                    await update.message.reply_text(
-                        "❌ Xavfsizlik kaliti eskirgan yoki yaroqsiz. Farzandingizdan yangi havola olishini so'rang.",
-                        parse_mode="HTML",
-                    )
-                    return
-            elif len(parts) == 2:
-                code_val = parts[1]
-                def _do_link_code():
-                    rel = ParentStudentRelation.objects.filter(verification_code=code_val).select_related("student").first()
-                    if not rel:
+                    except ValueError:
                         return None
-                    rel.parent_telegram_id = tg_user.id
-                    rel.parent_name = tg_user.full_name or tg_user.first_name
-                    rel.is_verified = True
-                    rel.notifications_enabled = True
-                    rel.save(update_fields=["parent_telegram_id", "parent_name", "is_verified", "notifications_enabled", "updated_at"])
-                    return rel.student.get_full_name() or rel.student.email
+                    return student.get_full_name() or student.email
 
-                student_name = await _run_db(_do_link_code)
+                student_name = await _run_db(_do_link)
                 if student_name:
                     await update.message.reply_text(
-                        f"👨‍👩‍👧 <b>Muvaffaqiyatli bog'landi!</b>\n\n"
-                        f"Assalomu alaykum! Siz farzandingiz <b>{student_name}</b> ning GRAND EDUCATION platformasidagi o'quv natijalari va davomatiga ulandingiz.",
-                        parse_mode="HTML",
+                        "👨‍👩‍👧 Muvaffaqiyatli bog'landi!"
                     )
                     return
+                await update.message.reply_text(
+                    "❌ O'quvchi topilmadi yoki havola eskirgan, bekor qilingan yoki ishlatilgan."
+                )
+                return
+            await update.message.reply_text(
+                "❌ Ota-ona ulanishi uchun o'quvchidan xavfsiz havola oling."
+            )
+            return
 
     if args and args[0].startswith("link_"):
         from apps.accounts.services.telegram_link import confirm_link_challenge
@@ -834,10 +743,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text("Xatolik yuz berdi. Qayta urinib ko'ring.")
         return
 
-    from django.conf import settings as _settings
-
-    admin_tg_id = int(getattr(_settings, "ADMIN_TELEGRAM_ID", SUPERADMIN_TELEGRAM_ID))
-    is_superadmin = tg_user.id == admin_tg_id
+    is_superadmin = False
 
     # Check if user is already registered in DB
     from apps.accounts.models import User as UserModel
@@ -971,10 +877,10 @@ def _authenticate_or_provision_tg_user(auth_token_str: str, tg_user_data: dict):
 
         user = User.objects.filter(telegram_chat_id=tg_id).first()
         is_new = False
-        if not user and tg_username:
-            user = User.objects.filter(telegram_username=tg_username).first()
 
         if user:
+            if not user.is_active or not user.telegram_identity_verified_at:
+                return None, False
             # Existing user - ensure telegram_chat_id and verified status
             update_fields = []
             if not user.telegram_chat_id:
@@ -986,9 +892,6 @@ def _authenticate_or_provision_tg_user(auth_token_str: str, tg_user_data: dict):
             if not user.telegram_identity_verified_at:
                 user.telegram_identity_verified_at = timezone.now()
                 update_fields.append("telegram_identity_verified_at")
-            if not user.is_active:
-                user.is_active = True
-                update_fields.append("is_active")
             if update_fields:
                 user.save(update_fields=update_fields)
         else:
@@ -1622,131 +1525,22 @@ async def auth_conversation_handler(
             )
             return
 
-    # Check for teacher phone verification contact
+    # Phone contacts alone cannot claim a teacher account. Use the existing
+    # authenticated web account-link flow, which verifies ownership explicitly.
     contact = getattr(update.message, "contact", None)
     if contact and context.user_data.get("awaiting_teacher_contact"):
         context.user_data.pop("awaiting_teacher_contact", None)
-        contact_phone = getattr(contact, "phone_number", "") or ""
-        import re
-
-        digits = re.sub(r"\D", "", contact_phone)
-        clean_9 = digits[-9:] if len(digits) >= 9 else ""
-
-        def _verify_teacher_phone(phone_tail: str, chat_id: int):
-            from apps.accounts.models import User as UserModel
-
-            t = UserModel.objects.filter(
-                profile__phone__endswith=phone_tail, role=UserModel.Role.TEACHER
-            ).first()
-            if t:
-                t.telegram_chat_id = chat_id
-                t.telegram_identity_verified_at = timezone.now()
-                t.save(
-                    update_fields=["telegram_chat_id", "telegram_identity_verified_at"]
-                )
-                return t
-            return None
-
-        t_user = await _run_db(_verify_teacher_phone, clean_9, update.effective_user.id)
-        if t_user:
-            await update.message.reply_text(
-                f"✅ *O'qituvchi hisobingiz muvaffaqiyatli tasdiqlandi!*\n\n"
-                f"Xush kelibsiz, Ustoz {t_user.first_name}!",
-                parse_mode="Markdown",
-                reply_markup=_persistent_menu_keyboard("teacher"),
-            )
-            await update.message.reply_text(
-                "👨‍🏫 *O'qituvchi boshqaruv paneli:*",
-                parse_mode="Markdown",
-                reply_markup=_teacher_main_menu_keyboard(),
-            )
-            return
-        else:
-            await update.message.reply_text(
-                "Telefon raqamingiz bo'yicha bazada o'qituvchi hisobi topilmadi. "
-                "Arizangiz administrator tomonidan tasdiqlanishini kuting.",
-                reply_markup=_persistent_menu_keyboard("student"),
-            )
-            return
-
-    # Check for 6-digit parent code input or awaiting_parent_code
-    is_awaiting_parent = bool(context.user_data.get("awaiting_parent_code"))
-    if contact and is_awaiting_parent:
-        contact_phone = getattr(contact, "phone_number", "") or ""
-        import re
-
-        digits = re.sub(r"\D", "", contact_phone)
-        clean_9 = digits[-9:] if len(digits) >= 9 else ""
-
-        def _link_by_phone(phone_tail: str, chat_id: int):
-            from apps.accounts.models import ParentStudentRelation
-
-            rels = ParentStudentRelation.objects.filter(
-                parent_phone__endswith=phone_tail
-            ).select_related("student")
-            if not rels.exists():
-                return None
-            names = []
-            for r in rels:
-                r.parent_telegram_id = chat_id
-                r.is_verified = True
-                r.save(
-                    update_fields=["parent_telegram_id", "is_verified", "updated_at"]
-                )
-                names.append(r.student.get_full_name() or r.student.email)
-            return names
-
-        linked_names = await _run_db(_link_by_phone, clean_9, update.effective_user.id)
-        context.user_data.pop("awaiting_parent_code", None)
-        if linked_names:
-            names_str = ", ".join(linked_names)
-            await update.message.reply_text(
-                f"✅ <b>Telefon raqamingiz muvaffaqiyatli bog'landi!</b>\n\n"
-                f"Farzandingiz: <b>{names_str}</b>\n\n"
-                f"Test natijalari va haftalik hisobotlar endi ushbu chatga yuboriladi.",
-                parse_mode="HTML",
-                reply_markup=_persistent_menu_keyboard(),
-            )
-            return
-        else:
-            await update.message.reply_text(
-                "Telefon raqamingiz bo'yicha kutilayotgan o'quvchi topilmadi. "
-                "Iltimos, farzandingizdan 6 xonali tasdiqlash kodini olib yuboring (masalan: <code>/parent_start 123456</code>).",
-                parse_mode="HTML",
-                reply_markup=_persistent_menu_keyboard(),
-            )
-            return
-
-    if raw_text.isdigit() and len(raw_text) == 6:
-
-        def _check_and_link(code_val: str, chat_id: int):
-            from apps.accounts.models import ParentStudentRelation
-
-            rel = (
-                ParentStudentRelation.objects.filter(verification_code=code_val)
-                .select_related("student")
-                .first()
-            )
-            if not rel:
-                return None
-            rel.parent_telegram_id = chat_id
-            rel.is_verified = True
-            rel.save(update_fields=["parent_telegram_id", "is_verified", "updated_at"])
-            return rel.student.get_full_name() or rel.student.email
-
-        student_name = await _run_db(
-            _check_and_link, raw_text, update.effective_user.id
+        await update.message.reply_text(
+            "O'qituvchi hisobini ulash uchun avval LMS hisobingizga kiring va "
+            "profilingizdagi Telegram ulash funksiyasidan foydalaning."
         )
-        if student_name:
-            context.user_data.pop("awaiting_parent_code", None)
-            await update.message.reply_text(
-                f"✅ <b>Muvaffaqiyatli bog'landi!</b>\n\n"
-                f"Siz o'quvchi <b>{student_name}</b> ga ota-ona sifatida biriktirildingiz.\n\n"
-                f"Endi barcha test va mock natijalari hamda haftalik hisobotlar ushbu chatga boradi.",
-                parse_mode="HTML",
-                reply_markup=_persistent_menu_keyboard(),
-            )
-            return
+        return
+
+    # A phone suffix or reusable six-digit code is not proof of guardianship.
+    if context.user_data.get("awaiting_parent_code") and (contact or (raw_text.isdigit() and len(raw_text) == 6)):
+        context.user_data.pop("awaiting_parent_code", None)
+        await update.message.reply_text("O'quvchidan xavfsiz ota-ona ulanish havolasini oling.")
+        return
 
     # Teacher /newmock command with strict RBAC
     if raw_text.lower().startswith("/newmock") or raw_text.lower().startswith(
@@ -1913,9 +1707,8 @@ async def auth_conversation_handler(
             )
             return
 
-        # Match the verified number against existing accounts FIRST — a
-        # website-registered user must log into THEIR account, not get a new
-        # tg_* duplicate. Only a genuinely new number proceeds to name.
+        # Check for an existing account before provisioning. A phone match
+        # requires authenticated linking; only a new number proceeds to name.
         from apps.accounts.services.telegram_identity import (
             TelegramAuthAmbiguous,
             TelegramAuthConflict,
@@ -1954,7 +1747,7 @@ async def auth_conversation_handler(
             )
             return
 
-        # Existing account (Telegram link or phone match): fast code.
+        # Existing account with a verified Telegram link: fast code.
         await _finish_existing_account(
             update,
             context,
@@ -4244,21 +4037,32 @@ async def cancel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if context.user_data.pop("payment_state", None):
         cleared.append("to'lov")
     context.user_data.pop("selected_plan_id", None)
+    context.user_data.pop("selected_plan_slug", None)
+    for key, label in (
+        ("awaiting_mock_code", "test kodi"),
+        ("awaiting_create_group", "guruh yaratish"),
+        ("awaiting_teacher_contact", "ustozni bog'lash"),
+        ("awaiting_parent_code", "ota-onani bog'lash"),
+    ):
+        if context.user_data.pop(key, None):
+            cleared.append(label)
     if context.user_data.get("auth_state"):
         _clear_auth_state(context)
         cleared.append("kirish")
 
+    user = await _get_or_create_user_async(update)
+    role = _get_user_role(user, update.effective_user.id if update.effective_user else None)
     if cleared:
         await send_reply(
             update,
             "✅ Bekor qilindi: " + ", ".join(cleared) + ".",
-            reply_markup=_main_menu_keyboard(),
+            reply_markup=_main_menu_keyboard(role),
         )
     else:
         await send_reply(
             update,
             "Bekor qilinadigan amal yo'q.",
-            reply_markup=_main_menu_keyboard(),
+            reply_markup=_main_menu_keyboard(role),
         )
 
 
@@ -5380,6 +5184,8 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     try:
         if data == "menu_main":
+            # Leaving the code-entry screen must not treat the next message as a code.
+            context.user_data.pop("awaiting_mock_code", None)
             user = await _get_or_create_user_async(update)
             role = _get_user_role(
                 user, update.effective_user.id if update.effective_user else None
@@ -5394,6 +5200,11 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 title,
                 parse_mode="Markdown",
                 reply_markup=_main_menu_keyboard(role),
+            )
+        elif data == "menu_student_more":
+            await query.edit_message_text(
+                "✨ Qo'shimcha imkoniyatlar\n\nKerakli bo'limni tanlang.",
+                reply_markup=_student_more_keyboard(),
             )
         elif data == "role_select_student":
             await role_select_student_callback(update, context)
@@ -5490,7 +5301,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 "📝 *MILLIY SERTIFIKAT MOCK TESTGA ULANISH*\n\n"
                 "Ustozingiz bergan Mock kodini botga yuboring:\n"
                 "Masalan: `#MOCK-401` yoki `MOCK-401`\n\n"
-                "📌 Kodni yuborganingizdan so'ng, test darhol ochiladi va rasmiy BMB darajangiz (A+, A, B+...) hisoblab beriladi."
+                "Kodni yuboring yoki /cancel orqali bekor qiling."
             )
             buttons = InlineKeyboardMarkup(
                 [[InlineKeyboardButton("🔙 Bosh menyu", callback_data="menu_main")]]
@@ -5503,11 +5314,11 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
             site_url = getattr(_settings, "SITE_URL", "https://grandec.uz").rstrip("/")
             text = (
-                "📚 *ONA TILI VA ADABIYOTIDAN TEST TOPSHIRISH*\n\n"
-                "O'zingizga qulay test formatini tanlang:\n\n"
-                "1️⃣ *📱 Fast CBT (Telegram Mini App)* — Telegram ichida sahifadan chiqmasdan tezkor '1 tadan ishlash' interfeysi.\n\n"
-                "2️⃣ *🧠 Telegram Chat Quiz* — Telegram chatida savollar birma-bir beriladi, rasmiy BMB daraja hisoblanadi va AI xatolar tahlili beriladi.\n\n"
-                "3️⃣ *📝 Mock Test (#kod)* — Ustozingiz bergan kod orqali mock imtihon topshirish."
+                "📚 *Testlar*\n\n"
+                "O'zingizga qulay usulni tanlang:\n\n"
+                "📱 Mini App — mavjud testlarni ko'rish va ishlash.\n"
+                "🧠 Quiz — savollarga Telegram chatida javob berish.\n"
+                "📝 Test kodi — ustozingiz bergan kod orqali kirish."
             )
             buttons = [
                 [
@@ -5536,7 +5347,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             from apps.notifications.bot.quiz import quiz_handler
 
             await _dispatch_handler(update, context, quiz_handler)
-        elif data in ("menu_certs", "cb_certs"):
+        elif data in ("menu_certs", "menu_certificates", "cb_certs"):
             await _dispatch_handler(update, context, certificates_handler)
         elif data in ("menu_myplan", "cb_myplan"):
             await _dispatch_handler(update, context, myplan_handler)
@@ -5704,6 +5515,31 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             group_id = _safe_callback_int(data, prefix="tgrp_")
             if group_id is not None:
                 await _group_card_callback(update, context, group_id)
+        elif data.startswith("taslist_"):
+            group_id = _safe_callback_int(data, prefix="taslist_")
+            if group_id is not None:
+                await _assignment_list(update, context, group_id)
+        elif data.startswith("taspage_"):
+            parts = data.removeprefix("taspage_").split("_")
+            if len(parts) == 2 and all(part.isdigit() for part in parts):
+                await _assignment_list(update, context, int(parts[0]), int(parts[1]))
+            else:
+                await edit_or_reply(update, "Havola eskirgan. Guruhdan qayta boshlang.")
+        elif data.startswith(("tasreview_", "tasconfirm_")):
+            action, _, payload = data.partition("_")
+            parts = payload.split("_")
+            if len(parts) == 2 and all(part.isdigit() for part in parts):
+                await _assignment_action(update, context, int(parts[0]), int(parts[1]), action == "tasconfirm")
+            else:
+                await edit_or_reply(update, "Havola eskirgan. Guruhlar ro'yxatidan qayta boshlang.")
+        elif data.startswith("tpage_"):
+            parts = data.removeprefix("tpage_").split("_")
+            if len(parts) == 2 and all(part.isdigit() for part in parts):
+                await _attendance_page_callback(update, context, int(parts[0]), int(parts[1]))
+        elif data.startswith("tconfirm_"):
+            session_id = _safe_callback_int(data, prefix="tconfirm_")
+            if session_id is not None:
+                await _attendance_review_callback(update, context, session_id)
         elif data.startswith("tatt_"):
             group_id = _safe_callback_int(data, prefix="tatt_")
             if group_id is not None:
@@ -6695,14 +6531,12 @@ async def approve_receipt_callback(
     query = update.callback_query
     from django.conf import settings
 
-    admin_id = str(getattr(settings, "ADMIN_TELEGRAM_ID", "5582178765"))
-    tg_uid = str(update.effective_user.id) if update.effective_user else ""
     admin_user = await _get_or_create_user_async(update)
 
     from apps.payments.access import can_manage_payments
 
-    is_authorized = tg_uid == admin_id or (
-        admin_user
+    is_authorized = (
+        admin_user and admin_user.is_active and admin_user.telegram_identity_verified_at
         and (
             admin_user.is_superuser
             or getattr(admin_user, "role", "") == "admin"
@@ -6785,14 +6619,12 @@ async def reject_receipt_callback(
     query = update.callback_query
     from django.conf import settings
 
-    admin_id = str(getattr(settings, "ADMIN_TELEGRAM_ID", "5582178765"))
-    tg_uid = str(update.effective_user.id) if update.effective_user else ""
     admin_user = await _get_or_create_user_async(update)
 
     from apps.payments.access import can_manage_payments
 
-    is_authorized = tg_uid == admin_id or (
-        admin_user
+    is_authorized = (
+        admin_user and admin_user.is_active and admin_user.telegram_identity_verified_at
         and (
             admin_user.is_superuser
             or getattr(admin_user, "role", "") == "admin"
@@ -7136,24 +6968,12 @@ _ESSAY_PAGE_SIZE = 10
 
 
 def _is_teacher_account(user, tg_id: int | None = None) -> bool:
-    """Teachers, superadmin and platform admins may use the group commands."""
-    from apps.accounts.access import is_platform_admin
-    from django.conf import settings as _settings
-
-    admin_id = int(getattr(_settings, "ADMIN_TELEGRAM_ID", SUPERADMIN_TELEGRAM_ID))
-
-    if tg_id and int(tg_id) == admin_id:
-        return True
-    if user is None:
+    """Teachers and platform administrators with a verified Telegram link."""
+    if not user or not user.is_active or not user.telegram_identity_verified_at:
         return False
-    if (
-        getattr(user, "telegram_chat_id", None)
-        and int(user.telegram_chat_id) == admin_id
-    ):
-        return True
-    if (getattr(user, "role", None) or "").lower() in ("teacher", "admin"):
-        return True
-    return is_platform_admin(user)
+    if tg_id is not None and user.telegram_chat_id != tg_id:
+        return False
+    return user.role == "teacher" or is_platform_admin(user)
 
 
 async def _teacher_from_update(update: Update):
@@ -7198,10 +7018,10 @@ def _group_list_keyboard(
     return InlineKeyboardMarkup(rows)
 
 
-def _attendance_keyboard(session, rows) -> InlineKeyboardMarkup:
+def _attendance_keyboard(session, rows, page=0) -> InlineKeyboardMarkup:
     """One status row per student, in the same order as the numbered roster."""
     keyboard = []
-    for row in rows[:_ATTENDANCE_PAGE_SIZE]:
+    for row in rows[page * _ATTENDANCE_PAGE_SIZE:(page + 1) * _ATTENDANCE_PAGE_SIZE]:
         student_id = row["student_id"]
         keyboard.append(
             [
@@ -7212,6 +7032,13 @@ def _attendance_keyboard(session, rows) -> InlineKeyboardMarkup:
                 for status in ("present", "late", "excused", "absent")
             ]
         )
+    navigation = []
+    if page > 0:
+        navigation.append(InlineKeyboardButton("⬅️ Oldingi", callback_data=f"tpage_{session.id}_{page - 1}"))
+    if (page + 1) * _ATTENDANCE_PAGE_SIZE < len(rows):
+        navigation.append(InlineKeyboardButton("Keyingi ➡️", callback_data=f"tpage_{session.id}_{page + 1}"))
+    if navigation:
+        keyboard.append(navigation)
     keyboard.append(
         [
             InlineKeyboardButton(
@@ -7221,14 +7048,14 @@ def _attendance_keyboard(session, rows) -> InlineKeyboardMarkup:
     )
     keyboard.append(
         [
-            InlineKeyboardButton("💾 Yakunlash", callback_data=f"tfin_{session.id}"),
+            InlineKeyboardButton("🔍 Ko‘rib chiqish", callback_data=f"tconfirm_{session.id}"),
             InlineKeyboardButton("🏠 Guruh", callback_data=f"tgrp_{session.group_id}"),
         ]
     )
     return InlineKeyboardMarkup(keyboard)
 
 
-def _attendance_text(session, rows, data) -> str:
+def _attendance_text(session, rows, data, page=0) -> str:
     lines = [
         f"🗓 *{data['group_name']}* — {data['lesson_date']} {data['time_label']}",
         "",
@@ -7238,15 +7065,12 @@ def _attendance_text(session, rows, data) -> str:
     if data["unmarked"]:
         lines.append(f"⚠️ Belgilanmagan: {data['unmarked']}")
     lines.append("")
-    for index, row in enumerate(rows[:_ATTENDANCE_PAGE_SIZE], 1):
+    start = page * _ATTENDANCE_PAGE_SIZE
+    for index, row in enumerate(rows[start:start + _ATTENDANCE_PAGE_SIZE], start + 1):
         emoji = _STATUS_EMOJI.get(row["status"], "➖") if row["marked"] else "➖"
         lines.append(f"{index}. {row['name']} — {emoji} {row['status_label']}")
     if len(rows) > _ATTENDANCE_PAGE_SIZE:
-        lines.append("")
-        lines.append(
-            f"_(Qolgan {len(rows) - _ATTENDANCE_PAGE_SIZE} o'quvchi panel orqali "
-            "belgilanadi.)_"
-        )
+        lines.append(f"Sahifa {page + 1} / {(len(rows) + _ATTENDANCE_PAGE_SIZE - 1) // _ATTENDANCE_PAGE_SIZE}")
     lines.append("")
     lines.append(_STATUS_LEGEND)
     return "\n".join(lines)
@@ -7258,11 +7082,14 @@ async def _render_attendance(update: Update, context, session) -> None:
 
     rows = await _run_db(roster, session)
     data = await _run_db(summary, session)
+    page_key = f"attendance_page_{session.id}"
+    page = min(max(0, context.user_data.get(page_key, 0)), max(0, (len(rows) - 1) // _ATTENDANCE_PAGE_SIZE))
+    context.user_data[page_key] = page
     await edit_or_reply(
         update,
-        _attendance_text(session, rows, data),
+        _attendance_text(session, rows, data, page),
         parse_mode="Markdown",
-        reply_markup=_attendance_keyboard(session, rows),
+        reply_markup=_attendance_keyboard(session, rows, page),
     )
 
 
@@ -7314,6 +7141,11 @@ async def _send_group_card(update: Update, context, user, group) -> None:
     else:
         attendance_line = "Bugun davomat olinmagan."
     essays = await _run_db(group_essay_summary, group)
+    def _assigned_tests():
+        tests = group.assigned_tests.filter(is_active=True).order_by("title", "id")
+        return tests.count(), list(tests.values_list("title", flat=True)[:5])
+
+    assigned_count, assigned_titles = await _run_db(_assigned_tests)
 
     invite_code = getattr(group, "invite_code", "") or f"GR-{group.id}"
     text = (
@@ -7321,12 +7153,22 @@ async def _send_group_card(update: Update, context, user, group) -> None:
         f"📌 Taklif kodi: `#{invite_code}`\n"
         f"_(O'quvchilar botga `#{invite_code}` deb yozsa, avtomatik guruhga qo'shiladi)_\n\n"
         f"👥 O'quvchilar soni: *{count} nafar*\n"
+        f"📚 Biriktirilgan testlar: *{assigned_count} ta*\n"
         f"🗓 Bugungi davomat: {attendance_line}\n"
         f"📝 Esse — baholangan: *{essays['graded']}*, kutilmoqda: "
         f"*{essays['pending']}*, topshirilmagan: *{essays['not_submitted']}*"
     )
+    if assigned_titles:
+        from telegram.helpers import escape_markdown
+
+        text += "\n\n📚 *Guruh testlari:*\n" + "\n".join(
+            f"• {escape_markdown(title, version=1)}" for title in assigned_titles
+        )
+        if assigned_count > len(assigned_titles):
+            text += f"\nYana {assigned_count - len(assigned_titles)} ta test."
     keyboard = InlineKeyboardMarkup(
         [
+            [InlineKeyboardButton("📝 Test biriktirish", callback_data=f"taslist_{group.id}")],
             [
                 InlineKeyboardButton(
                     "🗓 Davomat olish", callback_data=f"tatt_{group.id}"
@@ -8140,7 +7982,7 @@ async def role_select_teacher_callback(
 
     from django.conf import settings as _settings
 
-    admin_id = int(getattr(_settings, "ADMIN_TELEGRAM_ID", SUPERADMIN_TELEGRAM_ID))
+    admin_id = int(getattr(_settings, "ADMIN_TELEGRAM_ID", 0))
     # Notify admin
     try:
         tg_uname = tg_user.username or "yo'q"
@@ -8199,10 +8041,8 @@ async def admin_approve_teacher_callback(
 ) -> None:
     """Admin approves a teacher application."""
     query = update.callback_query
-    from django.conf import settings as _settings
-
-    admin_id = int(getattr(_settings, "ADMIN_TELEGRAM_ID", SUPERADMIN_TELEGRAM_ID))
-    if not (update.effective_user and update.effective_user.id == admin_id):
+    actor = await _get_or_create_user_async(update)
+    if not actor or _get_user_role(actor, update.effective_user.id if update.effective_user else None) != "admin":
         if query:
             await query.answer("Sizda ruxsat yo'q.", show_alert=True)
         return
@@ -8248,10 +8088,8 @@ async def admin_reject_teacher_callback(
 ) -> None:
     """Admin rejects a teacher application."""
     query = update.callback_query
-    from django.conf import settings as _settings
-
-    admin_id = int(getattr(_settings, "ADMIN_TELEGRAM_ID", SUPERADMIN_TELEGRAM_ID))
-    if not (update.effective_user and update.effective_user.id == admin_id):
+    actor = await _get_or_create_user_async(update)
+    if not actor or _get_user_role(actor, update.effective_user.id if update.effective_user else None) != "admin":
         if query:
             await query.answer("Sizda ruxsat yo'q.", show_alert=True)
         return
@@ -8280,11 +8118,9 @@ async def admin_publish_feedback_callback(
 ) -> None:
     """Admin approves and publishes a user feedback on the landing page."""
     query = update.callback_query
-    from django.conf import settings as _settings
-
-    admin_id = int(getattr(_settings, "ADMIN_TELEGRAM_ID", SUPERADMIN_TELEGRAM_ID))
     tg_user = update.effective_user
-    if not tg_user or tg_user.id != admin_id:
+    actor = await _get_or_create_user_async(update)
+    if not actor or _get_user_role(actor, tg_user.id if tg_user else None) != "admin":
         if query:
             await query.answer("⛔️ Sizda ushbu amalni bajarish huquqi yo'q.", show_alert=True)
         return
@@ -8324,11 +8160,9 @@ async def admin_reject_feedback_callback(
 ) -> None:
     """Admin rejects a user feedback (will not appear on the landing page)."""
     query = update.callback_query
-    from django.conf import settings as _settings
-
-    admin_id = int(getattr(_settings, "ADMIN_TELEGRAM_ID", SUPERADMIN_TELEGRAM_ID))
     tg_user = update.effective_user
-    if not tg_user or tg_user.id != admin_id:
+    actor = await _get_or_create_user_async(update)
+    if not actor or _get_user_role(actor, tg_user.id if tg_user else None) != "admin":
         if query:
             await query.answer("⛔️ Sizda ushbu amalni bajarish huquqi yo'q.", show_alert=True)
         return
@@ -8501,7 +8335,7 @@ async def admin_settings_handler(
         "⚙️ *TIZIM SOZLAMALARI (GRAND EDUCATION)*\n\n"
         "• Bot: `@uz_essaygrader_bot`\n"
         "• Platforma: `grandec.uz`\n"
-        "• Superadmin ID: `5582178765`\n"
+        "• Administrator huquqlari LMS hisobida belgilanadi\n"
         "• RBAC Holati: *Faol (Strict Mode)*\n"
         "• Ma'lumotlar bazasi: PostgreSQL (Healthy)\n"
         "• Kesh & Navbat: Redis + Celery (Healthy)\n"
@@ -8564,7 +8398,7 @@ async def attendance_handler(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
     """/attendance — choose a group, then take the register."""
-    user = await _teacher_from_update(update)
+    user = await _attendance_actor(update)
     if not user:
         return
     from apps.attendance.services import teacher_groups
@@ -8649,7 +8483,7 @@ async def _mark_student(
     from apps.attendance.services import (
         AttendanceError,
         get_session_for_user,
-        mark,
+        mark_from_bot,
     )
 
     if status not in dict(AttendanceRecord.Status.choices):
@@ -8657,29 +8491,26 @@ async def _mark_student(
         return
     try:
         session = await _run_db(get_session_for_user, user, session_id)
-        student = await _run_db(
-            lambda: session.group.students.filter(pk=student_id).first()
-        )
-        if student is None:
-            await send_reply(update, "O'quvchi topilmadi.")
-            return
-        await _run_db(mark, session, student, status, actor=user)
+        await _run_db(mark_from_bot, session.id, student_id, status, actor=user)
     except AttendanceError as exc:
         await send_reply(update, exc.messages[0] if exc.messages else "Xatolik.")
         return
-    except PermissionDenied:
+    except (PermissionDenied, ObjectDoesNotExist):
         await send_reply(update, "Bu davomat darsi sizga tegishli emas.")
         return
     await _render_attendance(update, context, session)
 
 
 async def _mark_all_present(update: Update, context, user, session_id: int) -> None:
-    from apps.attendance.services import get_session_for_user, mark_all_present
+    from apps.attendance.services import AttendanceError, get_session_for_user, mark_all_present_from_bot
 
     try:
         session = await _run_db(get_session_for_user, user, session_id)
-        await _run_db(mark_all_present, session, actor=user)
-    except PermissionDenied:
+        await _run_db(mark_all_present_from_bot, session.id, actor=user)
+    except AttendanceError as exc:
+        await send_reply(update, exc.messages[0] if exc.messages else "Xatolik.")
+        return
+    except (PermissionDenied, ObjectDoesNotExist):
         await send_reply(update, "Bu davomat darsi sizga tegishli emas.")
         return
     await _render_attendance(update, context, session)
@@ -8708,7 +8539,7 @@ async def _finalize_attendance(
     except AttendanceError as exc:
         await send_reply(update, exc.messages[0] if exc.messages else "Xatolik.")
         return
-    except PermissionDenied:
+    except (PermissionDenied, ObjectDoesNotExist):
         await send_reply(update, "Bu davomat darsi sizga tegishli emas.")
         return
 
@@ -8751,18 +8582,19 @@ async def _finalize_attendance(
         f"• ❌ {result['absent']} kelmadi"
     )
 
-    # Kelmagan o'quvchilar ota-onalariga ogohlantirish yuborish
-    def _notify_absences(sess):
-        from apps.notifications.tasks_parent import send_parent_absence_alert_task
+    # Preserve legacy guardian-relation alerts, but do not dispatch them again
+    # when an already-finalized callback is replayed.
+    if not result.get("already_finalized"):
+        def _notify_legacy_absences():
+            from apps.notifications.tasks_parent import send_parent_absence_alert_task
 
-        absent_recs = sess.records.filter(status="absent")
-        for rec in absent_recs:
-            try:
-                send_parent_absence_alert_task.delay(sess.id, rec.student_id)
-            except Exception:
-                pass
+            for student_id in session.records.filter(status="absent").values_list("student_id", flat=True):
+                try:
+                    send_parent_absence_alert_task.delay(session.id, student_id)
+                except Exception:
+                    logger.exception("Legacy absence alert dispatch failed for session %s", session.id)
 
-    await _run_db(_notify_absences, session)
+        await _run_db(_notify_legacy_absences)
 
     await edit_or_reply(
         update,
@@ -9171,8 +9003,85 @@ async def _group_card_callback(update: Update, context, group_id: int) -> None:
     await _send_group_card(update, context, user, group)
 
 
+async def _assignment_actor(update):
+    chat = update.effective_chat
+    if not chat or chat.type != "private":
+        await send_reply(update, "Test biriktirish uchun bot bilan shaxsiy chatni oching.")
+        return None
+    return await _teacher_from_update(update)
+
+
+async def _assignment_list(update, context, group_id, page=0):
+    from apps.notifications.bot.teacher_assignments import available_tests
+
+    actor = await _assignment_actor(update)
+    if not actor:
+        return
+    group = await _load_managed_group(actor, group_id)
+    if not group:
+        await edit_or_reply(update, "Guruh topilmadi yoki sizga tegishli emas.")
+        return
+    page_size = 8
+    page = min(max(page, 0), 10000)
+    tests = await _run_db(lambda: list(available_tests(actor, group)[page * page_size:page * page_size + page_size + 1]))
+    has_next = len(tests) > page_size
+    tests = tests[:page_size]
+    rows = [[InlineKeyboardButton(test.title[:45], callback_data=f"tasreview_{group_id}_{test.id}")] for test in tests]
+    navigation = []
+    if page:
+        navigation.append(InlineKeyboardButton("⬅️ Oldingi", callback_data=f"taspage_{group_id}_{page - 1}"))
+    if has_next:
+        navigation.append(InlineKeyboardButton("Keyingi ➡️", callback_data=f"taspage_{group_id}_{page + 1}"))
+    if navigation:
+        rows.append(navigation)
+    rows.append([InlineKeyboardButton("🔙 Guruh", callback_data=f"tgrp_{group_id}")])
+    text = "📝 Biriktirish uchun testni tanlang:" if tests else "Biriktirish uchun mos testingiz yo'q."
+    await edit_or_reply(update, text, reply_markup=InlineKeyboardMarkup(rows))
+
+
+async def _assignment_action(update, context, group_id, test_id, confirm):
+    from html import escape
+    from apps.notifications.bot.teacher_assignments import AssignmentError, assign_test, available_tests
+
+    actor = await _assignment_actor(update)
+    if not actor:
+        return
+    group = await _load_managed_group(actor, group_id)
+    if not group:
+        await edit_or_reply(update, "Guruh topilmadi yoki sizga tegishli emas.")
+        return
+    if confirm:
+        try:
+            test, created = await _run_db(assign_test, actor, group_id, test_id)
+        except AssignmentError as exc:
+            await edit_or_reply(update, str(exc), reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 Testlar", callback_data=f"taslist_{group_id}")],
+            ]))
+            return
+        from django.conf import settings
+        url = f"{getattr(settings, 'SITE_URL', 'https://grandec.uz').rstrip('/')}/tests/{test.id}"
+        text = "✅ Test biriktirildi." if created else "ℹ️ Bu test allaqachon biriktirilgan."
+        await edit_or_reply(update, f"{text}\n\n{escape(test.title)} — {escape(group.name)}",
+                            parse_mode="HTML", reply_markup=InlineKeyboardMarkup([
+                                [InlineKeyboardButton("🔗 Testni ochish", url=url)],
+                                [InlineKeyboardButton("🏠 Guruh", callback_data=f"tgrp_{group_id}")],
+                            ]))
+        return
+    test = await _run_db(lambda: available_tests(actor, group).filter(pk=test_id).first())
+    if not test:
+        await edit_or_reply(update, "Test mavjud emas yoki sizga tegishli emas.", reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 Testlar", callback_data=f"taslist_{group_id}")],
+        ]))
+        return
+    await edit_or_reply(update, f"📝 <b>{escape(test.title)}</b>\n👥 {escape(group.name)}\n\nTestni guruhga biriktirasizmi?",
+                        parse_mode="HTML", reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("✅ Tasdiqlash", callback_data=f"tasconfirm_{group_id}_{test_id}")],
+                            [InlineKeyboardButton("🔙 Testlar", callback_data=f"taslist_{group_id}")],
+                        ]))
+
+
 async def _attendance_callback(update: Update, context, group_id: int) -> None:
-    user = await _teacher_from_update(update)
+    user = await _attendance_actor(update)
     if not user:
         return
     group = await _load_managed_group(user, group_id)
@@ -9185,14 +9094,58 @@ async def _attendance_callback(update: Update, context, group_id: int) -> None:
 async def _mark_callback(
     update: Update, context, session_id: int, student_id: int, status: str
 ) -> None:
-    user = await _teacher_from_update(update)
+    user = await _attendance_actor(update)
     if not user:
         return
     await _mark_student(update, context, user, session_id, student_id, status)
 
 
+async def _attendance_actor(update):
+    if not update.effective_chat or update.effective_chat.type != "private":
+        await send_reply(update, "Davomat uchun bot bilan shaxsiy chatni oching.")
+        return None
+    return await _teacher_from_update(update)
+
+
+async def _attendance_page_callback(update, context, session_id, page):
+    from apps.attendance.services import get_session_for_user
+
+    user = await _attendance_actor(update)
+    if not user:
+        return
+    try:
+        session = await _run_db(get_session_for_user, user, session_id)
+    except (PermissionDenied, ObjectDoesNotExist):
+        await send_reply(update, "Bu davomat sizga tegishli emas.")
+        return
+    context.user_data[f"attendance_page_{session.id}"] = min(page, 10000)
+    await _render_attendance(update, context, session)
+
+
+async def _attendance_review_callback(update, context, session_id):
+    from apps.attendance.services import get_session_for_user, summary
+
+    user = await _attendance_actor(update)
+    if not user:
+        return
+    try:
+        session = await _run_db(get_session_for_user, user, session_id)
+    except (PermissionDenied, ObjectDoesNotExist):
+        await send_reply(update, "Bu davomat sizga tegishli emas.")
+        return
+    data = await _run_db(summary, session)
+    text = (f"🔍 Davomatni tekshiring\n\n👥 Jami: {data['roster_size']}\n"
+            f"✅ Keldi: {data['present']} · ⏰ Kech: {data['late']}\n"
+            f"📄 Sababli: {data['excused']} · ❌ Kelmadi: {data['absent']}\n"
+            f"⚠️ Belgilanmagan: {data['unmarked']}\n\nYakunlashni tasdiqlaysizmi?")
+    await edit_or_reply(update, text, reply_markup=InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Yakunlash", callback_data=f"tfin_{session.id}")],
+        [InlineKeyboardButton("🔙 Davomatga qaytish", callback_data=f"tpage_{session.id}_0")],
+    ]))
+
+
 async def _all_present_callback(update: Update, context, session_id: int) -> None:
-    user = await _teacher_from_update(update)
+    user = await _attendance_actor(update)
     if not user:
         return
     await _mark_all_present(update, context, user, session_id)
@@ -9201,7 +9154,7 @@ async def _all_present_callback(update: Update, context, session_id: int) -> Non
 async def _finalize_callback(
     update: Update, context, session_id: int, mark_unmarked_absent: bool = False
 ) -> None:
-    user = await _teacher_from_update(update)
+    user = await _attendance_actor(update)
     if not user:
         return
     await _finalize_attendance(
@@ -9462,65 +9415,9 @@ async def parent_start_handler(
     if code.startswith("parent_"):
         code = code.removeprefix("parent_")
 
-    def _link_by_code(code_val: str, chat_id: int):
-        import re
-        from django.db.models import Q
-        from apps.accounts.models import ParentStudentRelation, User
-        from apps.accounts.services.parent_link import link_parent_to_student
-
-        # 1. By verification code
-        rel = (
-            ParentStudentRelation.objects.filter(verification_code=code_val)
-            .select_related("student")
-            .first()
-        )
-        if rel:
-            rel.parent_telegram_id = chat_id
-            rel.is_verified = True
-            rel.notifications_enabled = True
-            rel.save(update_fields=["parent_telegram_id", "is_verified", "notifications_enabled", "updated_at"])
-            return rel.student.get_full_name() or rel.student.email
-
-        # 2. By student ID
-        if code_val.isdigit():
-            student = User.objects.filter(id=int(code_val), role=User.Role.STUDENT).first()
-            if student:
-                link_parent_to_student(student=student, telegram_id=chat_id)
-                return student.get_full_name() or student.email
-
-        # 3. By phone number
-        digits = re.sub(r"\D", "", code_val)
-        if len(digits) >= 9:
-            tail = digits[-9:]
-            student = User.objects.filter(role=User.Role.STUDENT).filter(
-                Q(phone_number__endswith=tail) | Q(email__startswith=tail)
-            ).first()
-            if student:
-                link_parent_to_student(student=student, telegram_id=chat_id, parent_phone=code_val)
-                return student.get_full_name() or student.email
-
-        return None
-
     if code:
-        student_name = await _run_db(_link_by_code, code, tg_user.id)
-        if student_name:
-            await update.message.reply_text(
-                f"✅ <b>Muvaffaqiyatli bog'landi!</b>\n\n"
-                f"Siz o'quvchi <b>{student_name}</b> ga ota-ona sifatida biriktirildingiz.\n\n"
-                f"Endi farzandingizning:\n"
-                f"• Mock va test natijalari (ball, foiz, BMB darajasi)\n"
-                f"• Esse baholari\n"
-                f"• Har yakshanba 18:00 dagi haftalik o'sish hisoboti\n"
-                f"to'g'ridan-to'g'ri ushbu chatga avtomatik yuboriladi.",
-                parse_mode="HTML",
-            )
-            return
-        else:
-            await update.message.reply_text(
-                "❌ Tasdiqlash kodi noto'g'ri yoki eskirgan. Farzandingizdan yangi kod olishini so'rang.",
-                parse_mode="HTML",
-            )
-            return
+        await update.message.reply_text("O'quvchidan xavfsiz ota-ona ulanish havolasini oling.")
+        return
 
     # Check if this telegram user already has linked students
     def _get_linked_students(chat_id: int):
@@ -9540,7 +9437,7 @@ async def parent_start_handler(
             f"👨‍👩‍👧 <b>OTA-ONALAR NAZORATI TIZIMI</b>\n\n"
             f"Sizga quyidagi o'quvchilar biriktirilgan:\n{names_str}\n\n"
             f"🔔 Tezkor xabarnomalar va haftalik hisobotlar faol.\n"
-            f"Yangi o'quvchini ulash uchun: <code>/parent_start KOD</code>"
+            f"Yangi o'quvchini ulash uchun undan xavfsiz havola oling."
         )
         if update.callback_query:
             await update.callback_query.message.reply_text(msg_text, parse_mode="HTML")
@@ -9548,23 +9445,12 @@ async def parent_start_handler(
             await update.message.reply_text(msg_text, parse_mode="HTML")
         return
 
-    context.user_data["awaiting_parent_code"] = True
     welcome_msg = (
-        "👨‍👩‍👧 <b>OTA-ONALAR NAZORATI TIZIMIGA XUSH KELIBSIZ!</b>\n\n"
-        "Farzandingizning test natijalari, BMB darajalari va davomatini ushbu Telegram bot orqali kuzatib boring.\n\n"
-        "📌 <b>Ulanish uchun:</b>\n"
-        "1. Farzandingiz veb-saytda yoki botda <code>/parent_link</code> orqali olingan <b>6 xonali kod</b>ni bu yerga yuboring.\n"
-        "Masalan: <code>123456</code> yoki <code>/parent_start 123456</code>\n"
-        "2. Yoki pastdagi tugma orqali telefon raqamingizni yuboring."
+        "👨‍👩‍👧 <b>OTA-ONALAR NAZORATI</b>\n\n"
+        "Farzandingizdan botdagi /parent_link buyrug'i orqali olingan "
+        "shaxsiy ulanish havolasini so'rang."
     )
-    keyboard = ReplyKeyboardMarkup(
-        [
-            [KeyboardButton("📱 Telefon raqamni yuborish", request_contact=True)],
-            [KeyboardButton("🔙 Asosiy menyu")],
-        ],
-        resize_keyboard=True,
-        one_time_keyboard=True,
-    )
+    keyboard = _persistent_menu_keyboard()
     if update.callback_query:
         await update.callback_query.message.reply_text(
             welcome_msg, parse_mode="HTML", reply_markup=keyboard
@@ -9578,63 +9464,17 @@ async def parent_start_handler(
 async def parent_link_handler(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
-    """Handle /parent_link <phone> — Student initiates linking parent phone."""
-    args = context.args if context.args else []
+    """Send the student's parent invitation only in a private chat."""
+    if not await _require_private_chat(update):
+        return
     user = await _get_or_create_user_async(update)
-    if not user:
-        await update.message.reply_text("Xatolik: foydalanuvchi topilmadi.")
+    if not user or not user.is_active or user.role != "student":
+        await update.message.reply_text("Tasdiqlangan o'quvchi hisobi talab qilinadi.")
         return
-
-    if not args:
-        await update.message.reply_text(
-            "👨‍👩‍👧 <b>Ota-ona raqamini ulash</b>\n\n"
-            "Ota-onangiz telefon raqamini quyidagicha yuboring:\n"
-            "<code>/parent_link +998901234567</code>\n\n"
-            "Tizim sizga 6 xonali tasdiqlash kodini beradi. Ota-onangiz ushbu botga kirib, "
-            "kodni kiritishi bilan natijalaringiz ularga boradi.",
-            parse_mode="HTML",
-        )
-        return
-
-    raw_phone = args[0].strip()
-    import re
-
-    digits = re.sub(r"\D", "", raw_phone)
-    if len(digits) < 9:
-        await update.message.reply_text(
-            "Telefon raqami noto'g'ri. Masalan: <code>/parent_link +998901234567</code>",
-            parse_mode="HTML",
-        )
-        return
-
-    clean_phone = "+998" + digits[-9:]
-
-    def _create_relation(student_user, phone: str):
-        import random
-        from apps.accounts.models import ParentStudentRelation
-
-        code_val = f"{random.randint(100000, 999999)}"
-        rel, _ = ParentStudentRelation.objects.get_or_create(
-            student=student_user,
-            parent_phone=phone,
-            defaults={
-                "verification_code": code_val,
-                "weekly_report_enabled": True,
-                "instant_alerts_enabled": True,
-            },
-        )
-        if not rel.is_verified:
-            rel.verification_code = code_val
-            rel.save(update_fields=["verification_code"])
-        return rel.verification_code
-
-    code = await _run_db(_create_relation, user, clean_phone)
+    from apps.accounts.services.parent_link import get_parent_deep_link
+    link = await _run_db(get_parent_deep_link, user.pk)
     await update.message.reply_text(
-        f"✅ <b>Ota-ona raqami saqlandi:</b> <code>{clean_phone}</code>\n\n"
-        f"🔑 <b>Tasdiqlash kodi:</b> <code>{code}</code>\n\n"
-        f"Ota-onangizga ushbu xabarni yuboring:\n"
-        f"<i>«Botga kiring va <code>/parent_start {code}</code> deb yuboring!»</i>",
-        parse_mode="HTML",
+        f"Ota-onangizga ushbu shaxsiy havolani yuboring: {link}"
     )
 
 

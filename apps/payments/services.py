@@ -102,7 +102,7 @@ def validate_and_hash_receipt_image(file_or_bytes: Any) -> tuple[str, bytes]:
 def notify_admin_new_receipt(receipt: PaymentReceipt) -> None:
     """Send alert to superadmin Telegram with photo and inline action buttons."""
     bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", None)
-    admin_targets = {5582178765}
+    admin_targets = set()
     configured_admin = getattr(settings, "ADMIN_TELEGRAM_ID", None)
     if configured_admin:
         try:

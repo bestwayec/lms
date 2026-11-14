@@ -13,9 +13,8 @@ Integrates Telegram groups with LMS StudentGroup records:
 from __future__ import annotations
 
 import logging
+from html import escape
 import os
-import random
-from decimal import Decimal
 from typing import Any
 
 from asgiref.sync import sync_to_async
@@ -47,6 +46,20 @@ async def _send_group_reply(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     if chat and getattr(context, "bot", None):
         return await context.bot.send_message(chat_id=chat.id, text=text, **kwargs)
     return None
+
+
+async def _authorized_group_teacher(update: Update) -> bool:
+    chat, actor = update.effective_chat, update.effective_user
+    if not chat or not actor:
+        return False
+    def check():
+        from apps.accounts.access import is_platform_admin
+        from apps.accounts.models import User
+        from apps.courses.models import StudentGroup
+        user = User.objects.filter(telegram_chat_id=actor.id, telegram_identity_verified_at__isnull=False, is_active=True).first()
+        group = StudentGroup.objects.filter(telegram_chat_id=chat.id).first()
+        return bool(user and group and (is_platform_admin(user) or (user.role == "teacher" and group.teacher_id == user.id)))
+    return await _run_db(check)
 
 
 # ---------------------------------------------------------------------------
@@ -154,61 +167,49 @@ async def bind_telegram_group_by_code(
 
     chat_title = getattr(chat, "title", "") or ""
     user_id = getattr(user, "id", None) if user else None
-    username = getattr(user, "username", "") if user else ""
+    if not user_id:
+        await _send_group_reply(update, context, "⛔️ Tasdiqlangan hisob talab qilinadi.")
+        return False
+    try:
+        member = await context.bot.get_chat_member(chat.id, user_id)
+        if member.status not in (ChatMember.OWNER, ChatMember.ADMINISTRATOR, "creator", "administrator"):
+            raise PermissionError("actor is not a Telegram group administrator")
+    except Exception:
+        logger.warning("Group binding denied: Telegram administrator verification failed for actor=%s chat=%s", user_id, chat.id)
+        await _send_group_reply(update, context, "⛔️ Telegram guruhi administratori huquqi talab qilinadi.")
+        return False
 
     def _link_db():
-        # Match by invite_code (case-insensitive) or name
-        group = (
-            StudentGroup.objects.filter(invite_code__iexact=code_input).select_related("teacher").first()
-            or StudentGroup.objects.filter(invite_code__iexact=f"GR-{code_input}").select_related("teacher").first()
-            or StudentGroup.objects.filter(name__iexact=clean_code).select_related("teacher").first()
-        )
-        if not group:
-            return None, "Guruh topilmadi"
+        from django.db import connection, transaction
+        from apps.accounts.access import is_platform_admin
 
-        # Check if user is a known LMS user
-        current_lms_user = None
-        if user_id:
-            current_lms_user = UserModel.objects.filter(telegram_chat_id=user_id).first()
-        if not current_lms_user and username and isinstance(username, str):
-            current_lms_user = UserModel.objects.filter(telegram_username__iexact=username).first()
-
-        # If the caller is a known LMS user who is a student (not teacher/admin), block hijacking
-        if current_lms_user is not None:
-            is_teacher = (group.teacher_id == current_lms_user.id) or (
-                getattr(current_lms_user, "role", "") == "teacher"
-            )
-            is_admin = (
-                getattr(current_lms_user, "is_superuser", False)
-                or getattr(current_lms_user, "role", "") in ("admin", "superadmin", "center_admin")
-            )
-            if not (is_teacher or is_admin):
-                return None, "Faqat shu guruh ustozi yoki admin guruhni bog'lay oladi."
-
-        # Clear telegram_chat_id on any other StudentGroup that previously had this chat.id
-        StudentGroup.objects.filter(telegram_chat_id=chat.id).exclude(pk=group.pk).update(
-            telegram_chat_id=None
-        )
-
-        # Bind group
-        group.telegram_chat_id = chat.id
-        update_fields = ["telegram_chat_id"]
-        if hasattr(group, "telegram_chat_title") and isinstance(chat_title, str):
-            group.telegram_chat_title = chat_title[:255]
-            update_fields.append("telegram_chat_title")
-        group.save(update_fields=update_fields)
-
-        teacher_name = (
-            (group.teacher.get_full_name() or group.teacher.email)
-            if group.teacher
-            else "Ustoz"
-        )
-        return {
-            "name": group.name,
-            "code": group.invite_code,
-            "teacher": teacher_name,
-            "students_count": group.students.count(),
-        }, None
+        with transaction.atomic():
+            # Serialize attempts to bind the same chat, including distinct teachers.
+            if connection.vendor == "postgresql":
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT pg_advisory_xact_lock(%s, hashtext(%s))", [0x475250, str(chat.id)])
+            actor = UserModel.objects.select_for_update().filter(
+                telegram_chat_id=user_id, telegram_identity_verified_at__isnull=False, is_active=True
+            ).first()
+            if not actor:
+                return None, "Tasdiqlangan LMS hisobi talab qilinadi."
+            group = (StudentGroup.objects.select_for_update().filter(invite_code__iexact=code_input)
+                     .select_related("teacher").first())
+            if not group:
+                return None, "Guruh topilmadi"
+            if not (group.teacher_id == actor.id and actor.role == "teacher") and not is_platform_admin(actor):
+                return None, "Faqat guruhning o'z ustozi yoki platforma administratori ulay oladi."
+            if group.telegram_chat_id not in (None, chat.id):
+                return None, "Guruh boshqa Telegram chatga ulangan. Avval xavfsiz uzing."
+            if StudentGroup.objects.select_for_update().filter(telegram_chat_id=chat.id).exclude(pk=group.pk).exists():
+                return None, "Bu Telegram chat boshqa guruhga ulangan."
+            group.telegram_chat_id = chat.id
+            group.telegram_chat_title = str(chat_title)[:255]
+            group.save(update_fields=["telegram_chat_id", "telegram_chat_title"])
+            logger.info("Group binding actor=%s group=%s chat=%s", actor.pk, group.pk, chat.id)
+            teacher_name = group.teacher.get_full_name() or group.teacher.email
+            return {"name": escape(group.name), "code": escape(group.invite_code),
+                    "teacher": escape(teacher_name), "students_count": group.students.count()}, None
 
     res, err = await _run_db(_link_db)
     if err and err != "Guruh topilmadi":
@@ -299,6 +300,10 @@ async def group_davomat_command(update: Update, context: ContextTypes.DEFAULT_TY
         await _send_group_reply(update, context, "Ushbu buyruq Telegram guruhida ishlatiladi.")
         return
 
+    if not await _authorized_group_teacher(update):
+        await _send_group_reply(update, context, "⛔️ Faqat shu guruhning tasdiqlangan ustozi bu amalni bajara oladi.")
+        return
+
     from apps.courses.models import StudentGroup
 
     def _get_group():
@@ -354,6 +359,18 @@ async def group_attendance_callback(update: Update, context: ContextTypes.DEFAUL
         return
 
     state = _get_attendance_state(context, chat.id)
+    def enrolled():
+        from apps.accounts.models import User
+        from apps.courses.models import StudentGroup
+        student = User.objects.filter(telegram_chat_id=user.id, telegram_identity_verified_at__isnull=False, is_active=True).first()
+        try:
+            callback_group_id = int(query.data.rsplit("_", 1)[-1])
+        except (ValueError, IndexError):
+            return False
+        return bool(student and state.get("group_id") == callback_group_id and StudentGroup.objects.filter(pk=callback_group_id, telegram_chat_id=chat.id, students=student).exists())
+    if not await _run_db(enrolled):
+        await query.answer("⛔️ Bu guruhda tasdiqlangan a'zolik talab qilinadi.", show_alert=True)
+        return
     present_dict = state["present"]
 
     user_id = user.id
@@ -415,6 +432,10 @@ async def group_davomat_yakun_command(update: Update, context: ContextTypes.DEFA
     chat = update.effective_chat
     if not chat or chat.type in (ChatType.PRIVATE, "private"):
         await _send_group_reply(update, context, "Ushbu buyruq Telegram guruhida ishlatiladi.")
+        return
+
+    if not await _authorized_group_teacher(update):
+        await _send_group_reply(update, context, "⛔️ Faqat shu guruhning tasdiqlangan ustozi bu amalni bajara oladi.")
         return
 
     from apps.courses.models import StudentGroup
@@ -514,6 +535,10 @@ async def group_yangi_test_command(update: Update, context: ContextTypes.DEFAULT
         await _send_group_reply(update, context, "Ushbu buyruq Telegram guruhida test e'lon qilish uchun ishlatiladi.")
         return
 
+    if not await _authorized_group_teacher(update):
+        await _send_group_reply(update, context, "⛔️ Faqat shu guruhning tasdiqlangan ustozi bu amalni bajara oladi.")
+        return
+
     from apps.courses.models import StudentGroup
     from apps.tests.models import Test
 
@@ -521,18 +546,13 @@ async def group_yangi_test_command(update: Update, context: ContextTypes.DEFAULT
         group = StudentGroup.objects.filter(telegram_chat_id=chat_id).first()
         g_name = group.name if group else "Sinf"
 
-        # Find latest active test
-        test = Test.objects.filter(is_active=True).order_by("-id").first()
-        if not test:
-            test = Test.objects.order_by("-id").first()
+        # Only the linked teacher's tests may be announced.
+        test = Test.objects.filter(is_active=True, course__teacher_id=group.teacher_id).order_by("-id").first() if group else None
 
         if not test:
             return None
 
-        pin_code = getattr(test, "pin_code", None) or getattr(test, "access_pin", None) or f"{random.randint(1000, 9999)}"
-        if hasattr(test, "pin_code") and not test.pin_code:
-            test.pin_code = pin_code
-            test.save(update_fields=["pin_code"])
+        pin_code = test.access_pin or test.mock_code or ""
 
         q_count = test.questions.count()
         return {
@@ -540,7 +560,7 @@ async def group_yangi_test_command(update: Update, context: ContextTypes.DEFAULT
             "test_id": test.id,
             "title": test.title,
             "duration": getattr(test, "time_limit_minutes", 60),
-            "questions_count": q_count or 35,
+            "questions_count": q_count,
             "pin": pin_code,
         }
 
@@ -549,14 +569,15 @@ async def group_yangi_test_command(update: Update, context: ContextTypes.DEFAULT
         await _send_group_reply(update, context, "⚠️ Hozircha platformada faol test mavjud emas.")
         return
 
-    test_url = f"https://grandec.uz/tests/{info['test_id']}?pin={info['pin']}"
+    test_url = f"https://grandec.uz/tests/{info['test_id']}"
+    pin_text = f"🔑 <b>Kirish kodi:</b> <code>{escape(info['pin'])}</code>\n" if info["pin"] else ""
 
     text = (
-        f"📢 <b>Diqqat, {info['group_name']} o'quvchilari!</b>\n"
-        "Yangi BMB Milliy Sertifikat sinov testi ochildi!\n\n"
-        f"📝 <b>Test nomi:</b> {info['title']}\n"
+        f"📢 <b>Diqqat, {escape(info['group_name'])} o'quvchilari!</b>\n"
+        "Yangi test ochildi!\n\n"
+        f"📝 <b>Test nomi:</b> {escape(info['title'])}\n"
         f"⏱ <b>Vaqt:</b> {info['duration']} daqiqa | {info['questions_count']} ta savol\n"
-        f"🔑 <b>Kirish PIN-kodi:</b> <code>{info['pin']}</code>\n\n"
+        f"{pin_text}\n"
         "👇 Testni topshirish uchun quyidagi tugmani bosing:"
     )
 
@@ -589,30 +610,27 @@ async def group_results_leaderboard_command(update: Update, context: ContextType
     from apps.courses.models import StudentGroup
     from apps.results.models import Result
     from apps.tests.bmb_grading import calculate_bmb_grade
-    from django.db.models import Avg
+    from django.db.models import Avg, Q
+    from apps.accounts.models import User
+    from apps.accounts.access import is_platform_admin
 
-    def _calc_group_stats(chat_id):
+    def _calc_group_stats(chat_id, actor_id):
         group = StudentGroup.objects.filter(telegram_chat_id=chat_id).first()
         if not group:
-            recent = Result.objects.select_related("student", "test").order_by("-percentage")[:5]
-            board = []
-            for r in recent:
-                uname = r.student.get_full_name() or r.student.email
-                pct = round(float(r.percentage or 0), 1)
-                grd = calculate_bmb_grade(pct)["grade"]
-                board.append({"name": uname, "score": pct, "grade": grd})
-            return {
-                "group_name": "Grand Education",
-                "board": board,
-                "avg_score": 82.0,
-                "mistake_topic": "Murakkab qo'shma gaplar tahlili",
-            }
+            return "unbound", None
+        actor = User.objects.filter(
+            telegram_chat_id=actor_id, telegram_identity_verified_at__isnull=False, is_active=True,
+        ).first()
+        if not actor or not (is_platform_admin(actor) or (actor.role == "teacher" and group.teacher_id == actor.id)):
+            return "forbidden", None
 
         students = list(group.students.filter(is_active=True))
         st_ids = [s.id for s in students]
 
         results = (
             Result.objects.filter(student_id__in=st_ids)
+            .filter(Q(test__assigned_group=group) | Q(test__homework_assignments__group=group))
+            .distinct()
             .select_related("student")
             .order_by("-percentage")
         )
@@ -633,15 +651,6 @@ async def group_results_leaderboard_command(update: Update, context: ContextType
             avg_res = results.aggregate(avg=Avg("percentage"))["avg"]
             avg_pct = round(float(avg_res), 1) if avg_res else 0.0
 
-        # Sample mock data if students have just been purged / fresh start
-        if not board:
-            board = [
-                {"name": "Diyorbek Xoldorov", "score": 94.0, "grade": "A+"},
-                {"name": "Malika Rustamova", "score": 88.0, "grade": "A"},
-                {"name": "Jasur Kenjayev", "score": 78.0, "grade": "B+"},
-            ]
-            avg_pct = 86.7
-
         branch = getattr(group, "branch", None)
         branch_name = branch.name if branch else "Grand Education Bosh Filiali"
         if branch and getattr(branch, "branch_code", None):
@@ -657,22 +666,28 @@ async def group_results_leaderboard_command(update: Update, context: ContextType
         }
         subj_title = subj_map.get(subj_slug, str(subj_slug).title())
 
-        return {
+        return "ok", {
             "group_name": group.name,
             "branch_name": branch_name,
             "subject_title": subj_title,
             "board": board[:10],
-            "avg_score": avg_pct or 82.0,
-            "mistake_topic": "Murakkab qo'shma gaplar tahlili",
+            "avg_score": avg_pct,
         }
 
-    stats = await _run_db(_calc_group_stats, chat.id)
+    actor = update.effective_user
+    result, stats = await _run_db(_calc_group_stats, chat.id, actor.id if actor else None)
+    if result == "unbound":
+        await _send_group_reply(update, context, "Bu guruh LMS guruhiga bog'lanmagan.")
+        return
+    if result != "ok":
+        await _send_group_reply(update, context, "Bu hisobot faqat guruhning tasdiqlangan ustoziga beriladi.")
+        return
     medals = ["🥇 1.", "🥈 2.", "🥉 3.", "4.", "5.", "6.", "7.", "8.", "9.", "10."]
 
     rows = []
     for i, item in enumerate(stats["board"]):
         prefix = medals[i] if i < len(medals) else f"{i + 1}."
-        rows.append(f"{prefix} {item['name']} — <b>{item['score']} ball</b> ({item['grade']})")
+        rows.append(f"{prefix} {escape(item['name'])} — <b>{item['score']} ball</b> ({item['grade']})")
 
     leaderboard_content = "\n".join(rows) if rows else "<i>Hozircha test topshirganlar yo'q</i>"
 
@@ -680,15 +695,20 @@ async def group_results_leaderboard_command(update: Update, context: ContextType
     s_title = stats.get('subject_title', 'Fan')
     text = (
         f"🏆 <b>Guruh Natijalari va Jonli Reyting:</b>\n"
-        f"🏛 <b>Filial (Kursxona):</b> {b_name}\n"
-        f"👥 <b>Guruh:</b> {stats['group_name']}\n"
-        f"📚 <b>Fan yo'nalishi:</b> {s_title}\n\n"
+        f"🏛 <b>Filial (Kursxona):</b> {escape(b_name)}\n"
+        f"👥 <b>Guruh:</b> {escape(stats['group_name'])}\n"
+        f"📚 <b>Fan yo'nalishi:</b> {escape(s_title)}\n\n"
         f"{leaderboard_content}\n\n"
-        f"📊 <b>Guruh o'rtacha ko'rsatkichi:</b> {stats['avg_score']}%\n"
-        f"⚠️ <b>Eng ko'p xato qilingan mavzu:</b> \"{stats['mistake_topic']}\""
+        f"📊 <b>Guruh o'rtacha ko'rsatkichi:</b> {stats['avg_score']}%"
     )
 
-    await _send_group_reply(update, context, text, parse_mode=ParseMode.HTML)
+    try:
+        await context.bot.send_message(chat_id=actor.id, text=text, parse_mode=ParseMode.HTML)
+    except Exception:
+        logger.exception("Could not send group leaderboard privately")
+        await _send_group_reply(update, context, "Hisobotni olish uchun bot bilan shaxsiy suhbatni boshlang.")
+        return
+    await _send_group_reply(update, context, "Hisobot shaxsiy suhbatga yuborildi.")
 
 
 cmd_reyting = group_results_leaderboard_command
@@ -706,6 +726,10 @@ async def group_vedomost_command(update: Update, context: ContextTypes.DEFAULT_T
 
     from apps.courses.models import StudentGroup
     from apps.results.pdf_generator import generate_group_vedomost_pdf
+
+    if chat.type != "private":
+        await _send_group_reply(update, context, "🔒 Shaxsiy hisobotni olish uchun botga shaxsiy chatda /vedomost yuboring.")
+        return
 
     if chat.type in (ChatType.GROUP, ChatType.SUPERGROUP, "group", "supergroup"):
         def _get_group(c_id):
@@ -774,9 +798,7 @@ async def group_vedomost_command(update: Update, context: ContextTypes.DEFAULT_T
         from apps.accounts.models import User as UserModel
 
         def _get_teacher_groups(tg_id, username):
-            teacher = UserModel.objects.filter(telegram_chat_id=tg_id).first()
-            if not teacher and username:
-                teacher = UserModel.objects.filter(telegram_username__iexact=username).first()
+            teacher = UserModel.objects.filter(telegram_chat_id=tg_id, telegram_identity_verified_at__isnull=False, is_active=True).first()
             if not teacher:
                 return []
             return list(StudentGroup.objects.filter(teacher=teacher).values("id", "name"))
@@ -816,14 +838,15 @@ async def ustoz_menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     chat = update.effective_chat
     if not user or not chat:
         return
+    if chat.type != "private" or chat.id != user.id:
+        await _send_group_reply(update, context, "🔒 Ustoz menyusi faqat shaxsiy suhbatda mavjud.")
+        return
 
     from apps.accounts.models import User as UserModel
     from apps.courses.models import StudentGroup
 
     def _get_teacher_overview(tg_id, username):
-        teacher = UserModel.objects.filter(telegram_chat_id=tg_id).first()
-        if not teacher and username:
-            teacher = UserModel.objects.filter(telegram_username__iexact=username).first()
+        teacher = UserModel.objects.filter(telegram_chat_id=tg_id, telegram_identity_verified_at__isnull=False, is_active=True).first()
 
         is_teacher_role = teacher and (
             getattr(teacher, "role", "") in ("teacher", "admin", "superadmin")
@@ -847,11 +870,17 @@ async def ustoz_menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         # Fetch recent 5 completed attempts for students in teacher's groups
         from apps.tests.models import TestAttempt
+        from django.db.models import Q
+        group_scope = Q(pk__in=[])
+        for group in groups:
+            group_scope |= Q(student__student_groups=group, test__assigned_group=group)
+            group_scope |= Q(student__student_groups=group, test__homework_assignments__group=group)
         recent_attempts = list(
             TestAttempt.objects.filter(
-                student__student_groups__in=groups,
+                group_scope,
                 status__in=[TestAttempt.Status.COMPLETED, TestAttempt.Status.PENDING_GRADING],
             )
+            .distinct()
             .select_related("student", "test")
             .order_by("-completed_at", "-started_at")[:5]
         )
@@ -909,12 +938,6 @@ async def ustoz_menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             chk = "✅" if att["passed"] else "⚠️"
             ovr = " ✏️" if att["overridden"] else ""
             lines.append(f"• {att['student_name']}: {att['score']:g} ball ({att['pct']}%) {chk}{ovr}")
-            keyboard_rows.append([
-                InlineKeyboardButton(
-                    f"✏️ {att['student_name']} ({att['pct']}%) ballini tahrirlash",
-                    callback_data=f"ustoz_grade_{att['id']}",
-                )
-            ])
 
     if not data["groups"]:
         lines.append("<i>Hozircha sizda guruhlar mavjud emas. Saytda yangi guruh yarating.</i>")
@@ -951,6 +974,35 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
         return
 
     data = query.data
+    # Existing score buttons are unversioned and unaudited: retries can change
+    # a grade repeatedly and concurrent requests can overwrite each other.
+    # Reject old buttons until an auditable, idempotent workflow is available.
+    if data.startswith(("ustoz_adj_", "ustoz_pass_", "ustoz_set_", "ustoz_grade_")):
+        await query.answer("⛔️ Ballni Telegram orqali tahrirlash vaqtincha mavjud emas.", show_alert=True)
+        return
+    if data.startswith("grp_cmd_vedomost_"):
+        chat, tg_user = update.effective_chat, update.effective_user
+        if not chat or chat.type != "private" or not tg_user or chat.id != tg_user.id:
+            await query.answer("⛔️ Bu amal faqat tasdiqlangan ustozning shaxsiy chatida mavjud.", show_alert=True)
+            return
+        def authorized():
+            from apps.accounts.models import User
+            from apps.accounts.access import is_platform_admin
+            from apps.courses.models import StudentGroup
+            actor = User.objects.filter(telegram_chat_id=tg_user.id, telegram_identity_verified_at__isnull=False, is_active=True).first()
+            if not actor:
+                return False
+            try:
+                suffix = data.removeprefix("grp_cmd_vedomost_")
+                if not suffix.isascii() or not suffix.isdigit():
+                    return False
+                object_id = int(suffix)
+            except (IndexError, ValueError):
+                return False
+            return StudentGroup.objects.filter(pk=object_id).filter(teacher=actor).exists() and actor.role == "teacher" or (is_platform_admin(actor) and StudentGroup.objects.filter(pk=object_id).exists())
+        if not await _run_db(authorized):
+            await query.answer("⛔️ Sizda ushbu ma'lumotga ruxsat yo'q.", show_alert=True)
+            return
     if data.startswith("grp_att_here_"):
         await group_attendance_callback(update, context)
     elif data.startswith("grp_cmd_test_"):
@@ -966,11 +1018,12 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
             path = generate_group_vedomost_pdf(g_id)
             return grp.name, path
 
+        pdf_path = None
         try:
             grp_name, pdf_path = await _run_db(_build_pdf, gid)
             with open(pdf_path, "rb") as f:
                 await context.bot.send_document(
-                    chat_id=query.message.chat_id,
+                    chat_id=tg_user.id,
                     document=f,
                     filename=os.path.basename(pdf_path),
                     caption=f"📄 <b>{grp_name} Guruhi Imtihon Vedomosti (PDF)</b>",
@@ -979,105 +1032,9 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
         except Exception as exc:
             logger.exception("Failed to generate/send vedomost PDF: %s", exc)
             await query.message.reply_text("❌ Vedomost faylini yaratishda xatolik yuz berdi.")
-    elif data.startswith("ustoz_grade_"):
-        attempt_id = int(data.split("_")[-1])
-        await query.answer()
-
-        from apps.tests.models import TestAttempt
-
-        def _get_att_info(a_id):
-            att = TestAttempt.objects.select_related("test", "student").get(id=a_id)
-            return {
-                "id": att.id,
-                "student_name": att.student.get_full_name() or att.student.email,
-                "test_title": att.test.title,
-                "score": float(att.score),
-                "percentage": float(att.percentage),
-                "is_passed": att.is_passed,
-                "teacher_overridden": att.teacher_overridden,
-            }
-
-        att_info = await _run_db(_get_att_info, attempt_id)
-        status_str = "✅ O'tgan" if att_info["is_passed"] else "⚠️ O'tmagan"
-        override_str = " (Ustoz tasdiqlagan)" if att_info["teacher_overridden"] else ""
-
-        text = (
-            f"✏️ <b>O'quvchi ballini baholash va tahrirlash</b>\n\n"
-            f"👤 <b>O'quvchi:</b> {att_info['student_name']}\n"
-            f"📝 <b>Test:</b> {att_info['test_title']}\n"
-            f"🎯 <b>Joriy ball:</b> {att_info['score']} ({att_info['percentage']}%) {status_str}{override_str}\n\n"
-            f"Quyidagi tezkor amallardan birini tanlang:"
-        )
-
-        buttons = [
-            [
-                InlineKeyboardButton("➕ +5 ball qo'shish", callback_data=f"ustoz_adj_{attempt_id}_5"),
-                InlineKeyboardButton("➖ -5 ball ayirish", callback_data=f"ustoz_adj_{attempt_id}_-5"),
-            ],
-            [
-                InlineKeyboardButton("✅ O'tdi deb tasdiqlash", callback_data=f"ustoz_pass_{attempt_id}"),
-                InlineKeyboardButton("💯 100% (A+) qo'yish", callback_data=f"ustoz_set_{attempt_id}_100"),
-            ],
-            [
-                InlineKeyboardButton("⬅️ Orqaga", callback_data="grp_cmd_refresh"),
-            ],
-        ]
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
-    elif data.startswith("ustoz_adj_") or data.startswith("ustoz_pass_") or data.startswith("ustoz_set_"):
-        from apps.tests.models import TestAttempt
-        from apps.results.models import Result
-        from apps.accounts.models import User as UserModel
-
-        parts = data.split("_")
-        action = parts[1]
-        attempt_id = int(parts[2])
-
-        def _apply_override(a_id, act, extra_val, tg_user):
-            att = TestAttempt.objects.select_related("test", "student").get(id=a_id)
-            teacher = UserModel.objects.filter(telegram_chat_id=tg_user.id).first() if tg_user else None
-
-            if act == "adj":
-                delta = Decimal(extra_val)
-                att.score = max(Decimal("0.00"), att.score + delta)
-                all_q = att.test.questions.all()
-                max_pts = sum(q.points for q in all_q) or 100
-                att.percentage = min(
-                    Decimal("100.00"),
-                    max(Decimal("0.00"), round((att.score / Decimal(str(max_pts))) * Decimal("100.0"), 2)),
-                )
-                att.is_passed = att.percentage >= Decimal(str(att.test.pass_percentage or 60))
-            elif act == "pass":
-                att.is_passed = True
-                if att.percentage < Decimal(str(att.test.pass_percentage or 60)):
-                    att.percentage = Decimal(str(att.test.pass_percentage or 60))
-            elif act == "set":
-                all_q = att.test.questions.all()
-                max_pts = sum(q.points for q in all_q) or 100
-                att.score = Decimal(str(max_pts))
-                att.percentage = Decimal("100.00")
-                att.is_passed = True
-
-            att.teacher_overridden = True
-            if teacher:
-                att.graded_by = teacher
-            att.save()
-
-            # Sync Result
-            res = Result.objects.filter(attempt=att).first()
-            if res:
-                res.score = att.score
-                res.percentage = att.percentage
-                res.is_passed = att.is_passed
-                res.grading_status = "graded"
-                res.save()
-            return att.score, att.percentage, att.is_passed
-
-        extra = parts[3] if len(parts) > 3 else ""
-        new_score, new_pct, passed = await _run_db(
-            _apply_override, attempt_id, action, extra, update.effective_user
-        )
-        await query.answer(f"✅ Saqlandi: {new_score:g} ball ({new_pct:.1f}%)", show_alert=True)
-        await ustoz_menu_command(update, context)
+        finally:
+            if pdf_path and os.path.exists(pdf_path):
+                os.unlink(pdf_path)
     elif data == "grp_cmd_refresh":
         await ustoz_menu_command(update, context)
         await query.answer("Yangilandi")

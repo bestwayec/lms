@@ -55,9 +55,13 @@ def test_password_from_environment_is_used_and_not_echoed(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_refuses_on_a_non_local_database(monkeypatch, settings):
-    monkeypatch.setitem(settings.DATABASES["default"], "ENGINE", "django.db.backends.postgresql")
-    monkeypatch.setattr(settings, "DEBUG", False)
-    with pytest.raises(CommandError):
-        run()
+def test_refuses_on_a_non_local_database(settings):
+    from unittest.mock import patch
+
+    # Restore the patch before the settings fixture tears down. Patching the
+    # fixture proxy via monkeypatch can delete DEBUG from global settings.
+    settings.DEBUG = False
+    with patch.dict(settings.DATABASES["default"], ENGINE="django.db.backends.postgresql"):
+        with pytest.raises(CommandError):
+            run()
     assert not User.objects.filter(email="admin.grandec@gmail.com").exists()

@@ -503,80 +503,47 @@ def switch_subject_view(request):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        profile, _ = Profile.objects.get_or_create(user=request.user)
-        profile.active_subject = subject
+        from django.db import transaction
 
-        # Resolve exam_target strictly based on subject
+        allowed_targets = {
+            "english": {"ielts", "multilevel", "undecided"},
+            "uzbek": {"national_certificate", "attestation", "undecided"},
+            "biology": {"national_certificate", "undecided"},
+            "chemistry": {"national_certificate", "undecided"},
+            "law": {"national_certificate", "undecided"},
+        }
         requested_target = str(data.get("exam_target") or "").strip().lower()
-        if subject == "english":
-            if requested_target in ("ielts", "multilevel"):
-                target = requested_target
-            elif profile.exam_target in ("ielts", "multilevel"):
-                target = profile.exam_target
-            else:
-                target = "ielts"
-            default_grade = "Band 7.5"
-            msg = "Ingliz tili (IELTS & Multi-level) yo'nalishiga o'tildi!"
-        elif subject == "biology":
-            target = "national_certificate"
-            default_grade = "A+"
-            msg = "Biologiya (Milliy sertifikat & DTM) yo'nalishiga o'tildi!"
-        elif subject == "chemistry":
-            target = "national_certificate"
-            default_grade = "A+"
-            msg = "Kimyo (Milliy sertifikat & DTM) yo'nalishiga o'tildi!"
-        elif subject == "law":
-            target = "national_certificate"
-            default_grade = "A+"
-            msg = "Huquqshunoslik (Yurisprudensiya) yo'nalishiga o'tildi!"
-        else:  # uzbek
-            if requested_target in ("national_certificate", "attestation"):
-                target = requested_target
-            elif profile.exam_target in ("national_certificate", "attestation"):
-                target = profile.exam_target
-            else:
-                target = "national_certificate"
-            default_grade = "Oliy toifa" if target == "attestation" else "A+"
-            msg = "Ona tili va adabiyot yo'nalishiga o'tildi!"
+        if requested_target and requested_target not in allowed_targets[subject]:
+            return Response({"error": "Bu fan uchun imtihon maqsadi noto'g'ri."}, status=status.HTTP_400_BAD_REQUEST)
 
-        profile.exam_target = target
-
-        # Resolve target grade
-        target_grade = profile.target_grade or default_grade
-        if subject == "english" and target_grade in (
-            "A+",
-            "A",
-            "B+",
-            "Oliy toifa",
-            "1-toifa",
-        ):
-            target_grade = "Band 7.5"
-        elif subject in ("uzbek", "biology", "chemistry", "law") and (
-            target_grade.startswith("Band") or "daraja" in target_grade.lower()
-        ):
-            target_grade = default_grade
-
-        profile.target_grade = target_grade
-
-        # Keep daily_plan_summary aligned with the selected subject & target
-        score_int = (
-            int(profile.placement_score) if profile.placement_score is not None else 4
-        )
-        profile.daily_plan_summary = _build_daily_plan(
-            target=target,
-            timeline_months=profile.target_timeline_months or 3,
-            target_grade=target_grade,
-            score=score_int,
-            subject=subject,
-        )
-        profile.save(
-            update_fields=[
-                "active_subject",
-                "exam_target",
-                "target_grade",
-                "daily_plan_summary",
-            ]
-        )
+        with transaction.atomic():
+            Profile.objects.get_or_create(user=request.user)
+            profile = Profile.objects.select_for_update().get(user=request.user)
+            preferences = dict(profile.subject_study_preferences or {})
+            previous = profile.active_subject
+            if previous in valid_subjects:
+                preferences[previous] = {
+                    "exam_target": profile.exam_target,
+                    "target_grade": profile.target_grade,
+                    "daily_plan_summary": profile.daily_plan_summary,
+                }
+            saved = preferences.get(subject, {})
+            if not isinstance(saved, dict):
+                saved = {}
+            target = requested_target or saved.get("exam_target") or "undecided"
+            # Existing profiles may contain legacy targets from onboarding; preserve
+            # them on restore instead of silently converting historical preferences.
+            grade = saved.get("target_grade") or ""
+            plan = saved.get("daily_plan_summary") or {}
+            if requested_target and requested_target != saved.get("exam_target"):
+                grade, plan = "", {}
+            profile.active_subject = subject
+            profile.exam_target = target
+            profile.target_grade = grade
+            profile.daily_plan_summary = plan
+            profile.subject_study_preferences = preferences
+            profile.save(update_fields=["active_subject", "exam_target", "target_grade", "daily_plan_summary", "subject_study_preferences"])
+        msg = "Fan o'zgartirildi."
 
         return Response(
             {

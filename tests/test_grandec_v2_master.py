@@ -10,7 +10,7 @@ Covers:
    `GET /api/v1/school/groups/` serializer fields (`group_code`, `telegram_chat_id`, `telegram_chat_title`).
 3. Student Joining Group by Code (`POST /api/v1/school/groups/join/`) and by Invite Token
    (`GET` & `POST /api/v1/groups/join/<invite_token>/`).
-4. Real-Time Auto-Broadcast of Results + PDF Vedomost to Linked Telegram Groups:
+4. Individual result privacy: legacy group broadcasts must not send reports:
    - 4a. Test Attempt Completion (`process_test_result_task` & `_send_group_result_and_vedomost`)
    - 4b. AI Essay Grading Completion (`notify_student_essay_graded` & `broadcast_essay_result_to_groups`)
    - 4c. AI Speaking Evaluation Completion (`broadcast_speaking_result_to_groups`)
@@ -23,11 +23,13 @@ from __future__ import annotations
 import os
 import re
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from asgiref.sync import async_to_sync
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from django.core.management import call_command
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -201,6 +203,7 @@ class TestTelegramGroupBinding:
             last_name="Nurmatov",
             role="teacher",
             telegram_chat_id=900100200,
+            telegram_identity_verified_at=timezone.now(),
         )
         self.group = StudentGroup.objects.create(
             teacher=self.teacher,
@@ -225,6 +228,7 @@ class TestTelegramGroupBinding:
         update.message.reply_text = AsyncMock()
 
         context = MagicMock()
+        context.bot.get_chat_member = AsyncMock(return_value=SimpleNamespace(status="administrator"))
         context.args = [f"link_{self.group.invite_code}"]
 
         async_to_sync(start_handler)(update, context)
@@ -250,6 +254,7 @@ class TestTelegramGroupBinding:
         update_ulash.message.reply_text = AsyncMock()
 
         context_ulash = MagicMock()
+        context_ulash.bot.get_chat_member = AsyncMock(return_value=SimpleNamespace(status="administrator"))
         context_ulash.args = [self.group.invite_code]
 
         async_to_sync(cmd_link_group)(update_ulash, context_ulash)
@@ -271,15 +276,16 @@ class TestTelegramGroupBinding:
         update_link.message.reply_text = AsyncMock()
 
         context_link = MagicMock()
+        context_link.bot.get_chat_member = AsyncMock(return_value=SimpleNamespace(status="administrator"))
         context_link.args = [self.group.invite_code]
 
         async_to_sync(cmd_link_group)(update_link, context_link)
 
         self.group.refresh_from_db()
-        assert self.group.telegram_chat_id == -10066778899
-        assert self.group.telegram_chat_title == "BMB Ona Tili Guruh 2"
+        assert self.group.telegram_chat_id == -10055443322
+        assert self.group.telegram_chat_title == "BMB Ona Tili Guruh 1"
         reply_link = update_link.message.reply_text.call_args[0][0]
-        assert "✅ Ushbu Telegram guruh Grand Education platformasidagi" in reply_link
+        assert "boshqa Telegram chatga ulangan" in reply_link
 
     def test_school_groups_api_returns_group_code_and_telegram_metadata(self):
         self.group.telegram_chat_id = -10099887766
@@ -483,21 +489,9 @@ class TestRealTimeGroupAutoBroadcastAndVedomost:
             task_out = process_test_result_task(result.id)
 
         assert task_out["status"] == "completed"
-        assert mock_doc.called
-        call_kwargs = mock_doc.call_args.kwargs
-        assert call_kwargs["chat_id"] == -100123456789
-        assert os.path.exists(call_kwargs["file_path"])
-        assert call_kwargs["file_path"].endswith(".pdf")
+        mock_doc.assert_not_called()
 
-        caption = call_kwargs["caption"]
-        assert "Dilnoza Qodirova" in caption
-        assert "IELTS &amp; BMB Pro Group" in caption  # Telegram HTML-escaped
-        assert "CEFR Multi-Level Diagnostic Mock #1" in caption
-        assert "Listening: 44/50" in caption
-        assert "Reading: 42/50" in caption
-        assert f"https://grandec.uz/results/{result.id}" in caption
-
-    def test_4b_ai_essay_grading_completion_broadcasts_pdf_scorecard(self):
+    def test_4b_ai_essay_grading_completion_does_not_broadcast_private_scorecard(self):
         topic = EssayTopic.objects.create(
             title="Artificial Intelligence in Modern Education",
             description="Discuss both views and give your opinion.",
@@ -534,20 +528,9 @@ class TestRealTimeGroupAutoBroadcastAndVedomost:
         ):
             notify_student_essay_graded(submission)
 
-        assert mock_doc.called
-        call_kwargs = mock_doc.call_args.kwargs
-        assert call_kwargs["chat_id"] == -100123456789
-        assert os.path.exists(call_kwargs["file_path"])
-        assert call_kwargs["file_path"].endswith(".pdf")
+        mock_doc.assert_not_called()
 
-        caption = call_kwargs["caption"]
-        assert "YANGI AI ESSE NATIJASI" in caption
-        assert "Dilnoza Qodirova" in caption
-        assert "IELTS &amp; BMB Pro Group" in caption or "IELTS & BMB Pro Group" in caption
-        assert "Artificial Intelligence in Modern Education" in caption
-        assert f"https://grandec.uz/essays/result/{submission.id}" in caption
-
-    def test_4c_ai_speaking_evaluation_completion_broadcasts_pdf_scorecard(self):
+    def test_4c_ai_speaking_evaluation_completion_does_not_broadcast_private_scorecard(self):
         sp_topic = SpeakingTopic.objects.create(
             title="Describe a memorable journey you have taken",
             subject="english",
@@ -581,45 +564,42 @@ class TestRealTimeGroupAutoBroadcastAndVedomost:
         ):
             res = broadcast_speaking_result_to_groups(speaking_sub)
 
-        assert res["status"] == "sent"
-        assert res["sent_groups"] == 1
-        assert mock_doc.called
-        call_kwargs = mock_doc.call_args.kwargs
-        assert call_kwargs["chat_id"] == -100123456789
-        assert os.path.exists(call_kwargs["file_path"])
-        assert call_kwargs["file_path"].endswith(".pdf")
+        assert res == {"status": "skipped", "reason": "private_results_only", "sent_groups": 0}
+        mock_doc.assert_not_called()
 
-        caption = call_kwargs["caption"]
-        assert "YANGI AI SPEAKING NATIJASI" in caption
-        assert "Dilnoza Qodirova" in caption
-        assert "Describe a memorable journey you have taken" in caption
-        assert "Band 7.0" in caption
-
-    def test_4d_web_trigger_group_leaderboard_and_vedomost_broadcast(self):
+    def test_4d_web_report_is_sent_only_to_verified_teacher_privately(self):
+        from django.utils import timezone
+        self.teacher.telegram_chat_id = 771234567
+        self.teacher.telegram_identity_verified_at = timezone.now()
+        self.teacher.save(update_fields=["telegram_chat_id", "telegram_identity_verified_at"])
         self.client.force_authenticate(user=self.teacher)
         url = f"/api/v1/school/groups/{self.group.id}/broadcast-vedomost/"
 
-        with (
-            patch.object(TelegramService, "send_document", return_value={"ok": True, "success": True}) as mock_doc,
-            patch.object(TelegramService, "_call_api", return_value={"ok": True, "success": True}) as mock_api,
-        ):
+        def send_private(**kwargs):
+            assert os.path.exists(kwargs["file_path"])
+            assert kwargs["chat_id"] == self.teacher.telegram_chat_id
+            return {"success": True}
+
+        with patch.object(TelegramService, "_send_document", side_effect=send_private) as mock_doc:
             resp = self.client.post(url, {}, format="json")
 
         assert resp.status_code == status.HTTP_200_OK
         data = resp.json()
         assert data["status"] == "ok"
 
-        assert mock_api.called
-        msg_payload = mock_api.call_args.args[1]
-        assert msg_payload["chat_id"] == -100123456789
-        assert "GURUH REYTINGI VA VEDOMOST" in msg_payload["text"]
-        assert self.group.name in msg_payload["text"]
-
         assert mock_doc.called
         doc_kwargs = mock_doc.call_args.kwargs
-        assert doc_kwargs["chat_id"] == -100123456789
-        assert os.path.exists(doc_kwargs["file_path"])
+        assert doc_kwargs["chat_id"] == self.teacher.telegram_chat_id
+        assert not os.path.exists(doc_kwargs["file_path"])
         assert doc_kwargs["file_path"].endswith(".pdf")
+
+    def test_4d_web_report_rejects_unverified_telegram(self):
+        self.client.force_authenticate(user=self.teacher)
+        url = f"/api/v1/school/groups/{self.group.id}/broadcast-vedomost/"
+        with patch.object(TelegramService, "_send_document") as send:
+            response = self.client.post(url, {}, format="json")
+        assert response.status_code == 400
+        send.assert_not_called()
 
 
 # ===========================================================================

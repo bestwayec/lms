@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertCircle, Camera, CheckCircle2, RefreshCw, ScanLine } from 'lucide-react';
 import { useLang } from '../i18n/LangContext';
+import { useSubject } from '../lib/useSubject';
 import {
   OmrApi,
   type ApiError,
@@ -28,11 +29,18 @@ const STATUS_BADGE: Record<OmrMarkStatus, string> = {
 export default function ScanOMR() {
   const { t } = useLang();
   const navigate = useNavigate();
+  const subject = useSubject();
+  const subjectRef = useRef(subject);
+  subjectRef.current = subject;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [tests, setTests] = useState<OmrAvailableTest[]>([]);
+  const [testLoadError, setTestLoadError] = useState(false);
+  const [testLoading, setTestLoading] = useState(true);
+  const [testReload, setTestReload] = useState(0);
   const [testId, setTestId] = useState<number | null>(null);
   const [query, setQuery] = useState('');
+  const [examType, setExamType] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState<'scan' | 'confirm' | null>(null);
@@ -42,25 +50,40 @@ export default function ScanOMR() {
   const [resolved, setResolved] = useState<Set<number>>(new Set());
 
   useEffect(() => {
+    let active = true;
+    setTestLoading(true);
+    setTestLoadError(false);
     OmrApi.getAvailableTests()
-      .then((data) => {
-        setTests(data.tests || []);
-        if (data.tests?.length) setTestId(data.tests[0].id);
-      })
-      .catch(() => setTests([]));
-  }, []);
+      .then((data) => { if (active) setTests(data.tests || []); })
+      .catch(() => { if (active) { setTests([]); setTestLoadError(true); } })
+      .finally(() => { if (active) setTestLoading(false); });
+    return () => { active = false; };
+  }, [testReload]);
 
   useEffect(() => () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
   }, [previewUrl]);
 
+  const subjectTests = useMemo(() => tests.filter((test) => test.subject === subject), [tests, subject]);
+  const examTypes = useMemo(() => [...new Set(subjectTests.map((test) => test.exam_type).filter(Boolean))], [subjectTests]);
   const filteredTests = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return tests;
-    return tests.filter(
-      (x) => x.title.toLowerCase().includes(q) || (x.mock_code || '').toLowerCase().includes(q),
+    return subjectTests.filter((test) =>
+      (!examType || test.exam_type === examType) &&
+      (!q || test.title.toLowerCase().includes(q) || (test.mock_code || '').toLowerCase().includes(q)),
     );
-  }, [tests, query]);
+  }, [subjectTests, query, examType]);
+  const selectedIsVisible = testId !== null && filteredTests.some((test) => test.id === testId);
+
+  useEffect(() => {
+    setTestId(null);
+    setExamType('');
+    setQuery('');
+    setFile(null);
+    setPreviewUrl(null);
+    setReview(null);
+    setError(null);
+  }, [subject]);
 
   const errorText = (err: unknown) => {
     const e = err as ApiError;
@@ -70,6 +93,13 @@ export default function ScanOMR() {
 
   const pickFile = (selected: File | undefined) => {
     if (!selected) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(selected.type) || selected.size > 8 * 1024 * 1024) {
+      setFile(null);
+      setPreviewUrl(null);
+      setReview(null);
+      setError(t('omr_invalid_file', 'JPG, PNG yoki WEBP rasmini tanlang (8 MB gacha).'));
+      return;
+    }
     setFile(selected);
     setPreviewUrl(URL.createObjectURL(selected));
     setError(null);
@@ -77,7 +107,8 @@ export default function ScanOMR() {
   };
 
   const handleScan = async () => {
-    if (!file || !testId) return;
+    if (!file || !testId || !selectedIsVisible) return;
+    const scanSubject = subject;
     setBusy('scan');
     setError(null);
     setReview(null);
@@ -86,6 +117,7 @@ export default function ScanOMR() {
     fd.append('test_id', String(testId));
     try {
       const res = await OmrApi.scan(fd);
+      if (subjectRef.current !== scanSubject) return;
       setReview(res);
       setValues(Object.fromEntries(res.items.map((i) => [i.question_id, i.value])));
       setResolved(new Set());
@@ -107,7 +139,7 @@ export default function ScanOMR() {
   const pending = review ? review.items.filter(needsDecision).length : 0;
 
   const handleConfirm = async () => {
-    if (!review || pending) return;
+    if (!review || review.subject !== subject || pending) return;
     setBusy('confirm');
     setError(null);
     try {
@@ -147,23 +179,34 @@ export default function ScanOMR() {
         <div className="omr-grid">
           <section className="card omr-card">
             <h2>{t('omr_step_test')}</h2>
-            {tests.length > 5 && (
+            {examTypes.length > 1 && (
+              <select className="omr-input" aria-label={t('omr_exam_type', 'Imtihon turi')}
+                value={examType} onChange={(e) => { setExamType(e.target.value); setTestId(null); }}>
+                <option value="">{t('omr_all_exam_types', 'Barcha imtihon turlari')}</option>
+                {examTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+              </select>
+            )}
+            {subjectTests.length > 5 && (
               <input
                 className="omr-input"
                 type="search"
                 placeholder={t('omr_search_test')}
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => { setQuery(e.target.value); setTestId(null); }}
               />
             )}
-            {tests.length === 0 ? (
+            {testLoading ? <p className="muted small" role="status">{t('loading', 'Yuklanmoqda...')}</p> : testLoadError ? (
+              <div role="alert"><p>{t('omr_tests_load_error', 'Testlarni yuklab bo‘lmadi.')}</p>
+                <button type="button" onClick={() => setTestReload((n) => n + 1)}>{t('retry', 'Qayta urinish')}</button></div>
+            ) : filteredTests.length === 0 ? (
               <p className="muted small">{t('omr_no_tests')}</p>
             ) : (
               <select
                 className="omr-input"
                 value={testId ?? ''}
-                onChange={(e) => setTestId(Number(e.target.value))}
+                onChange={(e) => setTestId(e.target.value ? Number(e.target.value) : null)}
               >
+                <option value="">{t('omr_choose_test', 'Testni tanlang')}</option>
                 {filteredTests.map((x) => (
                   <option key={x.id} value={x.id}>
                     {x.title} · {t('omr_questions_count').replace('{n}', String(x.total_questions))}
@@ -215,7 +258,7 @@ export default function ScanOMR() {
             <button
               type="button"
               className="btn primary omr-wide"
-              disabled={!file || !testId || busy !== null}
+              disabled={!file || !selectedIsVisible || busy !== null}
               onClick={handleScan}
             >
               {busy === 'scan' ? <RefreshCw size={16} className="animate-spin" /> : <ScanLine size={16} />}

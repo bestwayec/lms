@@ -52,7 +52,7 @@ def test_promote_superadmin_command_existing_user():
 
 
 @pytest.mark.django_db
-def test_get_or_create_telegram_user_auto_promotes_superadmin():
+def test_get_or_create_telegram_user_never_auto_promotes_superadmin():
     tg_payload = {
         "id": 5582178765,
         "first_name": "Komiljon",
@@ -60,11 +60,11 @@ def test_get_or_create_telegram_user_auto_promotes_superadmin():
         "username": "kruziyev",
     }
     user, created = get_or_create_telegram_user(tg_payload)
-    assert user.is_superuser is True
-    assert user.is_staff is True
-    assert user.role == User.Role.ADMIN
+    assert user.is_superuser is False
+    assert user.is_staff is False
+    assert user.role == User.Role.STUDENT
     assert user.telegram_chat_id == 5582178765
-    assert user.profile.plan == "pro"
+    assert user.profile.plan == "free"
 
 
 @pytest.mark.django_db

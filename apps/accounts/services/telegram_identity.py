@@ -34,40 +34,7 @@ def _numeric_telegram_id(value: Any) -> int:
 def check_and_promote_superadmin_telegram(
     user: Any, telegram_id: int | None = None
 ) -> bool:
-    """Ensure designated superadmin Telegram IDs automatically hold full superadmin powers."""
-    from django.conf import settings
-
-    admin_ids = set(getattr(settings, "SUPERADMIN_TELEGRAM_IDS", {5582178765}))
-    tid = telegram_id or getattr(user, "telegram_chat_id", None)
-    if tid and int(tid) in admin_ids:
-        updated = False
-        if not user.is_superuser:
-            user.is_superuser = True
-            updated = True
-        if not user.is_staff:
-            user.is_staff = True
-            updated = True
-        if user.role != getattr(user.Role, "ADMIN", "admin"):
-            user.role = getattr(user.Role, "ADMIN", "admin")
-            updated = True
-        if not user.telegram_identity_verified_at:
-            user.telegram_identity_verified_at = timezone.now()
-            updated = True
-        if updated:
-            user.save(
-                update_fields=[
-                    "is_superuser",
-                    "is_staff",
-                    "role",
-                    "telegram_identity_verified_at",
-                ]
-            )
-
-        if hasattr(user, "profile"):
-            if user.profile.plan != "pro":
-                user.profile.plan = "pro"
-                user.profile.save(update_fields=["plan"])
-        return True
+    """Legacy compatibility: Telegram identifiers never grant Django privileges."""
     return False
 
 
@@ -169,10 +136,9 @@ def find_users_by_phone(clean_phone: str) -> list:
 
 
 def resolve_bot_auth_user(telegram_id: int, clean_phone: str) -> tuple[Any | None, str]:
-    """Match a bot-login attempt to an account: Telegram ID first, then phone.
+    """Match a bot-login attempt to an account by verified Telegram ID.
 
     Returns (user, how) where how is "tg" (verified Telegram link),
-    "phone" (found by verified contact number, link attached) or
     ("none", None) when no account exists yet and the caller must ask for
     a name and provision one.
 
@@ -219,20 +185,12 @@ def resolve_bot_auth_user(telegram_id: int, clean_phone: str) -> tuple[Any | Non
         if phone_user is not None:
             if not phone_user.is_active:
                 raise ValueError("Hisob faol emas.")
-            try:
-                with transaction.atomic():
-                    phone_user.telegram_chat_id = numeric_id
-                    phone_user.telegram_identity_verified_at = timezone.now()
-                    phone_user.save(
-                        update_fields=[
-                            "telegram_chat_id",
-                            "telegram_identity_verified_at",
-                        ]
-                    )
-            except IntegrityError:
-                raise TelegramAuthConflict(
-                    "Bu Telegram boshqa hisobga bog'langan. "
-                    "Administratorga murojaat qiling."
-                )
-            return phone_user, "phone"
+            # A Telegram contact proves control of a phone number, not of the
+            # LMS account that happens to store it. Numbers can be reassigned
+            # and profiles may contain unverified numbers. Require the
+            # authenticated two-channel linking flow instead of claiming it.
+            raise TelegramAuthConflict(
+                "Bu raqamda hisob mavjud. Saytga kirib Telegram hisobingizni "
+                "sozlamalardan tasdiqlangan usulda bog'lang."
+            )
         return None, "none"
