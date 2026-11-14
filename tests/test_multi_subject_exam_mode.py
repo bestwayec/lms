@@ -304,3 +304,30 @@ def test_attendance_quick_mark_present_and_absent(
         assert data_absent["parent_alert_scheduled"] is True
         assert data_absent["parent_alert_scheduled_in_minutes"] == 15
         mock_task.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_subject_switch_restores_each_saved_goal_and_rejects_invalid(api_client, student_user):
+    api_client.force_authenticate(user=student_user)
+    profile = student_user.profile
+    profile.active_subject = "english"
+    profile.exam_target = "multilevel"
+    profile.target_grade = "C1"
+    profile.daily_plan_summary = {"note": "English plan"}
+    profile.save()
+    url = "/api/v1/profile/switch-subject/"
+    biology = api_client.post(url, {"subject": "biology"}, format="json")
+    assert biology.status_code == 200
+    assert biology.data["exam_target"] == "undecided"
+    assert biology.data["daily_plan_summary"] == {}
+    chosen = api_client.post(url, {"subject": "biology", "exam_target": "national_certificate"}, format="json")
+    assert chosen.data["exam_target"] == "national_certificate"
+    english = api_client.post(url, {"subject": "english"}, format="json")
+    assert english.data["exam_target"] == "multilevel"
+    assert english.data["target_grade"] == "C1"
+    assert english.data["daily_plan_summary"] == {"note": "English plan"}
+    rejected = api_client.post(url, {"subject": "english", "exam_target": "attestation"}, format="json")
+    assert rejected.status_code == 400
+    profile.refresh_from_db()
+    assert profile.active_subject == "english" and profile.exam_target == "multilevel"
+    assert api_client.post(url, {"subject": "biology"}, format="json").data["exam_target"] == "national_certificate"

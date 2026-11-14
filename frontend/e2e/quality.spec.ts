@@ -219,3 +219,47 @@ test('teacher live controls use the created test identity and canonical QR route
   await expect(modal.locator('a[href="http://127.0.0.1:5173/tests/1007"]')).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('subject changes only after server confirmation and preserves goal on failure', async ({ page }) => {
+  await mockApp(page);
+  let fail = true;
+  await page.route('**/api/v1/profile/switch-subject/', async (route) => {
+    if (fail) return route.fulfill({ status: 503, json: { detail: 'Unavailable' } });
+    const payload = route.request().postDataJSON();
+    return route.fulfill({ json: { ok: true, active_subject: payload.subject, exam_target: 'undecided', target_grade: '', daily_plan_summary: {} } });
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/dashboard');
+  const switcher = page.locator('.subject-switcher-scroll:visible').first();
+  const english = switcher.getByRole('button', { name: /Ingliz/i });
+  const biology = switcher.getByRole('button', { name: /Biolog/i });
+  await expect(english).toHaveAttribute('aria-pressed', 'true');
+  await biology.click();
+  await expect(page.getByRole('alert').filter({ hasText: 'saqlanmadi' }).first()).toBeVisible();
+  await expect(english).toHaveAttribute('aria-pressed', 'true');
+  expect(await page.evaluate(() => localStorage.getItem('lms_subject'))).not.toBe('biology');
+  fail = false;
+  await biology.click();
+  await expect(biology).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByLabel('Imtihon maqsadi').first()).toHaveValue('undecided');
+});
+
+for (const width of [375, 1440]) {
+  test(`OMR lists only the active subject and requires explicit test selection at ${width}px`, async ({ page }) => {
+    await mockApp(page);
+    await page.route('**/api/v1/tests/scan-omr/', (route) => route.fulfill({ json: { ok: true, count: 2, tests: [
+      { id: 1, title: 'English test', mock_code: '', exam_type: 'cefr', subject: 'english', total_questions: 10, time_limit_minutes: 30 },
+      { id: 2, title: 'Biology test', mock_code: '', exam_type: 'national', subject: 'biology', total_questions: 10, time_limit_minutes: 30 },
+    ] } }));
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/tests/scan-omr');
+    const select = page.locator('select.omr-input').first();
+    await expect(select).toBeVisible();
+    await expect(select).toHaveValue('');
+    await expect(select.locator('option')).toContainText(['Testni tanlang', 'English test']);
+    await expect(select.locator('option', { hasText: 'Biology test' })).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await select.selectOption('1');
+    await expect(select).toHaveValue('1');
+  });
+}
