@@ -14,7 +14,7 @@ User = get_user_model()
 
 IMPORT_URL = "/api/v1/enterprise/students/bulk-import/"
 SETUP_LINK_RE = re.compile(
-    r"https://grandec\\.uz/password-reset/confirm/([^/\\s]+)/([^/\\s]+)/"
+    r"https://grandec\.uz/password-reset/confirm/([^/\s]+)/([^/\s]+)/"
 )
 
 
@@ -157,7 +157,7 @@ class EnterpriseImportCredentialTests(TestCase):
 class LegacyCsvImportCredentialTests(TestCase):
     def test_legacy_csv_import_sends_setup_link_not_password(self):
         result = CSVImportService.import_students(
-            "email,first_name,last_name\\nlegacy-import@example.com,Test,Student\\n",
+            "email,first_name,last_name\nlegacy-import@example.com,Test,Student\n",
             send_welcome=True,
         )
         self.assertEqual(result["created"], 1)
