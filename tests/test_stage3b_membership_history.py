@@ -93,7 +93,7 @@ def test_cross_center_student_search_and_enrollment_isolation():
     branch_2 = CenterBranch.objects.create(name="Branch 2", center=center_2, branch_code="C2B2")
     teacher_2 = User.objects.create_user(email="teacher2@example.test", role="teacher", branch=branch_2, learning_center=center_2)
     student_2 = User.objects.create_user(email="student2@example.test", role="student", branch=branch_2, learning_center=center_2, first_name="Kamron")
-    group_2 = StudentGroup.objects.create(name="Group 2", teacher=teacher_2, branch=branch_2)
+    StudentGroup.objects.create(name="Group 2", teacher=teacher_2, branch=branch_2)
 
     client = APIClient()
     client.force_authenticate(teacher_1)
