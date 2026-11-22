@@ -3,8 +3,18 @@ import type { FormEvent } from 'react';
 import { useLang } from '../i18n/LangContext';
 import { School, WhiteLabelApi, api } from '../lib/api';
 import { FolderOpenIcon, SettingsIcon, UsersIcon, XIcon } from '../components/icons';
-import type { GroupMember, SchoolGroup } from '../lib/school';
-import { broadcastGroupVedomost, errMessage, getGroupDetail } from '../lib/school';
+import type {
+  GroupMember,
+  GroupMembershipHistoryItem,
+  GroupStudentResults,
+  SchoolGroup,
+} from '../lib/school';
+import {
+  broadcastGroupVedomost,
+  errMessage,
+  getGroupMembershipHistory,
+  getGroupStudentResults,
+} from '../lib/school';
 
 export default function Groups() {
   const activateQuota = async (groupId: number, studentId: number, planType: 'pro' | 'premium') => {
@@ -45,12 +55,18 @@ export default function Groups() {
   const [editName, setEditName] = useState('');
   const [editDesc, setEditDesc] = useState('');
 
-  // Detail / members / analytics / attendance state.
+  // Detail / members / history / analytics / attendance state.
   const [openGroup, setOpenGroup] = useState<number | null>(null);
-  const [groupTabs, setGroupTabs] = useState<Record<number, 'members' | 'analytics' | 'attendance'>>({});
+  const [groupTabs, setGroupTabs] = useState<Record<number, 'members' | 'history' | 'analytics' | 'attendance'>>({});
   const [groupAttendance, setGroupAttendance] = useState<Record<string, 'present' | 'absent' | 'late' | 'excused'>>({});
   const [analyticsData, setAnalyticsData] = useState<Record<number, import('../lib/api').GroupFullAnalyticsResponse>>({});
   const [analyticsLoading, setAnalyticsLoading] = useState<number | null>(null);
+  const [historyData, setHistoryData] = useState<Record<number, GroupMembershipHistoryItem[]>>({});
+  const [historyLoading, setHistoryLoading] = useState<number | null>(null);
+  const [studentResults, setStudentResults] = useState<GroupStudentResults | null>(null);
+  const [resultsLoading, setResultsLoading] = useState(false);
+  const [memberBusy, setMemberBusy] = useState(false);
+  const searchVersion = useRef(0);
   const [search, setSearch] = useState('');
   const [found, setFound] = useState<GroupMember[]>([]);
   const [searching, setSearching] = useState(false);
@@ -264,16 +280,36 @@ export default function Groups() {
     }
   };
 
-  // GET /api/v1/school/groups/<id>/ via generic api() (typed client lacks it).
-  const refreshOne = async (id: number) => {
-    const fresh = await getGroupDetail(id);
-    setGroups((prev) => prev.map((g) => (g.id === id ? fresh : g)));
+  const loadHistory = async (groupId: number) => {
+    setHistoryLoading(groupId);
+    try {
+      const items = await getGroupMembershipHistory(groupId);
+      setHistoryData((prev) => ({ ...prev, [groupId]: items }));
+    } catch (e2: unknown) {
+      setErr(errMessage(e2));
+    } finally {
+      setHistoryLoading(null);
+    }
   };
 
-  // GET /api/v1/school/students/?q= — debounced member search.
-  const onSearch = (qq: string) => {
+  const openStudentResults = async (groupId: number, studentId: number) => {
+    setResultsLoading(true);
+    setStudentResults(null);
+    try {
+      const data = await getGroupStudentResults(groupId, studentId);
+      setStudentResults(data);
+    } catch (e2: unknown) {
+      setErr(errMessage(e2));
+    } finally {
+      setResultsLoading(false);
+    }
+  };
+
+  // GET /api/v1/school/students/?q=&group_id= — debounced member search.
+  const onSearch = (groupId: number, qq: string) => {
     setSearch(qq);
     if (searchTimer.current !== null) window.clearTimeout(searchTimer.current);
+    const version = ++searchVersion.current;
     if (qq.trim().length < 2) {
       setFound([]);
       setSearching(false);
@@ -282,35 +318,66 @@ export default function Groups() {
     setSearching(true);
     searchTimer.current = window.setTimeout(async () => {
       try {
-        const res = (await School.studentSearch(qq.trim())) as unknown as GroupMember[];
-        setFound(res);
-      } catch {
-        setFound([]);
+        const res = (await School.studentSearch(qq.trim(), groupId)) as unknown as GroupMember[];
+        if (version === searchVersion.current) setFound(res);
+      } catch (e2: unknown) {
+        if (version === searchVersion.current) setErr(errMessage(e2));
       } finally {
-        setSearching(false);
+        if (version === searchVersion.current) setSearching(false);
       }
     }, 300);
   };
 
   // POST /api/v1/school/groups/<id>/members/ {add, remove}.
   const addMember = async (groupId: number, userId: number) => {
+    setMemberBusy(true);
     try {
-      await School.members(groupId, { add: [userId] });
+      const fresh = (await School.members(groupId, { add: [userId] })) as unknown as SchoolGroup;
+      setGroups((prev) => prev.map((g) => (g.id === groupId ? fresh : g)));
+      setHistoryData((prev) => {
+        const next = { ...prev };
+        delete next[groupId];
+        return next;
+      });
+      setAnalyticsData((prev) => {
+        const next = { ...prev };
+        delete next[groupId];
+        return next;
+      });
       setFound((prev) => prev.filter((s) => s.id !== userId));
       flash(t('grp_member_added'));
-      await refreshOne(groupId);
     } catch (e2: unknown) {
       setErr(errMessage(e2));
+    } finally {
+      setMemberBusy(false);
     }
   };
 
-  const removeMember = async (groupId: number, userId: number) => {
+  const removeMember = async (groupId: number, student: GroupMember) => {
+    const studentLabel = student.full_name || student.email;
+    if (!window.confirm(`${studentLabel}: ${t('grp_confirm_remove')}`)) return;
+    setMemberBusy(true);
     try {
-      await School.members(groupId, { remove: [userId] });
+      const fresh = (await School.members(groupId, { remove: [student.id] })) as unknown as SchoolGroup;
+      setGroups((prev) => prev.map((g) => (g.id === groupId ? fresh : g)));
+      setHistoryData((prev) => {
+        const next = { ...prev };
+        delete next[groupId];
+        return next;
+      });
+      setAnalyticsData((prev) => {
+        const next = { ...prev };
+        delete next[groupId];
+        return next;
+      });
+      if (studentResults && studentResults.student.id === student.id) {
+        setStudentResults(null);
+      }
       flash(t('grp_member_removed'));
-      await refreshOne(groupId);
     } catch (e2: unknown) {
       setErr(errMessage(e2));
+    } finally {
+      setMemberBusy(false);
     }
   };
 
@@ -669,10 +736,34 @@ export default function Groups() {
                   </>
                 )}
 
-                {/* Detail — Tabs for Members and Analytics */}
+                {/* Detail — Tabs for Members, History, Attendance and Analytics */}
                 {open && !isEditing && (
                   <div style={{ marginTop: 14, borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: 12 }}>
-                    <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className={`btn sm ${tab === 'members' ? 'primary' : 'ghost'}`}
+                        onClick={() => setGroupTabs((prev) => ({ ...prev, [g.id]: 'members' }))}
+                      >
+                        👥 {t('grp_members')} ({students.length})
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn sm ${tab === 'history' ? 'primary' : 'ghost'}`}
+                        onClick={() => {
+                          setGroupTabs((prev) => ({ ...prev, [g.id]: 'history' }));
+                          if (!historyData[g.id]) void loadHistory(g.id);
+                        }}
+                      >
+                        📜 {t('grp_history')}
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn sm ${tab === 'attendance' ? 'primary' : 'ghost'}`}
+                        onClick={() => setGroupTabs((prev) => ({ ...prev, [g.id]: 'attendance' }))}
+                      >
+                        📅 1-Click Davomat
+                      </button>
                       <button
                         type="button"
                         className={`btn sm ${tab === 'analytics' ? 'primary' : 'ghost'}`}
@@ -682,20 +773,6 @@ export default function Groups() {
                         }}
                       >
                         📊 Monitoring & BMB
-                      </button>
-                      <button
-                        type="button"
-                        className={`btn sm ${tab === 'members' ? 'primary' : 'ghost'}`}
-                        onClick={() => setGroupTabs((prev) => ({ ...prev, [g.id]: 'members' }))}
-                      >
-                        👥 A‘zolar ({students.length})
-                      </button>
-                      <button
-                        type="button"
-                        className={`btn sm ${tab === 'attendance' ? 'primary' : 'ghost'}`}
-                        onClick={() => setGroupTabs((prev) => ({ ...prev, [g.id]: 'attendance' }))}
-                      >
-                        📅 1-Click Davomat
                       </button>
                     </div>
 
@@ -838,12 +915,21 @@ export default function Groups() {
                         </h4>
                         <ul className="muted small">
                           {students.map((s) => (
-                            <li key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                            <li key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', flexWrap: 'wrap', gap: 6 }}>
                               <div>
                                 <span style={{ fontWeight: 600, color: '#f8fafc' }}>{s.full_name}</span>{' '}
                                 <span style={{ opacity: 0.6, fontSize: '0.8rem' }}>({s.email})</span>
                               </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                <button
+                                  type="button"
+                                  className="btn sm ghost"
+                                  style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                                  onClick={() => void openStudentResults(g.id, s.id)}
+                                  title="Guruh testlari natijalarini ko'rish"
+                                >
+                                  {t('grp_results')}
+                                </button>
                                 <button
                                   type="button"
                                   className="btn sm"
@@ -865,7 +951,8 @@ export default function Groups() {
                                 <button
                                   className="btn sm ghost"
                                   style={{ marginLeft: 4 }}
-                                  onClick={() => removeMember(g.id, s.id)}
+                                  disabled={memberBusy}
+                                  onClick={() => removeMember(g.id, s)}
                                   aria-label={`${t('delete')} ${s.full_name}`}
                                 >
                                   <XIcon size={13} />
@@ -875,39 +962,136 @@ export default function Groups() {
                           ))}
                           {students.length === 0 && <li>{t('gf_no_students')}</li>}
                         </ul>
-                        <label className="small">
-                          {t('gf_select_students')}
-                          <input
-                            value={search}
-                            onChange={(e) => onSearch(e.target.value)}
-                            placeholder={t('mt_search_ph')}
-                          />
-                        </label>
-                        {search.trim().length >= 2 && (
-                          <p className="muted small">
-                            {searching ? t('loading') : `${found.length} ${t('an_talaba_full')}`}
+
+                        {resultsLoading && <p className="muted small" role="status">{t('loading')}…</p>}
+                        {studentResults && (
+                          <div className="card" style={{ padding: 12, margin: '12px 0', background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                              <strong style={{ fontSize: '0.9rem' }}>{studentResults.student.name} — {t('grp_results')}</strong>
+                              <button type="button" className="btn sm ghost" onClick={() => setStudentResults(null)}>✕</button>
+                            </div>
+                            {studentResults.results.length === 0 ? (
+                              <p className="muted small">{t('grp_no_results_assigned')}</p>
+                            ) : (
+                              <ul className="muted small" style={{ margin: 0, paddingLeft: 16 }}>
+                                {studentResults.results.map((r) => (
+                                  <li key={r.id} style={{ padding: '3px 0' }}>
+                                    <strong>{r.test}</strong> ({r.subject}) —{' '}
+                                    {r.grading_status === 'graded'
+                                      ? `${r.score} / ${r.max_score} (${r.percentage}%)`
+                                      : 'Baholash kutilmoqda'}{' '}
+                                    <span style={{ opacity: 0.6 }}>• {new Date(r.calculated_at).toLocaleDateString()}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        )}
+
+                        <div style={{ marginTop: 14 }}>
+                          <label className="small" style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>
+                            {t('gf_select_students')}
+                            <input
+                              value={search}
+                              onChange={(e) => onSearch(g.id, e.target.value)}
+                              placeholder={t('mt_search_ph')}
+                              style={{ marginTop: 4 }}
+                            />
+                          </label>
+                          <p className="muted small" style={{ margin: '4px 0 8px' }}>
+                            {t('grp_search_hint')}
                           </p>
-                        )}
-                        <ul className="muted small">
-                          {found
-                            .filter((s) => !students.some((m) => m.id === s.id))
-                            .map((s) => (
-                              <li key={s.id}>
-                                {s.full_name} ({s.email})
-                                <button
-                                  className="btn sm ghost"
-                                  style={{ marginLeft: 8 }}
-                                  onClick={() => addMember(g.id, s.id)}
-                                >
-                                  + {t('grp_add')}
-                                </button>
-                              </li>
-                            ))}
-                        </ul>
-                        {search.trim().length >= 2 && !searching && found.length === 0 && (
-                          <p className="muted small">{t('grp_no_results')}</p>
-                        )}
+                          {search.trim().length >= 2 && (
+                            <p className="muted small">
+                              {searching ? t('loading') : `${found.length} ${t('an_talaba_full')}`}
+                            </p>
+                          )}
+                          <ul className="muted small">
+                            {found
+                              .filter((s) => !students.some((m) => m.id === s.id))
+                              .map((s) => (
+                                <li key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
+                                  <span>{s.full_name || `${s.first_name} ${s.last_name}`.trim() || s.email} ({s.email})</span>
+                                  <button
+                                    className="btn sm ghost"
+                                    style={{ marginLeft: 8 }}
+                                    disabled={memberBusy}
+                                    onClick={() => addMember(g.id, s.id)}
+                                  >
+                                    + {t('grp_add')}
+                                  </button>
+                                </li>
+                              ))}
+                          </ul>
+                          {search.trim().length >= 2 && !searching && found.length === 0 && (
+                            <p className="muted small">{t('grp_no_results')}</p>
+                          )}
+                        </div>
                       </>
+                    )}
+
+                    {tab === 'history' && (
+                      <div style={{ marginTop: 8 }}>
+                        <h4 style={{ margin: '8px 0' }}>{t('grp_history')}</h4>
+                        {historyLoading === g.id && <p className="muted small">{t('loading')}…</p>}
+                        {historyData[g.id] && historyData[g.id].length === 0 && (
+                          <p className="muted small">{t('grp_no_history')}</p>
+                        )}
+                        {historyData[g.id] && historyData[g.id].length > 0 && (
+                          <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
+                              <thead>
+                                <tr style={{ textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                                  <th style={{ padding: '6px 8px' }}>Talaba</th>
+                                  <th style={{ padding: '6px 8px' }}>Harakat</th>
+                                  <th style={{ padding: '6px 8px' }}>Sana</th>
+                                  <th style={{ padding: '6px 8px' }}>Tasdiqladi</th>
+                                  <th style={{ padding: '6px 8px' }}>Sabab</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {historyData[g.id].map((h) => (
+                                  <tr key={h.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                    <td style={{ padding: '6px 8px' }}>
+                                      <span style={{ fontWeight: 600 }}>{h.student_name}</span>
+                                      <br />
+                                      <span style={{ opacity: 0.6, fontSize: '0.75rem' }}>{h.student_email}</span>
+                                    </td>
+                                    <td style={{ padding: '6px 8px' }}>
+                                      <span
+                                        className="badge"
+                                        style={{
+                                          padding: '2px 6px',
+                                          borderRadius: 4,
+                                          fontSize: '0.75rem',
+                                          background:
+                                            h.action === 'joined' || h.action === 'rejoined'
+                                              ? 'rgba(16, 185, 129, 0.2)'
+                                              : 'rgba(239, 68, 68, 0.2)',
+                                          color:
+                                            h.action === 'joined' || h.action === 'rejoined' ? '#10b981' : '#ef4444',
+                                        }}
+                                      >
+                                        {h.action_display || h.action}
+                                      </span>
+                                    </td>
+                                    <td style={{ padding: '6px 8px', opacity: 0.8, fontSize: '0.8rem' }}>
+                                      {h.joined_at ? new Date(h.joined_at).toLocaleString() : '—'}
+                                      {h.removed_at && (
+                                        <div style={{ color: '#ef4444', fontSize: '0.75rem' }}>
+                                          Chiqdi: {new Date(h.removed_at).toLocaleString()}
+                                        </div>
+                                      )}
+                                    </td>
+                                    <td style={{ padding: '6px 8px', opacity: 0.8 }}>{h.actor_name || 'Tizim'}</td>
+                                    <td style={{ padding: '6px 8px', opacity: 0.7 }}>{h.reason || '—'}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
                     )}
 
                     {tab === 'attendance' && (

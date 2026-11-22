@@ -204,12 +204,21 @@ def normalize_blocks(raw_blocks: Any) -> list[dict[str, Any]]:
                 if not 1 <= number <= 999:
                     raise StudioError("bad_question_number")
                 opts = q.get("options") if btype == "mcq" and isinstance(q.get("options"), list) else []
+                points = 1
+                try:
+                    points = int(q.get("points") or 1)
+                    if points < 1 or points > 100:
+                        points = 1
+                except (TypeError, ValueError):
+                    points = 1
                 block["questions"].append(
                     {
                         "number": number,
                         "text": _s(q.get("text"), 3000),
                         "options": [_s(o, 500) for o in opts][:MAX_OPTIONS],
                         "answer": _s(q.get("answer"), 500),
+                        "points": points,
+                        "explanation": _s(q.get("explanation"), 3000),
                     }
                 )
         total_questions += len(block["questions"])
@@ -260,9 +269,15 @@ def validate_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 for oi, opt in enumerate(q["options"]):
                     if not opt:
                         add(bi, "empty_option", n, oi)
+                non_empty = [o.strip().lower() for o in q["options"] if o.strip()]
+                if len(non_empty) != len(set(non_empty)):
+                    add(bi, "duplicate_option", n)
                 if not normalize_letter(q["answer"], len(q["options"])):
                     add(bi, "missing_answer", n)
             elif b["type"] == "matching":
+                non_empty = [o.strip().lower() for o in b["options"] if o.strip()]
+                if len(non_empty) != len(set(non_empty)):
+                    add(bi, "duplicate_option")
                 if not normalize_letter(q["answer"], len(b["options"])):
                     add(bi, "missing_answer", n)
             elif b["type"] == "tfng":
@@ -380,7 +395,8 @@ def _build_content(test: Test, blocks: list[dict[str, Any]]) -> None:
                 reading_passage=passage,
                 text=q["text"],
                 question_type=TYPE_TO_QTYPE[b["type"]],
-                points=1,
+                points=q.get("points", 1),
+                explanation=q.get("explanation", ""),
                 position=section.order * 1000 + q["number"],
                 config=config,
             )
@@ -559,6 +575,8 @@ def load_blocks(test: Test) -> list[dict[str, Any]]:
                         "text": q.text,
                         "options": [c.text.strip() for c in choices] if btype == "mcq" else [],
                         "answer": answer,
+                        "points": q.points,
+                        "explanation": q.explanation or "",
                     }
                 )
             if btype == "gap":
@@ -658,25 +676,73 @@ def _parse_due(value: Any) -> datetime:
 
 
 @transaction.atomic
-def assign_test(user, test: Test, group_id: Any, due_at: Any) -> dict[str, Any]:
-    from apps.courses.models import Homework
+def assign_test(
+    user,
+    test: Test,
+    group_id: Any = None,
+    due_at: Any = None,
+    student_id: Any = None,
+    time_limit_minutes: Any = None,
+    max_attempts: Any = None,
+    idempotency_key: Any = None,
+) -> dict[str, Any]:
+    from apps.courses.homework_service import create_unified_homework
 
     if test.status != Test.Status.PUBLISHED:
         raise StudioError("not_published")
-    from apps.courses.models import StudentGroup
 
-    try:
-        group = teacher_groups(user).get(id=int(group_id))
-    except (TypeError, ValueError, StudentGroup.DoesNotExist):
-        raise StudioError("group_not_found") from None
     due = _parse_due(due_at)
-    homework, _created = Homework.objects.update_or_create(
-        group=group,
+    g_id = int(group_id) if group_id else None
+    s_id = int(student_id) if student_id else None
+    if not g_id and not s_id:
+        raise StudioError("recipient_required")
+
+    group = None
+    if g_id:
+        from apps.courses.models import StudentGroup
+
+        try:
+            group = teacher_groups(user).get(id=g_id)
+        except (TypeError, ValueError, StudentGroup.DoesNotExist):
+            raise StudioError("group_not_found") from None
+
+    from apps.courses.models import Homework
+
+    existing_hw = Homework.objects.filter(
+        group_id=g_id,
+        student_id=s_id,
         test=test,
-        defaults={"title": test.title[:200], "due_date": due, "created_by": user},
-    )
+    ).exclude(status=Homework.Status.CANCELLED).first()
+
+    if existing_hw:
+        existing_hw.due_date = due
+        if time_limit_minutes:
+            existing_hw.time_limit = int(time_limit_minutes)
+        if max_attempts:
+            existing_hw.max_attempts = int(max_attempts)
+        existing_hw.save(update_fields=["due_date", "time_limit", "max_attempts", "updated_at"])
+        hw = existing_hw
+    else:
+        try:
+            hw, _created = create_unified_homework(
+                user,
+                title=test.title[:200],
+                group_id=g_id,
+                student_id=s_id,
+                due_date=due,
+                test_id=test.id,
+                content_type=None,
+                time_limit=int(time_limit_minutes) if time_limit_minutes else (test.time_limit_minutes or 0),
+                max_attempts=int(max_attempts) if max_attempts else (test.max_attempts or 1),
+                idempotency_key=str(idempotency_key) if idempotency_key else None,
+            )
+        except PermissionError as e:
+            raise StudioError("unauthorized", str(e)) from e
+        except ValueError as e:
+            raise StudioError("bad_assignment", str(e)) from e
+
     update_fields = []
-    if test.assigned_group_id is None:
+    if test.assigned_group_id is None and group is not None:
         test.assigned_group = group
         update_fields.append("assigned_group")
     if not test.mock_code:
@@ -686,15 +752,18 @@ def assign_test(user, test: Test, group_id: Any, due_at: Any) -> dict[str, Any]:
         update_fields.append("mock_code")
     if update_fields:
         test.save(update_fields=update_fields)
-    return {"assignment": assignment_payload(homework), **share_links(test)}
+
+    return {"assignment": assignment_payload(hw), **share_links(test)}
 
 
 def assignment_payload(hw) -> dict[str, Any]:
     return {
         "id": hw.id,
         "group_id": hw.group_id,
-        "group_name": hw.group.name,
-        "student_count": hw.group.students.count(),
+        "group_name": hw.group.name if hw.group else "",
+        "student_id": hw.student_id,
+        "student_name": hw.student.get_full_name() if hw.student else "",
+        "student_count": hw.group.students.count() if hw.group else (1 if hw.student else 0),
         "due_at": hw.due_date.isoformat(),
     }
 
@@ -755,19 +824,40 @@ def item_analysis(test: Test, group=None) -> dict[str, Any]:
             }
         )
 
-    percentages = [float(a.percentage) for a in attempt_list]
+    # Count assigned students from all homework for this test
+    from apps.courses.models import Homework
+
+    assigned_hws = Homework.objects.filter(test=test).select_related("group")
+    assigned_students_set: set[int] = set()
+    for h in assigned_hws:
+        if h.group:
+            assigned_students_set.update(h.group.students.values_list("id", flat=True))
+        if h.student_id:
+            assigned_students_set.add(h.student_id)
+    total_assigned = len(assigned_students_set) if assigned_students_set else n
+    submitted_count = n
+    unsubmitted_count = max(0, total_assigned - submitted_count)
+    pending_review_count = sum(1 for a in attempt_list if a.status == TestAttempt.Status.PENDING_GRADING)
+
+    percentages = [float(a.percentage) for a in attempt_list if a.status != TestAttempt.Status.PENDING_GRADING]
     buckets = [0] * 10
     for p in percentages:
         buckets[min(int(p // 10), 9)] += 1
 
     rows = []
-    for a in sorted(attempt_list, key=lambda x: (-float(x.percentage), x.student_id))[:200]:
+    for a in sorted(
+        attempt_list,
+        key=lambda x: (-(float(x.percentage) if x.status != TestAttempt.Status.PENDING_GRADING else -1.0), x.student_id),
+    )[:200]:
         student = a.student
+        is_pending = a.status == TestAttempt.Status.PENDING_GRADING
         rows.append(
             {
                 "attempt_id": a.id,
                 "student": student.get_full_name() or getattr(student, "username", "") or student.email,
-                "percentage": float(a.percentage),
+                "percentage": float(a.percentage) if not is_pending else None,
+                "is_pending": is_pending,
+                "status": a.status,
                 "cells": [
                     (None if (a.id, q.id) not in correct_map else bool(correct_map[(a.id, q.id)]))
                     for q in questions
@@ -779,6 +869,10 @@ def item_analysis(test: Test, group=None) -> dict[str, Any]:
         "test_id": test.id,
         "title": test.title,
         "students": n,
+        "total_assigned": total_assigned,
+        "submitted_count": submitted_count,
+        "unsubmitted_count": unsubmitted_count,
+        "pending_review_count": pending_review_count,
         "flag_threshold": FLAG_FAIL_RATE,
         "average": round(statistics.fmean(percentages), 1) if percentages else None,
         "median": round(statistics.median(percentages), 1) if percentages else None,
@@ -786,3 +880,212 @@ def item_analysis(test: Test, group=None) -> dict[str, Any]:
         "items": items,
         "matrix": rows,
     }
+
+
+# ---------------------------------------------------------------------------
+# Test Bank & Import / Export Extensions (Test Builder 3.0)
+# ---------------------------------------------------------------------------
+@transaction.atomic
+def duplicate_test(user, test: Test) -> Test:
+    """Duplicate an existing test as a DRAFT owned by user."""
+    from apps.tests.mock_service import _get_or_create_mock_course, generate_unique_mock_code
+
+    if not owns_test(user, test):
+        raise StudioError("unauthorized")
+
+    blocks = load_blocks(test)
+    new_title = f"{test.title} (Nusxa)"[:255]
+    new_test = Test.objects.create(
+        course=_get_or_create_mock_course(user),
+        created_by=user,
+        title=new_title,
+        subject=test.subject,
+        exam_type=test.exam_type,
+        scoring_type=test.scoring_type,
+        time_limit_minutes=test.time_limit_minutes,
+        description=test.description,
+        max_attempts=test.max_attempts,
+        shuffle_choices=test.shuffle_choices,
+        status=Test.Status.DRAFT,
+        mock_code=generate_unique_mock_code(),
+    )
+    _build_content(new_test, blocks)
+    return new_test
+
+
+@transaction.atomic
+def delete_draft_test(user, test: Test) -> None:
+    """Delete a draft test if it has no real student answers."""
+    if not owns_test(user, test):
+        raise StudioError("unauthorized")
+    if has_real_answers(test):
+        raise StudioConflict("has_attempts")
+    _clear_content(test)
+    test.delete()
+
+
+def parse_csv_test_file(content: str | bytes, default_section: str = "GENERAL") -> dict[str, Any]:
+    """Parse a CSV or structured text file into Studio blocks with questions.
+
+    Supports columns: question/savol, choice_a/a/variant_a, choice_b/b, choice_c/c, choice_d/d, choice_e/e, correct/answer/javob, points/ball, explanation/izoh.
+    """
+    import csv
+    import io
+
+    if isinstance(content, bytes):
+        try:
+            content = content.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            content = content.decode("latin-1", errors="replace")
+
+    reader = csv.reader(io.StringIO(content.strip()))
+    rows = list(reader)
+    if not rows:
+        raise StudioError("file_empty")
+
+    headers = [h.strip().lower().replace(" ", "_") for h in rows[0]]
+    col_map: dict[str, int] = {}
+    for idx, h in enumerate(headers):
+        if h in ("question", "savol", "text", "prompt"):
+            col_map["question"] = idx
+        elif h in ("choice_a", "a", "variant_a", "option_a"):
+            col_map["choice_a"] = idx
+        elif h in ("choice_b", "b", "variant_b", "option_b"):
+            col_map["choice_b"] = idx
+        elif h in ("choice_c", "c", "variant_c", "option_c"):
+            col_map["choice_c"] = idx
+        elif h in ("choice_d", "d", "variant_d", "option_d"):
+            col_map["choice_d"] = idx
+        elif h in ("choice_e", "e", "variant_e", "option_e"):
+            col_map["choice_e"] = idx
+        elif h in ("correct", "answer", "javob", "kalit", "to'g'ri_javob"):
+            col_map["correct"] = idx
+        elif h in ("points", "ball", "point"):
+            col_map["points"] = idx
+        elif h in ("explanation", "izoh", "sharh", "comment"):
+            col_map["explanation"] = idx
+
+    data_rows = rows[1:] if "question" in col_map else rows
+    if "question" not in col_map:
+        col_map = {
+            "question": 0,
+            "choice_a": 1,
+            "choice_b": 2,
+            "choice_c": 3,
+            "choice_d": 4,
+            "correct": 5,
+        }
+        if len(rows[0]) > 6:
+            col_map["points"] = 6
+        if len(rows[0]) > 7:
+            col_map["explanation"] = 7
+
+    questions = []
+    warnings = []
+    q_num = 1
+    for row_idx, row in enumerate(data_rows, start=2):
+        if not row or not any(cell.strip() for cell in row):
+            continue
+        q_text = row[col_map["question"]].strip() if len(row) > col_map.get("question", -1) else ""
+        if not q_text:
+            warnings.append({"row": row_idx, "code": "empty_question_text"})
+            continue
+
+        opts = []
+        for opt_key in ("choice_a", "choice_b", "choice_c", "choice_d", "choice_e"):
+            if opt_key in col_map and len(row) > col_map[opt_key]:
+                val = row[col_map[opt_key]].strip()
+                if val:
+                    opts.append(val)
+
+        if len(opts) < 2:
+            warnings.append({"row": row_idx, "code": "too_few_choices", "question": q_num})
+
+        ans_raw = row[col_map["correct"]].strip().upper() if "correct" in col_map and len(row) > col_map["correct"] else ""
+        ans = ""
+        if ans_raw in LETTERS[:len(opts)]:
+            ans = ans_raw
+        elif ans_raw.isdigit() and 1 <= int(ans_raw) <= len(opts):
+            ans = LETTERS[int(ans_raw) - 1]
+        elif ans_raw:
+            for oi, o in enumerate(opts):
+                if o.strip().lower() == ans_raw.lower():
+                    ans = LETTERS[oi]
+                    break
+        if not ans:
+            warnings.append({"row": row_idx, "code": "missing_or_invalid_answer", "question": q_num})
+
+        pts = 1
+        if "points" in col_map and len(row) > col_map["points"]:
+            try:
+                pts = max(1, min(100, int(row[col_map["points"]].strip())))
+            except (ValueError, TypeError):
+                pts = 1
+
+        exp = row[col_map["explanation"]].strip() if "explanation" in col_map and len(row) > col_map["explanation"] else ""
+
+        questions.append({
+            "number": q_num,
+            "text": q_text,
+            "options": opts,
+            "answer": ans,
+            "points": pts,
+            "explanation": exp,
+        })
+        q_num += 1
+
+    section = default_section if default_section in SECTIONS else "GENERAL"
+    block = {
+        "type": "mcq",
+        "section": section,
+        "title": "Import qilingan savollar",
+        "instructions": "",
+        "passage": "",
+        "gap_text": "",
+        "audio_path": "",
+        "image_path": "",
+        "options": [],
+        "questions": questions,
+    }
+    return {
+        "blocks": [block],
+        "questions_count": len(questions),
+        "detected_answers": sum(1 for q in questions if q["answer"]),
+        "warnings": warnings,
+    }
+
+
+def export_test_questions_csv(test: Test) -> str:
+    """Export test questions to CSV format with formula injection protection."""
+    import csv
+    import io
+    from apps.core.spreadsheet import safe_cell
+
+    blocks = load_blocks(test)
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "number", "section", "type", "question", "choice_a", "choice_b", "choice_c", "choice_d", "correct", "points", "explanation"
+    ])
+
+    for b in blocks:
+        for q in b["questions"]:
+            opts = q.get("options", [])
+            choice_a = opts[0] if len(opts) > 0 else ""
+            choice_b = opts[1] if len(opts) > 1 else ""
+            choice_c = opts[2] if len(opts) > 2 else ""
+            choice_d = opts[3] if len(opts) > 3 else ""
+            writer.writerow([
+                q["number"],
+                safe_cell(b["section"]),
+                safe_cell(b["type"]),
+                safe_cell(q["text"]),
+                safe_cell(choice_a),
+                safe_cell(choice_b),
+                safe_cell(choice_c),
+                safe_cell(choice_d),
+                safe_cell(q.get("answer", "")),
+                q.get("points", 1),
+                safe_cell(q.get("explanation", "")),
+            ])
+    return output.getvalue()

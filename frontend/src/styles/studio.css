@@ -19,7 +19,7 @@
 .studio-page select, .studio-page textarea,
 .studio-modal input, .studio-modal select,
 .studio-drawer textarea {
-  width: 100%; min-width: 0; min-height: 40px; padding: 8px 10px; border-radius: var(--r-sm);
+  width: 100%; min-width: 0; min-height: 44px; padding: 8px 10px; border-radius: var(--r-sm);
   border: 1px solid var(--border); background: var(--card); color: var(--ink); font: inherit; font-size: var(--fs-sm);
 }
 .studio-page textarea, .studio-drawer textarea { resize: vertical; line-height: 1.5; }
@@ -46,7 +46,10 @@ html.dark .studio-status.is-draft, html.dark .studio-status.is-dirty { color: va
 .studio-seg button.is-on { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); outline: 1.5px solid var(--accent); }
 .studio-seg button:focus-visible { outline: 2px solid var(--accent); }
 
-.studio-icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; flex: 0 0 auto; border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--card); color: var(--ink-soft); cursor: pointer; }
+.studio-icon { display: inline-flex; align-items: center; justify-content: center; min-width: 38px; min-height: 38px; width: 38px; height: 38px; flex: 0 0 auto; border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--card); color: var(--ink-soft); cursor: pointer; }
+@media (pointer: coarse), (max-width: 640px) {
+  .studio-icon { min-width: 44px; min-height: 44px; width: 44px; height: 44px; }
+}
 .studio-icon:hover:not(:disabled) { border-color: var(--accent); color: var(--ink); }
 .studio-icon:disabled { opacity: 0.4; cursor: default; }
 .studio-icon.is-danger:hover { border-color: var(--danger); color: var(--danger); }
@@ -131,10 +134,10 @@ html.dark .studio-block__num { color: var(--accent); }
 .studio-q__text { min-height: 40px; }
 .studio-q__opts { display: grid; gap: 6px; padding-left: 0; }
 @media (min-width: 560px) { .studio-q__opts { padding-left: 70px; } }
-.studio-opt { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; align-items: center; }
-.studio-opt__pick { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; min-height: 40px; }
-.studio-opt__pick input { width: 20px; height: 20px; accent-color: var(--emerald); margin: 0; }
-.studio-opt__letter { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 26px; border-radius: 6px; background: var(--card); border: 1px solid var(--border); font-weight: 800; font-size: var(--fs-xs); color: var(--ink-soft); }
+.studio-opt { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.studio-opt__pick { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; min-height: 44px; min-width: 44px; }
+.studio-opt__pick input { width: 22px; height: 22px; accent-color: var(--emerald); margin: 0; }
+.studio-opt__letter { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; height: 32px; border-radius: 8px; background: var(--card); border: 1px solid var(--border); font-weight: 800; font-size: var(--fs-xs); color: var(--ink-soft); }
 .studio-opt.is-correct .studio-opt__letter { background: var(--emerald); border-color: var(--emerald); color: #fff; }
 .studio-opt.is-correct input:not([type='radio']) { border-color: color-mix(in srgb, var(--emerald) 60%, transparent); }
 .studio-q__answer { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-size: var(--fs-xs); font-weight: 700; color: var(--muted); }
@@ -264,3 +267,37 @@ html.dark .studio-block__num { color: var(--accent); }
 .studio-crit li.is-changed { border-color: color-mix(in srgb, var(--accent) 60%, transparent); background: color-mix(in srgb, var(--accent) 6%, var(--card)); }
 .studio-crit__name { font-size: var(--fs-sm); color: var(--ink); }
 .studio-crit__reason { margin: 0; font-size: var(--fs-xs); color: var(--muted); line-height: 1.5; }
+
+/* ------------------------------------------------------------ mobile action bar & responsive */
+.studio-sticky-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  background: var(--card);
+  border-top: 1px solid var(--border);
+  padding: 12px 16px max(12px, env(safe-area-inset-bottom));
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 20px;
+}
+.studio-sticky-bar .btn {
+  min-height: 44px;
+}
+@media (max-width: 640px) {
+  .studio-stepper {
+    padding: 6px 8px;
+    gap: 6px;
+  }
+  .studio-stepper button {
+    font-size: 0.82rem;
+    padding: 6px 10px;
+    min-height: 44px;
+  }
+  .studio-q__row {
+    grid-template-columns: 48px minmax(0, 1fr) auto;
+  }
+}

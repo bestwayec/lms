@@ -2,6 +2,7 @@
 
 from decimal import Decimal
 
+from django.db.models import Q
 from rest_framework import serializers
 
 from apps.accounts.models import ParentStudentLink, User
@@ -418,21 +419,30 @@ class GroupMemberSerializer(serializers.ModelSerializer):
         ]
 
     def get_has_pro(self, obj) -> bool:
-        return getattr(obj, "has_pro_access", True)
+        return bool(getattr(obj, "has_pro_access", False))
 
     def get_pro_status_label(self, obj) -> str:
-        return "⭐ PRO (Faol)"
+        return "PRO" if getattr(obj, "has_pro_access", False) else "Free"
 
-    def get_tests_count(self, obj) -> int:
+    def get_tests_count(self, obj):
         from apps.results.models import Result
 
-        return Result.objects.filter(student_id=obj.id).count()
+        group = self.context.get("group")
+        if group is None:
+            return None
+        return Result.objects.filter(student_id=obj.id).filter(
+            Q(test__assigned_group=group) | Q(test__homework_assignments__group=group)
+        ).distinct().count()
 
-    def get_essays_count(self, obj) -> int:
+    def get_essays_count(self, obj):
         from apps.essays.models import EssaySubmission
+        from apps.essays.group_reports import _visible_submissions
 
+        group = self.context.get("group")
+        if group is None:
+            return None
         return (
-            EssaySubmission.objects.filter(student_id=obj.id)
+            _visible_submissions(group).filter(student_id=obj.id)
             .exclude(status=EssaySubmission.Status.DRAFT)
             .count()
         )
@@ -441,10 +451,17 @@ class GroupMemberSerializer(serializers.ModelSerializer):
 class StudentGroupSerializer(serializers.ModelSerializer):
     teacher_name = serializers.CharField(source="teacher.get_full_name", read_only=True)
     student_count = serializers.IntegerField(read_only=True)
-    students = GroupMemberSerializer(many=True, read_only=True)
+    students = serializers.SerializerMethodField()
     group_code = serializers.CharField(source="invite_code", read_only=True)
     branch_name = serializers.CharField(source="branch.name", read_only=True, default=None)
     branch_code = serializers.CharField(source="branch.branch_code", read_only=True, default=None)
+
+    def get_students(self, obj):
+        return GroupMemberSerializer(
+            obj.students.all(),
+            many=True,
+            context={**self.context, "group": obj},
+        ).data
 
     class Meta:
         model = StudentGroup

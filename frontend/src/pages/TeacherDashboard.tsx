@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useLang } from '../i18n/LangContext';
 import {
@@ -11,8 +11,22 @@ import {
 import AnalyticsChart from '../components/AnalyticsChart';
 import AttendancePanel from '../components/AttendancePanel';
 import { UsersIcon } from '../components/icons';
-import { Send, PlusCircle, QrCode, Download, Sparkles, Radio } from 'lucide-react';
+import {
+  Send,
+  PlusCircle,
+  QrCode,
+  Download,
+  Sparkles,
+  Radio,
+  ChevronRight,
+  Clock,
+  Calendar,
+  CheckSquare,
+  Trash2,
+  BookOpen,
+} from 'lucide-react';
 import ClassroomQrModal from '../components/ClassroomQrModal';
+import TeacherHomeworkWizard from '../components/TeacherHomeworkWizard';
 import type {
   AnalyticsData,
   EssayBoard,
@@ -118,6 +132,30 @@ export default function TeacherDashboard() {
     void navigator.clipboard.writeText(code);
     setCopiedMock(true);
     setTimeout(() => setCopiedMock(false), 2500);
+  };
+
+  // Stage 4: Teacher Workspace 3.0 — Homework Wizard Modal state
+  const [hwModalOpen, setHwModalOpen] = useState(false);
+  const [hwGroupId, setHwGroupId] = useState<number | null>(null);
+
+  const refreshOverview = useCallback(() => {
+    School.teacher()
+      .then((r) => {
+        setData(r as unknown as TeacherOverview);
+      })
+      .catch((e: unknown) => {
+        setErr(errMessage(e));
+      });
+  }, []);
+
+  const handleDeleteHomework = async (homeworkId: number) => {
+    if (!window.confirm(t('td_delete_hw_confirm'))) return;
+    try {
+      await School.deleteHomework(homeworkId);
+      refreshOverview();
+    } catch (e2) {
+      alert(e2 instanceof Error ? e2.message : 'Vazifani o‘chirishda xatolik yuz berdi.');
+    }
   };
 
   useEffect(() => {
@@ -289,6 +327,506 @@ export default function TeacherDashboard() {
           <span>📊</span> Vedomost
         </button>
       </div>
+
+      {/* 🌟 4 ASOSIY AMAL (Teacher Workspace 3.0 Action Hub) */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+          gap: 16,
+          margin: '20px 0 24px',
+        }}
+      >
+        {/* AMAL 1: DAVOMAT OLISH */}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            const attElem = document.getElementById('attendance-workspace');
+            if (attElem) attElem.scrollIntoView({ behavior: 'smooth' });
+          }}
+          className="card"
+          style={{
+            margin: 0,
+            cursor: 'pointer',
+            background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(5, 150, 105, 0.22) 100%)',
+            border: '1.5px solid rgba(16, 185, 129, 0.45)',
+            borderRadius: 18,
+            padding: '20px',
+            boxShadow: '0 8px 24px rgba(16, 185, 129, 0.12)',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 24, background: 'rgba(16, 185, 129, 0.2)', padding: '6px 10px', borderRadius: 12 }}>
+                  📋
+                </span>
+                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, color: '#10B981' }}>
+                  1. {t('td_action_attendance')}
+                </h3>
+              </div>
+              <ChevronRight size={18} color="#10B981" />
+            </div>
+            <p className="muted small" style={{ margin: '0 0 12px', lineHeight: 1.5 }}>
+              Bugungi darslar davomati va o&apos;quvchilar ro&apos;yxati (4-darajali tezkor qayd).
+            </p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 800,
+                padding: '4px 10px',
+                borderRadius: 8,
+                background: 'rgba(16, 185, 129, 0.2)',
+                color: '#10B981',
+              }}
+            >
+              {data?.attendance_today_summary
+                ? `${data.attendance_today_summary.finalized_count}/${data.attendance_today_summary.total_groups} guruh yakunlangan`
+                : 'Davomat tizimi'}
+            </span>
+            <span style={{ fontSize: 13, fontWeight: 800, color: '#10B981' }}>Boshlash →</span>
+          </div>
+        </div>
+
+        {/* AMAL 2: UY VAZIFASI BERISH */}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            if (groups.length > 0 && !hwGroupId) setHwGroupId(groups[0].id);
+            setHwModalOpen(true);
+          }}
+          className="card"
+          style={{
+            margin: 0,
+            cursor: 'pointer',
+            background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(217, 119, 6, 0.22) 100%)',
+            border: '1.5px solid rgba(245, 158, 11, 0.45)',
+            borderRadius: 18,
+            padding: '20px',
+            boxShadow: '0 8px 24px rgba(245, 158, 11, 0.12)',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 24, background: 'rgba(245, 158, 11, 0.2)', padding: '6px 10px', borderRadius: 12 }}>
+                  📝
+                </span>
+                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, color: '#F59E0B' }}>
+                  2. {t('td_action_homework')}
+                </h3>
+              </div>
+              <ChevronRight size={18} color="#F59E0B" />
+            </div>
+            <p className="muted small" style={{ margin: '0 0 12px', lineHeight: 1.5 }}>
+              Guruhlarga test, esse yoki topshiriq biriktirish va muddat belgilash.
+            </p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 800,
+                padding: '4px 10px',
+                borderRadius: 8,
+                background: 'rgba(245, 158, 11, 0.2)',
+                color: '#F59E0B',
+              }}
+            >
+              {data?.assignments ? `${data.assignments.length} ta faol vazifa` : '+ Yangi vazifa'}
+            </span>
+            <span style={{ fontSize: 13, fontWeight: 800, color: '#F59E0B' }}>Vazifa berish →</span>
+          </div>
+        </div>
+
+        {/* AMAL 3: GURUHLARIM */}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            const grpElem = document.getElementById('groups-workspace');
+            if (grpElem) grpElem.scrollIntoView({ behavior: 'smooth' });
+          }}
+          className="card"
+          style={{
+            margin: 0,
+            cursor: 'pointer',
+            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(79, 70, 229, 0.22) 100%)',
+            border: '1.5px solid rgba(99, 102, 241, 0.45)',
+            borderRadius: 18,
+            padding: '20px',
+            boxShadow: '0 8px 24px rgba(99, 102, 241, 0.12)',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 24, background: 'rgba(99, 102, 241, 0.2)', padding: '6px 10px', borderRadius: 12 }}>
+                  👥
+                </span>
+                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, color: '#818cf8' }}>
+                  3. {t('td_action_groups')}
+                </h3>
+              </div>
+              <ChevronRight size={18} color="#818cf8" />
+            </div>
+            <p className="muted small" style={{ margin: '0 0 12px', lineHeight: 1.5 }}>
+              Sinfxona guruhlari, a&apos;zolar ro&apos;yxati, taklif kodlari va QR proyektor.
+            </p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 800,
+                padding: '4px 10px',
+                borderRadius: 8,
+                background: 'rgba(99, 102, 241, 0.2)',
+                color: '#818cf8',
+              }}
+            >
+              {groups.length} ta guruh · {data?.student_count ?? 0} o&apos;quvchi
+            </span>
+            <span style={{ fontSize: 13, fontWeight: 800, color: '#818cf8' }}>Boshqarish →</span>
+          </div>
+        </div>
+
+        {/* AMAL 4: NATIJALAR */}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            const resElem = document.getElementById('results-workspace');
+            if (resElem) resElem.scrollIntoView({ behavior: 'smooth' });
+          }}
+          className="card"
+          style={{
+            margin: 0,
+            cursor: 'pointer',
+            background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.12) 0%, rgba(2, 132, 199, 0.22) 100%)',
+            border: '1.5px solid rgba(14, 165, 233, 0.45)',
+            borderRadius: 18,
+            padding: '20px',
+            boxShadow: '0 8px 24px rgba(14, 165, 233, 0.12)',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 24, background: 'rgba(14, 165, 233, 0.2)', padding: '6px 10px', borderRadius: 12 }}>
+                  📊
+                </span>
+                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, color: '#0ea5e9' }}>
+                  4. {t('td_action_results')}
+                </h3>
+              </div>
+              <ChevronRight size={18} color="#0ea5e9" />
+            </div>
+            <p className="muted small" style={{ margin: '0 0 12px', lineHeight: 1.5 }}>
+              O&apos;quvchilar natijalari, ballar jurnali (Vedomost) va CSV eksport.
+            </p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 800,
+                padding: '4px 10px',
+                borderRadius: 8,
+                background: 'rgba(14, 165, 233, 0.2)',
+                color: '#0ea5e9',
+              }}
+            >
+              {recent.length} ta topshirilgan · O&apos;rtacha: {todayAvgPct}%
+            </span>
+            <span style={{ fontSize: 13, fontWeight: 800, color: '#0ea5e9' }}>Ko&apos;rish →</span>
+          </div>
+        </div>
+      </div>
+
+      {/* 📅 BUGUNGI DARSLAR (Today's Lessons Schedule) */}
+      {data?.today_lessons && data.today_lessons.length > 0 && (
+        <section style={{ marginBottom: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+            <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: '1.25rem', fontWeight: 800 }}>
+              <Calendar size={20} className="ico" />
+              <span>{t('td_today_lessons')} ({data.today_lessons.length})</span>
+            </h2>
+            <span className="muted small">
+              {todayStr} · {data.attendance_today_summary?.finalized_count ?? 0} yakunlandi, {data.attendance_today_summary?.not_started_count ?? 0} kutilmoqda
+            </span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
+            {data.today_lessons.map((lesson) => {
+              const isFinal = lesson.status === 'finalized';
+              const isDraft = lesson.status === 'draft';
+              const statusBg = isFinal
+                ? 'rgba(16, 185, 129, 0.15)'
+                : isDraft
+                  ? 'rgba(245, 158, 11, 0.15)'
+                  : 'rgba(99, 102, 241, 0.12)';
+              const statusColor = isFinal ? '#10B981' : isDraft ? '#F59E0B' : '#818cf8';
+              const statusLabel = isFinal
+                ? `${t('td_lesson_finalized')} (${lesson.present_count} keldi, ${lesson.absent_count} kelmadi)`
+                : isDraft
+                  ? `${t('td_lesson_continue_att')} (${lesson.present_count} belgilandi)`
+                  : t('td_lesson_start_att');
+
+              return (
+                <div
+                  key={`${lesson.group_id}-${lesson.session_id ?? 'new'}`}
+                  className="card"
+                  style={{
+                    margin: 0,
+                    padding: '16px',
+                    borderRadius: 14,
+                    border: `1px solid ${isFinal ? 'rgba(16, 185, 129, 0.3)' : 'var(--border)'}`,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                  }}
+                >
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <strong style={{ fontSize: 16 }}>{lesson.group_name}</strong>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          padding: '2px 8px',
+                          borderRadius: 6,
+                          background: statusBg,
+                          color: statusColor,
+                        }}
+                      >
+                        {isFinal ? 'Yakunlangan' : isDraft ? 'Qoralama' : 'Olinmagan'}
+                      </span>
+                    </div>
+                    <p className="muted small" style={{ margin: 0 }}>
+                      {lesson.student_count} ta talaba · {lesson.start_time ? `${lesson.start_time} - ${lesson.end_time || ''}` : 'Bugungi dars'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const attElem = document.getElementById('attendance-workspace');
+                      if (attElem) attElem.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className={`btn sm ${isFinal ? '' : 'primary'}`}
+                    style={{ width: '100%', justifyContent: 'center', fontWeight: 700 }}
+                  >
+                    <CheckSquare size={14} />
+                    <span>{statusLabel}</span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* 🕒 YAQINLASHAYOTGAN MUDDATLAR VA VAZIFALAR (Assignments & Upcoming Deadlines) */}
+      <section id="homework-workspace" style={{ marginBottom: 26 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
+          <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: '1.25rem', fontWeight: 800 }}>
+            <Clock size={20} className="ico" />
+            <span>{t('td_assignments_title')} ({data?.assignments?.length ?? 0})</span>
+          </h2>
+          <button
+            type="button"
+            onClick={() => {
+              if (groups.length > 0 && !hwGroupId) setHwGroupId(groups[0].id);
+              setHwModalOpen(true);
+            }}
+            className="btn primary sm"
+            style={{ fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            <PlusCircle size={15} />
+            <span>+ {t('td_action_homework')}</span>
+          </button>
+        </div>
+
+        {(!data?.assignments || data.assignments.length === 0) ? (
+          <div className="card" style={{ padding: 20, textAlign: 'center' }}>
+            <p className="muted" style={{ margin: '0 0 12px' }}>{t('td_no_assignments')}</p>
+            <button
+              type="button"
+              onClick={() => {
+                if (groups.length > 0 && !hwGroupId) setHwGroupId(groups[0].id);
+                setHwModalOpen(true);
+              }}
+              className="btn primary sm"
+            >
+              + {t('td_action_homework')}
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
+            {data.assignments.slice(0, 8).map((hw) => {
+              const due = new Date(hw.due_date);
+              const isOverdue = hw.is_overdue;
+              const dueLabel = due.toLocaleDateString(undefined, {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              });
+
+              return (
+                <div
+                  key={hw.id}
+                  className="card"
+                  style={{
+                    margin: 0,
+                    padding: 16,
+                    borderRadius: 14,
+                    border: isOverdue ? '1px solid rgba(239, 68, 68, 0.35)' : '1px solid var(--border)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                  }}
+                >
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 4 }}>
+                      <strong style={{ fontSize: 15 }}>{hw.title}</strong>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          padding: '2px 7px',
+                          borderRadius: 6,
+                          background: isOverdue ? 'rgba(239, 68, 68, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+                          color: isOverdue ? '#EF4444' : '#3B82F6',
+                        }}
+                      >
+                        {isOverdue ? t('td_overdue_badge') : hw.type.toUpperCase()}
+                      </span>
+                    </div>
+                    <p className="muted small" style={{ margin: '0 0 8px' }}>
+                      {hw.group_name} · Muddat: {dueLabel}
+                    </p>
+                    {hw.description ? (
+                      <p className="small" style={{ margin: '0 0 10px', color: 'var(--ink-soft)', lineHeight: 1.4 }}>
+                        {hw.description}
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, marginBottom: 4 }}>
+                      <span className="muted">Topshirildi:</span>
+                      <strong>
+                        {hw.submissions_count} / {hw.total_students} {t('td_completed_badge')}
+                      </strong>
+                    </div>
+                    <div
+                      style={{
+                        height: 6,
+                        background: 'rgba(255,255,255,0.08)',
+                        borderRadius: 3,
+                        overflow: 'hidden',
+                        marginBottom: 10,
+                      }}
+                    >
+                      <div
+                        style={{
+                          height: '100%',
+                          width: `${hw.total_students > 0 ? Math.min(100, Math.round((hw.submissions_count / hw.total_students) * 100)) : 0}%`,
+                          background: isOverdue ? '#EF4444' : 'linear-gradient(90deg, #10B981, #059669)',
+                          borderRadius: 3,
+                        }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteHomework(hw.id)}
+                        className="btn sm"
+                        style={{
+                          padding: '4px 8px',
+                          fontSize: 11,
+                          color: '#EF4444',
+                          border: '1px solid rgba(239, 68, 68, 0.25)',
+                          background: 'transparent',
+                        }}
+                        title="Vazifani bekor qilish"
+                      >
+                        <Trash2 size={12} />
+                        <span>O&apos;chirish</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* 📬 TEKSHIRISH NAVBATI (Review Queue: Essays & Submissions) */}
+      {data?.review_queue && data.review_queue.length > 0 && (
+        <section style={{ marginBottom: 26 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+            <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: '1.25rem', fontWeight: 800 }}>
+              <BookOpen size={20} className="ico" />
+              <span>{t('td_review_queue')} ({data.review_queue_count ?? data.review_queue.length})</span>
+            </h2>
+            <Link to="/teacher/essays" className="btn sm" style={{ fontWeight: 700 }}>
+              {t('view_all')} ({data.review_queue_count ?? data.review_queue.length}) →
+            </Link>
+          </div>
+          <div className="table-wrap">
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>{t('th_student')}</th>
+                  <th>Mavzu</th>
+                  <th>So&apos;zlar soni</th>
+                  <th>Topshirilgan vaqt</th>
+                  <th style={{ textAlign: 'right' }}>Amal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.review_queue.map((item) => (
+                  <tr key={item.id}>
+                    <td><strong>{item.student_name}</strong></td>
+                    <td>{item.topic_title}</td>
+                    <td>{item.word_count} so&apos;z</td>
+                    <td className="muted small">{item.submitted_at ? item.submitted_at.slice(0, 16).replace('T', ' ') : '—'}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      <Link
+                        to={`/teacher/essays/${item.id}/review`}
+                        className="btn primary sm"
+                        style={{ padding: '4px 10px', fontWeight: 700 }}
+                      >
+                        {t('td_review_now')} →
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       {/* 🌟 USTOZ BOSHQARUV PANELINING ASOSIY 2 TA FOKUSI */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))', gap: '16px', marginBottom: '20px', marginTop: '16px' }}>
@@ -739,10 +1277,13 @@ export default function TeacherDashboard() {
       )}
 
       {/* Attendance workspace — group roster, 4-way marking, finalization. */}
-      <h2>{t('attendance_title')}</h2>
-      <AttendancePanel />
+      <div id="attendance-workspace" style={{ scrollMarginTop: 24, marginBottom: 28 }}>
+        <h2>{t('attendance_title')}</h2>
+        <AttendancePanel />
+      </div>
 
       {/* Groups Command Center — parity with group_list.html cards with 3 quick teacher action buttons */}
+      <div id="groups-workspace" style={{ scrollMarginTop: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '24px 0 14px', flexWrap: 'wrap', gap: 10 }}>
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
           <UsersIcon size={20} className="ico" />
@@ -964,8 +1505,10 @@ export default function TeacherDashboard() {
           })}
         </div>
       )}
+      </div>
 
-      {/* Full students list across groups (Vedomost) */}
+      {/* Full students list across groups (Vedomost & Results) */}
+      <div id="results-workspace" style={{ scrollMarginTop: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 32, marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
           <span>📊</span>
@@ -1126,6 +1669,18 @@ export default function TeacherDashboard() {
           subtitle={qrModalData.subtitle}
         />
       )}
+      </div>
+
+      {/* 📝 Teacher Homework 3-Step Wizard (Stage 4) */}
+      <TeacherHomeworkWizard
+        isOpen={hwModalOpen}
+        onClose={() => setHwModalOpen(false)}
+        onSuccess={() => {
+          refreshOverview();
+        }}
+        groups={groups}
+        initialGroupId={hwGroupId}
+      />
     </div>
   );
 }

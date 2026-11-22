@@ -11,6 +11,7 @@ Modules and Lessons are ordered via `position` so instructors can drag/reorder.
 from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db import models
+from django.utils import timezone
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 
@@ -457,18 +458,48 @@ class Lesson(models.Model):
 
 
 # ---------------------------------------------------------------------------
-# Homework (Uyga vazifa tizimi)
+# Homework (Uyga vazifa tizimi — Unified Homework Engine)
 # ---------------------------------------------------------------------------
 class Homework(models.Model):
     """
-    Ustoz tomonidan guruhga berilgan uyga vazifa (Test yoki Esse).
+    Ustoz tomonidan guruhga yoki individual o'quvchiga berilgan uyga vazifa.
+    Qamrab oladi: Test, Esse, Lug'at, Dars yoki Maxsus topshiriq.
     """
+
+    class ContentType(models.TextChoices):
+        TEST = "test", _("Test")
+        ESSAY = "essay", _("Esse")
+        VOCABULARY = "vocabulary", _("Lug'at")
+        LESSON = "lesson", _("Dars")
+        CUSTOM = "custom", _("Maxsus topshiriq")
+
+    class Status(models.TextChoices):
+        ACTIVE = "active", _("Faol")
+        CANCELLED = "cancelled", _("Bekor qilingan")
+        ARCHIVED = "archived", _("Arxivlangan")
 
     group = models.ForeignKey(
         StudentGroup,
         on_delete=models.CASCADE,
+        null=True,
+        blank=True,
         related_name="homeworks",
         verbose_name=_("guruh"),
+    )
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="individual_homeworks",
+        verbose_name=_("individual o'quvchi"),
+    )
+    content_type = models.CharField(
+        _("topshiriq turi"),
+        max_length=20,
+        choices=ContentType.choices,
+        default=ContentType.TEST,
+        db_index=True,
     )
     title = models.CharField(_("vazifa sarlavhasi"), max_length=200)
     description = models.TextField(_("tavsif va ko'rsatmalar"), blank=True)
@@ -488,8 +519,41 @@ class Homework(models.Model):
         related_name="homework_assignments",
         verbose_name=_("biriktirilgan esse mavzusi"),
     )
+    vocabulary_pack = models.ForeignKey(
+        "vocabulary.VocabularyPack",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="homework_assignments",
+        verbose_name=_("biriktirilgan lug'at to'plami"),
+    )
+    lesson = models.ForeignKey(
+        "courses.Lesson",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="homework_assignments",
+        verbose_name=_("biriktirilgan dars"),
+    )
+    start_date = models.DateTimeField(_("boshlanish vaqti"), null=True, blank=True)
     due_date = models.DateTimeField(
         _("topshirish muddati (deadline)"),
+        db_index=True,
+    )
+    time_limit = models.PositiveIntegerField(
+        _("vaqt chegarasi (daqiqa)"),
+        default=0,
+        help_text=_("0 = cheksiz"),
+    )
+    max_attempts = models.PositiveSmallIntegerField(
+        _("maksimal urinishlar"),
+        default=1,
+    )
+    status = models.CharField(
+        _("holati"),
+        max_length=20,
+        choices=Status.choices,
+        default=Status.ACTIVE,
         db_index=True,
     )
     created_by = models.ForeignKey(
@@ -498,6 +562,24 @@ class Homework(models.Model):
         null=True,
         blank=True,
         related_name="created_homeworks",
+        verbose_name=_("yaratgan ustoz"),
+    )
+    cancelled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cancelled_homeworks",
+        verbose_name=_("bekor qilgan foydalanuvchi"),
+    )
+    cancelled_at = models.DateTimeField(_("bekor qilingan vaqt"), null=True, blank=True)
+    idempotency_key = models.CharField(
+        _("idempotentlik kaliti"),
+        max_length=120,
+        null=True,
+        blank=True,
+        unique=True,
+        db_index=True,
     )
     created_at = models.DateTimeField(_("yaratilgan"), auto_now_add=True)
     updated_at = models.DateTimeField(_("yangilangan"), auto_now=True)
@@ -508,13 +590,23 @@ class Homework(models.Model):
         ordering = ["-due_date", "-created_at"]
 
     def __str__(self) -> str:
-        return f"{self.group.name}: {self.title} (Muddat: {self.due_date})"
+        target = self.group.name if self.group else (self.student.get_full_name() if self.student else "Homework")
+        return f"{target}: {self.title} (Muddat: {self.due_date})"
 
 
 class HomeworkSubmission(models.Model):
     """
-    O'quvchining uyga vazifani bajarganlik holati.
+    O'quvchining uyga vazifani bajarganlik holati va natijasi.
     """
+
+    class Status(models.TextChoices):
+        NOT_STARTED = "not_started", _("Boshlanmagan")
+        IN_PROGRESS = "in_progress", _("Jarayonda")
+        SUBMITTED = "submitted", _("Topshirildi")
+        AWAITING_REVIEW = "awaiting_review", _("Tekshiruv kutilmoqda")
+        GRADED = "graded", _("Baholandi")
+        OVERDUE = "overdue", _("Muddati o'tgan")
+        CANCELLED = "cancelled", _("Bekor qilingan")
 
     homework = models.ForeignKey(
         Homework,
@@ -528,10 +620,57 @@ class HomeworkSubmission(models.Model):
         related_name="homework_submissions",
         verbose_name=_("o'quvchi"),
     )
+    status = models.CharField(
+        _("topshiriq holati"),
+        max_length=20,
+        choices=Status.choices,
+        default=Status.NOT_STARTED,
+        db_index=True,
+    )
     is_completed = models.BooleanField(_("bajarildimi"), default=False, db_index=True)
+    score = models.DecimalField(_("ball"), max_digits=6, decimal_places=2, null=True, blank=True)
+    max_score = models.DecimalField(_("maksimal ball"), max_digits=6, decimal_places=2, null=True, blank=True)
+    percentage = models.FloatField(_("foiz"), null=True, blank=True)
+    score_display = models.CharField(_("natija ko'rinishi"), max_length=50, blank=True)
+    test_attempt = models.ForeignKey(
+        "tests.TestAttempt",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="homework_submissions",
+        verbose_name=_("test urinishi"),
+    )
+    result = models.ForeignKey(
+        "results.Result",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="homework_submissions",
+        verbose_name=_("natija qaydi"),
+    )
+    essay_submission = models.ForeignKey(
+        "essays.EssaySubmission",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="homework_submissions",
+        verbose_name=_("esse topshirig'i"),
+    )
+    answers_payload = models.JSONField(_("javoblar / qoralama"), default=dict, blank=True)
+    feedback = models.TextField(_("ustoz fikri / taqriz"), blank=True)
+    graded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="graded_homework_submissions",
+        verbose_name=_("baholagan ustoz"),
+    )
+    started_at = models.DateTimeField(_("boshlangan vaqt"), null=True, blank=True)
     completed_at = models.DateTimeField(_("bajarilgan vaqt"), null=True, blank=True)
-    score_display = models.CharField(_("natija"), max_length=50, blank=True)
+    attempts_count = models.PositiveSmallIntegerField(_("urinishlar soni"), default=0)
     created_at = models.DateTimeField(_("yaratilgan"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("yangilangan"), auto_now=True)
 
     class Meta:
         verbose_name = _("Vazifa bajarilishi")
@@ -539,8 +678,7 @@ class HomeworkSubmission(models.Model):
         unique_together = ("homework", "student")
 
     def __str__(self) -> str:
-        status = "Bajarildi" if self.is_completed else "Bajarilmadi"
-        return f"{self.student_id} — {self.homework_id} ({status})"
+        return f"{self.student_id} — {self.homework_id} ({self.status})"
 
 
 # ---------------------------------------------------------------------------
@@ -659,3 +797,89 @@ class GroupEnrollment(models.Model):
             self.payment_status = self.PaymentStatus.PAID
         self.save(update_fields=["payment_status", "updated_at"])
         return self.payment_status
+
+
+# ---------------------------------------------------------------------------
+# GroupMembershipHistory (Guruh a'zoligi tarixi va audit jurnali)
+# ---------------------------------------------------------------------------
+class GroupMembershipHistory(models.Model):
+    """
+    Guruh a'zoligi tarixi va audit jurnali.
+    O'quvchining qachon qo'shilgani, qachon chiqarilgani, kim tomonidan
+    amalga oshirilgani, sababi va harakat turini saqlaydi.
+    """
+
+    class Action(models.TextChoices):
+        JOINED = "joined", _("Qo'shildi")
+        REMOVED = "removed", _("Chiqarildi")
+        REJOINED = "rejoined", _("Qayta qo'shildi")
+
+    group = models.ForeignKey(
+        StudentGroup,
+        on_delete=models.CASCADE,
+        related_name="membership_history",
+        verbose_name=_("guruh"),
+        db_index=True,
+    )
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="group_membership_history",
+        verbose_name=_("talaba"),
+        db_index=True,
+    )
+    action = models.CharField(
+        _("harakat"),
+        max_length=20,
+        choices=Action.choices,
+        default=Action.JOINED,
+        db_index=True,
+    )
+    joined_at = models.DateTimeField(
+        _("qo'shilgan vaqti"),
+        default=timezone.now,
+        db_index=True,
+    )
+    removed_at = models.DateTimeField(
+        _("chiqarilgan vaqti"),
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="authorized_membership_actions",
+        verbose_name=_("tasdiqlagan shaxs"),
+    )
+    reason = models.CharField(
+        _("sabab / manba"),
+        max_length=255,
+        blank=True,
+        default="",
+    )
+    metadata = models.JSONField(
+        _("qo'shimcha audit ma'lumotlari"),
+        default=dict,
+        blank=True,
+    )
+    created_at = models.DateTimeField(
+        _("yozilgan vaqti"),
+        auto_now_add=True,
+    )
+
+    class Meta:
+        verbose_name = _("Guruh a'zoligi tarixi")
+        verbose_name_plural = _("Guruh a'zoliklari tarixi")
+        ordering = ["-joined_at", "-id"]
+        indexes = [
+            models.Index(fields=["group", "student", "-joined_at"]),
+            models.Index(fields=["group", "removed_at"]),
+        ]
+
+    def __str__(self) -> str:
+        status = "Active" if self.removed_at is None else f"Left ({self.removed_at})"
+        return f"{self.student} in {self.group} [{self.action}]: {status}"
+

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, Share2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Download, Share2 } from 'lucide-react';
 import { useLang } from '../i18n/LangContext';
 import AssignDialog from '../components/studio/AssignDialog';
 import { StudioApi, type ItemAnalysis, type StudioDetail } from '../lib/studio';
@@ -82,10 +82,18 @@ export default function TeacherStudioResults() {
             </select>
           )}
           {detail?.test.status === 'published' && (
-            <button type="button" className="btn" onClick={() => setAssignOpen(true)}>
-              <Share2 size={16} aria-hidden="true" /> {t('studio_assign')}
+            <button type="button" className="btn sm primary" onClick={() => setAssignOpen(true)}>
+              <Share2 size={14} aria-hidden="true" /> {t('studio_assign')}
             </button>
           )}
+          <a
+            href={StudioApi.exportUrl(id)}
+            download={`test_${id}_questions.csv`}
+            className="btn sm ghost"
+            title={t('studio_export_csv', 'Savollarni CSV yuklab olish')}
+          >
+            <Download size={14} aria-hidden="true" /> CSV
+          </a>
         </div>
       </header>
 
@@ -109,11 +117,27 @@ export default function TeacherStudioResults() {
 
       {data && data.students > 0 && (
         <>
-          <div className="studio-kpis">
+          <div className="studio-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }}>
             <div className="card studio-kpi">
-              <span>{t('studio_kpi_students')}</span>
-              <strong>{data.students}</strong>
+              <span>{t('studio_kpi_assigned', 'Biriktirilgan')}</span>
+              <strong>{data.total_assigned ?? data.students}</strong>
             </div>
+            <div className="card studio-kpi">
+              <span>{t('studio_kpi_students', 'Topshirgan')}</span>
+              <strong>{data.submitted_count ?? data.students}</strong>
+            </div>
+            {(data.unsubmitted_count ?? 0) > 0 && (
+              <div className="card studio-kpi is-warn">
+                <span>{t('studio_kpi_unsubmitted', 'Topshirmagan')}</span>
+                <strong>{data.unsubmitted_count}</strong>
+              </div>
+            )}
+            {(data.pending_review_count ?? 0) > 0 && (
+              <div className="card studio-kpi is-warn" style={{ background: 'var(--yellow-bg, #fefce8)' }}>
+                <span>{t('studio_kpi_pending', 'Tekshirilmoqda')}</span>
+                <strong>{data.pending_review_count}</strong>
+              </div>
+            )}
             <div className="card studio-kpi">
               <span>{t('studio_kpi_average')}</span>
               <strong>{data.average != null ? `${data.average}%` : '—'}</strong>
@@ -223,7 +247,15 @@ export default function TeacherStudioResults() {
                     {data.matrix.map((row) => (
                       <tr key={row.attempt_id}>
                         <th scope="row">{row.student}</th>
-                        <td>{Math.round(row.percentage)}</td>
+                        <td>
+                          {row.is_pending ? (
+                            <span style={{ fontSize: '0.75rem', padding: '2px 6px', borderRadius: 4, background: '#fef3c7', color: '#92400e' }}>
+                              {t('status_awaiting_review', 'Kutilmoqda')}
+                            </span>
+                          ) : (
+                            `${Math.round(row.percentage ?? 0)}%`
+                          )}
+                        </td>
                         {row.cells.map((c, i) => (
                           <td
                             key={i}

@@ -39,6 +39,10 @@ KEY_HEADER_RE = re.compile(
     r"to'g'ri\s+javoblar|ответы|ключи?|ключ\s+ответов)\s*[:\-–—]?\s*(.*)$",
     re.IGNORECASE,
 )
+SINGLE_ANSWER_RE = re.compile(
+    r"^\s*(?:answer|ans|javob|kalit|to['’`]?g['’`]?ri\s+javob|ответ|correct(?:\s+answer)?)\s*[:=\-–]?\s*(?:(?:Q\s*)?\d{1,3}\s*[:.\-–]\s*)?([A-Za-z0-9_|\s]+)$",
+    re.IGNORECASE,
+)
 # "1: A, 2: bees" / "3=C"  (colon/equals: never a question line)
 KEY_LINE_RE = re.compile(r"^\s*\d{1,3}\s*[:=]\s*\S")
 KEY_PAIR_RE = re.compile(
@@ -302,6 +306,17 @@ def parse_smart_paste(text: str, default_section: str = "GENERAL") -> dict[str, 
         line = raw_line.strip()
         if not line:
             continue
+
+        # Single-question answer indicator directly below a question/choices (e.g. "ANSWER: B", "Javob: B")
+        if last_q is not None:
+            single_ans = SINGLE_ANSWER_RE.match(line)
+            if single_ans:
+                ans_str = single_ans.group(1).strip()
+                if ans_str:
+                    last_q["answer"] = ans_str
+                    after_options = True
+                    key_mode = False
+                    continue
 
         header = KEY_HEADER_RE.match(line)
         if header and (header.group(1) == "" or parse_answer_pairs(header.group(1)) or len(line) < 40):

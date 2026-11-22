@@ -21,6 +21,37 @@ export interface GroupMember {
   essays_count?: number;
 }
 
+export interface GroupStudentResult {
+  id: number;
+  test: string;
+  subject: string;
+  calculated_at: string;
+  grading_status: string;
+  score: number | null;
+  max_score: number | null;
+  percentage: number | null;
+}
+
+export interface GroupStudentResults {
+  student: { id: number; name: string };
+  results: GroupStudentResult[];
+}
+
+export interface GroupMembershipHistoryItem {
+  id: number;
+  student_id: number;
+  student_name: string;
+  student_email: string;
+  action: string;
+  action_display: string;
+  joined_at: string;
+  removed_at: string | null;
+  actor_id: number | null;
+  actor_name: string;
+  reason: string;
+  created_at: string;
+}
+
 export interface SchoolGroup {
   id: number;
   name: string;
@@ -47,12 +78,75 @@ export interface RecentResult {
   date: string;
 }
 
+export interface TodayLessonItem {
+  session_id: number | null;
+  group_id: number;
+  group_name: string;
+  lesson_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  status: 'draft' | 'finalized' | 'not_started';
+  title: string;
+  student_count: number;
+  present_count: number;
+  absent_count: number;
+  late_count: number;
+  excused_count: number;
+  unmarked_count: number;
+}
+
+export interface HomeworkAssignmentItem {
+  id: number;
+  title: string;
+  description: string;
+  group_id: number;
+  group_name: string;
+  due_date: string;
+  is_overdue: boolean;
+  type: 'test' | 'essay' | 'custom';
+  test_id?: number | null;
+  test_title?: string | null;
+  essay_topic_id?: number | null;
+  essay_topic_title?: string | null;
+  submissions_count: number;
+  total_students: number;
+  created_at: string;
+}
+
+export interface ReviewQueueItem {
+  id: number;
+  student_id: number;
+  student_name: string;
+  topic_title: string;
+  submitted_at: string;
+  word_count: number;
+  total_score?: number | null;
+}
+
+export interface AttendanceTodaySummary {
+  total_groups: number;
+  today_sessions_count: number;
+  finalized_count: number;
+  draft_count: number;
+  not_started_count: number;
+}
+
 export interface TeacherOverview {
   groups: SchoolGroup[];
   student_count: number;
   published_tests: number;
   active_topics: number;
   recent_results: RecentResult[];
+  // Stage 3c Teacher Workspace 3.0 fields:
+  today_lessons?: TodayLessonItem[];
+  assignments?: HomeworkAssignmentItem[];
+  upcoming_deadlines?: HomeworkAssignmentItem[];
+  review_queue?: ReviewQueueItem[];
+  review_queue_count?: number;
+  attendance_today_summary?: AttendanceTodaySummary;
+  essay_pending?: number;
+  essay_graded?: number;
+  essay_avg_score?: number;
 }
 
 export interface AnalyticsTotals {
@@ -131,6 +225,21 @@ export interface EssayBoard {
 /** GET /api/v1/school/groups/<id>/ — the typed client only has PATCH/DELETE. */
 export function getGroupDetail(id: number | string): Promise<SchoolGroup> {
   return api<SchoolGroup>(`/api/v1/school/groups/${id}/`);
+}
+
+/** GET /api/v1/school/groups/<id>/members/<student_id>/results/ — scoped test results for a group student. */
+export function getGroupStudentResults(
+  groupId: number | string,
+  studentId: number | string,
+): Promise<GroupStudentResults> {
+  return api<GroupStudentResults>(`/api/v1/school/groups/${groupId}/members/${studentId}/results/`);
+}
+
+/** GET /api/v1/school/groups/<id>/history/ — group membership change audit history. */
+export function getGroupMembershipHistory(
+  groupId: number | string,
+): Promise<GroupMembershipHistoryItem[]> {
+  return api<GroupMembershipHistoryItem[]>(`/api/v1/school/groups/${groupId}/history/`);
 }
 
 /** POST /api/v1/school/groups/<id>/broadcast-vedomost/ — sends Leaderboard & PDF Vedomost to linked Telegram group. */
@@ -213,3 +322,118 @@ export function guardCsv(file: File | null): string | null {
   if (file.size > 5 * 1024 * 1024) return 'CSV fayl hajmi 5 MB dan oshmasligi kerak.';
   return null;
 }
+
+export interface StudentHomeworkItem {
+  id: number;
+  title: string;
+  description: string;
+  content_type: 'test' | 'essay' | 'vocabulary' | 'lesson' | 'custom';
+  group_id: number | null;
+  group_name: string;
+  teacher_name: string;
+  due_date: string;
+  time_limit: number;
+  max_attempts: number;
+  status:
+    | 'not_started'
+    | 'in_progress'
+    | 'submitted'
+    | 'awaiting_review'
+    | 'graded'
+    | 'overdue'
+    | 'cancelled';
+  status_label: string;
+  is_completed: boolean;
+  score: number | null;
+  max_score: number | null;
+  percentage: number | null;
+  score_display: string;
+  action_url: string;
+  action_id: number | null;
+  submission_id: number | null;
+  created_at: string;
+}
+
+export interface HomeworkCatalogResponse {
+  tests: {
+    id: number;
+    title: string;
+    subject: string;
+    time_limit: number;
+    questions_count: number;
+    is_official: boolean;
+  }[];
+  essays: {
+    id: number;
+    title: string;
+    task_type: string;
+    min_words: number;
+    max_words: number;
+  }[];
+  vocabulary: {
+    id: number;
+    title: string;
+    words_count: number;
+  }[];
+  lessons: {
+    id: number;
+    title: string;
+    course_title: string;
+  }[];
+}
+
+export const HomeworkAPI = {
+  getStudentHomeworks: (status?: string) => {
+    const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+    return api<{ results: StudentHomeworkItem[]; count: number }>(`/api/v1/school/student/homeworks/${qs}`);
+  },
+  getStudentHomeworkDetail: (id: number) =>
+    api<StudentHomeworkItem>(`/api/v1/school/student/homeworks/${id}/`),
+  startStudentHomework: (id: number) =>
+    api<{
+      ok: boolean;
+      homework_id: number;
+      submission_id: number;
+      status: string;
+      attempt_id?: number | null;
+      started_at: string;
+      time_limit: number;
+    }>(`/api/v1/school/student/homeworks/${id}/start/`, {
+      method: 'POST',
+    }),
+  saveStudentHomework: (id: number, answers: unknown) =>
+    api<{ ok: boolean; saved_at: string }>(`/api/v1/school/student/homeworks/${id}/save/`, {
+      method: 'POST',
+      body: JSON.stringify({ answers }),
+    }),
+  submitStudentHomework: (id: number, answers?: unknown) =>
+    api<{
+      ok: boolean;
+      status: string;
+      is_completed: boolean;
+      score: number | null;
+      percentage: number | null;
+      score_display: string;
+      completed_at: string;
+    }>(`/api/v1/school/student/homeworks/${id}/submit/`, {
+      method: 'POST',
+      body: JSON.stringify({ answers }),
+    }),
+  getStudentHomeworkResult: (id: number) =>
+    api<{
+      homework_id: number;
+      title: string;
+      status: string;
+      status_label: string;
+      score: number | null;
+      max_score: number | null;
+      percentage: number | null;
+      score_display: string;
+      feedback: string;
+      completed_at: string;
+    }>(`/api/v1/school/student/homeworks/${id}/result/`),
+  getTeacherCatalog: (contentType?: string) => {
+    const qs = contentType ? `?content_type=${encodeURIComponent(contentType)}` : '';
+    return api<HomeworkCatalogResponse>(`/api/v1/school/teacher/homework-catalog/${qs}`);
+  },
+};

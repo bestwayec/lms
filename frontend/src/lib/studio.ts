@@ -19,6 +19,8 @@ export interface StudioQuestion {
   text: string;
   options: string[];
   answer: string;
+  points?: number;
+  explanation?: string;
 }
 
 export interface StudioBlock {
@@ -116,13 +118,31 @@ export interface ItemAnalysis {
   test_id: number;
   title: string;
   students: number;
+  total_assigned?: number;
+  submitted_count?: number;
+  unsubmitted_count?: number;
+  pending_review_count?: number;
   flag_threshold: number;
   average: number | null;
   median: number | null;
   distribution: { from: number; to: number; count: number }[];
   items: ItemStat[];
-  matrix: { attempt_id: number; student: string; percentage: number; cells: (boolean | null)[] }[];
+  matrix: {
+    attempt_id: number;
+    student: string;
+    percentage: number | null;
+    is_pending?: boolean;
+    status?: string;
+    cells: (boolean | null)[];
+  }[];
   assignments: StudioAssignment[];
+}
+
+export interface FileImportResult {
+  blocks: StudioBlock[];
+  questions_count: number;
+  detected_answers: number;
+  warnings: { row?: number; code: string; question?: number }[];
 }
 
 export interface TestPayload {
@@ -141,10 +161,26 @@ function clean(blocks: StudioBlock[]): StudioBlock[] {
 }
 
 export const StudioApi = {
-  list: () => api.get<StudioListItem[]>(`${BASE}/tests/`),
+  list: (params?: { q?: string; status?: string; subject?: string }) => {
+    const sp = new URLSearchParams();
+    if (params?.q) sp.set('q', params.q);
+    if (params?.status && params.status !== 'all') sp.set('status', params.status);
+    if (params?.subject && params.subject !== 'all') sp.set('subject', params.subject);
+    const qs = sp.toString();
+    return api.get<StudioListItem[]>(`${BASE}/tests/${qs ? `?${qs}` : ''}`);
+  },
   detail: (id: number | string) => api.get<StudioDetail>(`${BASE}/tests/${id}/`),
+  duplicate: (id: number | string) => api.post<StudioDetail>(`${BASE}/tests/${id}/duplicate/`),
+  delete: (id: number | string) => api<{ deleted: boolean }>(`${BASE}/tests/${id}/`, { method: 'DELETE' }),
   parse: (text: string, section: SectionCode = 'GENERAL') =>
     api.post<ParseResult>(`${BASE}/parse/`, { text, section }),
+  importFile: (file: File, section: SectionCode = 'GENERAL') => {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('section', section);
+    return api.post<FileImportResult>(`${BASE}/import-file/`, fd);
+  },
+  exportUrl: (id: number | string) => `${BASE}/tests/${id}/export/`,
   validate: (blocks: StudioBlock[]) =>
     api.post<{ issues: StudioIssue[] }>(`${BASE}/validate/`, { blocks: clean(blocks) }),
   create: (payload: TestPayload) =>
@@ -155,8 +191,26 @@ export const StudioApi = {
       body: JSON.stringify({ ...payload, blocks: clean(payload.blocks) }),
     }),
   publish: (id: number | string) => api.post<StudioDetail>(`${BASE}/tests/${id}/publish/`),
-  assign: (id: number | string, group_id: number, due_at: string) =>
-    api.post<StudioLinks & { assignment: StudioAssignment }>(`${BASE}/tests/${id}/assign/`, { group_id, due_at }),
+  assign: (
+    id: number | string,
+    dataOrGroupId:
+      | number
+      | {
+          group_id?: number | null;
+          student_id?: number | null;
+          due_at: string;
+          time_limit_minutes?: number;
+          max_attempts?: number;
+          idempotency_key?: string;
+        },
+    dueAt?: string,
+  ) => {
+    const payload =
+      typeof dataOrGroupId === 'number'
+        ? { group_id: dataOrGroupId, due_at: dueAt ?? '' }
+        : dataOrGroupId;
+    return api.post<StudioLinks & { assignment: StudioAssignment }>(`${BASE}/tests/${id}/assign/`, payload);
+  },
   analysis: (id: number | string, groupId?: number | null) =>
     api.get<ItemAnalysis>(`${BASE}/tests/${id}/analysis/${groupId ? `?group=${groupId}` : ''}`),
   uploadMedia: (file: File, kind: 'audio' | 'image') => {

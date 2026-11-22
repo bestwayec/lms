@@ -24,6 +24,7 @@ from . import (
     views_referral,
     views_branches,
     views_private_files,
+    views_homework,
 )
 from apps.organizations import views as views_enterprise
 from apps.tests import (
@@ -43,8 +44,11 @@ urlpatterns = [
     path("teacher/studio/parse/", views_studio.studio_parse_view, name="studio-parse"),
     path("teacher/studio/validate/", views_studio.studio_validate_view, name="studio-validate"),
     path("teacher/studio/media/", views_studio.studio_media_view, name="studio-media"),
+    path("teacher/studio/import-file/", views_studio.studio_import_file_view, name="studio-import-file"),
     path("teacher/studio/tests/", views_studio.studio_tests_view, name="studio-tests"),
     path("teacher/studio/tests/<int:test_id>/", views_studio.studio_test_detail_view, name="studio-test-detail"),
+    path("teacher/studio/tests/<int:test_id>/duplicate/", views_studio.studio_duplicate_view, name="studio-test-duplicate"),
+    path("teacher/studio/tests/<int:test_id>/export/", views_studio.studio_export_view, name="studio-test-export"),
     path("teacher/studio/tests/<int:test_id>/publish/", views_studio.studio_publish_view, name="studio-test-publish"),
     path("teacher/studio/tests/<int:test_id>/assign/", views_studio.studio_assign_view, name="studio-test-assign"),
     path("teacher/studio/tests/<int:test_id>/analysis/", views_studio.studio_analysis_view, name="studio-test-analysis"),
@@ -408,6 +412,16 @@ urlpatterns = [
         name="school-group-members",
     ),
     path(
+        "school/groups/<int:group_id>/members/<int:student_id>/results/",
+        views_school.group_student_results_view,
+        name="school-group-member-results",
+    ),
+    path(
+        "school/groups/<int:group_id>/history/",
+        views_school.group_membership_history_view,
+        name="school-group-membership-history",
+    ),
+    path(
         "school/groups/<int:group_id>/analytics/",
         views_school.group_analytics_view,
         name="school-group-analytics",
@@ -454,6 +468,48 @@ urlpatterns = [
     path("school/students/", views_school.student_search_view, name="school-students"),
     path("school/parent/", views_school.parent_overview_view, name="school-parent"),
     path("school/teacher/", views_school.teacher_overview_view, name="school-teacher"),
+    path("school/teacher/homeworks/", views_school.teacher_homeworks_view, name="school-teacher-homeworks"),
+    path(
+        "school/teacher/homeworks/<int:homework_id>/",
+        views_school.teacher_homework_detail_view,
+        name="school-teacher-homework-detail",
+    ),
+    path(
+        "school/teacher/homework-catalog/",
+        views_homework.teacher_homework_catalog_view,
+        name="school-teacher-homework-catalog",
+    ),
+    # -- Student Homework Lifecycle (Stage 4) ----------------------------
+    path(
+        "school/student/homeworks/",
+        views_homework.student_homeworks_view,
+        name="school-student-homeworks",
+    ),
+    path(
+        "school/student/homeworks/<int:homework_id>/",
+        views_homework.student_homework_detail_view,
+        name="school-student-homework-detail",
+    ),
+    path(
+        "school/student/homeworks/<int:homework_id>/start/",
+        views_homework.student_homework_start_view,
+        name="school-student-homework-start",
+    ),
+    path(
+        "school/student/homeworks/<int:homework_id>/save/",
+        views_homework.student_homework_save_view,
+        name="school-student-homework-save",
+    ),
+    path(
+        "school/student/homeworks/<int:homework_id>/submit/",
+        views_homework.student_homework_submit_view,
+        name="school-student-homework-submit",
+    ),
+    path(
+        "school/student/homeworks/<int:homework_id>/result/",
+        views_homework.student_homework_result_view,
+        name="school-student-homework-result",
+    ),
     path("school/analytics/", views_school.analytics_view, name="school-analytics"),
     path(
         "school/public-stats/",

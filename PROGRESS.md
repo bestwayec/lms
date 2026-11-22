@@ -9,6 +9,59 @@
    - Ustoz kabinetida har bir o'quvchining PRO holati (`⭐ PRO (Faol)`), ishlagan testlari va esselari aks etishi.
 3. Attestatsiya 2026 yangi diagnostika testini 50 ta savoli bilan bazaga seed qilish, kategoriyalashtirish va VPS ga deploy qilish.
 
+### 2.90. Rasmiy Versiya v3.0: Stage 4 — Unified Homework Engine & Student Portal
+- **Maqsad**:
+  * Uy vazifalarini xavfsiz bekor qilish (soft-cancellation), testlar xavfsizligini ta'minlash (boshqa ustozning yoki DRAFT testlarini o'g'irlashni taqiqlash), ko'p guruhli test biriktirishda `assigned_group` ni buzmaslik va tranzaksion yaxlitlik.
+  * Universal vazifa arxitekturasi: Testlar, Esselar, Lug'at to'plamlari, Dars topshiriqlari va maxsus yozma vazifalarni guruhga yoki yakka tartibda o'quvchiga biriktirish.
+  * O'quvchi portali va "Mening vazifalarim" sahifasini ishlab chiqish, avtomatik saqlash, topshirish va natijalarni ko'rish.
+- **Bajarildi**:
+  * [x] **Backend & Modellar**:
+    - `Homework` va `HomeworkSubmission` modellariga `cancelled_at`, `cancelled_by`, `assigned_student`, `content_type`, `vocabulary_pack`, `lesson`, `time_limit_minutes`, `max_attempts`, `idempotency_key` maydonlari qo'shildi (`0015_homework_cancelled_at_homework_cancelled_by_and_more.py`).
+    - `apps/courses/homework_service.py`: `create_unified_homework`, `cancel_teacher_homework`, `derive_submission_status`, `start_student_homework`, `save_student_homework_progress`, `submit_student_homework`.
+    - Vazifani o'chirish o'rniga xavfsiz `status = CANCELLED` qilindi, topshirilgan ishlar, baholar va natijalar to'liq saqlanadi.
+    - Test xavfsizligi: DRAFT yoki boshqa ustozning xususiy testlarini biriktirish bloklandi; ko'p guruhli vazifalar `test.assigned_group` ni o'zgartirmaydi.
+    - Aniq statuslar: `NOT_STARTED`, `IN_PROGRESS`, `SUBMITTED`, `AWAITING_REVIEW`, `GRADED`, `OVERDUE`, `CANCELLED` (0.0 ball - kutilayotgan emas, balki qat'iy `GRADED` baho).
+  * [x] **API Endpoints (`apps/webapi/views_homework.py`, `views_school.py`)**:
+    - `GET /api/v1/school/student/homeworks/` — O'quvchining shaxsiy va guruh vazifalari ro'yxati (holat bo'yicha filter).
+    - `GET /api/v1/school/student/homeworks/<id>/` — Vazifa tafsilotlari.
+    - `POST /api/v1/school/student/homeworks/<id>/start/` — Vazifani boshlash / davom ettirish.
+    - `POST /api/v1/school/student/homeworks/<id>/save/` — Javoblarni avtosaqlash.
+    - `POST /api/v1/school/student/homeworks/<id>/submit/` — Yakuniy topshirish.
+    - `GET /api/v1/school/student/homeworks/<id>/result/` — Natija va xatolarni ko'rish.
+    - `GET /api/v1/school/teacher/homework-catalog/` — Ustoz uchun faqat nashr qilingan (published) testlar katalogi.
+  * [x] **Frontend & UI (`frontend/src/pages/MyHomework.tsx`, `TeacherHomeworkWizard.tsx`)**:
+    - `MyHomework.tsx`: "Mening vazifalarim" portali, status filterlari, vazifani ishlash / javob yuborish modallari, natija oynasi.
+    - `TeacherHomeworkWizard.tsx`: Ustoz kabinetida 3 bosqichli vazifa yaratish ustasi (1. Qabul qiluvchi: guruh yoki yakka o'quvchi, 2. Kontent tanlash va jonli ko'rish, 3. Muddat, urinishlar soni va nashr).
+    - `Layout.tsx` va `App.tsx`: Navigatsiyaga "Mening vazifalarim" havolasi qo'shildi (`/my-homework`).
+    - `translations.json`: `uz`, `ru`, `en` tillarida to'liq tarjimalar qo'shildi.
+  * [x] **Testlar & QA**:
+    - `pytest tests/test_stage4_unified_homework.py`: 11 ta test 100% PASS.
+    - Stage 3b, 3c, 4 regressiya sinovi: 24 ta test PASS, 1 ta skipped (PG-only lock).
+    - `python manage.py check` & `makemigrations --check`: 0 issues.
+    - Frontend: `npm test` (24 ta PASS), `npx tsc -b` (0 xato), `npm run lint` (0 xato), `npm run build` (Muvaffaqiyatli build 11.59s).
+- **Jarayonda**:
+  * Git commit va remote branchga yuklash.
+- **Keyingi qadamlar**:
+  * Grandec Next 3.0 keyingi bosqichlariga o'tish (Stage 5 va undan keyingi bosqichlar).
+- **Muhim qarorlar**:
+  * `delete_teacher_homework` chaqirilganda ma'lumotlar bazadan jismonan o'chirilmaydi (`CASCADE` yo'q), balki `status = CANCELLED`, `cancelled_at`, `cancelled_by` sifatida belgilanadi.
+  * O'quvchi 0 ball to'plasa ham, bu kutilayotgan holat emas, yakunlangan (`GRADED`) ball hisoblanadi.
+
+### 2.89. Rasmiy Versiya v3.0: Stage 3b & Stage 3c — Group Membership History, Tenant Search Isolation & Teacher Workspace 3.0
+- [x] Stage 3b: A'zolik tarixi va xavfsiz qidiruv (Group Membership History & Cross-Center Search Isolation):
+  * `GroupMembershipHistory` modeli va migratsiya (`apps/courses/models.py`, `0014_groupmembershiphistory.py`): o'quvchi, guruh, harakat (`JOINED`, `REMOVED`, `REJOINED`), vaqtlar, aktyor va audit sabablarini qayd etish.
+  * Guruhdan chiqarilganda test urinishlari, natijalar, esselar va davomatlar hech qachon o'chirilmaydi (zero-cascade deletion).
+  * O'quvchilarni qidirish va guruhga qo'shish filiali va markaz chegarasida qat'iy izolyatsiya qilindi; akkauntlar enumeratsiyasi va ma'lumot sizishi oldi olindi.
+  * UI: `Groups.tsx` da qidiruv, chiqarish tasdiqlash dialogi, test natijalari va a'zolik tarixi tabi (`uz`, `ru`, `en`).
+  * Sinovlar: `tests/test_stage3b_membership_history.py` (8 ta PASS).
+- [x] Stage 3c: Ustoz Ish Stoli 3.0 (Teacher Workspace 3.0):
+  * 4 Asosiy Amal Hubi: Davomat olish, Uy vazifasi berish, Guruhlarim, Natijalar.
+  * Bugungi darslar jadvali (`today_lessons`): `AttendanceSession` bilan to'liq integratsiya (`FINALIZED`, `DRAFT`, `NOT_STARTED` holatlari).
+  * Uy vazifasi tizimi (`/api/v1/school/teacher/homeworks/`): guruhga vazifa biriktirish, kelajakdagi deadline tekshiruvi, test va esse integratsiyasi hamda bekor qilish.
+  * Tekshirish navbati (`review_queue`): ustoz tekshiruvini kutayotgan esselar (`PENDING_TEACHER`) va to'g'ridan-to'g'ri tekshirish o'tishi.
+  * UI: `TeacherDashboard.tsx` zamonaviy 4 ta amal kartalari, darslar jadvali, deadline paneli, review navbati va vazifa yaratish modali bilan boyitildi.
+  * Sinovlar: `tests/test_stage3c_teacher_workspace.py` (5 ta PASS), Stage 3 regressiyasi (50 ta PASS, 2 ta skipped).
+
 ### 2.88. Rasmiy Versiya v2.5.0: Secret Audit, Parent Retention CRM & Branch Churn Risk Engine
 - [x] 0-Vazifa: Repo Sanitization & Token Leak Prevention (`scripts/check_secrets.py`, `.gitignore`):
   * Pre-commit & CI Secret Guard: `scripts/check_secrets.py` skaneri OpenAI (`sk-`), Telegram bot tokeni va xususiy kalitlarni avtomatik aniqlaydi (769 ta faylda 0 ta leak).
@@ -2151,11 +2204,32 @@ uff check apps/ 0 xato, pytest tests/test_spa_contract.py 20/20 test 100% PASS.
   * Frontend: `oxlint` 0 xato, `tsc -b && vite build` 0 xato bilan 4.31s da yig'ildi.
   * Mualliflik: `Komiljon Roziyev <kruziyev0@gmail.com>` (Zero AI attribution).
 
+### 2.20. Test Builder 3.0 va To'liq Mobil UX Yangilanishi (Stage 4 Extension)
+- [x] 1-Modul: Test Builder 3.0 (O'qituvchi Test Konstruktori):
+  * 3 ta test yaratish rejimi:
+    - Rejim 1 (Qo'lda kiritish): Savollarni alohida kiritish, ball va izohlar (`points`, `explanation`), savollarni ko'chirish (ChevronUp/ChevronDown), nusxalash (Duplicate) va bir xil variantlarni tekshirish (`duplicate_option`).
+    - Rejim 2 (Smart Paste / Ommaviy kiritish): `Q1. ... A) ... ANSWER: B` (shuningdek `Javob: B`, `Kalit: B`, `Ответ: B`) formatlarini to'g'ridan-to'g'ri tanish, 10/20/30 savollik shablonlar.
+    - Rejim 3 (Fayldan yuklash): CSV formatidagi strukturalangan savollarni yuklash, to'g'ri javoblarni aniqlash, xatoliklar va ogohlantirishlar ro'yxati hamda tasdiqlash dialogi.
+  * 3 bosqichli vizard (Wizard): 1. Asosiy ma'lumotlar -> 2. Savollar tuzish va Jonli preview -> 3. Tekshiruv ro'yxati, 1-klikli muammoga sakrash, qoralama saqlash, nashr qilish va biriktirish.
+  * Test Banki (`TeacherStudio.tsx`): Qidiruv, status va fan filtrlari, test nusxasini olish (`POST /duplicate/`), qoralamani o'chirish (`DELETE /tests/<id>/`), CSV eksport (`GET /export/`) bilan formula inyeksiyasidan himoya (`safe_cell`).
+  * Item Analysis & Baholash: Jami biriktirilgan, topshirilgan, topshirilmagan va tekshiruv kutilayotganlar hisob-kitobi. Ball 0.0 ni kutilayotgan maqom bilan adashtirmaslik (`is_pending: true`).
+- [x] 2-Modul: To'liq Mobil UX Yangilanishi (3.0):
+  * Responsive dizayn: 320px–430px mobil, 768px planshet va desktop ekranlarda to'liq moslashuvchanlik.
+  * Sensor ekranlar uchun standartlar: Barcha tugma va inputlar uchun kamida 44x44px touch targetlar.
+  * Mobil Test Builder: Test tuzishda qulay sticky boshqaruv paneli (Save / Next / Publish), safe-area-inset-bottom qo'llab-quvvatlovi.
+  * Mobil Student Test Runner (`TakeTest.tsx`): Pastki navigatsiya paneli (Bottom bar), savollar palitrasi (Bottom sheet), qulay tanlov variantlari (min-height: 48px), tarmoq uzilishlariga chidamli autosave.
+  * Telegram Mini App (TMA): Mavzu ranglari va viewport sinxronizatsiyasi, uzluksiz avtorizatsiya va moslashuvchan pastki menyu.
+- [x] 3-Modul: QA va Regressiya Sinovlari:
+  * Backend: 64 ta testdan 63 tasi muvaffaqiyatli o'tdi (1 ta SQLite muhitida Postgres lock testi o'tkazib yuborildi), 0 ta xato.
+  * `python manage.py check`: 0 ta xato.
+  * Frontend: 24/24 ta test 100% PASS, `npm run build` (`tsc -b && vite build`) toza yakunlandi.
+  * Zero AI Attribution: Barcha o'zgarishlar `Komiljon Roziyev <kruziyev0@gmail.com>` nomidan rasmiylashtirildi.
+
 ## 3. Jarayonda
-- Barcha 2-bosqich vazifalari (Smart Paste, Moslashuvchan savollar soni, Telegram ulashish) to'liq yakunlandi va VPS serverda (grandec.uz) muvaffaqiyatli ishga tushirildi.
+- Barcha Stage 4 va Test Builder 3.0 / Mobile UX talablari to'liq yakunlandi va branchga birlashtirishga tayyor holga keltirildi.
 
 ---
 
 ## 4. Keyingi qadamlar
-- O'qituvchilar tomonidan yaratilgan yangi testlar va Telegram orqali ulashilgan havolalarning konversiyasini kuzatish.
-- Keyingi bosqich talablari va takomillashtirishlarni amalga oshirish.
+- O'qituvchilar tomonidan testlarni mobil qurilmalarda yaratish va o'quvchilar tomonidan topshirish jarayonini amalda sinovdan o'tkazish.
+- Keyingi rejalashtirilgan takomillashtirishlarni davom ettirish.

@@ -23,10 +23,15 @@ CI=1 PLAYWRIGHT_CHROMIUM_EXECUTABLE=<chromium> npx playwright test --trace off  
 | Stage | Status | PR (all draft, none merged/deployed) |
 |---|---|---|
 | 0 Recover baseline | ✅ complete | #135 |
-| 1 Security & data integrity | ✅ code complete for the confirmed defects; **owner actions + production-only checks remain** | #136 (private file access), #137 (nginx, not deployed), Stage 1c (below) |
-| 2–12 | not started | – |
+| 1 Security & data integrity | ✅ code complete for the confirmed defects; **owner actions + production-only checks remain** | #136 (private file access), #137 (nginx, not deployed), Stage 1c (#138) |
+| 3a Attendance concurrency | ✅ complete | #139 (`claude/stage3-attendance-concurrency`) |
+| 3b Group membership history & search authz | ✅ complete | #139 (`claude/stage3-attendance-concurrency`) |
+| 3c Teacher Workspace 3.0 | ✅ complete | #139 (`claude/stage3-attendance-concurrency`) |
+| 4 Unified Homework Engine | ✅ complete | #139 (`claude/stage3-attendance-concurrency`) |
+| Test Builder 3.0 & Mobile UX | ✅ complete | #139 (`claude/stage3-attendance-concurrency`) |
+| 5–12 | not started | – |
 
-Stacking: #135 ← #136 ← #137, and Stage 1c branches off #136. Merge in that order after review.
+Stacking: #135 ← #136 ← #138 ← #139 (with #137 independent Nginx security PR). Merge in that order after review. Detailed Opus handoff: `docs/GRANDEC_OPUS_HANDOFF.md`.
 
 ## Stage 0 — closure
 
@@ -65,6 +70,107 @@ Findings, evidence and status per item: `GRANDEC_NEXT_ARCHITECTURE.md` §7. Depl
 * S5d (JWT in `sessionStorage`), S5e (One Tap without nonce), S7 (public exam media): design decisions, unchanged.
 * Not audited in Stage 1: see "Not covered" under §7 of the architecture doc.
 * The `test-postgres` CI job has not yet run on GitHub.
+
+## Stage 3b — closure (Group membership history & search authorization)
+
+Executed 2026-11-22 on branch `claude/stage3-attendance-concurrency`:
+
+| Check | Result |
+|---|---|
+| `pytest tests/test_stage3b_membership_history.py` (SQLite) | **8 passed, 1 skipped** (1 = PG-only lock test), 0 failed |
+| Group & attendance regression suite (5 test modules) | **47 passed, 2 skipped**, 0 failed |
+| `python manage.py check` & `makemigrations --check` | pass / no changes detected |
+| Frontend `npm test`, `tsc -b`, `npm run lint`, `npm run build` | **24 passed, 0 errors, 0 lint warnings, built successfully** |
+
+Delivered capabilities:
+1. **`GroupMembershipHistory`**: Additive model tracking student, group, action (`JOINED`, `REMOVED`, `REJOINED`), joined/removed timestamps, authorized actor, reason, and metadata.
+2. **Data Preservation**: Removing a student deactivates the membership interval and preserves all historical test attempts, exam results, essay submissions, and attendance logs without cascade deletion.
+3. **Cross-Center Tenant Isolation**: Fixed `/api/v1/school/student-search/` and `/members/` views to prevent user enumeration, leaking exam/subscription counts, or adding students across center boundaries. Independent tutors are scoped to their existing students or invite codes.
+4. **React Groups UI**: Added debounced scoped student search, member removal with preservation confirmations, group student results inspection, and full membership audit history with `uz`, `ru`, `en` translations.
+
+## Stage 3c — closure (Teacher Workspace 3.0)
+
+Executed 2026-11-22 on branch `claude/stage3-attendance-concurrency`:
+
+| Check | Result |
+|---|---|
+| `pytest tests/test_stage3c_teacher_workspace.py` (SQLite) | **5 passed, 0 failed** |
+| Combined Stage 3 regression suite (52 tests across 5 modules) | **50 passed, 2 skipped** (2 = PG-only lock tests), 0 failed |
+| `python manage.py check` & `makemigrations --check` | pass / no changes detected |
+| Frontend `npm test`, `tsc -b`, `npm run lint`, `npm run build` | **24 passed, 0 errors, 0 lint warnings, built successfully in 3.29s** |
+
+Delivered capabilities:
+1. **Four Primary Action Hub**:
+   - **Davomat olish**: Displays today's lesson status, attendance summary, and direct links to mark registers using the Stage 3a attendance system.
+   - **Uy vazifasi berish**: Full homework assignment engine (`/api/v1/school/teacher/homeworks/`) supporting deadlines, group assignment, validation, and test/essay synchronization.
+   - **Guruhlarim**: Groups command center with member metrics, invite codes, and QR modals.
+   - **Natijalar**: Submission grades, BMB percentage indicators, vedomost export, and review queue.
+2. **Operational Modules in Workspace**:
+   - **Today's Lessons Schedule**: Real-time status cards (`FINALIZED`, `DRAFT`, `NOT_STARTED`) integrated with `AttendanceSession`.
+   - **Assignments & Upcoming Deadlines**: Active assignments cards with progress bars (`X / Y submitted`), overdue indicators, and cancel/delete controls.
+   - **Review Queue**: Dedicated pending review table for essays awaiting teacher evaluation (`PENDING_TEACHER`) with direct navigation to review pages.
+3. **Frontend Integration & i18n**:
+   - Updated `TeacherDashboard.tsx` with modern action hero cards, responsive layout, smooth anchor navigation, and homework creation modal.
+   - Added complete translation keys across Uzbek, Russian, and English in `translations.json`.
+
+## Stage 4 — closure (Unified Homework Engine & Student Portal)
+
+Executed 2026-11-22 on branch `claude/stage3-attendance-concurrency`:
+
+| Check | Result |
+|---|---|
+| `pytest tests/test_stage4_unified_homework.py` (SQLite) | **11 passed, 0 failed** |
+| Combined Stage 3b, 3c, 4 regression suite (25 tests across 3 modules) | **24 passed, 1 skipped** (1 = PG-only lock test), 0 failed |
+| `python manage.py check` & `makemigrations --check` | pass / no changes detected |
+| Frontend `npm test`, `tsc -b`, `npm run lint`, `npm run build` | **24 passed, 0 errors, 0 lint warnings, built successfully in 11.59s** |
+
+Delivered capabilities:
+1. **Homework Integrity Fixes**:
+   - Soft-cancellation (`status = CANCELLED`, `cancelled_at`, `cancelled_by`) preserving historical submissions, grades, test attempts, and results without cascade deletion.
+   - Test authorization preventing attaching DRAFT or unpublished tests, attaching other teachers' private tests, or hijacking `test.assigned_group`.
+   - Transactional atomicity (`@transaction.atomic`) preventing orphan essay assignments or partial states.
+   - Idempotency key support preventing duplicate assignments from rapid double-clicks.
+2. **Unified Content Architecture**:
+   - Unified support for Tests, Essays, Vocabulary packs, Course Lessons, and Custom written tasks.
+   - Assignment to whole groups (`group_id`) OR individual students (`student_id`).
+   - Deadlines, time limits, and attempt limits.
+3. **Student Homework API & Lifecycle**:
+   - Endpoints: list (`GET /api/v1/school/student/homeworks/`), detail (`GET <id>/`), start/resume (`POST <id>/start/`), autosave (`POST <id>/save/`), submit (`POST <id>/submit/`), and result (`GET <id>/result/`).
+   - Authoritative derived statuses: `NOT_STARTED`, `IN_PROGRESS`, `SUBMITTED`, `AWAITING_REVIEW`, `GRADED`, `OVERDUE`, `CANCELLED`.
+   - Explicit rule: Score 0.0 is a valid final score (`GRADED`), never pending.
+4. **Student Web Interface ("Mening vazifalarim")**:
+   - Responsive mobile-first React view (`frontend/src/pages/MyHomework.tsx`) at route `/my-homework` with status tabs, action buttons, custom answer modal, result modal, and `uz`, `ru`, `en` translations.
+5. **Teacher Homework 3-Step Wizard**:
+   - Upgraded Teacher Workspace modal with 3-step wizard (`TeacherHomeworkWizard.tsx`):
+     - Step 1: Recipient selection (group vs individual student).
+     - Step 2: Published-only content selection with live preview.
+     - Step 3: Deadlines, limits, idempotency, and publication.
+
+## Stage 4 Extension — closure (Test Builder 3.0 & Complete Mobile UX Upgrade)
+
+Executed 2026-11-22 on branch `claude/stage3-attendance-concurrency`:
+
+| Check | Result |
+|---|---|
+| `pytest tests/test_stage4_test_builder_3.py` (SQLite) | **10 passed, 0 failed** |
+| `pytest tests/test_teacher_studio.py` | **29 passed, 0 failed** |
+| Combined Stage 3b, 3c, 4, Test Builder suite (64 tests across 5 modules) | **63 passed, 1 skipped** (1 = PG-only lock test), 0 failed |
+| `python manage.py check` & `makemigrations --check` | pass / no changes detected |
+| Frontend `npm test`, `tsc -b`, `npm run lint`, `npm run build` | **24 passed, 0 errors, 0 lint errors, built successfully** |
+
+Delivered capabilities:
+1. **Teacher Test Builder 3.0**:
+   - **Mode 1 (Manual Builder)**: Question points, explanations, reordering, duplication, live preview, and duplicate option detection.
+   - **Mode 2 (Smart Paste)**: Bulk question entry recognizing `Q1. ... A) ... ANSWER: B` (as well as `Javob:`, `Kalit:`, `Ответ:`) with 10/20/30-question templates.
+   - **Mode 3 (File Import)**: Structured CSV file import with question/choice/answer/explanation/points extraction, preview table, validation warnings, and confirmation dialog.
+   - **3-Step Wizard**: Step 1 (Test info, subject, presets, instructions) -> Step 2 (Questions, Smart Paste, CSV Import, Answer Key Matrix, Live Preview) -> Step 3 (Review checklist, 1-click issue jump, draft save, publish, and assign modal).
+   - **Test Bank**: Search by title/code, filters by status and subject, test duplication (`POST /api/v1/teacher/studio/<id>/duplicate/`), draft deletion (`DELETE /api/v1/teacher/studio/<id>/`), and CSV export with formula injection sanitization (`GET /api/v1/teacher/studio/<id>/export/`).
+   - **Analytics & Item Analysis**: Breakdown of total assigned, submitted, unsubmitted, and pending review counts. Clear distinction between score 0.0 and pending review.
+2. **Complete Mobile UX Upgrade**:
+   - **Touch Targets & Layout**: Form inputs and buttons enforce >= 44x44px touch targets; responsive styling across 320px–430px mobile, 768px tablet, and desktop screens.
+   - **Sticky Action Bar**: Mobile-friendly sticky footer on test builder for quick draft save and wizard navigation without scrolling.
+   - **Mobile Student Exam Runner**: Sticky bottom bar with palette sheet for fast question navigation, full-width comfortable tap targets (>= 48px), and offline/flaky network autosave protection in `TakeTest.tsx`.
+   - **Telegram Mini App (TMA)**: Viewport, theme color synchronization, seamless auth, and safe bottom navigation.
 
 ## Blockers / owner decisions
 

@@ -235,12 +235,40 @@ def attendance_session_detail_view(request, session_id: int):
     except AttendanceSession.DoesNotExist:
         return Response({"detail": "Davomat darsi topilmadi."}, status=404)
 
-    return Response(
-        {
-            **attendance_services.summary(session),
-            "roster": attendance_services.roster(session),
-        }
+    return Response(_sheet(session))
+
+
+def _sheet(session: AttendanceSession) -> dict:
+    """Everything a client needs to render and later save one register."""
+    return {
+        **attendance_services.summary(session),
+        "roster": attendance_services.roster(session),
+        "revision": attendance_services.revision(session),
+    }
+
+
+def _expected_revision(request) -> str | None:
+    """The sheet revision the client based its edits on (body ``revision`` or ``If-Match``)."""
+    value = request.data.get("revision") if hasattr(request.data, "get") else None
+    value = value or request.headers.get("If-Match", "")
+    value = str(value or "").strip().strip('"')
+    return value or None
+
+
+def _correction(request) -> tuple[bool, str]:
+    reason = str(request.data.get("reason", "") or "")[:200]
+    return bool(request.data.get("correction", False)), reason
+
+
+def _conflict(session: AttendanceSession, exc: AttendanceError) -> Response:
+    """409 with the fresh sheet, so the client can show it and keep the teacher's local edits."""
+    code = (
+        "ATTENDANCE_CHANGED"
+        if isinstance(exc, attendance_services.StaleAttendanceError)
+        else "ATTENDANCE_FINALIZED"
     )
+    session.refresh_from_db()
+    return Response({"code": code, "detail": _message(exc), **_sheet(session)}, status=409)
 
 
 def _schedule_absence_alerts(
@@ -290,13 +318,18 @@ def attendance_mark_view(request, session_id: int):
             marks = [single] if single["student_id"] and single["status"] else []
         if not isinstance(marks, list) or not marks:
             raise AttendanceError("marks ro'yxati yoki student_id/status kerak.")
+        correction, reason = _correction(request)
         applied = attendance_services.mark_many(
             session,
             marks,
             actor=request.user,
-            reason=str(request.data.get("reason", ""))[:200],
+            reason=reason,
+            expected_revision=_expected_revision(request),
+            correction=correction,
         )
         alerts_scheduled = _schedule_absence_alerts(session, marks)
+    except (attendance_services.StaleAttendanceError, attendance_services.FinalizedAttendanceError) as exc:
+        return _conflict(session, exc)
     except AttendanceError as exc:
         return _bad_request(exc)
     except PermissionDenied:
@@ -310,6 +343,7 @@ def attendance_mark_view(request, session_id: int):
             "parent_alerts_scheduled": alerts_scheduled,
             "summary": attendance_services.summary(session),
             "roster": attendance_services.roster(session),
+            "revision": attendance_services.revision(session),
         }
     )
 
@@ -354,10 +388,6 @@ def attendance_quick_mark_view(request):
                 title=f"{group.name} — {lesson_date.isoformat()}",
                 actor=request.user,
             )
-        elif session.status == AttendanceSession.Status.FINALIZED:
-            # Allow teacher to update within same day by reopening or passing reason
-            pass
-
         marks = [
             {
                 "student_id": int(student_id),
@@ -366,15 +396,20 @@ def attendance_quick_mark_view(request):
                 "note": note,
             }
         ]
+        correction, reason = _correction(request)
         applied = attendance_services.mark_many(
             session,
             marks,
             actor=request.user,
-            reason=note or "1-click davomat yangilash",
+            reason=reason or note or "1-click davomat yangilash",
+            expected_revision=_expected_revision(request),
+            correction=correction,
         )
         alerts_scheduled = _schedule_absence_alerts(
             session, marks, countdown_seconds=900
         )
+    except (attendance_services.StaleAttendanceError, attendance_services.FinalizedAttendanceError) as exc:
+        return _conflict(session, exc)
     except AttendanceError as exc:
         return _bad_request(exc)
     except PermissionDenied:
@@ -393,6 +428,7 @@ def attendance_quick_mark_view(request):
             "parent_alerts_scheduled": alerts_scheduled,
             "summary": attendance_services.summary(session),
             "roster": attendance_services.roster(session),
+            "revision": attendance_services.revision(session),
         }
     )
 
@@ -403,7 +439,16 @@ def attendance_mark_all_present_view(request, session_id: int):
     """Explicit teacher action: mark every still-unmarked student present."""
     try:
         session = _session(request, session_id)
-        count = attendance_services.mark_all_present(session, actor=request.user)
+        correction, reason = _correction(request)
+        count = attendance_services.mark_all_present(
+            session,
+            actor=request.user,
+            expected_revision=_expected_revision(request),
+            correction=correction,
+            reason=reason,
+        )
+    except (attendance_services.StaleAttendanceError, attendance_services.FinalizedAttendanceError) as exc:
+        return _conflict(session, exc)
     except AttendanceError as exc:
         return _bad_request(exc)
     except PermissionDenied:
@@ -416,6 +461,7 @@ def attendance_mark_all_present_view(request, session_id: int):
             "marked": count,
             "summary": attendance_services.summary(session),
             "roster": attendance_services.roster(session),
+            "revision": attendance_services.revision(session),
         }
     )
 
@@ -438,7 +484,10 @@ def attendance_finalize_view(request, session_id: int):
                 request.data.get("mark_unmarked_as_absent", False)
             ),
             reason=str(request.data.get("reason", ""))[:200],
+            expected_revision=_expected_revision(request),
         )
+    except attendance_services.StaleAttendanceError as exc:
+        return _conflict(session, exc)
     except AttendanceError as exc:
         return _bad_request(exc)
     except PermissionDenied:

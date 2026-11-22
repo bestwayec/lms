@@ -179,6 +179,11 @@ export default function Layout() {
                 <LayoutDashboardIcon size={16} className="ico" /> {t('dashboard', 'Boshqaruv paneli')}
               </NavLink>
             )}
+            {!isTeacher && !isAdmin && (
+              <NavLink to="/my-homework" className={linkClass} onClick={close}>
+                <FileTextIcon size={16} className="ico" /> {t('my_homework_title', 'Mening vazifalarim')}
+              </NavLink>
+            )}
             <NavLink to="/tests" className={testsLinkClass(pathname)} onClick={close}>
               <FileTextIcon size={16} className="ico" /> {t('cbt_tests', 'Testlar (CBT)')}
             </NavLink>
