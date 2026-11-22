@@ -9592,6 +9592,10 @@ def setup_handlers(app) -> None:
     app.add_handler(CommandHandler("test", unified_test_handler))
     app.add_handler(CommandHandler("yangi_test", group_yangi_test_command))
     app.add_handler(CommandHandler("results", results_handler))
+    from apps.notifications.bot.homework_commands import my_homework_handler
+
+    app.add_handler(CommandHandler("vazifalarim", my_homework_handler))
+    app.add_handler(CommandHandler("homework", my_homework_handler))
     app.add_handler(CommandHandler("essays", essays_handler))
     app.add_handler(CommandHandler("essay_submit", essay_submit_handler))
     app.add_handler(CommandHandler("cancel_essay", cancel_essay_handler))
@@ -9753,6 +9757,7 @@ async def post_init(app) -> None:
             BotCommand("help", "Yordam"),
             BotCommand("quiz", "🧠 Telegram Quiz — test topshirish"),
             BotCommand("results", "Barcha natijalar"),
+            BotCommand("vazifalarim", "📚 Mening vazifalarim"),
             BotCommand("profile", "Shaxsiy profil"),
             BotCommand("tests", "Mavjud testlar"),
             BotCommand("essays", "Esse mavzulari"),

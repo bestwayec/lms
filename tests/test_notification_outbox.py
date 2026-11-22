@@ -309,3 +309,36 @@ def test_webhook_processes_each_update_once_and_rejects_bad_secret(client):
                              HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN="s3cret")
             assert ok.status_code == 200
     assert fake_app.process_update.await_count == 1
+
+
+# --------------------------------------------------------------------------- bot /vazifalarim
+
+
+@pytest.mark.django_db
+def test_bot_homework_list_matches_website_and_requires_verified_link(teacher, group, student, test_obj):
+    from apps.notifications.bot.homework_commands import render_homework_list, verified_user_for_telegram
+
+    assert verified_user_for_telegram(9002) is None  # linked but not verified
+    User.objects.filter(id=student.id).update(telegram_identity_verified_at=timezone.now())
+    user = verified_user_for_telegram(9002)
+    assert user == student
+
+    _hw(teacher, group, test_obj)
+    text, _ = render_homework_list(user)
+    assert "Uy &lt;vazifa&gt;" in text and "Boshlanmagan" in text
+    other = _user("ob_other@example.com", chat=9100)
+    User.objects.filter(id=other.id).update(telegram_identity_verified_at=timezone.now())
+    text_other, _ = render_homework_list(verified_user_for_telegram(9100))
+    assert "Uy" not in text_other  # never another student's homework
+
+
+@pytest.mark.django_db
+def test_bot_homework_command_is_registered():
+    from telegram.ext import Application, CommandHandler
+
+    from apps.notifications.bot.handlers import setup_handlers
+
+    app = Application.builder().token("123:TEST").build()
+    setup_handlers(app)
+    commands = {c for hs in app.handlers.values() for h in hs if isinstance(h, CommandHandler) for c in h.commands}
+    assert {"vazifalarim", "homework"} <= commands
