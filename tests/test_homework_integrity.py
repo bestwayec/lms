@@ -638,3 +638,31 @@ def test_free_student_can_resume_homework_attempt_despite_used_quota(api, teache
     assert resp.status_code in (200, 201), resp.data
     assert (resp.data.get("id") or resp.data.get("attempt_id")) == attempt_id
     quota.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_live_board_reports_real_progress_with_etag_and_isolation(api, teacher, other_teacher, group, student, test_obj):
+    hw = _hw(teacher, group, test_obj)
+    attempt = TestAttempt.objects.get(id=start_student_homework(student, hw.id)["attempt_id"])
+    q = test_obj.questions.order_by("position").first()
+    SaveAnswerService.execute(attempt.id, q.id, choice_ids=[q.choices.get(is_correct=True).id], student=student)
+
+    url = f"/api/v1/school/teacher/homeworks/{hw.id}/live/"
+    api.force_authenticate(teacher)
+    first = api.get(url)
+    assert first.status_code == 200
+    row = next(r for r in first.data["students"] if r["student_id"] == student.id)
+    assert row["status"] == "in_progress" and row["answered"] == 1 and row["score"] is None
+    assert first.data["total_questions"] == 2 and 0 < row["remaining_seconds"] <= 30 * 60
+    etag = first["ETag"]
+    assert api.get(url, HTTP_IF_NONE_MATCH=etag).status_code == 304  # reconnect: nothing changed
+
+    q2 = test_obj.questions.order_by("position").last()
+    SaveAnswerService.execute(attempt.id, q2.id, choice_ids=[q2.choices.get(is_correct=True).id], student=student)
+    changed = api.get(url, HTTP_IF_NONE_MATCH=etag)
+    assert changed.status_code == 200 and changed["ETag"] != etag
+
+    api.force_authenticate(other_teacher)
+    assert api.get(url).status_code == 404
+    api.force_authenticate(student)
+    assert api.get(url).status_code == 403

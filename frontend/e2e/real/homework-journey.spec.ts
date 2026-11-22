@@ -171,6 +171,18 @@ test(`teacher → student → result → teacher → one queued notification (re
   expect(rows[s2.user.id].status).toBe('not_started');
   expect(roster.summary).toMatchObject({ total_students: 2, submitted: 1, graded: 1 });
 
+  // Teacher UI: the live board shows the real outcome.
+  const teacherPage = await context.browser()!.newContext({ viewport: { width: viewport.width, height: viewport.height }, hasTouch: viewport.touch }).then((c) => c.newPage());
+  await asUser(teacherPage, teacher.tokens);
+  await teacherPage.goto('/teacher');
+  const hwCard = teacherPage.locator('div', { has: teacherPage.getByText(`Journey 20Q ${stamp}`, { exact: true }) }).filter({ has: teacherPage.getByRole('button', { name: 'Kuzatish' }) }).last();
+  await hwCard.getByRole('button', { name: 'Kuzatish' }).click();
+  const live = teacherPage.getByRole('dialog', { name: /Jonli kuzatuv/ });
+  await expect(live.getByRole('row', { name: /Aziza/ })).toContainText('Baholandi');
+  await expect(live.getByRole('row', { name: /Aziza/ })).toContainText('95%');
+  await expect(live.getByRole('row', { name: /Bekzod/ })).toContainText('Boshlanmagan');
+  await teacherPage.context().close();
+
   // ---------------- exactly one queued result card, not sent ----------------
   expect(djangoShell(
     `from apps.notifications.models import OutboxMessage as O; q=O.objects.filter(event='homework_result', payload__homework_id=${homeworkId}); print(q.count(), q.first().recipient_id, q.first().status)`,

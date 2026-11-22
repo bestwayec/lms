@@ -3241,7 +3241,17 @@
     "studio_err_has_assignments": "Test vazifa sifatida berilgan: savollarni o'zgartirish uchun nusxa yarating yoki vazifani bekor qiling.",
     "hw_result_percentage": "Natija",
     "hw_ielts_band": "IELTS band",
-    "hw_cefr_level": "CEFR daraja"
+    "hw_cefr_level": "CEFR daraja",
+    "hw_live_title": "Jonli kuzatuv",
+    "hw_live_open": "Kuzatish",
+    "hw_live_reconnecting": "Aloqa uzildi, qayta ulanmoqda…",
+    "hw_live_summary": "Topshirdi",
+    "hw_live_empty": "Bu vazifada hali o'quvchi yo'q.",
+    "hw_live_answered": "Javoblar",
+    "hw_live_time_left": "Qolgan vaqt",
+    "hw_live_left_group": "guruhdan chiqqan",
+    "hw_late": "kechikkan",
+    "student": "O'quvchi"
   },
   "ru": {
     "spk_practise_again": "Повторить эту тему",
@@ -6485,7 +6495,17 @@
     "studio_err_has_assignments": "Тест назначен как задание: создайте копию или отмените задание, чтобы изменить вопросы.",
     "hw_result_percentage": "Результат",
     "hw_ielts_band": "IELTS band",
-    "hw_cefr_level": "Уровень CEFR"
+    "hw_cefr_level": "Уровень CEFR",
+    "hw_live_title": "Live-мониторинг",
+    "hw_live_open": "Мониторинг",
+    "hw_live_reconnecting": "Нет связи, переподключение…",
+    "hw_live_summary": "Сдали",
+    "hw_live_empty": "В этом задании пока нет учеников.",
+    "hw_live_answered": "Ответы",
+    "hw_live_time_left": "Осталось",
+    "hw_live_left_group": "вышел из группы",
+    "hw_late": "с опозданием",
+    "student": "Ученик"
   },
   "en": {
     "spk_practise_again": "Practise this topic again",
@@ -9729,6 +9749,16 @@
     "studio_err_has_assignments": "This test is assigned as homework: duplicate it or cancel the homework to change its questions.",
     "hw_result_percentage": "Result",
     "hw_ielts_band": "IELTS band",
-    "hw_cefr_level": "CEFR level"
+    "hw_cefr_level": "CEFR level",
+    "hw_live_title": "Live monitor",
+    "hw_live_open": "Monitor",
+    "hw_live_reconnecting": "Connection lost, reconnecting…",
+    "hw_live_summary": "Submitted",
+    "hw_live_empty": "No students on this homework yet.",
+    "hw_live_answered": "Answers",
+    "hw_live_time_left": "Time left",
+    "hw_live_left_group": "left the group",
+    "hw_late": "late",
+    "student": "Student"
   }
 }

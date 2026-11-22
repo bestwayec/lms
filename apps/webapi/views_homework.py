@@ -23,6 +23,7 @@ from apps.courses.homework_service import (
     can_assign_vocabulary_pack,
     get_student_homework_detail,
     get_student_homework_list,
+    get_homework_live_board,
     get_student_homework_result,
     get_teacher_homework_roster,
     grade_custom_submission,
@@ -119,6 +120,24 @@ def student_homework_result_view(request, homework_id: int):
 def teacher_homework_roster_view(request, homework_id: int):
     """GET /api/v1/school/teacher/homeworks/<id>/roster/ — per-student authoritative status."""
     return _service_call(get_teacher_homework_roster, request.user, homework_id)
+
+
+@api_view(["GET"])
+@permission_classes([IsTeacherOrAdmin])
+def teacher_homework_live_view(request, homework_id: int):
+    """GET …/teacher/homeworks/<id>/live/ — live tablo; If-None-Match → 304."""
+    try:
+        data = get_homework_live_board(request.user, homework_id)
+    except HomeworkNotFound as exc:
+        return Response({"detail": str(exc), "code": "not_found"}, status=status.HTTP_404_NOT_FOUND)
+    etag = f'"{data["revision"]}"'
+    if request.headers.get("If-None-Match") == etag:
+        resp = Response(status=status.HTTP_304_NOT_MODIFIED)
+    else:
+        resp = Response(data)
+    resp["ETag"] = etag
+    resp["Cache-Control"] = "private, no-cache"
+    return resp
 
 
 @api_view(["POST"])

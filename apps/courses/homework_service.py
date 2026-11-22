@@ -1274,3 +1274,61 @@ def get_teacher_homework_roster(user, homework_id: int) -> dict[str, Any]:
         "summary": summarize_homework_progress(hw, now),
         "students": homework_roster(hw, now),
     }
+
+
+def get_homework_live_board(user, homework_id: int) -> dict[str, Any]:
+    """Live tablo for one homework: progress from persisted answers, no simulation.
+
+    ``revision`` is a hash of the visible state so clients can poll with
+    If-None-Match and reconnect at any time without replaying anything.
+    """
+    import hashlib
+    import json
+
+    from apps.tests.models import StudentAnswer
+
+    hw = Homework.objects.select_related("group", "student", "test").filter(id=homework_id).first()
+    if hw is None or not _teacher_can_manage(user, hw):
+        raise HomeworkNotFound("Vazifa topilmadi.")
+    now = timezone.now()
+    rows = homework_roster(hw, now)
+    total_questions = hw.test.questions.count() if hw.test_id else None
+    subs = {s.student_id: s for s in HomeworkSubmission.objects.filter(homework=hw).select_related("test_attempt")}
+    attempt_ids = [s.test_attempt_id for s in subs.values() if s.test_attempt_id]
+    answered: dict[int, int] = {}
+    last_answer: dict[int, Any] = {}
+    if attempt_ids:
+        from django.db.models import Count, Max
+
+        for row in (
+            StudentAnswer.objects.filter(attempt_id__in=attempt_ids)
+            .values("attempt_id")
+            .annotate(n=Count("id"), last=Max("answered_at"))
+        ):
+            answered[row["attempt_id"]] = row["n"]
+            last_answer[row["attempt_id"]] = row["last"]
+    for r in rows:
+        sub = subs.get(r["student_id"])
+        aid = sub.test_attempt_id if sub else None
+        r["answered"] = answered.get(aid, 0) if aid else 0
+        last = last_answer.get(aid) if aid else None
+        r["last_activity_at"] = (last or (sub.updated_at if sub else None))
+        r["last_activity_at"] = r["last_activity_at"].isoformat() if r["last_activity_at"] else None
+        remaining = None
+        if sub and sub.test_attempt_id and r["status"] == HomeworkSubmission.Status.IN_PROGRESS:
+            remaining = sub.test_attempt.remaining_seconds
+        elif sub and r["status"] == HomeworkSubmission.Status.IN_PROGRESS:
+            deadline = submission_deadline(hw, sub)
+            remaining = max(0, int((deadline - now).total_seconds())) if deadline else None
+        r["remaining_seconds"] = remaining
+    state = [(r["student_id"], r["status"], r["answered"], r["score"]) for r in rows]
+    revision = hashlib.sha256(json.dumps(state, default=str).encode()).hexdigest()[:16]
+    return {
+        "homework_id": hw.id,
+        "title": hw.title,
+        "total_questions": total_questions,
+        "revision": revision,
+        "server_now": now.isoformat(),
+        "summary": summarize_homework_progress(hw, now),
+        "students": rows,
+    }
