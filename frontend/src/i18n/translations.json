@@ -3284,7 +3284,15 @@
     "exam_tool_solubility_short": "Eruvchanlik",
     "exam_tool_calculator": "Kalkulyator",
     "exam_offline": "Oflayn",
-    "exam_online": "Onlayn"
+    "exam_online": "Onlayn",
+    "take_map_hint": "Savollar xaritasi: raqamni bosib savolga qaytishingiz mumkin",
+    "take_palette_title": "Savollar palitrasi",
+    "take_palette_hint": "Istalgan savolga bitta teginishda o‘ting",
+    "take_prev_full": "Oldingi savol",
+    "take_next_full": "Keyingi savol",
+    "take_finish_full": "Testni yakunlash",
+    "take_unflag": "Belgini olib tashlash",
+    "take_flag_full": "Keyin qaytish uchun belgilash"
   },
   "ru": {
     "spk_practise_again": "Повторить эту тему",
@@ -6571,7 +6579,15 @@
     "exam_tool_solubility_short": "Растворимость",
     "exam_tool_calculator": "Калькулятор",
     "exam_offline": "Офлайн",
-    "exam_online": "Онлайн"
+    "exam_online": "Онлайн",
+    "take_map_hint": "Карта вопросов: нажмите номер, чтобы вернуться к вопросу",
+    "take_palette_title": "Палитра вопросов",
+    "take_palette_hint": "Переходите к любому вопросу одним касанием",
+    "take_prev_full": "Предыдущий вопрос",
+    "take_next_full": "Следующий вопрос",
+    "take_finish_full": "Завершить тест",
+    "take_unflag": "Снять отметку",
+    "take_flag_full": "Отметить, чтобы вернуться"
   },
   "en": {
     "spk_practise_again": "Practise this topic again",
@@ -9858,6 +9874,14 @@
     "exam_tool_solubility_short": "Solubility",
     "exam_tool_calculator": "Calculator",
     "exam_offline": "Offline",
-    "exam_online": "Online"
+    "exam_online": "Online",
+    "take_map_hint": "Question map: tap a number to return to that question",
+    "take_palette_title": "Question palette",
+    "take_palette_hint": "Jump to any question with one tap",
+    "take_prev_full": "Previous question",
+    "take_next_full": "Next question",
+    "take_finish_full": "Finish test",
+    "take_unflag": "Remove flag",
+    "take_flag_full": "Flag to review later"
   }
 }

@@ -2827,7 +2827,8 @@ export default function TakeTest() {
               justifyContent: 'center',
               fontWeight: 700,
             }}
-            title="Oldingi savol"
+            title={t('take_prev_full', 'Oldingi savol')}
+              aria-label={t('take_prev_full', 'Oldingi savol')}
           >
             <ChevronLeft size={20} />
           </button>
@@ -2896,7 +2897,9 @@ export default function TakeTest() {
               justifyContent: 'center',
               fontSize: 18,
             }}
-            title={currentQuestion && flagged[currentQuestion.id] ? 'Belgini olib tashlash' : 'Keyin qaytish uchun belgilash (⭐)'}
+            title={currentQuestion && flagged[currentQuestion.id] ? t('take_unflag', 'Belgini olib tashlash') : t('take_flag_full', 'Keyin qaytish uchun belgilash')}
+            aria-label={currentQuestion && flagged[currentQuestion.id] ? t('take_unflag', 'Belgini olib tashlash') : t('take_flag_full', 'Keyin qaytish uchun belgilash')}
+            aria-pressed={!!(currentQuestion && flagged[currentQuestion.id])}
           >
             {currentQuestion && flagged[currentQuestion.id] ? '⭐' : '☆'}
           </button>
@@ -2920,7 +2923,8 @@ export default function TakeTest() {
                 justifyContent: 'center',
                 fontWeight: 700,
               }}
-              title="Keyingi savol"
+              title={t('take_next_full', 'Keyingi savol')}
+              aria-label={t('take_next_full', 'Keyingi savol')}
             >
               <ChevronRight size={20} />
             </button>
@@ -2942,7 +2946,8 @@ export default function TakeTest() {
                 gap: 4,
                 fontWeight: 800,
               }}
-              title="Testni yakunlash"
+              title={t('take_finish_full', 'Testni yakunlash')}
+              aria-label={t('take_finish_full', 'Testni yakunlash')}
             >
               <Check size={18} />
             </button>
