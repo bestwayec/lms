@@ -65,7 +65,7 @@ Environment: Python 3.13, Node 22, venv `/tmp/claude-0/venv` from `requirements/
 5. PostgreSQL-only test-data issues: arena room codes longer than the `varchar(10)` column; certificate test asserted the SQLite-only
    counter table (PostgreSQL uses `cert_number_seq`) — now vendor-aware while keeping the strictly-increasing assertion on both.
 
-**Not fixed — recorded in the ledger (not weakened or skipped):**
+**Resolved after the first Phase 0 push (see `GRANDEC_NEXT_PROGRESS.md`, Stage 0 closure); the table below is the state at first audit:**
 
 | Item | Why it is open |
 |---|---|
@@ -208,7 +208,7 @@ No finding in this table is claimed fixed except where §3.1 says so.
 | P0-3 | 0 | Playwright ambiguous combobox selector | S | — | ✅ done |
 | P0-4 | 0 | PostgreSQL `FOR UPDATE` + outer-join bug in tuition (5 sites) | S | — | ✅ done |
 | P0-5 | 0 | PG-only test-data fixes (arena codes, certificate counter) | S | — | ✅ done |
-| P0-6 | 0 | PG job in CI; resolve seed/Channels/streaming/essay-id harness failures | M | owner decision on seed tests | open |
+| P0-6 | 0 | PG job in CI; resolve seed/Channels/streaming/essay-id harness failures | M | — | ✅ done (see `GRANDEC_NEXT_PROGRESS.md`) |
 | P0-7 | 0 | Correct `CLAUDE.md` (python-telegram-bot, not Aiogram) | S | owner | open |
 | P1-1 | 1 | Private storage + authenticated download for receipts/proofs/speaking audio (S1) | M–L | deploy change (nginx) needs owner approval | open |
 | P1-2 | 1 | Review/merge PR #134 (S2) | — | owner | open |
