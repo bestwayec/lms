@@ -9,6 +9,21 @@
    - Ustoz kabinetida har bir o'quvchining PRO holati (`⭐ PRO (Faol)`), ishlagan testlari va esselari aks etishi.
 3. Attestatsiya 2026 yangi diagnostika testini 50 ta savoli bilan bazaga seed qilish, kategoriyalashtirish va VPS ga deploy qilish.
 
+### 2.89. Rasmiy Versiya v3.0: Stage 3b & Stage 3c — Group Membership History, Tenant Search Isolation & Teacher Workspace 3.0
+- [x] Stage 3b: A'zolik tarixi va xavfsiz qidiruv (Group Membership History & Cross-Center Search Isolation):
+  * `GroupMembershipHistory` modeli va migratsiya (`apps/courses/models.py`, `0014_groupmembershiphistory.py`): o'quvchi, guruh, harakat (`JOINED`, `REMOVED`, `REJOINED`), vaqtlar, aktyor va audit sabablarini qayd etish.
+  * Guruhdan chiqarilganda test urinishlari, natijalar, esselar va davomatlar hech qachon o'chirilmaydi (zero-cascade deletion).
+  * O'quvchilarni qidirish va guruhga qo'shish filiali va markaz chegarasida qat'iy izolyatsiya qilindi; akkauntlar enumeratsiyasi va ma'lumot sizishi oldi olindi.
+  * UI: `Groups.tsx` da qidiruv, chiqarish tasdiqlash dialogi, test natijalari va a'zolik tarixi tabi (`uz`, `ru`, `en`).
+  * Sinovlar: `tests/test_stage3b_membership_history.py` (8 ta PASS).
+- [x] Stage 3c: Ustoz Ish Stoli 3.0 (Teacher Workspace 3.0):
+  * 4 Asosiy Amal Hubi: Davomat olish, Uy vazifasi berish, Guruhlarim, Natijalar.
+  * Bugungi darslar jadvali (`today_lessons`): `AttendanceSession` bilan to'liq integratsiya (`FINALIZED`, `DRAFT`, `NOT_STARTED` holatlari).
+  * Uy vazifasi tizimi (`/api/v1/school/teacher/homeworks/`): guruhga vazifa biriktirish, kelajakdagi deadline tekshiruvi, test va esse integratsiyasi hamda bekor qilish.
+  * Tekshirish navbati (`review_queue`): ustoz tekshiruvini kutayotgan esselar (`PENDING_TEACHER`) va to'g'ridan-to'g'ri tekshirish o'tishi.
+  * UI: `TeacherDashboard.tsx` zamonaviy 4 ta amal kartalari, darslar jadvali, deadline paneli, review navbati va vazifa yaratish modali bilan boyitildi.
+  * Sinovlar: `tests/test_stage3c_teacher_workspace.py` (5 ta PASS), Stage 3 regressiyasi (50 ta PASS, 2 ta skipped).
+
 ### 2.88. Rasmiy Versiya v2.5.0: Secret Audit, Parent Retention CRM & Branch Churn Risk Engine
 - [x] 0-Vazifa: Repo Sanitization & Token Leak Prevention (`scripts/check_secrets.py`, `.gitignore`):
   * Pre-commit & CI Secret Guard: `scripts/check_secrets.py` skaneri OpenAI (`sk-`), Telegram bot tokeni va xususiy kalitlarni avtomatik aniqlaydi (769 ta faylda 0 ta leak).
