@@ -722,3 +722,24 @@ def send_feedback_reply(self: Any, feedback_id: int) -> dict[str, Any]:
         logger.warning("Feedback #%s reply delivery failed: %s", feedback_id, exc)
         raise self.retry(exc=exc)
     return {"status": "sent"}
+
+
+# ---------------------------------------------------------------------------
+# Transactional outbox worker (disabled unless NOTIFICATION_OUTBOX_ENABLED)
+# ---------------------------------------------------------------------------
+@shared_task(name="notifications.process_outbox")
+def process_outbox_task(limit: int = 50) -> dict[str, Any]:
+    from apps.notifications.outbox import outbox_enabled, process_batch
+
+    if not outbox_enabled():
+        return {"skipped": "disabled"}
+    return process_batch(limit=limit)
+
+
+@shared_task(name="notifications.enqueue_homework_reminders")
+def enqueue_homework_reminders_task() -> dict[str, Any]:
+    from apps.notifications.outbox import enqueue_deadline_reminders, outbox_enabled
+
+    if not outbox_enabled():
+        return {"skipped": "disabled"}
+    return {"enqueued": enqueue_deadline_reminders()}

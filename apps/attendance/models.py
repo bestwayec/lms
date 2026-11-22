@@ -445,6 +445,12 @@ class NotificationPreference(models.Model):
         _("Kurs to'lovi eslatmalari"),
         default=True,
     )
+    # Homework / outbox (Telegram Bot 3.0)
+    homework_assigned_alerts = models.BooleanField(_("Yangi vazifa xabarlari"), default=True)
+    homework_deadline_alerts = models.BooleanField(_("Vazifa muddati eslatmalari"), default=True)
+    teacher_homework_review = models.BooleanField(_("Vazifa tekshiruvi so'rovlari"), default=True)
+    quiet_hours_start = models.TimeField(_("sokin soatlar boshlanishi"), null=True, blank=True)
+    quiet_hours_end = models.TimeField(_("sokin soatlar tugashi"), null=True, blank=True)
     created_at = models.DateTimeField(_("yaratilgan"), auto_now_add=True)
     updated_at = models.DateTimeField(_("yangilangan"), auto_now=True)
 

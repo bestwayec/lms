@@ -265,6 +265,9 @@ def create_unified_homework(
     else:
         hw = Homework.objects.create(**fields)
 
+    from apps.notifications.outbox import enqueue_homework_assigned
+
+    enqueue_homework_assigned(hw)  # same transaction: rolled back together
     return hw, True
 
 
@@ -830,6 +833,7 @@ def start_student_homework(student, homework_id: int) -> dict[str, Any]:
     if hw.content_type == Homework.ContentType.TEST and sub.test_attempt_id and not sub.is_completed:
         if _sync_test_submission(sub):
             sub.save()
+            _announce(sub)
 
     in_progress = not sub.is_completed and sub.status in (
         HomeworkSubmission.Status.IN_PROGRESS,
@@ -989,7 +993,14 @@ def _finalize_test_submission(sub: HomeworkSubmission, hw: Homework, student, no
         sub.grading_error = "Rasmiy natija topilmadi."
         sub.is_completed = True
     sub.save()
+    _announce(sub)
     return _completion_payload(sub, hw)
+
+
+def _announce(sub: HomeworkSubmission) -> None:
+    from apps.notifications.outbox import enqueue_homework_outcome
+
+    enqueue_homework_outcome(sub)
 
 
 @transaction.atomic
@@ -1012,9 +1023,10 @@ def submit_student_homework(student, homework_id: int, payload: dict[str, Any] |
         raise HomeworkConflict("Avval topshiriqni boshlang.", "not_started")
 
     if sub.is_completed:
-        if hw.content_type == Homework.ContentType.TEST and sub.status == HomeworkSubmission.Status.GRADING_FAILED:
+        if hw.content_type == Homework.ContentType.TEST and sub.status != HomeworkSubmission.Status.GRADED:
             if _sync_test_submission(sub):
                 sub.save()
+                _announce(sub)
         return _completion_payload(sub, hw)
 
     if hw.content_type == Homework.ContentType.TEST:
@@ -1047,6 +1059,7 @@ def submit_student_homework(student, homework_id: int, payload: dict[str, Any] |
     sub.is_completed = True
     sub.completed_at = now
     sub.save()
+    _announce(sub)
     return _completion_payload(sub, hw)
 
 
@@ -1145,6 +1158,7 @@ def grade_custom_submission(user, submission_id: int, *, score, max_score, feedb
     sub.status = HomeworkSubmission.Status.GRADED
     sub.graded_by = user
     sub.save()
+    _announce(sub)
     return sub
 
 

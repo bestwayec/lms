@@ -213,6 +213,11 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # ---------------------------------------------------------------------------
 SITE_URL = env("SITE_URL", default="http://localhost:8000")
 
+# Transactional notification outbox (apps.notifications.outbox). Rows are
+# always written; delivery runs only when this is true AND the
+# notifications.process_outbox task is scheduled (it is not by default).
+NOTIFICATION_OUTBOX_ENABLED = env.bool("NOTIFICATION_OUTBOX_ENABLED", default=False)
+
 # ---------------------------------------------------------------------------
 # Auth Redirects — SPA paths (server-rendered auth pages are retired).
 # @login_required redirects land on the React login page; the SPA then uses

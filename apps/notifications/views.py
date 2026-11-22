@@ -107,6 +107,13 @@ def telegram_webhook_view(request: HttpRequest) -> HttpResponse:
         from telegram import Update
 
         data = json.loads(request.body)
+        # Telegram re-delivers an update until it gets 200; process each once.
+        update_id = data.get("update_id") if isinstance(data, dict) else None
+        if update_id is not None:
+            from django.core.cache import cache
+
+            if not cache.add(f"tg_update_seen:{int(update_id)}", 1, timeout=24 * 3600):
+                return HttpResponse("OK")
         update = Update.de_json(data, app.bot)
 
         # Process update asynchronously — serialized so concurrent webhook
