@@ -23,12 +23,31 @@ export interface StudioQuestion {
   explanation?: string;
 }
 
+/** Ona tili & Adabiyot topics — codes match apps.tests.studio_service.TOPICS_BY_SUBJECT. */
+export const TOPICS_BY_SUBJECT: Record<string, readonly string[]> = {
+  uzbek: [
+    'fonetika',
+    'leksikologiya',
+    'morfologiya',
+    'sintaksis',
+    'imlo',
+    'punktuatsiya',
+    'uslubiyat',
+    'matn_tahlili',
+    'adabiyot',
+    'milliy_sertifikat',
+    'aralash',
+  ],
+};
+
 export interface StudioBlock {
   /** Client-only key for React lists; ignored by the API. */
   key?: string;
   type: BlockType;
   section: SectionCode;
   title: string;
+  /** Ona tili topic code (fonetika, imlo, …); '' when untagged. */
+  topic?: string;
   instructions: string;
   passage: string;
   gap_text: string;
@@ -127,6 +146,8 @@ export interface ItemAnalysis {
   median: number | null;
   distribution: { from: number; to: number; count: number }[];
   items: ItemStat[];
+  /** Per-topic accuracy from real answers, weakest first (tagged questions only). */
+  topics?: { topic: string; questions: number; correct: number; possible: number; accuracy: number | null }[];
   matrix: {
     attempt_id: number;
     student: string;
@@ -311,6 +332,20 @@ export function emptyBlock(type: BlockType, start: number, section: SectionCode 
     options: type === 'matching' ? ['', '', ''] : type === 'tfng' ? [...TF_LABELS] : [],
     questions: type === 'gap' ? [{ number: start, text: '', options: [], answer: '' }] : [q(start)],
   };
+}
+
+/** A blank multiple-choice block of ``count`` questions (4 empty options each) —
+ *  the "10/20/30/40 savollik test" starter. Publish validation flags anything
+ *  left empty, so nothing incomplete can be published. */
+export function blankMcqBlock(count: number, start: number, section: SectionCode = 'GENERAL'): StudioBlock {
+  const b = emptyBlock('mcq', start, section);
+  b.questions = Array.from({ length: count }, (_, i) => ({
+    number: start + i,
+    text: '',
+    options: ['', '', '', ''],
+    answer: '',
+  }));
+  return b;
 }
 
 /** Change a block's type keeping what still fits. */

@@ -345,3 +345,27 @@ test('Scenario B: Smart Paste with Uzbek ‘ apostrophes and Cyrillic А/Б/В/�
   await expect(page.locator('textarea').filter({ hasText: 'Қайси сўз от?' })).toHaveCount(1);
   await page.context().close();
 });
+
+test('Stage 1: at 360px a teacher starts a blank 20-question Ona tili test and tags its topic', async ({ browser, request }) => {
+  const teacher = await login(request, 'e2e-teacher@example.test');
+  const page = await pageAs(browser, teacher.tokens, 360);
+  const title = `Blank 20 ${Date.now()}`;
+  await page.goto('/teacher/studio/new');
+  await page.getByPlaceholder('Masalan: Reading Mock 3').fill(title);
+  await page.locator('main select').first().selectOption('uzbek');
+  await page.getByRole('button', { name: /Keyingisi: Savollar/ }).click();
+  await page.getByRole('tab', { name: 'Bloklar' }).click();
+  await page.getByRole('button', { name: '20 ta savol' }).click();
+  await expect(page.getByRole('textbox', { name: /^Savol matni \d+$/ })).toHaveCount(20);
+  await page.getByLabel('Mavzu (tahlil uchun)').first().selectOption('imlo');
+  await noOverflow(page);
+  const saved = page.waitForResponse((r) => r.url().includes('/teacher/studio/tests/') && ['POST', 'PUT'].includes(r.request().method()));
+  await page.getByRole('button', { name: 'Qoralamani saqlash' }).first().click();
+  const body = await (await saved).json();
+  const T = { Authorization: `Bearer ${teacher.tokens.access}` };
+  const detail = await (await request.get(`${API}/api/v1/teacher/studio/tests/${body.test.id}/`, { headers: T })).json();
+  expect(detail.blocks[0].topic).toBe('imlo');
+  expect(detail.blocks[0].questions).toHaveLength(20);
+  expect(detail.test.status).toBe('draft'); // empty questions cannot be published
+  await page.context().close();
+});

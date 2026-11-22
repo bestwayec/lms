@@ -64,6 +64,24 @@ MAX_IMAGE_BYTES = 5 * 1024 * 1024
 AUDIO_PREFIX = "exams/audio/"
 IMAGE_PREFIX = "exams/images/"
 STUDIO_SUBJECTS = {"uzbek", "english", "biology", "chemistry", "law"}
+# Ona tili & Adabiyot topic taxonomy (stable codes; labels are translated in the UI).
+# Stored per question in Question.config["topic"] — no schema change.
+TOPICS_BY_SUBJECT: dict[str, tuple[str, ...]] = {
+    "uzbek": (
+        "fonetika",
+        "leksikologiya",
+        "morfologiya",
+        "sintaksis",
+        "imlo",
+        "punktuatsiya",
+        "uslubiyat",
+        "matn_tahlili",
+        "adabiyot",
+        "milliy_sertifikat",
+        "aralash",
+    ),
+}
+ALL_TOPICS = frozenset(t for ts in TOPICS_BY_SUBJECT.values() for t in ts)
 SECTION_NAMES = {"GENERAL": "Test", "READING": "Reading", "LISTENING": "Listening"}
 FLAG_FAIL_RATE = 60.0  # item flagged when more than this % of students failed it
 TYPE_TO_QTYPE = {
@@ -163,6 +181,7 @@ def normalize_blocks(raw_blocks: Any) -> list[dict[str, Any]]:
             "type": btype,
             "section": section,
             "title": _s(raw.get("title"), 255),
+            "topic": raw.get("topic") if raw.get("topic") in ALL_TOPICS else "",
             "instructions": _s(raw.get("instructions"), 3000),
             "passage": _s(raw.get("passage"), 30000),
             "gap_text": _s(raw.get("gap_text"), 30000),
@@ -391,6 +410,8 @@ def _build_content(test: Test, blocks: list[dict[str, Any]]) -> None:
 
         for qi, q in enumerate(b["questions"]):
             config: dict[str, Any] = {"number": q["number"], "studio_type": b["type"]}
+            if b.get("topic"):
+                config["topic"] = b["topic"]
             if b["type"] == "gap" and qi == 0:
                 # Answers stripped: Question.config is sent to students as-is.
                 config["studio_gap_text"] = GAP_RE.sub(lambda m: f"[{m.group(1)}]", b["gap_text"])
@@ -530,6 +551,7 @@ def load_blocks(test: Test) -> list[dict[str, Any]]:
                 "type": btype,
                 "section": part.section.code if part.section.code in SECTIONS else "GENERAL",
                 "title": group.title or part.title,
+                "topic": next((q.config.get("topic") for q in qs if q.config.get("topic")), ""),
                 "instructions": group.instructions,
                 "passage": "",
                 "gap_text": "",
@@ -833,6 +855,7 @@ def item_analysis(test: Test, group=None) -> dict[str, Any]:
                 "number": q.config.get("number") or idx,
                 "text": q.text[:160],
                 "question_type": q.question_type,
+                "topic": (q.config or {}).get("topic", ""),
                 "correct": correct,
                 "answered": answered,
                 "total": n,
@@ -895,8 +918,37 @@ def item_analysis(test: Test, group=None) -> dict[str, Any]:
         "median": round(statistics.median(percentages), 1) if percentages else None,
         "distribution": [{"from": i * 10, "to": i * 10 + 10, "count": c} for i, c in enumerate(buckets)],
         "items": items,
+        "topics": topic_breakdown(items),
         "matrix": rows,
     }
+
+
+def topic_breakdown(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Weak topics from real answers: correct / (questions × finished attempts) per topic.
+
+    Only questions the teacher tagged count; untagged ones are not guessed.
+    Sorted weakest first so the teacher sees what to re-teach.
+    """
+    agg: dict[str, dict[str, int]] = {}
+    for it in items:
+        topic = it.get("topic") or ""
+        if not topic or not it.get("total"):
+            continue
+        row = agg.setdefault(topic, {"questions": 0, "correct": 0, "possible": 0})
+        row["questions"] += 1
+        row["correct"] += it["correct"]
+        row["possible"] += it["total"]
+    out = [
+        {
+            "topic": topic,
+            "questions": r["questions"],
+            "correct": r["correct"],
+            "possible": r["possible"],
+            "accuracy": round(r["correct"] / r["possible"] * 100, 1) if r["possible"] else None,
+        }
+        for topic, r in agg.items()
+    ]
+    return sorted(out, key=lambda r: (r["accuracy"] if r["accuracy"] is not None else 101, r["topic"]))
 
 
 # ---------------------------------------------------------------------------

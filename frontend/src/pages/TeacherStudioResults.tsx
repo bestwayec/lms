@@ -172,6 +172,41 @@ export default function TeacherStudioResults() {
               <p className="muted small">{t('studio_dist_axis')}</p>
             </section>
 
+            {data.topics && data.topics.length > 0 && (
+              <section className="card studio-topics" aria-labelledby="studio-topics-h">
+                <h2 id="studio-topics-h">{t('studio_weak_topics', 'Mavzular bo‘yicha natija (eng zaifi birinchi)')}</h2>
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8 }}>
+                  {data.topics.map((tp) => (
+                    <li key={tp.topic}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 14 }}>
+                        <strong>{t(`topic_${tp.topic}`, tp.topic)}</strong>
+                        <span className="muted">
+                          {t('studio_topic_accuracy', 'To‘g‘ri javoblar')}: {tp.correct}/{tp.possible}
+                          {tp.accuracy !== null ? ` · ${tp.accuracy}%` : ''}
+                        </span>
+                      </div>
+                      <div
+                        role="progressbar"
+                        aria-label={t(`topic_${tp.topic}`, tp.topic)}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={tp.accuracy ?? 0}
+                        style={{ height: 8, borderRadius: 4, background: 'var(--border)', overflow: 'hidden', marginTop: 4 }}
+                      >
+                        <div
+                          style={{
+                            width: `${tp.accuracy ?? 0}%`,
+                            height: '100%',
+                            background: (tp.accuracy ?? 0) < 60 ? 'var(--danger, #DC2626)' : 'var(--emerald, #059669)',
+                          }}
+                        />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
             <section className="card studio-heat" aria-labelledby="studio-heat-h">
               <div className="studio-heat__head">
                 <h2 id="studio-heat-h">{t('studio_heatmap')}</h2>

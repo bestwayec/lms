@@ -26,6 +26,7 @@ import {
   BLOCK_TYPES,
   STUDIO_SUBJECTS,
   StudioApi,
+  blankMcqBlock,
   emptyBlock,
   nextNumber,
   withKeys,
@@ -651,6 +652,23 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
               {tab === 'blocks' && (
                 <>
                   {!locked && (
+                    <>
+                    <div className="studio-quickadd card" style={{ padding: 10, margin: '10px 0', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <span className="muted small">{t('studio_blank_test', 'Bo‘sh test')}:</span>
+                      {[10, 20, 30, 40].map((n) => (
+                        <button
+                          key={`blank-${n}`}
+                          type="button"
+                          className="btn sm"
+                          onClick={() => {
+                            const section = blocks.at(-1)?.section ?? (meta.subject === 'english' ? 'READING' : 'GENERAL');
+                            editBlocks([...blocks, blankMcqBlock(n, nextNumber(blocks), section)]);
+                          }}
+                        >
+                          {t('studio_blank_n', '{n} ta savol').replace('{n}', String(n))}
+                        </button>
+                      ))}
+                    </div>
                     <div className="studio-quickadd card" style={{ padding: 10, margin: '10px 0', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                       <span className="muted small">{t('studio_add_type', '+ Savol qo‘shish')}:</span>
                       {BLOCK_TYPES.map((bt, i) => (
@@ -659,6 +677,7 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
                         </button>
                       ))}
                     </div>
+                    </>
                   )}
 
                   {blocks.length === 0 ? (
@@ -683,6 +702,7 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
                           count={blocks.length}
                           issues={issuesByBlock.get(i) ?? []}
                           nextNumber={nextNumber(blocks)}
+                          subject={meta.subject}
                           onChange={(nb) => editBlocks(blocks.map((x, k) => (k === i ? nb : x)))}
                           onRemove={() => {
                             if (window.confirm(t('studio_confirm_remove', 'Ushbu savol guruhini o‘chirmoqchimisiz?'))) {
