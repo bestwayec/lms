@@ -3107,7 +3107,18 @@
     "public_plans_empty": "Hozircha e’lon qilingan tariflar yo‘q.",
     "teacher_live_hint": "QR va jonli natijalar uchun avval quyida test yarating.",
     "teacher_live_ready": "Test sahifasini oching va kirish kodidan foydalaning.",
-    "teacher_live_qr": "Test QR-kodi va kirish kodi"
+    "teacher_live_qr": "Test QR-kodi va kirish kodi",
+    "exam_undecided": "Hali tanlanmagan",
+    "exam_national": "Milliy sertifikat",
+    "exam_attestation": "Attestatsiya",
+    "exam_goal_label": "Imtihon maqsadi",
+    "exam_goal_select": "Maqsadni tanlang",
+    "subject_switch_failed": "Fan yoki maqsad saqlanmadi. Qayta urinib ko‘ring.",
+    "omr_invalid_file": "JPG, PNG yoki WEBP rasmini tanlang (8 MB gacha).",
+    "omr_exam_type": "Imtihon turi",
+    "omr_all_exam_types": "Barcha imtihon turlari",
+    "omr_tests_load_error": "Testlarni yuklab bo‘lmadi.",
+    "omr_choose_test": "Testni tanlang"
   },
   "ru": {
     "spk_practise_again": "Повторить эту тему",
@@ -6217,7 +6228,18 @@
     "public_plans_empty": "Пока нет опубликованных тарифов.",
     "teacher_live_hint": "Создайте тест ниже, чтобы поделиться QR-кодом и открыть результаты.",
     "teacher_live_ready": "Откройте страницу теста и используйте код доступа.",
-    "teacher_live_qr": "QR-код теста и код доступа"
+    "teacher_live_qr": "QR-код теста и код доступа",
+    "exam_undecided": "Ещё не выбрано",
+    "exam_national": "Национальный сертификат",
+    "exam_attestation": "Аттестация",
+    "exam_goal_label": "Цель экзамена",
+    "exam_goal_select": "Выберите цель",
+    "subject_switch_failed": "Не удалось сохранить предмет или цель. Попробуйте ещё раз.",
+    "omr_invalid_file": "Выберите изображение JPG, PNG или WEBP (до 8 МБ).",
+    "omr_exam_type": "Тип экзамена",
+    "omr_all_exam_types": "Все типы экзаменов",
+    "omr_tests_load_error": "Не удалось загрузить тесты.",
+    "omr_choose_test": "Выберите тест"
   },
   "en": {
     "spk_practise_again": "Practise this topic again",
@@ -9327,6 +9349,17 @@
     "public_plans_empty": "No plans have been published yet.",
     "teacher_live_hint": "Create a test below to share its QR code and view live results.",
     "teacher_live_ready": "Open the test page and use the access code.",
-    "teacher_live_qr": "Test QR and access code"
+    "teacher_live_qr": "Test QR and access code",
+    "exam_undecided": "Not selected yet",
+    "exam_national": "National certificate",
+    "exam_attestation": "Teacher attestation",
+    "exam_goal_label": "Exam goal",
+    "exam_goal_select": "Choose a goal",
+    "subject_switch_failed": "Could not save the subject or goal. Please try again.",
+    "omr_invalid_file": "Choose a JPG, PNG or WEBP image (up to 8 MB).",
+    "omr_exam_type": "Exam type",
+    "omr_all_exam_types": "All exam types",
+    "omr_tests_load_error": "Could not load the tests.",
+    "omr_choose_test": "Choose a test"
   }
 }
