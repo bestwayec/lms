@@ -227,11 +227,11 @@ def google_auth_callback(request: HttpRequest) -> HttpResponseRedirect:
     request.session.set_expiry(60 * 60 * 24 * 30)
     logger.info("Google OAuth login: user_id=%s", user.pk)
 
-    tokens = _jwt_pair_for(user)
-    dash_url = reverse("web:dashboard")
-    return HttpResponseRedirect(
-        f"{dash_url}?oauth=google&access={tokens['access']}&refresh={tokens['refresh']}"
-    )
+    # Never put credentials in the URL: they would end up in browser history, Referer
+    # headers, proxy/access logs and analytics. The login above established the Django
+    # session; the SPA picks up its JWT pair from the session bridge
+    # (GET /api/auth/session/status/) when it loads without tokens.
+    return HttpResponseRedirect(reverse("web:dashboard"))
 
 
 def _jwt_pair_for(user) -> dict[str, str]:
