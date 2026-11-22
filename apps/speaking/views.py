@@ -45,6 +45,15 @@ def _serialize_topic(topic: SpeakingTopic) -> dict:
     }
 
 
+def _audio_path(sub: SpeakingSubmission) -> str | None:
+    """Authenticated download path; the recording is never exposed as a /media/ URL."""
+    if not sub.audio_file:
+        return None
+    from apps.webapi.views_private_files import speaking_audio_path
+
+    return speaking_audio_path(sub.pk)
+
+
 def _serialize_submission(sub: SpeakingSubmission) -> dict:
     return {
         "id": sub.id,
@@ -52,7 +61,7 @@ def _serialize_submission(sub: SpeakingSubmission) -> dict:
         "topic_title": sub.topic.title if sub.topic else "",
         "part": sub.topic.part if sub.topic else "",
         "part_label": sub.topic.get_part_display() if sub.topic else "",
-        "audio_url": sub.audio_file.url if sub.audio_file else None,
+        "audio_url": _audio_path(sub),
         "duration_seconds": sub.duration_seconds,
         "transcript": sub.transcript,
         "fluency_score": float(sub.fluency_score),

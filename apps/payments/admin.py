@@ -755,6 +755,13 @@ class PaymentHistoryAdmin(admin.ModelAdmin):
     raw_id_fields = ("user", "plan")
 
 
+def _receipt_path(obj) -> str:
+    """Authenticated download path (session auth works for admin users); never a /media/ URL."""
+    from apps.webapi.views_private_files import payment_receipt_path
+
+    return payment_receipt_path(obj.pk)
+
+
 @admin.register(PaymentReceipt)
 class PaymentReceiptAdmin(admin.ModelAdmin):
     list_display = (
@@ -784,8 +791,8 @@ class PaymentReceiptAdmin(admin.ModelAdmin):
                 '<a href="{}" target="_blank">'
                 '<img src="{}" style="max-height: 50px; border-radius: 4px; border: 1px solid #ddd;" />'
                 "</a>",
-                obj.receipt_image.url,
-                obj.receipt_image.url,
+                _receipt_path(obj),
+                _receipt_path(obj),
             )
         return "—"
 
@@ -796,8 +803,8 @@ class PaymentReceiptAdmin(admin.ModelAdmin):
                 '<a href="{}" target="_blank">'
                 '<img src="{}" style="max-width: 480px; max-height: 600px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />'
                 "</a>",
-                obj.receipt_image.url,
-                obj.receipt_image.url,
+                _receipt_path(obj),
+                _receipt_path(obj),
             )
         return "—"
 

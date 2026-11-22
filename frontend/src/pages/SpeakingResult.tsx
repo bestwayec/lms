@@ -1,3 +1,4 @@
+import { ProtectedAudio } from '../components/ProtectedMedia';
 import { useLang } from '../i18n/LangContext';
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
@@ -228,7 +229,7 @@ export default function SpeakingResult() {
 
         {sub.audio_url && (
           <div style={{ marginBottom: 16 }}>
-            <audio src={sub.audio_url} controls style={{ width: '100%', borderRadius: 10 }} />
+            <ProtectedAudio path={sub.audio_url} />
           </div>
         )}
 

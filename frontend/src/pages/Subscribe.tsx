@@ -1,3 +1,4 @@
+import { ProtectedImageLink } from '../components/ProtectedMedia';
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
@@ -674,21 +675,7 @@ export default function Subscribe() {
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    {r.receipt_image_url && (
-                      <a href={r.receipt_image_url} target="_blank" rel="noopener noreferrer">
-                        <img
-                          src={r.receipt_image_url}
-                          alt="Chek"
-                          style={{
-                            width: 44,
-                            height: 44,
-                            objectFit: 'cover',
-                            borderRadius: 6,
-                            border: '1px solid var(--border)',
-                          }}
-                        />
-                      </a>
-                    )}
+                    {r.receipt_image_url && <ProtectedImageLink path={r.receipt_image_url} alt={t('file_receipt_alt')} />}
                     <div>
                       <strong style={{ fontSize: 14, textTransform: 'capitalize' }}>
                         {r.plan} {t('sub_tariff_label')} — {Number(r.amount).toLocaleString()} {t('sub_per_month').split('/')[0].trim()}

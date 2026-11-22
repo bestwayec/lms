@@ -3118,7 +3118,11 @@
     "omr_exam_type": "Imtihon turi",
     "omr_all_exam_types": "Barcha imtihon turlari",
     "omr_tests_load_error": "Testlarni yuklab bo‘lmadi.",
-    "omr_choose_test": "Testni tanlang"
+    "omr_choose_test": "Testni tanlang",
+    "file_open": "Faylni ochish",
+    "file_loading": "Fayl yuklanmoqda…",
+    "file_load_failed": "Faylni yuklab bo‘lmadi.",
+    "file_receipt_alt": "To‘lov cheki"
   },
   "ru": {
     "spk_practise_again": "Повторить эту тему",
@@ -6239,7 +6243,11 @@
     "omr_exam_type": "Тип экзамена",
     "omr_all_exam_types": "Все типы экзаменов",
     "omr_tests_load_error": "Не удалось загрузить тесты.",
-    "omr_choose_test": "Выберите тест"
+    "omr_choose_test": "Выберите тест",
+    "file_open": "Открыть файл",
+    "file_loading": "Файл загружается…",
+    "file_load_failed": "Не удалось загрузить файл.",
+    "file_receipt_alt": "Чек об оплате"
   },
   "en": {
     "spk_practise_again": "Practise this topic again",
@@ -9360,6 +9368,10 @@
     "omr_exam_type": "Exam type",
     "omr_all_exam_types": "All exam types",
     "omr_tests_load_error": "Could not load the tests.",
-    "omr_choose_test": "Choose a test"
+    "omr_choose_test": "Choose a test",
+    "file_open": "Open file",
+    "file_loading": "Loading file…",
+    "file_load_failed": "Could not load the file.",
+    "file_receipt_alt": "Payment receipt"
   }
 }
