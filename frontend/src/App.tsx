@@ -33,6 +33,7 @@ const Imports = lazyPage(() => import('./pages/Imports'));
 const Landing = lazyPage(() => import('./pages/Landing'));
 const Login = lazyPage(() => import('./pages/Login'));
 const MySubscription = lazyPage(() => import('./pages/MySubscription'));
+const MyHomework = lazyPage(() => import('./pages/MyHomework'));
 const Onboarding = lazyPage(() => import('./pages/Onboarding'));
 const PanelDashboard = lazyPage(() => import('./pages/PanelDashboard'));
 const PanelQuestions = lazyPage(() => import('./pages/PanelQuestions'));
@@ -182,6 +183,8 @@ function AnimatedRoutes() {
             />
             <Route path="/groups" element={<GroupsRouter />} />
             <Route path="/groups/:groupId" element={<StudentGroupDetail />} />
+            <Route path="/my-homework" element={<MyHomework />} />
+            <Route path="/homework" element={<Navigate to="/my-homework" replace />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/tests" element={<Tests />} />
             <Route path="/tests/create" element={<SmartTestCreate />} />

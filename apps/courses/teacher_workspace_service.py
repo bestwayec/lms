@@ -145,6 +145,7 @@ def get_teacher_workspace_overview(user) -> dict[str, Any]:
     # 2. Homework Assignments & Upcoming Deadlines
     homework_qs = (
         Homework.objects.filter(group__in=groups_list)
+        .exclude(status=Homework.Status.CANCELLED)
         .select_related("group", "test", "essay_topic")
         .order_by("-created_at")[:25]
     )
@@ -322,73 +323,48 @@ def get_teacher_workspace_overview(user) -> dict[str, Any]:
 def create_teacher_homework(
     user,
     *,
-    group_id: int,
+    group_id: int | None = None,
+    student_id: int | None = None,
     title: str,
     due_date: datetime,
     description: str = "",
     test_id: int | None = None,
     essay_topic_id: int | None = None,
+    vocabulary_pack_id: int | None = None,
+    lesson_id: int | None = None,
+    start_date: datetime | None = None,
+    time_limit: int = 0,
+    max_attempts: int = 1,
+    idempotency_key: str | None = None,
 ) -> Homework:
     """
-    Assign a homework (Test, Essay, or Custom) to a teacher's group.
+    Assign a homework (Test, Essay, Vocabulary, Lesson, or Custom) to a teacher's group or individual student.
     Ensures authorization, valid future deadlines, and cross-model synchronization.
     """
-    clean_title = (title or "").strip()
-    if not clean_title:
-        raise ValueError("Vazifa sarlavhasi talab qilinadi.")
+    from apps.courses.homework_service import create_unified_homework
 
-    group = get_teacher_groups(user).filter(id=group_id).first()
-    if not group:
-        raise PermissionError("Guruh topilmadi yoki sizga biriktirilmagan.")
-
-    if timezone.is_naive(due_date):
-        due_date = timezone.make_aware(due_date, timezone.get_current_timezone())
-
-    if due_date <= timezone.now():
-        raise ValueError("Topshirish muddati kelajakda bo'lishi kerak.")
-
-    test = None
-    if test_id:
-        test = Test.objects.filter(id=test_id).first()
-        if not test:
-            raise ValueError("Biriktirilgan test topilmadi.")
-        if not test.assigned_group_id:
-            test.assigned_group = group
-            test.save(update_fields=["assigned_group"])
-
-    topic = None
-    if essay_topic_id:
-        topic = EssayTopic.objects.filter(id=essay_topic_id).first()
-        if not topic:
-            raise ValueError("Biriktirilgan esse mavzusi topilmadi.")
-        from apps.essays.group_reports import create_assignment as create_essay_assignment
-
-        create_essay_assignment(
-            topic=topic,
-            group=group,
-            assigned_by=user,
-            due_at=due_date,
-            instructions=description,
-            actor=user,
-        )
-
-    return Homework.objects.create(
-        group=group,
-        title=clean_title[:200],
-        description=description.strip(),
-        test=test,
-        essay_topic=topic,
+    hw, _ = create_unified_homework(
+        user,
+        title=title,
         due_date=due_date,
-        created_by=user,
+        group_id=group_id,
+        student_id=student_id,
+        description=description,
+        test_id=test_id,
+        essay_topic_id=essay_topic_id,
+        vocabulary_pack_id=vocabulary_pack_id,
+        lesson_id=lesson_id,
+        start_date=start_date,
+        time_limit=time_limit,
+        max_attempts=max_attempts,
+        idempotency_key=idempotency_key,
     )
+    return hw
 
 
 def delete_teacher_homework(user, homework_id: int) -> bool:
-    """Safely delete/cancel a homework assigned to a group."""
-    hw = Homework.objects.select_related("group").filter(id=homework_id).first()
-    if not hw:
-        raise ValueError("Vazifa topilmadi.")
-    if not is_platform_admin(user) and hw.group not in get_teacher_groups(user):
-        raise PermissionError("Ushbu vazifani bekor qilishga ruxsatingiz yo'q.")
-    hw.delete()
+    """Safely cancel a homework assigned to a group (preserves submissions & grades)."""
+    from apps.courses.homework_service import cancel_teacher_homework
+
+    cancel_teacher_homework(user, homework_id)
     return True

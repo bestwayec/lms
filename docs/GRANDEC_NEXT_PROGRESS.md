@@ -27,7 +27,7 @@ CI=1 PLAYWRIGHT_CHROMIUM_EXECUTABLE=<chromium> npx playwright test --trace off  
 | 3a Attendance concurrency | ✅ complete | commit ca0ad07 |
 | 3b Group membership history & search authz | ✅ complete | branch `claude/stage3-attendance-concurrency` |
 | 3c Teacher Workspace 3.0 | ✅ complete | branch `claude/stage3-attendance-concurrency` |
-| 4 Unified Homework Engine | 🟡 next | branch `claude/stage3-attendance-concurrency` |
+| 4 Unified Homework Engine | ✅ complete | branch `claude/stage3-attendance-concurrency` |
 | 5–12 | not started | – |
 
 Stacking: #135 ← #136 ← #137, and Stage 1c branches off #136. Merge in that order after review.
@@ -111,6 +111,39 @@ Delivered capabilities:
 3. **Frontend Integration & i18n**:
    - Updated `TeacherDashboard.tsx` with modern action hero cards, responsive layout, smooth anchor navigation, and homework creation modal.
    - Added complete translation keys across Uzbek, Russian, and English in `translations.json`.
+
+## Stage 4 — closure (Unified Homework Engine & Student Portal)
+
+Executed 2026-11-22 on branch `claude/stage3-attendance-concurrency`:
+
+| Check | Result |
+|---|---|
+| `pytest tests/test_stage4_unified_homework.py` (SQLite) | **11 passed, 0 failed** |
+| Combined Stage 3b, 3c, 4 regression suite (25 tests across 3 modules) | **24 passed, 1 skipped** (1 = PG-only lock test), 0 failed |
+| `python manage.py check` & `makemigrations --check` | pass / no changes detected |
+| Frontend `npm test`, `tsc -b`, `npm run lint`, `npm run build` | **24 passed, 0 errors, 0 lint warnings, built successfully in 11.59s** |
+
+Delivered capabilities:
+1. **Homework Integrity Fixes**:
+   - Soft-cancellation (`status = CANCELLED`, `cancelled_at`, `cancelled_by`) preserving historical submissions, grades, test attempts, and results without cascade deletion.
+   - Test authorization preventing attaching DRAFT or unpublished tests, attaching other teachers' private tests, or hijacking `test.assigned_group`.
+   - Transactional atomicity (`@transaction.atomic`) preventing orphan essay assignments or partial states.
+   - Idempotency key support preventing duplicate assignments from rapid double-clicks.
+2. **Unified Content Architecture**:
+   - Unified support for Tests, Essays, Vocabulary packs, Course Lessons, and Custom written tasks.
+   - Assignment to whole groups (`group_id`) OR individual students (`student_id`).
+   - Deadlines, time limits, and attempt limits.
+3. **Student Homework API & Lifecycle**:
+   - Endpoints: list (`GET /api/v1/school/student/homeworks/`), detail (`GET <id>/`), start/resume (`POST <id>/start/`), autosave (`POST <id>/save/`), submit (`POST <id>/submit/`), and result (`GET <id>/result/`).
+   - Authoritative derived statuses: `NOT_STARTED`, `IN_PROGRESS`, `SUBMITTED`, `AWAITING_REVIEW`, `GRADED`, `OVERDUE`, `CANCELLED`.
+   - Explicit rule: Score 0.0 is a valid final score (`GRADED`), never pending.
+4. **Student Web Interface ("Mening vazifalarim")**:
+   - Responsive mobile-first React view (`frontend/src/pages/MyHomework.tsx`) at route `/my-homework` with status tabs, action buttons, custom answer modal, result modal, and `uz`, `ru`, `en` translations.
+5. **Teacher Homework 3-Step Wizard**:
+   - Upgraded Teacher Workspace modal with 3-step wizard (`TeacherHomeworkWizard.tsx`):
+     - Step 1: Recipient selection (group vs individual student).
+     - Step 2: Published-only content selection with live preview.
+     - Step 3: Deadlines, limits, idempotency, and publication.
 
 ## Blockers / owner decisions
 

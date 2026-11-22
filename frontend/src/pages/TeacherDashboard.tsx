@@ -23,10 +23,10 @@ import {
   Calendar,
   CheckSquare,
   Trash2,
-  X,
   BookOpen,
 } from 'lucide-react';
 import ClassroomQrModal from '../components/ClassroomQrModal';
+import TeacherHomeworkWizard from '../components/TeacherHomeworkWizard';
 import type {
   AnalyticsData,
   EssayBoard,
@@ -134,19 +134,9 @@ export default function TeacherDashboard() {
     setTimeout(() => setCopiedMock(false), 2500);
   };
 
-  // Stage 3c: Teacher Workspace 3.0 — Homework Assignment Modal state
+  // Stage 4: Teacher Workspace 3.0 — Homework Wizard Modal state
   const [hwModalOpen, setHwModalOpen] = useState(false);
   const [hwGroupId, setHwGroupId] = useState<number | null>(null);
-  const [hwTitle, setHwTitle] = useState('');
-  const [hwDueDate, setHwDueDate] = useState(() => {
-    const d = new Date(Date.now() + 86400000 * 2);
-    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-    return d.toISOString().slice(0, 16);
-  });
-  const [hwDesc, setHwDesc] = useState('');
-  const [hwBusy, setHwBusy] = useState(false);
-  const [hwErr, setHwErr] = useState<string | null>(null);
-  const [hwSuccess, setHwSuccess] = useState<string | null>(null);
 
   const refreshOverview = useCallback(() => {
     School.teacher()
@@ -157,34 +147,6 @@ export default function TeacherDashboard() {
         setErr(errMessage(e));
       });
   }, []);
-
-  const handleCreateHomework = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!hwGroupId || !hwTitle.trim() || !hwDueDate) return;
-    setHwBusy(true);
-    setHwErr(null);
-    setHwSuccess(null);
-    try {
-      await School.createHomework({
-        group_id: hwGroupId,
-        title: hwTitle.trim(),
-        due_date: new Date(hwDueDate).toISOString(),
-        description: hwDesc.trim() || undefined,
-      });
-      setHwSuccess(t('td_hw_success'));
-      setHwTitle('');
-      setHwDesc('');
-      refreshOverview();
-      setTimeout(() => {
-        setHwModalOpen(false);
-        setHwSuccess(null);
-      }, 1200);
-    } catch (e2) {
-      setHwErr(e2 instanceof Error ? e2.message : 'Vazifa yaratishda xatolik yuz berdi.');
-    } finally {
-      setHwBusy(false);
-    }
-  };
 
   const handleDeleteHomework = async (homeworkId: number) => {
     if (!window.confirm(t('td_delete_hw_confirm'))) return;
@@ -1709,148 +1671,16 @@ export default function TeacherDashboard() {
       )}
       </div>
 
-      {/* 📝 Homework Assignment Modal (Stage 3c) */}
-      {hwModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0, 0, 0, 0.7)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-            padding: 16,
-          }}
-          onClick={() => !hwBusy && setHwModalOpen(false)}
-        >
-          <div
-            className="card"
-            style={{
-              width: '100%',
-              maxWidth: 520,
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--border)',
-              borderRadius: 18,
-              padding: 24,
-              boxShadow: '0 20px 50px rgba(0,0,0,0.4)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: '1.25rem' }}>
-                <Clock size={20} className="ico" />
-                <span>{t('td_hw_modal_title')}</span>
-              </h3>
-              <button
-                type="button"
-                onClick={() => setHwModalOpen(false)}
-                disabled={hwBusy}
-                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            {hwSuccess && (
-              <p className="badge green" style={{ width: '100%', padding: '10px 14px', marginBottom: 16, fontSize: 13 }}>
-                ✓ {hwSuccess}
-              </p>
-            )}
-
-            {hwErr && (
-              <p className="error" role="alert" style={{ marginBottom: 16 }}>
-                {hwErr}
-              </p>
-            )}
-
-            <form onSubmit={handleCreateHomework}>
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
-                  {t('td_hw_group_label')} *
-                </label>
-                <select
-                  value={hwGroupId ?? ''}
-                  onChange={(e) => setHwGroupId(Number(e.target.value) || null)}
-                  required
-                  style={{ width: '100%', padding: '10px', borderRadius: 8, background: 'var(--bg-input)', border: '1px solid var(--border)' }}
-                >
-                  {groups.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.name} ({g.student_count ?? (g.students ?? []).length} o&apos;quvchi)
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
-                  {t('td_hw_title_label')} *
-                </label>
-                <input
-                  type="text"
-                  value={hwTitle}
-                  onChange={(e) => setHwTitle(e.target.value)}
-                  placeholder="Masalan: 4-Mavzu bo'yicha mustaqil topshiriq"
-                  required
-                  style={{ width: '100%', padding: '10px', borderRadius: 8, background: 'var(--bg-input)', border: '1px solid var(--border)' }}
-                />
-              </div>
-
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
-                  {t('td_hw_deadline_label')} *
-                </label>
-                <input
-                  type="datetime-local"
-                  value={hwDueDate}
-                  onChange={(e) => setHwDueDate(e.target.value)}
-                  required
-                  style={{ width: '100%', padding: '10px', borderRadius: 8, background: 'var(--bg-input)', border: '1px solid var(--border)' }}
-                />
-              </div>
-
-              <div style={{ marginBottom: 18 }}>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
-                  {t('td_hw_desc_label')}
-                </label>
-                <textarea
-                  value={hwDesc}
-                  onChange={(e) => setHwDesc(e.target.value)}
-                  rows={3}
-                  placeholder="O'quvchilar uchun qo'shimcha topshiriq ko'rsatmalari..."
-                  style={{ width: '100%', padding: '10px', borderRadius: 8, background: 'var(--bg-input)', border: '1px solid var(--border)', resize: 'vertical' }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-                <button
-                  type="button"
-                  onClick={() => setHwModalOpen(false)}
-                  disabled={hwBusy}
-                  className="btn sm"
-                >
-                  {t('td_hw_cancel')}
-                </button>
-                <button
-                  type="submit"
-                  disabled={hwBusy || !hwTitle.trim() || !hwGroupId}
-                  className="btn primary sm"
-                  style={{ fontWeight: 800 }}
-                >
-                  {hwBusy ? 'Saqlanmoqda…' : t('td_hw_assign_btn')}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* 📝 Teacher Homework 3-Step Wizard (Stage 4) */}
+      <TeacherHomeworkWizard
+        isOpen={hwModalOpen}
+        onClose={() => setHwModalOpen(false)}
+        onSuccess={() => {
+          refreshOverview();
+        }}
+        groups={groups}
+        initialGroupId={hwGroupId}
+      />
     </div>
   );
 }

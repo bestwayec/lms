@@ -282,8 +282,13 @@ def test_teacher_homework_lifecycle(api, teacher_a, teacher_b, group_a, group_b)
     assert del_resp.status_code == 200
     assert del_resp.json()["status"] == "deleted"
 
-    # Confirm deleted
-    assert not Homework.objects.filter(id=hw_id).exists()
+    # Confirm safely cancelled (Stage 4 safe state transition)
+    hw_obj = Homework.objects.get(id=hw_id)
+    assert hw_obj.status == Homework.Status.CANCELLED
+    assert hw_obj.cancelled_by == teacher_a
+    # No longer appears in active homeworks list
+    list_after = api.get("/api/v1/school/teacher/homeworks/").json()["results"]
+    assert not any(h["id"] == hw_id for h in list_after)
 
 
 @pytest.mark.django_db

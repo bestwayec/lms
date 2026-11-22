@@ -2310,12 +2310,20 @@ export const School = {
     return api<{ results: HomeworkAssignmentItem[] }>(`/api/v1/school/teacher/homeworks/${query ? `?${query}` : ''}`);
   },
   createHomework: (payload: {
-    group_id: number;
+    group_id?: number;
+    student_id?: number;
     title: string;
     due_date: string;
     description?: string;
+    content_type?: string;
     test_id?: number;
     essay_topic_id?: number;
+    vocabulary_pack_id?: number;
+    lesson_id?: number;
+    start_date?: string;
+    time_limit?: number;
+    max_attempts?: number;
+    idempotency_key?: string;
   }) =>
     api<HomeworkAssignmentItem>('/api/v1/school/teacher/homeworks/', {
       method: 'POST',

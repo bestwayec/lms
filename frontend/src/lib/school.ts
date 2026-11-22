@@ -322,3 +322,118 @@ export function guardCsv(file: File | null): string | null {
   if (file.size > 5 * 1024 * 1024) return 'CSV fayl hajmi 5 MB dan oshmasligi kerak.';
   return null;
 }
+
+export interface StudentHomeworkItem {
+  id: number;
+  title: string;
+  description: string;
+  content_type: 'test' | 'essay' | 'vocabulary' | 'lesson' | 'custom';
+  group_id: number | null;
+  group_name: string;
+  teacher_name: string;
+  due_date: string;
+  time_limit: number;
+  max_attempts: number;
+  status:
+    | 'not_started'
+    | 'in_progress'
+    | 'submitted'
+    | 'awaiting_review'
+    | 'graded'
+    | 'overdue'
+    | 'cancelled';
+  status_label: string;
+  is_completed: boolean;
+  score: number | null;
+  max_score: number | null;
+  percentage: number | null;
+  score_display: string;
+  action_url: string;
+  action_id: number | null;
+  submission_id: number | null;
+  created_at: string;
+}
+
+export interface HomeworkCatalogResponse {
+  tests: {
+    id: number;
+    title: string;
+    subject: string;
+    time_limit: number;
+    questions_count: number;
+    is_official: boolean;
+  }[];
+  essays: {
+    id: number;
+    title: string;
+    task_type: string;
+    min_words: number;
+    max_words: number;
+  }[];
+  vocabulary: {
+    id: number;
+    title: string;
+    words_count: number;
+  }[];
+  lessons: {
+    id: number;
+    title: string;
+    course_title: string;
+  }[];
+}
+
+export const HomeworkAPI = {
+  getStudentHomeworks: (status?: string) => {
+    const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+    return api<{ results: StudentHomeworkItem[]; count: number }>(`/api/v1/school/student/homeworks/${qs}`);
+  },
+  getStudentHomeworkDetail: (id: number) =>
+    api<StudentHomeworkItem>(`/api/v1/school/student/homeworks/${id}/`),
+  startStudentHomework: (id: number) =>
+    api<{
+      ok: boolean;
+      homework_id: number;
+      submission_id: number;
+      status: string;
+      attempt_id?: number | null;
+      started_at: string;
+      time_limit: number;
+    }>(`/api/v1/school/student/homeworks/${id}/start/`, {
+      method: 'POST',
+    }),
+  saveStudentHomework: (id: number, answers: unknown) =>
+    api<{ ok: boolean; saved_at: string }>(`/api/v1/school/student/homeworks/${id}/save/`, {
+      method: 'POST',
+      body: JSON.stringify({ answers }),
+    }),
+  submitStudentHomework: (id: number, answers?: unknown) =>
+    api<{
+      ok: boolean;
+      status: string;
+      is_completed: boolean;
+      score: number | null;
+      percentage: number | null;
+      score_display: string;
+      completed_at: string;
+    }>(`/api/v1/school/student/homeworks/${id}/submit/`, {
+      method: 'POST',
+      body: JSON.stringify({ answers }),
+    }),
+  getStudentHomeworkResult: (id: number) =>
+    api<{
+      homework_id: number;
+      title: string;
+      status: string;
+      status_label: string;
+      score: number | null;
+      max_score: number | null;
+      percentage: number | null;
+      score_display: string;
+      feedback: string;
+      completed_at: string;
+    }>(`/api/v1/school/student/homeworks/${id}/result/`),
+  getTeacherCatalog: (contentType?: string) => {
+    const qs = contentType ? `?content_type=${encodeURIComponent(contentType)}` : '';
+    return api<HomeworkCatalogResponse>(`/api/v1/school/teacher/homework-catalog/${qs}`);
+  },
+};

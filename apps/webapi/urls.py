@@ -24,6 +24,7 @@ from . import (
     views_referral,
     views_branches,
     views_private_files,
+    views_homework,
 )
 from apps.organizations import views as views_enterprise
 from apps.tests import (
@@ -469,6 +470,42 @@ urlpatterns = [
         "school/teacher/homeworks/<int:homework_id>/",
         views_school.teacher_homework_detail_view,
         name="school-teacher-homework-detail",
+    ),
+    path(
+        "school/teacher/homework-catalog/",
+        views_homework.teacher_homework_catalog_view,
+        name="school-teacher-homework-catalog",
+    ),
+    # -- Student Homework Lifecycle (Stage 4) ----------------------------
+    path(
+        "school/student/homeworks/",
+        views_homework.student_homeworks_view,
+        name="school-student-homeworks",
+    ),
+    path(
+        "school/student/homeworks/<int:homework_id>/",
+        views_homework.student_homework_detail_view,
+        name="school-student-homework-detail",
+    ),
+    path(
+        "school/student/homeworks/<int:homework_id>/start/",
+        views_homework.student_homework_start_view,
+        name="school-student-homework-start",
+    ),
+    path(
+        "school/student/homeworks/<int:homework_id>/save/",
+        views_homework.student_homework_save_view,
+        name="school-student-homework-save",
+    ),
+    path(
+        "school/student/homeworks/<int:homework_id>/submit/",
+        views_homework.student_homework_submit_view,
+        name="school-student-homework-submit",
+    ),
+    path(
+        "school/student/homeworks/<int:homework_id>/result/",
+        views_homework.student_homework_result_view,
+        name="school-student-homework-result",
     ),
     path("school/analytics/", views_school.analytics_view, name="school-analytics"),
     path(

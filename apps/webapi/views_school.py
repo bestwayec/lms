@@ -503,16 +503,32 @@ def teacher_homeworks_view(request):
 
         groups = get_teacher_groups(request.user)
         group_id = request.GET.get("group_id")
+        student_id = request.GET.get("student_id")
         active_only = request.GET.get("active_only") == "1"
 
         qs = (
-            Homework.objects.filter(group__in=groups)
-            .select_related("group", "test", "essay_topic")
+            Homework.objects.filter(
+                Q(group__in=groups) | Q(created_by=request.user)
+            )
+            .exclude(status=Homework.Status.CANCELLED)
+            .select_related(
+                "group",
+                "student",
+                "test",
+                "essay_topic",
+                "vocabulary_pack",
+                "lesson",
+            )
             .order_by("-due_date")
         )
         if group_id:
             try:
                 qs = qs.filter(group_id=int(group_id))
+            except (ValueError, TypeError):
+                pass
+        if student_id:
+            try:
+                qs = qs.filter(student_id=int(student_id))
             except (ValueError, TypeError):
                 pass
         if active_only:
@@ -525,14 +541,22 @@ def teacher_homeworks_view(request):
                     "id": hw.id,
                     "title": hw.title,
                     "description": hw.description,
+                    "content_type": hw.content_type,
                     "group_id": hw.group_id,
-                    "group_name": hw.group.name,
+                    "group_name": hw.group.name if hw.group else "Individual topshiriq",
+                    "student_id": hw.student_id,
+                    "student_name": (
+                        hw.student.get_full_name() if hw.student else None
+                    ),
                     "due_date": hw.due_date.isoformat(),
+                    "time_limit": hw.time_limit,
+                    "max_attempts": hw.max_attempts,
+                    "status": hw.status,
                     "is_overdue": hw.due_date < timezone.now(),
                     "type": (
                         "test"
                         if hw.test_id
-                        else ("essay" if hw.essay_topic_id else "custom")
+                        else ("essay" if hw.essay_topic_id else ("vocabulary" if hw.vocabulary_pack_id else ("lesson" if hw.lesson_id else "custom")))
                     ),
                     "test_id": hw.test_id,
                     "test_title": hw.test.title if hw.test else None,
@@ -540,24 +564,40 @@ def teacher_homeworks_view(request):
                     "essay_topic_title": (
                         hw.essay_topic.title if hw.essay_topic else None
                     ),
+                    "vocabulary_pack_id": hw.vocabulary_pack_id,
+                    "vocabulary_pack_title": (
+                        hw.vocabulary_pack.title if hw.vocabulary_pack else None
+                    ),
+                    "lesson_id": hw.lesson_id,
+                    "lesson_title": hw.lesson.title if hw.lesson else None,
                     "created_at": hw.created_at.isoformat(),
                 }
             )
         return Response({"results": results})
 
     # POST: create homework
-    from apps.courses.teacher_workspace_service import create_teacher_homework
+    from apps.courses.homework_service import create_unified_homework
 
     data = request.data
     group_id = data.get("group_id")
+    student_id = data.get("student_id")
     title = data.get("title")
     due_date_raw = data.get("due_date")
     description = data.get("description", "")
+    content_type = data.get("content_type")
     test_id = data.get("test_id")
     essay_topic_id = data.get("essay_topic_id")
+    vocabulary_pack_id = data.get("vocabulary_pack_id")
+    lesson_id = data.get("lesson_id")
+    start_date_raw = data.get("start_date")
+    time_limit = data.get("time_limit", 0)
+    max_attempts = data.get("max_attempts", 1)
+    idempotency_key = data.get("idempotency_key")
 
-    if not group_id:
-        return Response({"detail": "Guruh tanlanishi shart."}, status=400)
+    if not group_id and not student_id:
+        return Response(
+            {"detail": "Guruh yoki o'quvchi tanlanishi shart."}, status=400
+        )
     if not title:
         return Response(
             {"detail": "Vazifa sarlavhasi kiritilishi shart."}, status=400
@@ -578,15 +618,32 @@ def teacher_homeworks_view(request):
             status=400,
         )
 
+    start_date = None
+    if start_date_raw:
+        try:
+            start_date = datetime.fromisoformat(
+                str(start_date_raw).replace("Z", "+00:00")
+            )
+        except (ValueError, TypeError):
+            pass
+
     try:
-        hw = create_teacher_homework(
+        hw, created = create_unified_homework(
             request.user,
-            group_id=int(group_id),
+            group_id=int(group_id) if group_id else None,
+            student_id=int(student_id) if student_id else None,
+            content_type=str(content_type).lower() if content_type else None,
             title=str(title),
             due_date=due_date,
             description=str(description or ""),
             test_id=int(test_id) if test_id else None,
             essay_topic_id=int(essay_topic_id) if essay_topic_id else None,
+            vocabulary_pack_id=int(vocabulary_pack_id) if vocabulary_pack_id else None,
+            lesson_id=int(lesson_id) if lesson_id else None,
+            start_date=start_date,
+            time_limit=int(time_limit or 0),
+            max_attempts=int(max_attempts or 1),
+            idempotency_key=str(idempotency_key) if idempotency_key else None,
         )
     except PermissionError as pe:
         return Response({"detail": str(pe)}, status=403)
@@ -598,9 +655,14 @@ def teacher_homeworks_view(request):
             "id": hw.id,
             "title": hw.title,
             "description": hw.description,
+            "content_type": hw.content_type,
             "group_id": hw.group_id,
-            "group_name": hw.group.name,
+            "group_name": hw.group.name if hw.group else "Individual topshiriq",
+            "student_id": hw.student_id,
             "due_date": hw.due_date.isoformat(),
+            "time_limit": hw.time_limit,
+            "max_attempts": hw.max_attempts,
+            "status": hw.status,
             "type": (
                 "test"
                 if hw.test_id
@@ -608,7 +670,7 @@ def teacher_homeworks_view(request):
             ),
             "created_at": hw.created_at.isoformat(),
         },
-        status=201,
+        status=201 if created else 200,
     )
 
 
