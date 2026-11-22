@@ -37,11 +37,14 @@ def test_teacher_menu_is_private_and_only_shows_assigned_group_tests():
     )
     async_to_sync(ustoz_menu_command)(update, SimpleNamespace())
     group_reply = update.message.reply_text.await_args.args[0]
-    assert "Private group" not in group_reply and "99" not in group_reply
+    # The unrelated test's score renders as "99 ball (99.0%)". Match that, not a bare "99":
+    # random invite codes (e.g. ONA-2991) contain it by chance and made this test flaky.
+    leaked = ("99 ball", "99.0%")
+    assert "Private group" not in group_reply and not any(m in group_reply for m in leaked)
     update.effective_chat = SimpleNamespace(id=85201, type="private")
     async_to_sync(ustoz_menu_command)(update, SimpleNamespace())
     private_reply = update.message.reply_text.await_args.args[0]
-    assert "42" in private_reply and "99" not in private_reply
+    assert "42" in private_reply and not any(m in private_reply for m in leaked)
 
 
 @pytest.mark.django_db(transaction=True)
