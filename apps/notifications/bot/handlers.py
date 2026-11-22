@@ -324,10 +324,10 @@ def _persistent_menu_keyboard(role: str = "student", is_admin: bool = False) -> 
     else:
         # Default: STUDENT
         rows = [
-            [KeyboardButton("✍️ Esse yozish"), KeyboardButton("📚 Test ishlash")],
+            [KeyboardButton("📚 Mening vazifalarim"), KeyboardButton("📚 Test ishlash")],
             [
                 KeyboardButton("📝 Mock Test (#kod)"),
-                KeyboardButton("⚔️ Arena (1v1)"),
+                KeyboardButton("✍️ Esse yozish"),
             ],
             [
                 KeyboardButton("👤 Natijalar / Profil"),
@@ -342,13 +342,22 @@ def _persistent_menu_keyboard(role: str = "student", is_admin: bool = False) -> 
 def _student_main_menu_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
     """Main menu inline keyboard for students."""
     buttons = [
-        [InlineKeyboardButton("📚 Testlar", callback_data="menu_tests"),
-         InlineKeyboardButton("🧠 Tezkor quiz", callback_data="menu_quiz")],
-        [InlineKeyboardButton("✍️ Esse yozish", callback_data="menu_essays"),
-         InlineKeyboardButton("📊 Natijalarim", callback_data="menu_results")],
-        [InlineKeyboardButton("👤 Profilim", callback_data="menu_profile"),
-         InlineKeyboardButton("💳 Obunam", callback_data="cb_myplan")],
-        [InlineKeyboardButton("✨ Boshqa imkoniyatlar", callback_data="menu_student_more")],
+        [
+            InlineKeyboardButton("📚 Mening vazifalarim", callback_data="menu_homework"),
+            InlineKeyboardButton("📝 Testlar", callback_data="menu_tests"),
+        ],
+        [
+            InlineKeyboardButton("🧠 Tezkor quiz", callback_data="menu_quiz"),
+            InlineKeyboardButton("📊 Natijalarim", callback_data="menu_results"),
+        ],
+        [
+            InlineKeyboardButton("✍️ Esse yozish", callback_data="menu_essays"),
+            InlineKeyboardButton("👤 Profilim", callback_data="menu_profile"),
+        ],
+        [
+            InlineKeyboardButton("💳 Obunam", callback_data="cb_myplan"),
+            InlineKeyboardButton("✨ Qo'shimcha", callback_data="menu_student_more"),
+        ],
     ]
     if is_admin:
         buttons.append([InlineKeyboardButton("👑 Admin panelga qaytish", callback_data="menu_admin")])
@@ -378,35 +387,20 @@ def _teacher_main_menu_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
     _site_url = getattr(_settings, "SITE_URL", "https://grandec.uz").rstrip("/")
     buttons = [
         [
-            InlineKeyboardButton(
-                "📝 Yangi test yaratish (Smart Paste)",
-                callback_data="menu_teacher_newmock",
-            ),
-            InlineKeyboardButton("👥 Mening guruhlarim va davomat", callback_data="tgrplist"),
+            InlineKeyboardButton("👥 Guruhlarim va davomat", callback_data="tgrplist"),
+            InlineKeyboardButton("📤 Vazifa yuborish", callback_data="tassign_quick"),
         ],
         [
-            InlineKeyboardButton(
-                "📊 O'quvchilar natijalari (Excel)", callback_data="menu_teacher_excel"
-            ),
-            InlineKeyboardButton(
-                "📷 Titul varaqni tekshirish (OMR)", callback_data="menu_omr_scan"
-            ),
+            InlineKeyboardButton("📝 Yangi test (Smart Paste)", callback_data="menu_teacher_newmock"),
+            InlineKeyboardButton("📷 Titul varaq (OMR)", callback_data="menu_omr_scan"),
         ],
         [
-            InlineKeyboardButton(
-                "🗓 Bugungi davomat", callback_data="menu_teacher_attendance"
-            ),
-            InlineKeyboardButton(
-                "📈 Guruh hisobotlari", callback_data="menu_teacher_reports"
-            ),
+            InlineKeyboardButton("📊 O'quvchilar natijalari", callback_data="menu_teacher_excel"),
+            InlineKeyboardButton("📈 Guruh hisobotlari", callback_data="menu_teacher_reports"),
         ],
         [
-            InlineKeyboardButton(
-                "👤 Shaxsiy kabinet", callback_data="menu_teacher_profile"
-            ),
-            InlineKeyboardButton(
-                "🌐 Web kabinetga kirish", url=f"{_site_url}/login"
-            ),
+            InlineKeyboardButton("👤 Shaxsiy kabinet", callback_data="menu_teacher_profile"),
+            InlineKeyboardButton("🌐 Web kabinet", url=f"{_site_url}/login"),
         ],
     ]
     if is_admin:
@@ -1128,7 +1122,18 @@ async def auth_conversation_handler(
     raw_text = (getattr(update.message, "text", "") or "").strip()
 
     # --- Student Persistent Buttons ---
-    if raw_text in ("✍️ Esse yozish", "✍️ Esse"):
+    if raw_text in (
+        "📚 Mening vazifalarim",
+        "📚 Vazifalarim",
+        "Mening vazifalarim",
+        "Vazifalarim",
+        "/vazifalarim",
+        "/homework",
+    ):
+        from apps.notifications.bot.homework_commands import my_homework_handler
+        await my_homework_handler(update, context)
+        return
+    elif raw_text in ("✍️ Esse yozish", "✍️ Esse"):
         await essays_handler(update, context)
         return
     elif raw_text in (
@@ -5309,6 +5314,33 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             await query.edit_message_text(
                 text, parse_mode="Markdown", reply_markup=buttons
             )
+        elif data == "menu_homework":
+            from apps.notifications.bot.homework_commands import (
+                render_homework_list,
+                verified_user_for_telegram,
+            )
+            tg_user = update.effective_user
+            user = await _run_db(verified_user_for_telegram, tg_user.id) if tg_user else None
+            if not user:
+                await query.edit_message_text(
+                    "Avval /start orqali hisobingizni tasdiqlang.",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🏠 Bosh menyu", callback_data="menu_main")]
+                    ]),
+                )
+                return
+            text, _btns = await _run_db(render_homework_list, user)
+            from django.conf import settings as _settings
+            site_url = getattr(_settings, "SITE_URL", "https://grandec.uz").rstrip("/")
+            app_url = f"{site_url}/my-homework"
+            rows = [
+                [
+                    InlineKeyboardButton("📱 Mini App orqali ochish", web_app=WebAppInfo(url=app_url)),
+                    InlineKeyboardButton("🌐 Vebda ochish", url=app_url),
+                ],
+                [InlineKeyboardButton("🏠 Bosh menyu", callback_data="menu_main")],
+            ]
+            await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(rows))
         elif data == "menu_tests":
             from django.conf import settings as _settings
 
@@ -5511,6 +5543,32 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         # -- Teacher groups, attendance and group reports ------------------------
         elif data == "tgrplist":
             await _dispatch_handler(update, context, groups_handler)
+        elif data == "tassign_quick":
+            actor = await _assignment_actor(update)
+            if not actor:
+                return
+            from apps.attendance.services import teacher_groups
+            groups = await _run_db(lambda: list(teacher_groups(actor)))
+            if not groups:
+                await edit_or_reply(
+                    update,
+                    "Sizda faol guruhlar mavjud emas.",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🏠 Bosh menyu", callback_data="menu_main")]
+                    ]),
+                )
+                return
+            rows = [
+                [InlineKeyboardButton(f"👥 {g.name}", callback_data=f"taslist_{g.id}")]
+                for g in groups[:10]
+            ]
+            rows.append([InlineKeyboardButton("🏠 Bosh menyu", callback_data="menu_main")])
+            await edit_or_reply(
+                update,
+                "📤 <b>Vazifa biriktirish</b>\n\nQaysi guruhga test vazifasini yubormoqchisiz?",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(rows),
+            )
         elif data.startswith("tgrp_"):
             group_id = _safe_callback_int(data, prefix="tgrp_")
             if group_id is not None:

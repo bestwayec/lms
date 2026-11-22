@@ -349,3 +349,38 @@ None added in 4.0 (topics live in `Question.config`). Requirements: `pypdf` move
 * Stage 9: route-by-route a11y/mobile audit beyond the runner, editor and homework pages; physical devices not tested.
 * Runner: `TakeTest.tsx` is still ~3.2k lines; component extraction (ExamShell/QuestionCard/…) not started. The CD/BMB engine was not audited in this session.
 * Scanned-PDF OCR: intentionally not offered (no tested OCR configured).
+
+---
+
+## Stage 4.1 — Admin Test Control Center 4.0 + Telegram Bot 4.0 + Unified Homework Sync
+
+Executed 2026-11-22 on branch `feat/grandec-telegram-admin-test-v4`:
+
+| Check | Result |
+|---|---|
+| `pytest tests/test_admin_test_control_center.py` (SQLite) | **8 passed, 0 failed** |
+| `pytest tests/test_teacher_telegram_assignment.py` (SQLite) | **4 passed, 1 skipped** (PG row-lock) |
+| `python manage.py check` & `makemigrations --check` | pass / no changes detected |
+| `ruff check` on all modified files | **All checks passed!** |
+| Frontend `npm test`, `npm run build` | **28 passed, 0 errors, build in 4.71s** |
+
+### Delivered capabilities
+
+1. **Admin Test Control Center (`/panel/tests`)**:
+   - Multi-tenant and role-scoped test visibility (`apps/tests/admin_test_service.py`): Platform admin sees all; center admins scoped to center; teachers scoped to authored tests; students blocked.
+   - Comprehensive test metrics: Total, Published, Draft, Archived, Attempted stats cards.
+   - Safe deletion barrier: Prevents destructive deletion if test has attempts, student results, or active homework assignments (`409 Conflict`). Unused drafts can be safely cleaned up.
+   - Deep duplication (`duplicate_test`): Full cloning of sections, reading passages (`content`), questions, choices, gap blanks, and matching pairs into a new draft test.
+   - Lifecycle operations: Archive, restore, unpublish with full audit logging in Django `LogEntry`.
+   - Bulk operations: Preview modal (`BulkPreviewModal`) distinguishing protected vs impacted tests before executing bulk archive, unpublish, restore, clean drafts, safe delete, or JSON metadata export.
+   - Django Admin integration (`apps/tests/admin.py`): `archive_selected_tests`, `restore_selected_tests` and `delete_model` safety enforcement.
+   - Hardened `purge_all_tests` management command against execution in production.
+
+2. **Telegram Bot 4.0 & Unified Homework Sync**:
+   - `quiz.py`: Serves only published, active tests (`status="published"`, `is_active=True`).
+   - Detects complex exams (reading passages, IELTS/CEFR structures, audio, non-MCQ) and redirects to TMA (`/tma/#/tests/:id`) or Web Runner (`/take-test/:id`).
+   - Resumes in-progress `TestAttempt` records cleanly without unhandled collisions or crash on tests with null course.
+   - Never exposes correct answer keys in `callback_data`.
+   - `teacher_assignments.py`: Synchronizes with Unified Homework Engine via `create_unified_homework`, creating proper `Homework` records.
+   - Blocks reassigning tests already bound to unrelated groups.
+   - Added `📚 Mening vazifalarim` and `📤 Vazifa yuborish` to persistent reply keyboard and quick inline actions.

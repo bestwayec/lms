@@ -79,13 +79,40 @@ class TestAdmin(admin.ModelAdmin):
         "title",
         "course",
         "difficulty",
+        "status",
         "time_limit_minutes",
         "max_attempts",
         "is_active",
         "scoring_profile",
     )
-    list_filter = ("difficulty", "is_active", "course")
-    search_fields = ("title",)
+    list_filter = ("status", "difficulty", "is_active", "course")
+    search_fields = ("title", "description", "subject")
+    actions = ["archive_selected_tests", "restore_selected_tests"]
+
+    @admin.action(description="Tanlangan testlarni arxivlash")
+    def archive_selected_tests(self, request, queryset):
+        for test in queryset:
+            test.status = "archived"
+            test.is_active = False
+            test.save(update_fields=["status", "is_active", "updated_at"])
+        self.message_user(request, "Testlar muvaffaqiyatli arxivlandi.")
+
+    @admin.action(description="Tanlangan testlarni qoralamaga qaytarish")
+    def restore_selected_tests(self, request, queryset):
+        for test in queryset:
+            test.status = "draft"
+            test.is_active = True
+            test.save(update_fields=["status", "is_active", "updated_at"])
+        self.message_user(request, "Testlar qoralamaga qaytarildi.")
+
+    def delete_model(self, request, obj):
+        from django.contrib import messages
+        from apps.tests.admin_test_service import check_safe_deletion
+        is_safe, reason, _ = check_safe_deletion(obj)
+        if not is_safe:
+            messages.error(request, f"Xavfsiz o'chirish taqiqlandi: {reason}")
+            return
+        super().delete_model(request, obj)
 
 
 class StudentAnswerInline(admin.TabularInline):

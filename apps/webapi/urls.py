@@ -244,6 +244,16 @@ urlpatterns = [
     ),
     path("panel/tests/", views_panel.tests_view, name="panel-tests"),
     path(
+        "panel/tests/bulk-preview/",
+        views_panel.test_bulk_preview_view,
+        name="panel-test-bulk-preview",
+    ),
+    path(
+        "panel/tests/bulk/",
+        views_panel.test_bulk_view,
+        name="panel-test-bulk",
+    ),
+    path(
         "panel/tests/<int:test_id>/",
         views_panel.test_detail_view,
         name="panel-test-detail",
@@ -252,6 +262,26 @@ urlpatterns = [
         "panel/tests/<int:test_id>/status/",
         views_panel.test_status_view,
         name="panel-test-status",
+    ),
+    path(
+        "panel/tests/<int:test_id>/duplicate/",
+        views_panel.test_duplicate_view,
+        name="panel-test-duplicate",
+    ),
+    path(
+        "panel/tests/<int:test_id>/archive/",
+        views_panel.test_archive_view,
+        name="panel-test-archive",
+    ),
+    path(
+        "panel/tests/<int:test_id>/restore/",
+        views_panel.test_restore_view,
+        name="panel-test-restore",
+    ),
+    path(
+        "panel/tests/<int:test_id>/unpublish/",
+        views_panel.test_unpublish_view,
+        name="panel-test-unpublish",
     ),
     path(
         "panel/tests/<int:test_id>/questions/",
