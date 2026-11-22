@@ -67,7 +67,7 @@ class TestArenaWsReconnect(TransactionTestCase):
     def test_is_player_connected_helper(self):
         """Test is_player_connected returns correct connectivity state."""
         room = ArenaRoom.objects.create(
-            room_code="TEST_CONN_ROOM",
+            room_code="TESTCONN01",
             player1=self.p1,
             player2=self.p2,
             status=ArenaRoom.Status.STARTED,
@@ -81,7 +81,7 @@ class TestArenaWsReconnect(TransactionTestCase):
     def test_forfeit_duel_awards_win_to_opponent(self):
         """Test forfeit_duel awards win to the remaining player and updates stats."""
         room = ArenaRoom.objects.create(
-            room_code="FORFEIT_ROOM_1",
+            room_code="FORFEIT001",
             player1=self.p1,
             player2=self.p2,
             status=ArenaRoom.Status.STARTED,

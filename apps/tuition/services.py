@@ -621,7 +621,7 @@ def register_payment(
     with transaction.atomic():
         if invoice is not None:
             invoice = (
-                CourseInvoice.objects.select_for_update()
+                CourseInvoice.objects.select_for_update(of=("self",))
                 .select_related(
                     "policy",
                 )
@@ -693,7 +693,7 @@ def verify_payment(payment: CoursePayment, *, actor, reason: str = "") -> Course
     original_payment = payment
     with transaction.atomic():
         payment = (
-            CoursePayment.objects.select_for_update()
+            CoursePayment.objects.select_for_update(of=("self",))
             .select_related(
                 "verified_by",
                 "invoice",
@@ -826,7 +826,7 @@ def refund_payment(payment: CoursePayment, *, actor, reason: str = "") -> Course
     assert_can_manage_tuition(actor)
     with transaction.atomic():
         payment = (
-            CoursePayment.objects.select_for_update()
+            CoursePayment.objects.select_for_update(of=("self",))
             .select_related("invoice")
             .get(pk=payment.pk)
         )

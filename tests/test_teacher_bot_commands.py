@@ -214,6 +214,9 @@ class _BotFixture(TestCase):
         message = SimpleNamespace(text=text, reply_text=AsyncMock())
         update = SimpleNamespace(
             update_id=update_id,
+            # Attendance is private-chat only (see handlers._attendance_actor),
+            # so a realistic Update carries the chat the message came from.
+            effective_chat=SimpleNamespace(type="private"),
             effective_user=SimpleNamespace(
                 id=tg_id,
                 first_name="T",
@@ -236,6 +239,9 @@ class _BotFixture(TestCase):
         )
         update = SimpleNamespace(
             update_id=update_id,
+            # Attendance is private-chat only (see handlers._attendance_actor),
+            # so a realistic Update carries the chat the message came from.
+            effective_chat=SimpleNamespace(type="private"),
             effective_user=SimpleNamespace(
                 id=tg_id,
                 first_name="T",
@@ -465,7 +471,10 @@ class AttendanceCallbackFlowTests(_BotFixture):
         markup = second.edit_message_text.await_args.kwargs["reply_markup"]
         data = _callback_data(markup)
         self.assertIn(f"tall_{session.pk}", data)
-        self.assertIn(f"tfin_{session.pk}", data)
+        # Finalizing is a two-step flow: the register offers "review"
+        # (tconfirm_) and only the review screen offers the final button.
+        self.assertIn(f"tconfirm_{session.pk}", data)
+        self.assertNotIn(f"tfin_{session.pk}", data)
         self.assertIn(
             f"tmk_{session.pk}_{self.ali.pk}_{AttendanceRecord.Status.PRESENT}",
             data,

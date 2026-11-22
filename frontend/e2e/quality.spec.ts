@@ -142,11 +142,12 @@ test('goal edit rejection stays open, retry persists one plan without introducti
   await page.goto('/dashboard');
   await page.getByRole('button', { name: 'Maqsad', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
-  await page.getByRole('combobox').selectOption('morning');
+  const reminder = page.getByRole('dialog').getByRole('combobox', { name: 'Eslatma vaqti' });
+  await reminder.selectOption('morning');
   await page.route('**/api/auth/onboarding/', (route) => route.fulfill({ status: 400, json: { detail: 'Rejected' } }));
   await page.getByRole('button', { name: /Rejani saqlash/ }).click();
   await expect(page.getByRole('alert')).toBeVisible();
-  await expect(page.getByRole('combobox')).toHaveValue('morning');
+  await expect(reminder).toHaveValue('morning');
   await page.unroute('**/api/auth/onboarding/');
   const request = page.waitForRequest('**/api/auth/onboarding/');
   await page.getByRole('button', { name: /Rejani saqlash/ }).click();

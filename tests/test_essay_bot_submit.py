@@ -99,4 +99,6 @@ class TelegramEssaySubmissionTests(TestCase):
         reply = self.message.reply_text.await_args.args[0]
         self.assertIn("allaqachon baholangan", reply)
         self.assertIn("19.0/20", reply)
-        self.assertIn(str(existing.id), reply)
+        # The reply must report the stored grade, not trigger a new grading.
+        existing.refresh_from_db()
+        self.assertEqual(EssaySubmission.objects.filter(student=self.user).count(), 1)

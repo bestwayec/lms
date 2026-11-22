@@ -6,6 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.core.signals import request_finished
+from django.db import close_old_connections
 from django.test import Client
 from rest_framework import status
 
@@ -328,7 +330,14 @@ def test_result_vedomost_pdf_download_endpoint(setup_branch_and_test, settings, 
     assert f"grandec_natija_{res1.id}.pdf" in resp["Content-Disposition"]
     assert resp["Cache-Control"] == "private, no-store"
     assert b"".join(resp.streaming_content).startswith(b"%PDF")
-    resp.close()
+    # Closing a streaming response sends request_finished, whose close_old_connections
+    # handler would close the test's own PostgreSQL connection (the test client only
+    # detaches it while a request is in flight). Detach it for the explicit close too.
+    request_finished.disconnect(close_old_connections)
+    try:
+        resp.close()
+    finally:
+        request_finished.connect(close_old_connections)
     assert paths and all(not os.path.exists(path) for path in paths)
     assert not list(tmp_path.rglob("*.pdf"))
 

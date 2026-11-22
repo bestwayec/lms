@@ -2,6 +2,7 @@ import json
 from io import StringIO
 
 import pytest
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
@@ -16,6 +17,18 @@ User = get_user_model()
 def test_seed_qa_accounts_local_only_and_audited(tmp_path):
     out = tmp_path / "creds.json"
     stdout = StringIO()
+    engine = settings.DATABASES["default"].get("ENGINE", "")
+    if not (settings.DEBUG or engine.endswith("sqlite3")):
+        # PostgreSQL / non-local settings: the guard must refuse and write nothing.
+        with pytest.raises(CommandError):
+            call_command("seed_qa_accounts", "--out", str(out), "--tokens", stdout=stdout)
+        assert not out.exists()
+        assert not User.objects.filter(email__in=[
+            "qa_admin@example.test", "qa_teacher@example.test",
+            "qa_free@example.test", "qa_paid@example.test",
+        ]).exists()
+        assert not UserSubscription.objects.exists()
+        return
     call_command("seed_qa_accounts", "--out", str(out), "--tokens", stdout=stdout)
     creds = json.loads(out.read_text(encoding="utf-8"))
     assert set(creds) == {"admin", "teacher", "free", "paid"}
