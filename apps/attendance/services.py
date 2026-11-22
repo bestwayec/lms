@@ -56,6 +56,62 @@ class AttendanceError(ValidationError):
     """A domain-level validation failure with a user-facing Uzbek message."""
 
 
+class StaleAttendanceError(AttendanceError):
+    """The register changed after the caller loaded it (optimistic-concurrency conflict).
+
+    HTTP layer answers 409 ``ATTENDANCE_CHANGED`` with the fresh sheet so the client can show it
+    and keep the teacher's unsaved local edits for review.
+    """
+
+
+class FinalizedAttendanceError(AttendanceError):
+    """A finalized register is only changed by an explicit, reasoned correction."""
+
+
+def revision(session: "AttendanceSession") -> str:
+    """Opaque token of everything a teacher sees on the sheet (status + every mark).
+
+    Derived from the stored rows, so it needs no schema change, is identical for identical
+    content, and changes whenever any mark, late-minute value, note or the register status
+    changes. Clients echo it back on save; a mismatch means "you are editing an old sheet".
+    """
+    import hashlib
+
+    rows = session.records.order_by("student_id").values_list(
+        "student_id", "status", "late_minutes", "note"
+    )
+    digest = hashlib.sha256()
+    digest.update(f"{session.pk}|{session.status}".encode())
+    for student_id, status, late_minutes, note in rows:
+        digest.update(f"|{student_id}:{status}:{late_minutes}:{note}".encode())
+    return digest.hexdigest()[:20]
+
+
+def _lock_for_write(
+    session: "AttendanceSession",
+    *,
+    expected_revision: str | None,
+    correction: bool,
+    reason: str,
+) -> "AttendanceSession":
+    """Inside a transaction: lock the register row, then enforce freshness and finalization rules."""
+    locked = AttendanceSession.objects.select_for_update().select_related("group").get(pk=session.pk)
+    if locked.status == AttendanceSession.Status.CANCELLED:
+        raise AttendanceError("Bekor qilingan davomat darsini o'zgartirib bo'lmaydi.")
+    if expected_revision is not None and expected_revision != revision(locked):
+        raise StaleAttendanceError(
+            "Davomat boshqa joyda o'zgartirilgan. Yangi holatni ko'rib chiqing."
+        )
+    if locked.status == AttendanceSession.Status.FINALIZED:
+        if not correction:
+            raise FinalizedAttendanceError(
+                "Davomat yakunlangan. O'zgartirish uchun tuzatish sababini kiriting."
+            )
+        if not str(reason or "").strip():
+            raise FinalizedAttendanceError("Yakunlangan davomatni tuzatish uchun sabab majburiy.")
+    return locked
+
+
 # ---------------------------------------------------------------------------
 # Authorization
 # ---------------------------------------------------------------------------
@@ -366,50 +422,76 @@ def mark(
 
 
 def mark_many(
-    session: AttendanceSession, marks: list[dict], *, actor=None, reason: str = ""
+    session: AttendanceSession,
+    marks: list[dict],
+    *,
+    actor=None,
+    reason: str = "",
+    expected_revision: str | None = None,
+    correction: bool = False,
 ) -> int:
-    """Apply a batch of ``{"student_id": int, "status": str, ...}`` markings."""
-    students = {
-        student.pk: student
-        for student in session.group.students.filter(
-            pk__in=[m.get("student_id") for m in marks if m.get("student_id")],
+    """Apply a batch of ``{"student_id": int, "status": str, ...}`` markings atomically.
+
+    All-or-nothing: the register row is locked, the caller's ``expected_revision`` must still be
+    current (else :class:`StaleAttendanceError`), and a finalized register is only changed with
+    ``correction=True`` and a non-empty ``reason`` (:class:`FinalizedAttendanceError`).
+    """
+    with transaction.atomic():
+        locked = _lock_for_write(
+            session, expected_revision=expected_revision, correction=correction, reason=reason
         )
-    }
-    applied = 0
-    for entry in marks:
-        student = students.get(entry.get("student_id"))
-        if student is None:
-            continue
-        mark(
-            session,
-            student,
-            entry.get("status"),
-            late_minutes=entry.get("late_minutes", 0),
-            note=entry.get("note", ""),
-            actor=actor,
-            reason=reason,
-        )
-        applied += 1
+        students = {
+            student.pk: student
+            for student in locked.group.students.filter(
+                pk__in=[m.get("student_id") for m in marks if m.get("student_id")],
+            )
+        }
+        applied = 0
+        for entry in marks:
+            student = students.get(entry.get("student_id"))
+            if student is None:
+                continue
+            mark(
+                locked,
+                student,
+                entry.get("status"),
+                late_minutes=entry.get("late_minutes", 0),
+                note=entry.get("note", ""),
+                actor=actor,
+                reason=reason,
+            )
+            applied += 1
     return applied
 
 
-def mark_all_present(session: AttendanceSession, *, actor=None) -> int:
+def mark_all_present(
+    session: AttendanceSession,
+    *,
+    actor=None,
+    expected_revision: str | None = None,
+    correction: bool = False,
+    reason: str = "",
+) -> int:
     """Convenience: mark every currently-unmarked student PRESENT.
 
-    Only used behind an explicit teacher action — the register never assumes
-    presence on its own.
+    Only used behind an explicit teacher action — the register never assumes presence on its own.
+    Same locking, freshness and finalized-register rules as :func:`mark_many`.
     """
-    roster_students = session.group.students.filter(is_active=True)
-    marked_ids = set(session.records.values_list("student_id", flat=True))
-    unmarked = [s for s in roster_students if s.pk not in marked_ids]
-    for student in unmarked:
-        mark(
-            session,
-            student,
-            AttendanceRecord.Status.PRESENT,
-            actor=actor,
-            reason="Hammasi keldi",
+    with transaction.atomic():
+        locked = _lock_for_write(
+            session, expected_revision=expected_revision, correction=correction, reason=reason
         )
+        roster_students = locked.group.students.filter(is_active=True)
+        marked_ids = set(locked.records.values_list("student_id", flat=True))
+        unmarked = [s for s in roster_students if s.pk not in marked_ids]
+        for student in unmarked:
+            mark(
+                locked,
+                student,
+                AttendanceRecord.Status.PRESENT,
+                actor=actor,
+                reason=reason or "Hammasi keldi",
+            )
     return len(unmarked)
 
 
@@ -441,6 +523,7 @@ def finalize(
     actor=None,
     mark_unmarked_as_absent: bool = False,
     reason: str = "",
+    expected_revision: str | None = None,
 ) -> dict:
     """Finalize a register transactionally.
 
@@ -454,6 +537,10 @@ def finalize(
             result = summary(locked)
             result.update(ok=True, already_finalized=True)
             return result
+        if expected_revision is not None and expected_revision != revision(locked):
+            raise StaleAttendanceError(
+                "Davomat boshqa joyda o'zgartirilgan. Yangi holatni ko'rib chiqing."
+            )
         if locked.status == AttendanceSession.Status.CANCELLED:
             raise AttendanceError("Bekor qilingan davomatni yakunlab bo'lmaydi.")
         rows = roster(locked)
@@ -520,6 +607,7 @@ def finalize_and_notify(
     reason: str = "",
     notify_parents: bool = True,
     notify_group: bool = True,
+    expected_revision: str | None = None,
 ) -> dict:
     """Canonical finalize entry point for every channel (API, bot, admin).
 
@@ -532,6 +620,7 @@ def finalize_and_notify(
         actor=actor,
         mark_unmarked_as_absent=mark_unmarked_as_absent,
         reason=reason,
+        expected_revision=expected_revision,
     )
     if not result.get("ok") or result.get("already_finalized"):
         return result
