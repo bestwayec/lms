@@ -59,7 +59,7 @@ def _can_inspect_test_or_attempt(user: Any, test: Test, attempt: TestAttempt | N
             return True
         if hasattr(user, "teacher_groups") and user.teacher_groups.filter(id=getattr(test, "group_id", None)).exists():
             return True
-        if test.group_assignments.filter(group__teacher=user).exists():
+        if test.homework_assignments.filter(group__teacher=user).exists():
             return True
         if attempt:
             if hasattr(user, "managed_groups") and user.managed_groups.filter(students=attempt.student).exists():
