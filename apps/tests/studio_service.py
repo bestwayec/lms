@@ -781,7 +781,14 @@ def student_has_assignment(student, test: Test) -> bool:
     """A student in any group the test is assigned to (Homework) may take it."""
     from apps.courses.models import Homework
 
-    return Homework.objects.filter(test=test, group__students=student).exists()
+    from django.db.models import Q
+
+    return (
+        Homework.objects.filter(test=test)
+        .filter(Q(group__students=student) | Q(student=student))
+        .exclude(status=Homework.Status.CANCELLED)
+        .exists()
+    )
 
 
 # ---------------------------------------------------------------------------

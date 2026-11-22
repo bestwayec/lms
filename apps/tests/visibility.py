@@ -56,7 +56,11 @@ def member_q(user) -> Q:
     my_teachers = my_groups.values("teacher_id")
     return (
         Q(assigned_group_id__in=my_groups.values("pk"))
-        | Q(pk__in=Homework.objects.filter(group__students=user, test__isnull=False).values("test_id"))
+        | Q(
+            pk__in=Homework.objects.filter(Q(group__students=user) | Q(student=user), test__isnull=False)
+            .exclude(status=Homework.Status.CANCELLED)
+            .values("test_id")
+        )
         | (
             Q(assigned_group__isnull=True)
             & (

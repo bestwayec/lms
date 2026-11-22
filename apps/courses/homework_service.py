@@ -11,10 +11,10 @@ Unified Homework Engine Service (Stage 4):
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
 
@@ -56,10 +56,12 @@ def create_unified_homework(
     Create a unified homework assignment with strict authorization,
     transactional atomicity, and duplicate protection.
     """
-    # 1. Idempotency check
-    if idempotency_key:
+    # 1. Idempotency check — keys are namespaced per creator so one teacher's
+    # key can never return (or block) another teacher's homework.
+    stored_key = _namespaced_idempotency_key(user, idempotency_key)
+    if stored_key:
         existing = Homework.objects.filter(
-            idempotency_key=idempotency_key
+            idempotency_key=stored_key, created_by=user
         ).first()
         if existing:
             return existing, False
@@ -81,6 +83,18 @@ def create_unified_homework(
         start_date = timezone.make_aware(
             start_date, timezone.get_current_timezone()
         )
+    if start_date and start_date >= due_date:
+        raise ValueError("Boshlanish vaqti topshirish muddatidan oldin bo'lishi kerak.")
+
+    try:
+        time_limit = int(time_limit or 0)
+        max_attempts = int(max_attempts or 1)
+    except (TypeError, ValueError):
+        raise ValueError("Vaqt chegarasi va urinishlar soni butun son bo'lishi kerak.")
+    if time_limit < 0 or time_limit > 24 * 60:
+        raise ValueError("Vaqt chegarasi 0–1440 daqiqa oralig'ida bo'lishi kerak.")
+    if max_attempts < 1 or max_attempts > 20:
+        raise ValueError("Urinishlar soni 1–20 oralig'ida bo'lishi kerak.")
 
     # 3. Recipient validation (Group or Individual Student)
     group = None
@@ -97,9 +111,11 @@ def create_unified_homework(
     if student_id:
         from apps.accounts.models import User
 
-        target_student = User.objects.filter(id=student_id).first()
-        if not target_student:
+        target_student = User.objects.filter(id=student_id, is_active=True).first()
+        if not target_student or getattr(target_student, "role", "") != "student":
             raise ValueError("O'quvchi topilmadi.")
+        if group and not group.students.filter(id=target_student.id).exists():
+            raise PermissionError("O'quvchi tanlangan guruh a'zosi emas.")
 
         # Ensure student is authorized (in teacher's group or accessible to center/platform admin)
         if not is_platform_admin(user):
@@ -107,12 +123,6 @@ def create_unified_homework(
             student_accessible = teacher_groups_qs.filter(
                 students=target_student
             ).exists()
-            if not student_accessible:
-                # Also allow if student belongs to same branch
-                if getattr(user, "branch_id", None) and getattr(
-                    target_student, "branch_id", None
-                ) == getattr(user, "branch_id", None):
-                    student_accessible = True
             if not student_accessible:
                 raise PermissionError("Ushbu o'quvchiga kirish huquqingiz yo'q.")
 
@@ -165,19 +175,20 @@ def create_unified_homework(
                     "Boshqa o'qituvchining yopiq testini vazifa qilib biriktirish taqiqlanadi."
                 )
 
-        # Do NOT hijack or overwrite another group's assignment
-        if group and test.assigned_group_id is None:
-            test.assigned_group = group
-            test.save(update_fields=["assigned_group"])
-
+        # The test row is shared content (official tests are used by every
+        # center); assigning it must not mutate it.  Access for recipients is
+        # granted through the Homework row (see tests.studio_service
+        # .student_has_assignment and tests.visibility.member_q).
         content_type = Homework.ContentType.TEST
 
     elif content_type == Homework.ContentType.ESSAY or essay_topic_id:
         if not essay_topic_id:
             raise ValueError("Esse topshirig'i uchun essay_topic_id talab qilinadi.")
-        topic = EssayTopic.objects.filter(id=essay_topic_id).first()
+        topic = EssayTopic.objects.filter(id=essay_topic_id, is_active=True).first()
         if not topic:
             raise ValueError("Biriktirilgan esse mavzusi topilmadi.")
+        if not can_assign_essay_topic(user, topic):
+            raise PermissionError("Ushbu esse mavzusini vazifa qilib berish huquqingiz yo'q.")
 
         if group:
             from apps.essays.group_reports import (
@@ -202,21 +213,27 @@ def create_unified_homework(
         vocab_pack = VocabularyPack.objects.filter(id=vocabulary_pack_id).first()
         if not vocab_pack:
             raise ValueError("Biriktirilgan lug'at to'plami topilmadi.")
+        if not can_assign_vocabulary_pack(user, vocab_pack):
+            raise PermissionError("Ushbu lug'at to'plamini vazifa qilib berish huquqingiz yo'q.")
         content_type = Homework.ContentType.VOCABULARY
 
     elif content_type == Homework.ContentType.LESSON or lesson_id:
         if not lesson_id:
             raise ValueError("Dars topshirig'i uchun lesson_id talab qilinadi.")
-        lesson = Lesson.objects.filter(id=lesson_id).first()
+        lesson = Lesson.objects.filter(id=lesson_id).select_related("module__course").first()
         if not lesson:
             raise ValueError("Biriktirilgan dars topilmadi.")
+        if not can_assign_lesson(user, lesson):
+            raise PermissionError("Ushbu darsni vazifa qilib berish huquqingiz yo'q.")
         content_type = Homework.ContentType.LESSON
 
     else:
         content_type = Homework.ContentType.CUSTOM
 
-    # 5. Create the unified homework record atomically
-    hw = Homework.objects.create(
+    # 5. Create the unified homework record atomically.  A concurrent request
+    # with the same idempotency key loses the unique-constraint race; return
+    # the winner instead of a 500.
+    fields = dict(
         group=group,
         student=target_student,
         content_type=content_type,
@@ -228,14 +245,65 @@ def create_unified_homework(
         lesson=lesson,
         start_date=start_date,
         due_date=due_date,
-        time_limit=max(0, int(time_limit or 0)),
-        max_attempts=max(1, int(max_attempts or 1)),
+        time_limit=time_limit,
+        max_attempts=max_attempts,
         status=Homework.Status.ACTIVE,
-        idempotency_key=idempotency_key or None,
+        idempotency_key=stored_key,
         created_by=user,
     )
+    if stored_key:
+        try:
+            with transaction.atomic():
+                hw = Homework.objects.create(**fields)
+        except IntegrityError:
+            existing = Homework.objects.filter(
+                idempotency_key=stored_key, created_by=user
+            ).first()
+            if existing:
+                return existing, False
+            raise
+    else:
+        hw = Homework.objects.create(**fields)
 
     return hw, True
+
+
+def _namespaced_idempotency_key(user, key: str | None) -> str | None:
+    key = (key or "").strip()
+    if not key:
+        return None
+    return f"u{user.pk}:{key}"[:120]
+
+
+def can_assign_essay_topic(user, topic) -> bool:
+    """Platform topics (no author / admin author) or the teacher's own topics."""
+    if is_platform_admin(user):
+        return True
+    author = getattr(topic, "created_by", None)
+    if author is None:
+        return not (getattr(topic, "password", "") or "").strip()
+    if author.pk == user.pk:
+        return True
+    return is_platform_admin(author) and not (getattr(topic, "password", "") or "").strip()
+
+
+def can_assign_vocabulary_pack(user, pack) -> bool:
+    """Own packs, or a pack bound to one of the teacher's groups."""
+    if is_platform_admin(user):
+        return True
+    if pack.teacher_id == user.pk:
+        return True
+    if pack.group_id and get_teacher_groups(user).filter(id=pack.group_id).exists():
+        return True
+    return False
+
+
+def can_assign_lesson(user, lesson) -> bool:
+    if is_platform_admin(user):
+        return True
+    module = getattr(lesson, "module", None)
+    course = getattr(module, "course", None)
+    return bool(course and course.teacher_id == user.pk)
 
 
 def cancel_teacher_homework(user, homework_id: int) -> Homework:
@@ -290,8 +358,187 @@ delete_teacher_homework = cancel_teacher_homework
 
 
 # ---------------------------------------------------------------------------
-# 2. Student Homework Lifecycle & Authoritative Status Derivation
+# 2. Student Homework Lifecycle
+#
+# Invariants (each covered by tests/test_homework_integrity.py):
+#   * Only a *current* recipient (member of the homework's group, or the
+#     individually assigned student) may start, save or submit.  A student
+#     removed from the group keeps read access to work they already handed in.
+#   * Writes happen only on POST.  Listing and detail never create or link
+#     rows; a test result is linked only through the attempt the homework
+#     itself started, never through an older Result for the same test.
+#   * A score is recorded only from an official persisted ``Result`` whose
+#     grading is finished.  Grader exceptions, missing results and missing
+#     attempts produce GRADING_FAILED (retryable) — never GRADED with 0.
+#   * Start/save/submit respect the assignment window (start_date, due_date),
+#     cancellation, the server-side time limit and max_attempts; the
+#     submission row is locked so autosave and finish cannot interleave.
 # ---------------------------------------------------------------------------
+
+MAX_ANSWERS_PAYLOAD_BYTES = 64 * 1024
+
+
+class HomeworkNotFound(PermissionError):
+    """The homework does not exist or the user is not a recipient (no enumeration)."""
+
+
+class HomeworkConflict(ValueError):
+    """The action is not allowed in the current state (closed, finished, expired)."""
+
+    def __init__(self, message: str, code: str):
+        super().__init__(message)
+        self.code = code
+
+
+def _recipient_q(student) -> Q:
+    return Q(group__students=student) | Q(student=student)
+
+
+def _is_current_recipient(hw: Homework, student) -> bool:
+    if hw.student_id is not None:
+        return hw.student_id == student.pk
+    if hw.group_id is None:
+        return False
+    return hw.group.students.filter(pk=student.pk).exists()
+
+
+def _readable_homework_ids(student):
+    """Homework the student may *see*: current recipient, or already has a submission."""
+    current = Homework.objects.filter(_recipient_q(student)).values("id")
+    historical = HomeworkSubmission.objects.filter(student=student).values("homework_id")
+    return Q(id__in=current) | Q(id__in=historical)
+
+
+def _lock_homework_for_write(student, homework_id: int) -> Homework:
+    """Fetch + row-lock a homework the student currently receives.
+
+    ``SELECT … FOR UPDATE`` cannot be combined with the DISTINCT a M2M join may
+    need, so authorization and locking are separate queries on the PK.
+    """
+    hw = Homework.objects.select_for_update().filter(id=homework_id).first()
+    if hw is None or not _is_current_recipient(hw, student):
+        raise HomeworkNotFound("Topshiriq topilmadi yoki sizga biriktirilmagan.")
+    return hw
+
+
+def _assert_window_open(hw: Homework, now: datetime) -> None:
+    if hw.status == Homework.Status.CANCELLED:
+        raise HomeworkConflict("Ushbu topshiriq bekor qilingan.", "cancelled")
+    if hw.status != Homework.Status.ACTIVE:
+        raise HomeworkConflict("Ushbu topshiriq yopilgan.", "closed")
+    if hw.start_date and now < hw.start_date:
+        raise HomeworkConflict("Topshiriq hali ochilmagan.", "not_open")
+    if hw.due_date and now > hw.due_date:
+        raise HomeworkConflict("Topshirish muddati tugagan.", "deadline_passed")
+
+
+def _uses_own_timer(hw: Homework) -> bool:
+    """Tests run on the official attempt timer (Test.time_limit_minutes)."""
+    return hw.content_type != Homework.ContentType.TEST
+
+
+def submission_deadline(hw: Homework, sub: HomeworkSubmission | None) -> datetime | None:
+    """Server-side cut-off for this submission: due date, or start + time limit."""
+    deadline = hw.due_date
+    if sub and sub.started_at and hw.time_limit and _uses_own_timer(hw):
+        personal = sub.started_at + timedelta(minutes=hw.time_limit)
+        deadline = min(deadline, personal) if deadline else personal
+    return deadline
+
+
+def _official_test_outcome(attempt: TestAttempt | None) -> tuple[str, Result | None]:
+    """Read-only view of what the official test pipeline has persisted.
+
+    Returns (state, result) where state is one of
+    ``in_progress`` / ``graded`` / ``pending_review`` / ``missing`` / ``cancelled``.
+    """
+    if attempt is None:
+        return "missing", None
+    if attempt.status == TestAttempt.Status.IN_PROGRESS:
+        return "in_progress", None
+    if attempt.status == TestAttempt.Status.CANCELLED:
+        return "cancelled", None
+    result = Result.objects.filter(attempt=attempt).first()
+    if attempt.status == TestAttempt.Status.PENDING_GRADING:
+        return "pending_review", result
+    if result is None:
+        return "missing", None
+    if getattr(result, "grading_status", "graded") != "graded":
+        return "pending_review", result
+    return "graded", result
+
+
+def _apply_result(sub: HomeworkSubmission, result: Result) -> None:
+    sub.result = result
+    sub.score = result.score
+    sub.max_score = result.max_score
+    sub.percentage = float(result.percentage)
+    sub.score_display = f"{result.score}/{result.max_score}"
+    sub.status = HomeworkSubmission.Status.GRADED
+    sub.grading_error = ""
+
+
+def _sync_test_submission(sub: HomeworkSubmission) -> bool:
+    """Copy the official outcome of the linked attempt onto the submission.
+
+    Returns True if the submission row changed.  Only ever *reads* official
+    rows; it never invents a score.
+    """
+    state, result = _official_test_outcome(sub.test_attempt)
+    before = (sub.status, sub.result_id, sub.is_completed)
+    if state == "graded":
+        _apply_result(sub, result)
+        sub.is_completed = True
+        sub.completed_at = sub.completed_at or result.calculated_at
+    elif state == "pending_review":
+        sub.status = HomeworkSubmission.Status.AWAITING_REVIEW
+        sub.is_completed = True
+        sub.completed_at = sub.completed_at or getattr(sub.test_attempt, "completed_at", None)
+        sub.grading_error = ""
+    elif state == "missing" and sub.test_attempt_id and sub.test_attempt.status != TestAttempt.Status.IN_PROGRESS:
+        sub.status = HomeworkSubmission.Status.GRADING_FAILED
+        sub.is_completed = True
+        sub.grading_error = "Rasmiy natija topilmadi."
+    elif state == "cancelled":
+        sub.status = HomeworkSubmission.Status.GRADING_FAILED
+        sub.is_completed = True
+        sub.grading_error = "Test urinishi bekor qilingan."
+    return before != (sub.status, sub.result_id, sub.is_completed)
+
+
+def _effective_attempt(hw: Homework, sub: HomeworkSubmission | None) -> TestAttempt | None:
+    """The official attempt that belongs to this homework, or None.
+
+    Only an attempt started at/after the homework was created counts; this
+    rejects results from earlier practice that old code linked by test id.
+    """
+    if sub is None:
+        return None
+    attempt = sub.test_attempt
+    if attempt is None and sub.result_id and sub.result is not None:
+        attempt = sub.result.attempt
+    if attempt is None or attempt.test_id != hw.test_id:
+        return None
+    if attempt.started_at and attempt.started_at < hw.created_at:
+        return None
+    return attempt
+
+
+def _trusted_submission(hw: Homework, sub: HomeworkSubmission | None) -> HomeworkSubmission | None:
+    """Drop legacy rows the old list endpoint created by linking an older Result.
+
+    Those rows were never started through this homework (attempts_count == 0)
+    and carry no attempt of their own, so they describe other work.
+    """
+    if (
+        sub is not None
+        and hw.content_type == Homework.ContentType.TEST
+        and sub.is_completed
+        and sub.attempts_count == 0
+        and _effective_attempt(hw, sub) is None
+    ):
+        return None
+    return sub
 
 
 def derive_submission_status(
@@ -299,274 +546,225 @@ def derive_submission_status(
     submission: HomeworkSubmission | None,
     now: datetime | None = None,
 ) -> tuple[str, float | None, str]:
-    """
-    Derive the authoritative lifecycle status for a student homework assignment:
-    - NOT_STARTED
-    - IN_PROGRESS
-    - SUBMITTED
-    - AWAITING_REVIEW
-    - GRADED
-    - OVERDUE
-    - CANCELLED
+    """Authoritative, read-only lifecycle status for one student's homework.
 
-    Rules:
-    - Cancelled homework is always CANCELLED.
-    - Completed submissions with a calculated grade are GRADED.
-    - A score of 0 is a valid final score (0.0%), NOT pending.
-    - Submissions awaiting manual teacher evaluation are AWAITING_REVIEW.
-    - Overdue is derived from server time vs due_date.
+    A score is returned only when it comes from a finished official grade
+    (test Result, graded essay, or a teacher's grade on a custom task).
+    Score 0 from such a source is GRADED; absence of a grade is never 0.
     """
     if now is None:
         now = timezone.now()
+    submission = _trusted_submission(homework, submission)
+
+    if submission is not None:
+        # Finished work keeps its outcome even if the homework is cancelled later.
+        if submission.essay_submission_id:
+            es = submission.essay_submission
+            if es.status in (EssaySubmission.Status.GRADED, EssaySubmission.Status.TEACHER_REVIEWED):
+                score = es.final_score if getattr(es, "final_score", None) is not None else es.total_score
+                if score is not None:
+                    return HomeworkSubmission.Status.GRADED, float(score), f"{float(score)} ball"
+            if es.status == EssaySubmission.Status.ERROR:
+                return HomeworkSubmission.Status.GRADING_FAILED, None, "Baholashda xatolik"
+            return HomeworkSubmission.Status.AWAITING_REVIEW, None, "Tekshiruv kutilmoqda"
+
+        if homework.content_type == Homework.ContentType.TEST:
+            attempt = _effective_attempt(homework, submission)
+            if attempt is None:
+                # Legacy rows: a score without the attempt this homework started
+                # (old fallback linking / grading-failure zeros) is not trusted.
+                if submission.status == HomeworkSubmission.Status.IN_PROGRESS and not submission.is_completed:
+                    pass
+                elif submission.is_completed:
+                    return HomeworkSubmission.Status.GRADING_FAILED, None, "Natija hali tayyor emas"
+            else:
+                state, result = _official_test_outcome(attempt)
+                if state == "graded":
+                    return (
+                        HomeworkSubmission.Status.GRADED,
+                        float(result.percentage),
+                        f"{result.score}/{result.max_score}",
+                    )
+                if state == "pending_review":
+                    return HomeworkSubmission.Status.AWAITING_REVIEW, None, "Tekshiruv kutilmoqda"
+                if state in ("missing", "cancelled") and submission.is_completed:
+                    return HomeworkSubmission.Status.GRADING_FAILED, None, "Natija hali tayyor emas"
+
+        if submission.is_completed:
+            if submission.status == HomeworkSubmission.Status.GRADED and (
+                submission.percentage is not None or submission.score is not None
+            ):
+                value = submission.percentage if submission.percentage is not None else submission.score
+                return (
+                    HomeworkSubmission.Status.GRADED,
+                    float(value),
+                    submission.score_display or f"{float(value)}",
+                )
+            if submission.status == HomeworkSubmission.Status.GRADING_FAILED:
+                return HomeworkSubmission.Status.GRADING_FAILED, None, "Natija hali tayyor emas"
+            if submission.status == HomeworkSubmission.Status.AWAITING_REVIEW:
+                return HomeworkSubmission.Status.AWAITING_REVIEW, None, "Tekshiruv kutilmoqda"
+            return HomeworkSubmission.Status.SUBMITTED, None, "Topshirildi"
+
+        if submission.status == HomeworkSubmission.Status.GRADING_FAILED:
+            return HomeworkSubmission.Status.GRADING_FAILED, None, "Natija hali tayyor emas"
 
     if homework.status == Homework.Status.CANCELLED:
         return HomeworkSubmission.Status.CANCELLED, None, "Bekor qilingan"
 
-    if submission:
-        # Check essay specific status
-        if submission.essay_submission_id:
-            es = submission.essay_submission
-            if es:
-                if es.status in (
-                    EssaySubmission.Status.GRADED,
-                    EssaySubmission.Status.TEACHER_REVIEWED,
-                ):
-                    final_score = (
-                        float(es.final_score)
-                        if getattr(es, "final_score", None) is not None
-                        else (float(es.total_score) if es.total_score is not None else 0.0)
-                    )
-                    return (
-                        HomeworkSubmission.Status.GRADED,
-                        final_score,
-                        f"{final_score} ball",
-                    )
-                if es.status == EssaySubmission.Status.PENDING_TEACHER:
-                    return (
-                        HomeworkSubmission.Status.AWAITING_REVIEW,
-                        None,
-                        "Tekshiruv kutilmoqda",
-                    )
+    if submission is not None and submission.status == HomeworkSubmission.Status.IN_PROGRESS:
+        deadline = submission_deadline(homework, submission)
+        if deadline and deadline < now:
+            return HomeworkSubmission.Status.OVERDUE, None, "Muddati o'tgan"
+        return HomeworkSubmission.Status.IN_PROGRESS, None, "Jarayonda"
 
-        # Check test specific status
-        if submission.result_id:
-            res = submission.result
-            pct = float(res.percentage) if res else (submission.percentage or 0.0)
-            score_txt = submission.score_display or (
-                f"{res.score}/{res.max_score}" if res else f"{pct}%"
-            )
-            return HomeworkSubmission.Status.GRADED, pct, score_txt
-
-        # General completion check
-        if submission.is_completed:
-            if submission.percentage is not None:
-                return (
-                    HomeworkSubmission.Status.GRADED,
-                    float(submission.percentage),
-                    submission.score_display or f"{submission.percentage}%",
-                )
-            if submission.score is not None:
-                return (
-                    HomeworkSubmission.Status.GRADED,
-                    float(submission.score),
-                    submission.score_display or f"{submission.score} ball",
-                )
-            if submission.status == HomeworkSubmission.Status.AWAITING_REVIEW:
-                return (
-                    HomeworkSubmission.Status.AWAITING_REVIEW,
-                    None,
-                    "Tekshiruv kutilmoqda",
-                )
-            return (
-                HomeworkSubmission.Status.SUBMITTED,
-                None,
-                "Topshirildi",
-            )
-
-        if submission.status == HomeworkSubmission.Status.IN_PROGRESS:
-            if homework.due_date < now:
-                return HomeworkSubmission.Status.OVERDUE, None, "Muddati o'tgan"
-            return HomeworkSubmission.Status.IN_PROGRESS, None, "Jarayonda"
-
-    # No active submission record
     if homework.due_date < now:
         return HomeworkSubmission.Status.OVERDUE, None, "Muddati o'tgan"
-
     return HomeworkSubmission.Status.NOT_STARTED, None, "Boshlanmagan"
 
 
-def get_student_homework_list(
-    student,
-    *,
-    status_filter: str | None = None,
-) -> list[dict[str, Any]]:
-    """
-    Fetch all authorized homework for a student (assigned to their groups or individual).
-    Returns rich metadata with derived authoritative status and score.
-    """
-    now = timezone.now()
+def _action_target(hw: Homework) -> tuple[str, int | None]:
+    if hw.content_type == Homework.ContentType.TEST and hw.test_id:
+        return f"/tests/{hw.test_id}", hw.test_id
+    if hw.content_type == Homework.ContentType.ESSAY and hw.essay_topic_id:
+        return f"/essays/{hw.essay_topic_id}/write", hw.essay_topic_id
+    if hw.content_type == Homework.ContentType.VOCABULARY and hw.vocabulary_pack_id:
+        return f"/vocabulary/packs/{hw.vocabulary_pack_id}", hw.vocabulary_pack_id
+    return "", None
 
-    # Student sees only homework assigned to their active groups or directly to them
-    homework_qs = (
-        Homework.objects.filter(
-            Q(group__students=student) | Q(student=student)
+
+def _serialize_item(
+    hw: Homework, sub: HomeworkSubmission | None, student, now: datetime, is_recipient: bool | None = None
+) -> dict[str, Any]:
+    sub = _trusted_submission(hw, sub)
+    eff_status, eff_score, status_label = derive_submission_status(hw, sub, now)
+    graded = eff_status == HomeworkSubmission.Status.GRADED
+    action_url, action_id = _action_target(hw)
+    deadline = submission_deadline(hw, sub)
+    attempts_used = sub.attempts_count if sub else 0
+    if is_recipient is None:
+        is_recipient = _is_current_recipient(hw, student)
+    can_start = (
+        is_recipient
+        and hw.status == Homework.Status.ACTIVE
+        and not (hw.start_date and now < hw.start_date)
+        and hw.due_date >= now
+        and (
+            sub is None
+            or not sub.is_completed
+            or attempts_used < hw.max_attempts
         )
-        .exclude(status=Homework.Status.ARCHIVED)
-        .select_related(
-            "group",
-            "student",
-            "test",
-            "essay_topic",
-            "vocabulary_pack",
-            "lesson",
-            "created_by",
-        )
-        .order_by("due_date", "-created_at")
     )
-
-    hw_ids = list(homework_qs.values_list("id", flat=True))
-
-    submissions_map: dict[int, HomeworkSubmission] = {
-        sub.homework_id: sub
-        for sub in HomeworkSubmission.objects.filter(
-            student=student, homework_id__in=hw_ids
-        ).select_related("result", "essay_submission", "test_attempt")
+    max_score = percentage = None
+    score_display = ""
+    if graded and sub is not None:
+        if hw.content_type == Homework.ContentType.TEST:
+            _, result = _official_test_outcome(_effective_attempt(hw, sub))
+            if result is not None:
+                max_score = float(result.max_score)
+                percentage = float(result.percentage)
+                score_display = f"{result.score}/{result.max_score}"
+        else:
+            max_score = float(sub.max_score) if sub.max_score is not None else None
+            percentage = float(sub.percentage) if sub.percentage is not None else None
+            score_display = sub.score_display or status_label
+    return {
+        "id": hw.id,
+        "title": hw.title,
+        "description": hw.description,
+        "content_type": hw.content_type,
+        "group_id": hw.group_id,
+        "group_name": hw.group.name if hw.group else "",
+        "is_individual": hw.group_id is None,
+        "teacher_name": hw.created_by.get_full_name() if hw.created_by else "",
+        "start_date": hw.start_date.isoformat() if hw.start_date else None,
+        "due_date": hw.due_date.isoformat(),
+        "deadline_at": deadline.isoformat() if deadline else None,
+        "time_limit": hw.time_limit,
+        "max_attempts": hw.max_attempts,
+        "attempts_used": attempts_used,
+        "can_start": bool(can_start),
+        "is_current_recipient": bool(is_recipient),
+        "status": eff_status,
+        "status_label": status_label,
+        "is_completed": bool(sub and sub.is_completed),
+        "is_late": bool(sub and sub.completed_at and sub.completed_at > hw.due_date),
+        "score": eff_score if graded else None,
+        "max_score": max_score,
+        "percentage": percentage,
+        "score_display": score_display,
+        "action_url": action_url,
+        "action_id": action_id,
+        "attempt_id": sub.test_attempt_id if sub else None,
+        "submission_id": sub.id if sub else None,
+        "created_at": hw.created_at.isoformat(),
     }
 
-    results: list[dict[str, Any]] = []
 
-    for hw in homework_qs:
-        sub = submissions_map.get(hw.id)
+_LIST_FILTERS = {
+    "pending": {HomeworkSubmission.Status.NOT_STARTED, HomeworkSubmission.Status.IN_PROGRESS},
+    "completed": {
+        HomeworkSubmission.Status.SUBMITTED,
+        HomeworkSubmission.Status.AWAITING_REVIEW,
+        HomeworkSubmission.Status.GRADED,
+        HomeworkSubmission.Status.GRADING_FAILED,
+    },
+    "overdue": {HomeworkSubmission.Status.OVERDUE},
+}
 
-        # Check fallback test result if submission record not yet linked
-        if not sub and hw.test_id:
-            existing_res = (
-                Result.objects.filter(student=student, test_id=hw.test_id)
-                .order_by("-calculated_at")
-                .first()
-            )
-            if existing_res:
-                sub, _ = HomeworkSubmission.objects.get_or_create(
-                    homework=hw,
-                    student=student,
-                    defaults={
-                        "status": HomeworkSubmission.Status.GRADED,
-                        "is_completed": True,
-                        "score": existing_res.score,
-                        "max_score": existing_res.max_score,
-                        "percentage": float(existing_res.percentage),
-                        "score_display": f"{existing_res.score}/{existing_res.max_score}",
-                        "result": existing_res,
-                        "completed_at": existing_res.calculated_at,
-                    },
-                )
 
-        eff_status, eff_score, status_label = derive_submission_status(
-            hw, sub, now
-        )
-
-        # Filter by status if requested
-        if status_filter:
-            norm_filter = status_filter.lower().strip()
-            if norm_filter == "pending":
-                if eff_status not in (
-                    HomeworkSubmission.Status.NOT_STARTED,
-                    HomeworkSubmission.Status.IN_PROGRESS,
-                ):
-                    continue
-            elif norm_filter == "completed":
-                if eff_status not in (
-                    HomeworkSubmission.Status.SUBMITTED,
-                    HomeworkSubmission.Status.AWAITING_REVIEW,
-                    HomeworkSubmission.Status.GRADED,
-                ):
-                    continue
-            elif norm_filter == "overdue":
-                if eff_status != HomeworkSubmission.Status.OVERDUE:
-                    continue
-            elif norm_filter != "all" and eff_status.lower() != norm_filter:
+def get_student_homework_list(student, *, status_filter: str | None = None) -> list[dict[str, Any]]:
+    """All homework the student may see, with derived status. Read-only."""
+    now = timezone.now()
+    homework_qs = (
+        Homework.objects.filter(_readable_homework_ids(student))
+        .exclude(status=Homework.Status.ARCHIVED)
+        .select_related("group", "student", "test", "essay_topic", "vocabulary_pack", "lesson", "created_by")
+        .order_by("due_date", "-created_at")
+    )
+    homeworks = list(homework_qs)
+    submissions = {
+        sub.homework_id: sub
+        for sub in HomeworkSubmission.objects.filter(
+            student=student, homework_id__in=[h.id for h in homeworks]
+        ).select_related("result", "essay_submission", "test_attempt")
+    }
+    current_ids = set(Homework.objects.filter(_recipient_q(student)).values_list("id", flat=True))
+    norm = (status_filter or "").lower().strip()
+    out: list[dict[str, Any]] = []
+    for hw in homeworks:
+        item = _serialize_item(hw, submissions.get(hw.id), student, now, hw.id in current_ids)
+        if norm and norm != "all":
+            allowed = _LIST_FILTERS.get(norm)
+            if allowed is not None and item["status"] not in allowed:
                 continue
+            if allowed is None and item["status"] != norm:
+                continue
+        out.append(item)
+    return out
 
-        # Build action URL
-        action_url = ""
-        action_id = None
-        if hw.content_type == Homework.ContentType.TEST and hw.test_id:
-            action_url = f"/tests/{hw.test_id}"
-            action_id = hw.test_id
-        elif hw.content_type == Homework.ContentType.ESSAY and hw.essay_topic_id:
-            action_url = f"/essays/{hw.essay_topic_id}/write"
-            action_id = hw.essay_topic_id
-        elif hw.content_type == Homework.ContentType.VOCABULARY and hw.vocabulary_pack_id:
-            action_url = f"/vocabulary/packs/{hw.vocabulary_pack_id}"
-            action_id = hw.vocabulary_pack_id
 
-        results.append(
-            {
-                "id": hw.id,
-                "title": hw.title,
-                "description": hw.description,
-                "content_type": hw.content_type,
-                "group_id": hw.group_id,
-                "group_name": (
-                    hw.group.name if hw.group else "Individual topshiriq"
-                ),
-                "teacher_name": (
-                    hw.created_by.get_full_name()
-                    if hw.created_by
-                    else "O'qituvchi"
-                ),
-                "due_date": hw.due_date.isoformat(),
-                "time_limit": hw.time_limit,
-                "max_attempts": hw.max_attempts,
-                "status": eff_status,
-                "status_label": status_label,
-                "is_completed": bool(sub and sub.is_completed),
-                "score": eff_score,
-                "max_score": float(sub.max_score) if (sub and sub.max_score is not None) else None,
-                "percentage": float(sub.percentage) if (sub and sub.percentage is not None) else None,
-                "score_display": sub.score_display if sub else "",
-                "action_url": action_url,
-                "action_id": action_id,
-                "submission_id": sub.id if sub else None,
-                "created_at": hw.created_at.isoformat(),
-            }
-        )
-
-    return results
+def _get_readable_homework(student, homework_id: int) -> Homework:
+    hw = (
+        Homework.objects.filter(_readable_homework_ids(student), id=homework_id)
+        .select_related("group", "student", "test", "essay_topic", "vocabulary_pack", "lesson", "created_by")
+        .first()
+    )
+    if hw is None:
+        raise HomeworkNotFound("Ushbu topshiriq topilmadi yoki sizga biriktirilmagan.")
+    return hw
 
 
 def get_student_homework_detail(student, homework_id: int) -> dict[str, Any]:
-    """
-    Get detailed student view of a single homework assignment,
-    verifying permission and returning content specifics.
-    """
+    """Detail view (read-only). Never exposes answer keys."""
     now = timezone.now()
-    hw = (
-        Homework.objects.filter(
-            Q(group__students=student) | Q(student=student),
-            id=homework_id,
-        )
-        .select_related(
-            "group",
-            "student",
-            "test",
-            "essay_topic",
-            "vocabulary_pack",
-            "lesson",
-            "created_by",
-        )
-        .first()
-    )
-    if not hw:
-        raise PermissionError("Ushbu topshiriq topilmadi yoki sizga biriktirilmagan.")
-
+    hw = _get_readable_homework(student, homework_id)
     sub = (
         HomeworkSubmission.objects.filter(student=student, homework=hw)
         .select_related("result", "essay_submission", "test_attempt")
         .first()
     )
-
-    eff_status, eff_score, status_label = derive_submission_status(hw, sub, now)
+    data = _serialize_item(hw, sub, student, now)
 
     content_details: dict[str, Any] = {}
     if hw.content_type == Homework.ContentType.TEST and hw.test:
@@ -575,261 +773,432 @@ def get_student_homework_detail(student, homework_id: int) -> dict[str, Any]:
             "test_title": hw.test.title,
             "subject": hw.test.subject,
             "questions_count": hw.test.questions.count(),
-            "time_limit": hw.time_limit or hw.test.time_limit or 0,
+            "time_limit": hw.test.time_limit_minutes or 0,
         }
     elif hw.content_type == Homework.ContentType.ESSAY and hw.essay_topic:
         content_details = {
             "topic_id": hw.essay_topic.id,
             "topic_title": hw.essay_topic.title,
-            "task_type": getattr(hw.essay_topic, "task_type", ""),
-            "min_words": getattr(hw.essay_topic, "min_words", 150),
-            "max_words": getattr(hw.essay_topic, "max_words", 300),
+            "subject": getattr(hw.essay_topic, "subject", ""),
+            "min_words": getattr(hw.essay_topic, "word_limit_min", None),
+            "max_words": getattr(hw.essay_topic, "word_limit_max", None),
         }
     elif hw.content_type == Homework.ContentType.VOCABULARY and hw.vocabulary_pack:
         content_details = {
             "pack_id": hw.vocabulary_pack.id,
             "pack_title": hw.vocabulary_pack.title,
-            "words_count": hw.vocabulary_pack.words.count()
-            if hasattr(hw.vocabulary_pack, "words")
-            else 0,
+            "words_count": hw.vocabulary_pack.word_count,
         }
+    elif hw.content_type == Homework.ContentType.LESSON and hw.lesson:
+        content_details = {"lesson_id": hw.lesson.id, "lesson_title": hw.lesson.title}
 
-    return {
-        "id": hw.id,
-        "title": hw.title,
-        "description": hw.description,
-        "content_type": hw.content_type,
-        "content_details": content_details,
-        "group_id": hw.group_id,
-        "group_name": hw.group.name if hw.group else "Individual topshiriq",
-        "teacher_name": (
-            hw.created_by.get_full_name() if hw.created_by else "O'qituvchi"
-        ),
-        "due_date": hw.due_date.isoformat(),
-        "time_limit": hw.time_limit,
-        "max_attempts": hw.max_attempts,
-        "status": eff_status,
-        "status_label": status_label,
-        "is_completed": bool(sub and sub.is_completed),
-        "score": eff_score,
-        "max_score": float(sub.max_score) if (sub and sub.max_score is not None) else None,
-        "percentage": float(sub.percentage) if (sub and sub.percentage is not None) else None,
-        "score_display": sub.score_display if sub else "",
-        "answers_payload": sub.answers_payload if sub else {},
-        "feedback": sub.feedback if sub else "",
-        "started_at": sub.started_at.isoformat() if (sub and sub.started_at) else None,
-        "completed_at": (
-            sub.completed_at.isoformat() if (sub and sub.completed_at) else None
-        ),
-        "submission_id": sub.id if sub else None,
-        "created_at": hw.created_at.isoformat(),
-    }
+    data.update(
+        {
+            "content_details": content_details,
+            "answers_payload": sub.answers_payload if sub else {},
+            "feedback": sub.feedback if sub else "",
+            "started_at": sub.started_at.isoformat() if (sub and sub.started_at) else None,
+            "completed_at": sub.completed_at.isoformat() if (sub and sub.completed_at) else None,
+            "server_now": now.isoformat(),
+        }
+    )
+    return data
+
+
+def _get_or_create_submission_locked(hw: Homework, student) -> tuple[HomeworkSubmission, bool]:
+    sub = HomeworkSubmission.objects.select_for_update().filter(homework=hw, student=student).first()
+    if sub is not None:
+        return sub, False
+    try:
+        with transaction.atomic():
+            sub = HomeworkSubmission.objects.create(
+                homework=hw, student=student, status=HomeworkSubmission.Status.NOT_STARTED
+            )
+        return sub, True
+    except IntegrityError:
+        return HomeworkSubmission.objects.select_for_update().get(homework=hw, student=student), False
 
 
 @transaction.atomic
 def start_student_homework(student, homework_id: int) -> dict[str, Any]:
-    """
-    Start or resume a student's homework attempt:
-    - Verifies homework is ACTIVE and student is authorized
-    - Verifies attempts limit and deadline
-    - Initializes or resumes TestAttempt, EssaySubmission, or custom state
-    """
+    """Start or resume. Only a current recipient, inside the window, within attempts."""
     now = timezone.now()
-    hw = (
-        Homework.objects.select_for_update()
-        .filter(
-            Q(group__students=student) | Q(student=student),
-            id=homework_id,
-        )
-        .first()
+    hw = _lock_homework_for_write(student, homework_id)
+    sub, _ = _get_or_create_submission_locked(hw, student)
+
+    # A finished official attempt the student completed in the runner: record it first.
+    if hw.content_type == Homework.ContentType.TEST and sub.test_attempt_id and not sub.is_completed:
+        if _sync_test_submission(sub):
+            sub.save()
+
+    in_progress = not sub.is_completed and sub.status in (
+        HomeworkSubmission.Status.IN_PROGRESS,
+        HomeworkSubmission.Status.GRADING_FAILED,
     )
-    if not hw:
-        raise PermissionError("Topshiriq topilmadi yoki sizga biriktirilmagan.")
+    if (
+        in_progress
+        and hw.content_type == Homework.ContentType.TEST
+        and sub.test_attempt_id
+        and sub.test_attempt.status == TestAttempt.Status.IN_PROGRESS
+        and sub.test_attempt.is_time_expired
+    ):
+        # The official timer ran out: finalise it (TIMEOUT, answers kept) instead
+        # of letting the runner silently open a fresh attempt.
+        return _finalize_test_submission(sub, hw, student, now)
+    if not in_progress:
+        _assert_window_open(hw, now)
+        if sub.attempts_count >= hw.max_attempts:
+            raise HomeworkConflict("Barcha urinishlaringiz tugagan.", "attempts_exhausted")
+    else:
+        # Resuming is allowed only while the window and personal timer are open.
+        _assert_window_open(hw, now)
+        deadline = submission_deadline(hw, sub)
+        if deadline and now > deadline:
+            raise HomeworkConflict("Vaqt tugagan.", "time_expired")
 
-    if hw.status == Homework.Status.CANCELLED:
-        raise ValueError("Ushbu topshiriq bekor qilingan.")
-
-    sub, created = HomeworkSubmission.objects.select_for_update().get_or_create(
-        homework=hw,
-        student=student,
-        defaults={
-            "status": HomeworkSubmission.Status.IN_PROGRESS,
-            "started_at": now,
-            "attempts_count": 1,
-        },
-    )
-
-    if not created:
-        if sub.is_completed:
-            # Check if max_attempts allows re-attempt
-            if hw.max_attempts > 0 and sub.attempts_count >= hw.max_attempts:
-                raise ValueError("Barcha urinishlaringiz tugagan.")
-
-        if sub.status == HomeworkSubmission.Status.NOT_STARTED:
-            sub.status = HomeworkSubmission.Status.IN_PROGRESS
-            sub.started_at = now
-            sub.attempts_count += 1
-            sub.save(update_fields=["status", "started_at", "attempts_count", "updated_at"])
-
-    # If it's a test, start or retrieve TestAttempt
-    attempt_id = None
+    attempt_id = sub.test_attempt_id if in_progress else None
     if hw.content_type == Homework.ContentType.TEST and hw.test_id:
         from apps.tests.services import StartAttemptService
 
-        attempt = StartAttemptService.execute(
-            test_id=hw.test_id,
-            student=student,
-        )
+        attempt = StartAttemptService.execute(test_id=hw.test_id, student=student)
+        if not in_progress and attempt.started_at < hw.created_at:
+            # An attempt opened before this homework existed is not homework work.
+            raise HomeworkConflict(
+                "Sizda bu test bo'yicha oldin boshlangan urinish bor. Avval uni yakunlang.",
+                "foreign_attempt_in_progress",
+            )
         attempt_id = attempt.id
-        if sub.test_attempt_id != attempt_id:
-            sub.test_attempt = attempt
-            sub.save(update_fields=["test_attempt", "updated_at"])
+        sub.test_attempt = attempt
 
+    if not in_progress:
+        # A new attempt: previous outcome stays in the official Result history.
+        sub.status = HomeworkSubmission.Status.IN_PROGRESS
+        sub.is_completed = False
+        sub.started_at = now
+        sub.completed_at = None
+        sub.result = None
+        sub.score = sub.max_score = sub.percentage = None
+        sub.score_display = ""
+        sub.grading_error = ""
+        sub.answers_payload = {}
+        sub.attempts_count += 1
+    sub.save()
+
+    deadline = submission_deadline(hw, sub)
     return {
         "ok": True,
         "homework_id": hw.id,
         "submission_id": sub.id,
         "status": sub.status,
         "attempt_id": attempt_id,
-        "started_at": sub.started_at.isoformat() if sub.started_at else now.isoformat(),
+        "attempts_used": sub.attempts_count,
+        "started_at": sub.started_at.isoformat() if sub.started_at else None,
+        "deadline_at": deadline.isoformat() if deadline else None,
+        "server_now": now.isoformat(),
         "time_limit": hw.time_limit,
     }
 
 
-def save_student_homework_progress(
-    student, homework_id: int, payload: dict[str, Any]
-) -> dict[str, Any]:
-    """Autosave student draft answers or progress on the server."""
-    now = timezone.now()
-    sub = (
-        HomeworkSubmission.objects.filter(
-            student=student, homework_id=homework_id
-        )
-        .first()
-    )
-    if not sub:
-        raise ValueError("Boshlangan topshiriq topilmadi.")
+def _validate_payload(payload: Any) -> dict[str, Any]:
+    import json
 
-    if sub.is_completed:
-        return {"ok": True, "already_completed": True}
-
-    sub.answers_payload = payload
-    sub.updated_at = now
-    sub.save(update_fields=["answers_payload", "updated_at"])
-
-    return {"ok": True, "saved_at": now.isoformat()}
+    if payload is None:
+        return {}
+    if not isinstance(payload, dict):
+        raise ValueError("Javoblar formati noto'g'ri.")
+    if len(json.dumps(payload, default=str)) > MAX_ANSWERS_PAYLOAD_BYTES:
+        raise ValueError("Javoblar hajmi juda katta.")
+    return payload
 
 
 @transaction.atomic
-def submit_student_homework(
-    student, homework_id: int, payload: dict[str, Any] | None = None
-) -> dict[str, Any]:
-    """
-    Finalize submission and grade via official assessment services:
-    - For Test: invokes SubmitAttemptService, records Result, sets GRADED.
-    - For Essay: marks EssaySubmission submitted, sets AWAITING_REVIEW or GRADED.
-    - For Custom: saves answers, sets AWAITING_REVIEW / SUBMITTED.
-    - Idempotent: repeated submissions return the calculated result cleanly.
-    """
+def save_student_homework_progress(student, homework_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    """Autosave. Rejected after finish, after the deadline, or for non-recipients."""
     now = timezone.now()
-    sub = (
-        HomeworkSubmission.objects.select_for_update()
-        .filter(student=student, homework_id=homework_id)
+    payload = _validate_payload(payload)
+    hw = _lock_homework_for_write(student, homework_id)
+    sub = HomeworkSubmission.objects.select_for_update().filter(homework=hw, student=student).first()
+    if sub is None or sub.status == HomeworkSubmission.Status.NOT_STARTED:
+        raise HomeworkConflict("Avval topshiriqni boshlang.", "not_started")
+    if sub.is_completed:
+        raise HomeworkConflict("Topshiriq allaqachon yakunlangan.", "already_completed")
+    _assert_window_open(hw, now)
+    deadline = submission_deadline(hw, sub)
+    if deadline and now > deadline:
+        raise HomeworkConflict("Vaqt tugagan.", "time_expired")
+
+    sub.answers_payload = payload
+    sub.save(update_fields=["answers_payload", "updated_at"])
+    return {"ok": True, "saved_at": now.isoformat(), "deadline_at": deadline.isoformat() if deadline else None}
+
+
+def _completion_payload(sub: HomeworkSubmission, hw: Homework) -> dict[str, Any]:
+    eff_status, eff_score, label = derive_submission_status(hw, sub)
+    graded = eff_status == HomeworkSubmission.Status.GRADED
+    return {
+        "ok": eff_status != HomeworkSubmission.Status.GRADING_FAILED,
+        "status": eff_status,
+        "status_label": label,
+        "is_completed": sub.is_completed,
+        "score": float(sub.score) if (graded and sub.score is not None) else None,
+        "max_score": float(sub.max_score) if (graded and sub.max_score is not None) else None,
+        "percentage": float(sub.percentage) if (graded and sub.percentage is not None) else None,
+        "score_display": sub.score_display if graded else "",
+        "grading_error": sub.grading_error if eff_status == HomeworkSubmission.Status.GRADING_FAILED else "",
+        "completed_at": sub.completed_at.isoformat() if sub.completed_at else None,
+    }
+
+
+def _link_recent_essay(sub: HomeworkSubmission, hw: Homework, student) -> None:
+    """Link the student's essay on this topic written since the homework started."""
+    since = sub.started_at or hw.created_at
+    es = (
+        EssaySubmission.objects.filter(student=student, topic_id=hw.essay_topic_id, created_at__gte=since)
+        .exclude(status=EssaySubmission.Status.DRAFT)
+        .order_by("-created_at")
         .first()
     )
-    if not sub:
-        # Create submission if submitting directly
-        hw = Homework.objects.filter(id=homework_id).first()
-        if not hw:
-            raise ValueError("Topshiriq topilmadi.")
-        sub = HomeworkSubmission.objects.create(
-            homework=hw,
-            student=student,
-            started_at=now,
-            status=HomeworkSubmission.Status.IN_PROGRESS,
-            attempts_count=1,
-        )
+    if es is not None:
+        sub.essay_submission = es
 
-    if sub.is_completed:
-        # Idempotent response
-        return {
-            "ok": True,
-            "status": sub.status,
-            "is_completed": True,
-            "score": float(sub.score) if sub.score is not None else None,
-            "percentage": float(sub.percentage) if sub.percentage is not None else None,
-            "score_display": sub.score_display,
-            "completed_at": sub.completed_at.isoformat() if sub.completed_at else None,
-        }
 
-    hw = sub.homework
-
-    if hw.content_type == Homework.ContentType.TEST and hw.test_id:
+def _finalize_test_submission(sub: HomeworkSubmission, hw: Homework, student, now: datetime) -> dict[str, Any]:
+    """Finish the linked official attempt (if still open) and record its outcome."""
+    attempt = sub.test_attempt
+    if attempt.status == TestAttempt.Status.IN_PROGRESS:
+        # The official service owns its own timer: an expired attempt is
+        # finalised as TIMEOUT with the answers saved so far.
         from apps.tests.services import SubmitAttemptService
 
-        attempt = sub.test_attempt
-        if not attempt:
-            # Look for active attempt
-            attempt = TestAttempt.objects.filter(
-                test_id=hw.test_id,
-                student=student,
-                status=TestAttempt.Status.IN_PROGRESS,
-            ).first()
-
-        if attempt:
-            try:
+        try:
+            with transaction.atomic():
                 SubmitAttemptService.execute(attempt.id, student)
-                attempt.refresh_from_db()
-                res = Result.objects.filter(attempt=attempt).first()
-                if res:
-                    sub.test_attempt = attempt
-                    sub.result = res
-                    sub.score = res.score
-                    sub.max_score = res.max_score
-                    sub.percentage = float(res.percentage)
-                    sub.score_display = f"{res.score}/{res.max_score}"
-                    sub.status = HomeworkSubmission.Status.GRADED
-                else:
-                    sub.status = HomeworkSubmission.Status.GRADED
-                    sub.score = 0
-                    sub.percentage = 0.0
-            except Exception as e:
-                logger.exception("Error executing SubmitAttemptService: %s", e)
-                sub.status = HomeworkSubmission.Status.GRADED
-                sub.score = 0
-                sub.percentage = 0.0
-        else:
-            sub.status = HomeworkSubmission.Status.GRADED
-            sub.score = 0
-            sub.percentage = 0.0
+        except Exception as exc:  # a grader failure must never become a grade
+            logger.exception("Homework %s: official grading failed for attempt %s", hw.id, attempt.id)
+            attempt.refresh_from_db()
+            if attempt.status == TestAttempt.Status.IN_PROGRESS:
+                sub.status = HomeworkSubmission.Status.GRADING_FAILED
+                sub.grading_error = f"Baholash xatosi: {type(exc).__name__}"[:500]
+                sub.save(update_fields=["status", "grading_error", "updated_at"])
+                return _completion_payload(sub, hw)
+        attempt.refresh_from_db()
+    sub.test_attempt = attempt
+    sub.completed_at = sub.completed_at or now
+    if not _sync_test_submission(sub) and not sub.is_completed:
+        sub.status = HomeworkSubmission.Status.GRADING_FAILED
+        sub.grading_error = "Rasmiy natija topilmadi."
+        sub.is_completed = True
+    sub.save()
+    return _completion_payload(sub, hw)
 
-    elif hw.content_type == Homework.ContentType.ESSAY:
-        if sub.essay_submission:
-            es = sub.essay_submission
-            if es.status == EssaySubmission.Status.GRADED:
-                sub.status = HomeworkSubmission.Status.GRADED
-                sub.score = es.total_score
-            else:
-                sub.status = HomeworkSubmission.Status.AWAITING_REVIEW
-        else:
-            sub.status = HomeworkSubmission.Status.AWAITING_REVIEW
 
-    else:
-        # Custom or Lesson
-        if payload:
-            sub.answers_payload = payload
+@transaction.atomic
+def submit_student_homework(student, homework_id: int, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Finish and grade through the official services.
+
+    Idempotent: a second call returns the stored outcome; for a test whose
+    grading failed it retries the official sync (never fabricates a score).
+    """
+    now = timezone.now()
+    payload = _validate_payload(payload) if payload else {}
+    hw = _lock_homework_for_write(student, homework_id)
+    sub = (
+        HomeworkSubmission.objects.select_for_update(of=("self",))
+        .select_related("test_attempt", "essay_submission")
+        .filter(homework=hw, student=student)
+        .first()
+    )
+    if sub is None or sub.status == HomeworkSubmission.Status.NOT_STARTED:
+        raise HomeworkConflict("Avval topshiriqni boshlang.", "not_started")
+
+    if sub.is_completed:
+        if hw.content_type == Homework.ContentType.TEST and sub.status == HomeworkSubmission.Status.GRADING_FAILED:
+            if _sync_test_submission(sub):
+                sub.save()
+        return _completion_payload(sub, hw)
+
+    if hw.content_type == Homework.ContentType.TEST:
+        if sub.test_attempt_id is None:
+            raise HomeworkConflict("Test urinishi topilmadi. Topshiriqni qayta boshlang.", "attempt_missing")
+        if sub.test_attempt.status == TestAttempt.Status.IN_PROGRESS and hw.status == Homework.Status.CANCELLED:
+            raise HomeworkConflict("Ushbu topshiriq bekor qilingan.", "cancelled")
+        return _finalize_test_submission(sub, hw, student, now)
+
+    # Non-test content is subject to the homework window and personal timer.
+    _assert_window_open(hw, now)
+    deadline = submission_deadline(hw, sub)
+    if deadline and now > deadline:
+        raise HomeworkConflict("Vaqt tugagan.", "time_expired")
+
+    if payload:
+        sub.answers_payload = payload
+    if hw.content_type == Homework.ContentType.ESSAY:
+        _link_recent_essay(sub, hw, student)
+        if sub.essay_submission_id is None:
+            raise HomeworkConflict("Avval esseni yozib topshiring.", "essay_missing")
         sub.status = HomeworkSubmission.Status.AWAITING_REVIEW
-
+    elif hw.content_type == Homework.ContentType.CUSTOM:
+        if not sub.answers_payload:
+            raise HomeworkConflict("Javob kiritilmagan.", "empty_answer")
+        sub.status = HomeworkSubmission.Status.AWAITING_REVIEW
+    else:
+        # Lesson / vocabulary: completion is recorded, nothing is graded.
+        sub.status = HomeworkSubmission.Status.SUBMITTED
     sub.is_completed = True
     sub.completed_at = now
     sub.save()
+    return _completion_payload(sub, hw)
 
+
+def get_student_homework_result(student, homework_id: int) -> dict[str, Any]:
+    """Result of finished work only; scores only from official grades."""
+    data = get_student_homework_detail(student, homework_id)
+    if not data["is_completed"]:
+        raise HomeworkConflict("Ushbu topshiriq hali yakunlanmagan.", "not_completed")
     return {
-        "ok": True,
-        "status": sub.status,
-        "is_completed": True,
-        "score": float(sub.score) if sub.score is not None else None,
-        "percentage": float(sub.percentage) if sub.percentage is not None else None,
-        "score_display": sub.score_display,
-        "completed_at": now.isoformat(),
+        "homework_id": data["id"],
+        "title": data["title"],
+        "status": data["status"],
+        "status_label": data["status_label"],
+        "score": data["score"],
+        "max_score": data["max_score"],
+        "percentage": data["percentage"],
+        "score_display": data["score_display"],
+        "feedback": data["feedback"],
+        "completed_at": data["completed_at"],
+        "is_late": data["is_late"],
+        "attempt_id": data["attempt_id"],
+    }
+
+
+# ---------------------------------------------------------------------------
+# 3. Teacher grading of custom / lesson work
+# ---------------------------------------------------------------------------
+
+
+def _teacher_can_manage(user, hw: Homework) -> bool:
+    if is_platform_admin(user):
+        return True
+    if hw.group_id and get_teacher_groups(user).filter(id=hw.group_id).exists():
+        return True
+    if hw.created_by_id == user.pk:
+        return True
+    return False
+
+
+@transaction.atomic
+def grade_custom_submission(user, submission_id: int, *, score, max_score, feedback: str = "") -> HomeworkSubmission:
+    """Teacher grade for CUSTOM/LESSON work. Tests/essays are graded by their official pipelines."""
+    from decimal import Decimal, InvalidOperation
+
+    sub = HomeworkSubmission.objects.select_for_update(of=("self",)).select_related("homework").filter(id=submission_id).first()
+    if sub is None or not _teacher_can_manage(user, sub.homework):
+        raise HomeworkNotFound("Topshiriq topilmadi.")
+    if sub.homework.content_type in (Homework.ContentType.TEST, Homework.ContentType.ESSAY):
+        raise HomeworkConflict("Test va esse rasmiy tizimda baholanadi.", "official_grader")
+    if not sub.is_completed:
+        raise HomeworkConflict("O'quvchi hali topshirmagan.", "not_completed")
+    try:
+        score_d = Decimal(str(score))
+        max_d = Decimal(str(max_score))
+    except (InvalidOperation, TypeError):
+        raise ValueError("Ball noto'g'ri.")
+    if max_d <= 0 or score_d < 0 or score_d > max_d:
+        raise ValueError("Ball 0 va maksimal ball oralig'ida bo'lishi kerak.")
+    sub.score = score_d
+    sub.max_score = max_d
+    sub.percentage = float((score_d / max_d * 100).quantize(Decimal("0.01")))
+    sub.score_display = f"{score_d}/{max_d}"
+    sub.feedback = (feedback or "").strip()[:5000]
+    sub.status = HomeworkSubmission.Status.GRADED
+    sub.graded_by = user
+    sub.save()
+    return sub
+
+
+# ---------------------------------------------------------------------------
+# 4. Teacher view of progress — same derivation as the student sees
+# ---------------------------------------------------------------------------
+
+
+def _roster_students(hw: Homework):
+    """Current recipients plus anyone who already has a submission (removed students keep history)."""
+    from apps.accounts.models import User
+
+    ids: set[int] = set(HomeworkSubmission.objects.filter(homework=hw).values_list("student_id", flat=True))
+    if hw.student_id:
+        ids.add(hw.student_id)
+    elif hw.group_id:
+        ids.update(hw.group.students.values_list("id", flat=True))
+    return User.objects.filter(id__in=ids).order_by("last_name", "first_name", "id")
+
+
+def homework_roster(hw: Homework, now: datetime | None = None) -> list[dict[str, Any]]:
+    now = now or timezone.now()
+    current = set()
+    if hw.student_id:
+        current.add(hw.student_id)
+    elif hw.group_id:
+        current.update(hw.group.students.values_list("id", flat=True))
+    subs = {
+        s.student_id: s
+        for s in HomeworkSubmission.objects.filter(homework=hw).select_related(
+            "result", "essay_submission", "test_attempt"
+        )
+    }
+    rows = []
+    for st in _roster_students(hw):
+        sub = _trusted_submission(hw, subs.get(st.id))
+        status, score, _label = derive_submission_status(hw, sub, now)
+        rows.append(
+            {
+                "student_id": st.id,
+                "student_name": st.get_full_name() or st.email,
+                "is_current_member": st.id in current,
+                "status": status,
+                "score": score if status == HomeworkSubmission.Status.GRADED else None,
+                "submission_id": sub.id if sub else None,
+                "attempts_used": sub.attempts_count if sub else 0,
+                "completed_at": sub.completed_at.isoformat() if (sub and sub.completed_at) else None,
+                "is_late": bool(sub and sub.completed_at and sub.completed_at > hw.due_date),
+                "needs_review": status == HomeworkSubmission.Status.AWAITING_REVIEW,
+                "grading_failed": status == HomeworkSubmission.Status.GRADING_FAILED,
+            }
+        )
+    return rows
+
+
+_DONE = {
+    HomeworkSubmission.Status.SUBMITTED,
+    HomeworkSubmission.Status.AWAITING_REVIEW,
+    HomeworkSubmission.Status.GRADED,
+    HomeworkSubmission.Status.GRADING_FAILED,
+}
+
+
+def summarize_homework_progress(hw: Homework, now: datetime | None = None) -> dict[str, int]:
+    rows = [r for r in homework_roster(hw, now) if r["is_current_member"] or r["submission_id"]]
+    return {
+        "total_students": sum(1 for r in rows if r["is_current_member"]),
+        "submitted": sum(1 for r in rows if r["status"] in _DONE),
+        "graded": sum(1 for r in rows if r["status"] == HomeworkSubmission.Status.GRADED),
+        "awaiting_review": sum(1 for r in rows if r["needs_review"]),
+        "grading_failed": sum(1 for r in rows if r["grading_failed"]),
+        "in_progress": sum(1 for r in rows if r["status"] == HomeworkSubmission.Status.IN_PROGRESS),
+    }
+
+
+def get_teacher_homework_roster(user, homework_id: int) -> dict[str, Any]:
+    hw = Homework.objects.select_related("group", "student").filter(id=homework_id).first()
+    if hw is None or not _teacher_can_manage(user, hw):
+        raise HomeworkNotFound("Vazifa topilmadi.")
+    now = timezone.now()
+    return {
+        "homework_id": hw.id,
+        "title": hw.title,
+        "content_type": hw.content_type,
+        "status": hw.status,
+        "due_date": hw.due_date.isoformat(),
+        "summary": summarize_homework_progress(hw, now),
+        "students": homework_roster(hw, now),
     }

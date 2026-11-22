@@ -481,6 +481,16 @@ urlpatterns = [
     ),
     # -- Student Homework Lifecycle (Stage 4) ----------------------------
     path(
+        "school/teacher/homeworks/<int:homework_id>/roster/",
+        views_homework.teacher_homework_roster_view,
+        name="school-teacher-homework-roster",
+    ),
+    path(
+        "school/teacher/homework-submissions/<int:submission_id>/grade/",
+        views_homework.teacher_grade_submission_view,
+        name="school-teacher-homework-grade",
+    ),
+    path(
         "school/student/homeworks/",
         views_homework.student_homeworks_view,
         name="school-student-homeworks",
