@@ -178,16 +178,23 @@ def studio_export_view(request, test_id: int):
 @permission_classes([IsAuthenticated, IsStudioTeacher])
 @parser_classes([MultiPartParser, FormParser, JSONParser])
 def studio_import_file_view(request):
+    """Smart Import Pro: CSV/XLSX/DOCX/text-PDF/plain text → preview only (nothing saved)."""
+    from apps.tests.import_extract import MAX_UPLOAD_BYTES
+
+    section = str(request.data.get("section") or "GENERAL")
     upload = request.FILES.get("file")
-    content = ""
     if upload is not None:
-        content = upload.read()
+        if upload.size and upload.size > MAX_UPLOAD_BYTES:
+            return Response({"code": "file_too_large", "limit_mb": MAX_UPLOAD_BYTES // (1024 * 1024)}, status=400)
+        data = upload.read(MAX_UPLOAD_BYTES + 1)
+        name = upload.name or ""
     elif "content" in request.data:
-        content = request.data["content"]
+        data = str(request.data["content"]).encode("utf-8")
+        name = "pasted.csv"
     else:
         return Response({"code": "file_or_content_required"}, status=400)
     try:
-        result = svc.parse_csv_test_file(content, default_section=str(request.data.get("section") or "GENERAL"))
+        result = svc.import_test_file(data, name, default_section=section)
     except svc.StudioError as e:
         return _err(e)
     return Response(result, status=200)

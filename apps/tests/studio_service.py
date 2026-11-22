@@ -942,45 +942,52 @@ def delete_draft_test(user, test: Test) -> None:
 
 
 def parse_csv_test_file(content: str | bytes, default_section: str = "GENERAL") -> dict[str, Any]:
-    """Parse a CSV or structured text file into Studio blocks with questions.
-
-    Supports columns: question/savol, choice_a/a/variant_a, choice_b/b, choice_c/c, choice_d/d, choice_e/e, correct/answer/javob, points/ball, explanation/izoh.
-    """
-    import csv
-    import io
+    """Parse a CSV file (``,`` ``;`` or tab; UTF-8 or Windows-1251) into Studio blocks."""
+    from apps.tests.import_extract import _csv_rows, decode_text
 
     if isinstance(content, bytes):
-        try:
-            content = content.decode("utf-8-sig")
-        except UnicodeDecodeError:
-            content = content.decode("latin-1", errors="replace")
+        content = decode_text(content)
+    rows = _csv_rows(content.strip())
+    return parse_table_rows(rows, default_section)
 
-    reader = csv.reader(io.StringIO(content.strip()))
-    rows = list(reader)
-    if not rows:
+
+def parse_table_rows(rows: list[list[str]], default_section: str = "GENERAL") -> dict[str, Any]:
+    """Rows of a spreadsheet/CSV/DOCX table → one mcq block.
+
+    Columns (any order, uz/ru/en headers): question, choice A–E, correct,
+    points, explanation. Without a header row the order is
+    question, A, B, C, D, correct[, points[, explanation]].
+    """
+    from apps.tests.studio_parser import CYR_ORDER, latin_answer
+
+    rows = [[str(c if c is not None else "") for c in r] for r in rows]
+    if not rows or not any(any(c.strip() for c in r) for r in rows):
         raise StudioError("file_empty")
 
     headers = [h.strip().lower().replace(" ", "_") for h in rows[0]]
     col_map: dict[str, int] = {}
     for idx, h in enumerate(headers):
-        if h in ("question", "savol", "text", "prompt"):
+        h = h.replace("’", "'").replace("‘", "'").replace("ʻ", "'").strip(".):")
+        if h in ("question", "savol", "text", "prompt", "вопрос", "savol_matni"):
             col_map["question"] = idx
-        elif h in ("choice_a", "a", "variant_a", "option_a"):
+        elif h in ("choice_a", "a", "variant_a", "option_a", "а", "вариант_а"):
             col_map["choice_a"] = idx
-        elif h in ("choice_b", "b", "variant_b", "option_b"):
+        elif h in ("choice_b", "b", "variant_b", "option_b", "б", "вариант_б"):
             col_map["choice_b"] = idx
-        elif h in ("choice_c", "c", "variant_c", "option_c"):
+        elif h in ("choice_c", "c", "variant_c", "option_c", "в", "вариант_в"):
             col_map["choice_c"] = idx
-        elif h in ("choice_d", "d", "variant_d", "option_d"):
+        elif h in ("choice_d", "d", "variant_d", "option_d", "г", "вариант_г"):
             col_map["choice_d"] = idx
-        elif h in ("choice_e", "e", "variant_e", "option_e"):
+        elif h in ("choice_e", "e", "variant_e", "option_e", "д", "вариант_д"):
             col_map["choice_e"] = idx
-        elif h in ("correct", "answer", "javob", "kalit", "to'g'ri_javob"):
+        elif h in ("correct", "answer", "javob", "kalit", "to'g'ri_javob", "ответ", "правильный_ответ", "жавоб"):
             col_map["correct"] = idx
-        elif h in ("points", "ball", "point"):
+        elif h in ("points", "ball", "point", "балл", "баллы"):
             col_map["points"] = idx
-        elif h in ("explanation", "izoh", "sharh", "comment"):
+        elif h in ("explanation", "izoh", "sharh", "comment", "пояснение", "объяснение"):
             col_map["explanation"] = idx
+        elif h in ("no", "№", "#", "n", "number", "raqam", "t/r"):
+            col_map["number"] = idx
 
     data_rows = rows[1:] if "question" in col_map else rows
     if "question" not in col_map:
@@ -997,6 +1004,10 @@ def parse_csv_test_file(content: str | bytes, default_section: str = "GENERAL") 
         if len(rows[0]) > 7:
             col_map["explanation"] = 7
 
+    russian_order = any(h in ("б", "г", "вариант_б") for h in headers) or any(
+        "correct" in col_map and len(r) > col_map["correct"] and r[col_map["correct"]].strip().upper() in CYR_ORDER[1:2] + CYR_ORDER[3:]
+        for r in data_rows
+    )
     questions = []
     warnings = []
     q_num = 1
@@ -1019,6 +1030,7 @@ def parse_csv_test_file(content: str | bytes, default_section: str = "GENERAL") 
             warnings.append({"row": row_idx, "code": "too_few_choices", "question": q_num})
 
         ans_raw = row[col_map["correct"]].strip().upper() if "correct" in col_map and len(row) > col_map["correct"] else ""
+        ans_raw = latin_answer(ans_raw, russian_order).upper() if ans_raw else ""
         ans = ""
         if ans_raw in LETTERS[:len(opts)]:
             ans = ans_raw
@@ -1106,3 +1118,33 @@ def export_test_questions_csv(test: Test) -> str:
                 safe_cell(q.get("explanation", "")),
             ])
     return output.getvalue()
+
+
+def import_test_file(data: bytes, filename: str = "", default_section: str = "GENERAL") -> dict[str, Any]:
+    """Smart Import Pro: any supported file → editor blocks + review report.
+
+    Never saves or publishes: the teacher reviews/edits the preview first.
+    """
+    from apps.tests.import_extract import ImportError_, build_report, extract
+    from apps.tests.studio_parser import parse_smart_paste
+
+    try:
+        ex = extract(data, filename)
+    except ImportError_ as e:
+        raise StudioError(e.code, **e.extra) from None
+    if ex.rows:
+        result = parse_table_rows(ex.rows, default_section)
+    else:
+        result = parse_smart_paste(ex.text, default_section)
+        if not any(b["questions"] for b in result["blocks"]):
+            raise StudioError("no_questions_found")
+    warnings = list(ex.warnings) + list(result.get("warnings", []))
+    blocks = result["blocks"]
+    return {
+        **result,
+        "warnings": warnings,
+        "source": {"kind": ex.kind, "filename": (filename or "")[:200]},
+        "report": build_report(blocks, warnings),
+        "questions_count": sum(len(b["questions"]) for b in blocks),
+        "detected_answers": sum(1 for b in blocks for q in b["questions"] if q.get("answer")),
+    }

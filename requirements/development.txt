@@ -21,4 +21,3 @@ django-stubs>=6.1.0,<7.0             # Type stubs for Django
 django-livereload-server>=0.5.1,<1.0
 
 # Tests: reads the mock answer-key PDF (tests/test_cd_mock_import.py)
-pypdf>=6.0,<7.0

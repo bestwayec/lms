@@ -22,6 +22,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+# Option letters as Russian/Uzbek-Cyrillic tests write them (А Б В Г Д Е Ж) and
+# Cyrillic glyphs typed in place of Latin look-alikes (А В С Е). Mapping is
+# by *position*: the letter must be the next expected option.
+CYR_ORDER = "АБВГДЕЖ"
+CYR_LOOKALIKE = {"А": "A", "В": "B", "С": "C", "Е": "E"}
+# Every apostrophe Uzbek Latin uses for o‘ / g‘ / tutuq belgisi.
+APOS = "['’‘ʻʼ`´]"
 MAX_TEXT_CHARS = 60_000
 
 BLOCK_TYPES = ("mcq", "tfng", "matching", "gap", "short")
@@ -31,16 +38,19 @@ TF_LABELS = ["TRUE", "FALSE", "NOT GIVEN"]
 YN_LABELS = ["YES", "NO", "NOT GIVEN"]
 
 QUESTION_RE = re.compile(r"^\s*(?:Q(?:uestion)?\s*)?(\d{1,3})\s*[.)]\s+(\S.*)$", re.IGNORECASE)
-OPTION_RE = re.compile(r"^\s*(\*)?\s*\(?([A-Ha-h])\s*[.)]\s+(.+?)\s*(\*)?\s*$")
-INLINE_OPTION_RE = re.compile(r"(?:^|\s)(\*)?\(?([A-H])[.)]\s+")
+OPTION_RE = re.compile(r"^\s*(\*)?\s*\(?([A-Ha-hА-Жа-жСс])\s*[.)]\s+(.+?)\s*(\*)?\s*$")
+INLINE_OPTION_RE = re.compile(r"(?:^|\s)(\*)?\(?([A-HА-ЖС])[.)]\s+")
 GAP_RE = re.compile(r"\[(\d{1,3})(?:\s*:\s*([^\]]*))?\]")
 KEY_HEADER_RE = re.compile(
     r"^\s*(?:answer\s*keys?|answers?|keys?|javoblar|javob\s*kaliti|kalitlar|kalit|"
-    r"to'g'ri\s+javoblar|ответы|ключи?|ключ\s+ответов)\s*[:\-–—]?\s*(.*)$",
+    r"to" + APOS + r"?g" + APOS + r"?ri\s+javoblar|жавоблар|жавоб\s*калити|калитлар|калит|"
+    r"тўғри\s+жавоблар|ответы|ключи?|ключ\s+ответов)\s*[:\-–—]?\s*(.*)$",
     re.IGNORECASE,
 )
 SINGLE_ANSWER_RE = re.compile(
-    r"^\s*(?:answer|ans|javob|kalit|to['’`]?g['’`]?ri\s+javob|ответ|correct(?:\s+answer)?)\s*[:=\-–]?\s*(?:(?:Q\s*)?\d{1,3}\s*[:.\-–]\s*)?([A-Za-z0-9_|\s]+)$",
+    r"^\s*(?:answer|ans|javob|kalit|to" + APOS + r"?g" + APOS + r"?ri\s+javob|жавоб|калит|тўғри\s+жавоб|"
+    r"правильный\s+ответ|ответ|correct(?:\s+answer)?)\s*[:=\-–]?\s*(?:(?:Q\s*)?\d{1,3}\s*[:.\-–]\s*)?"
+    r"([A-Za-zА-Яа-яЁёЎўҚқҒғҲҳ0-9_|\s]+)$",
     re.IGNORECASE,
 )
 # "1: A, 2: bees" / "3=C"  (colon/equals: never a question line)
@@ -63,6 +73,33 @@ INSTRUCTION_RE = re.compile(
     r"which|tanlang|javob|moslang|to'ldiring|o'qing|tinglang|выберите|ответьте|заполните|прочитайте)\b",
     re.IGNORECASE,
 )
+
+
+def option_letter(raw: str, expected_index: int) -> str:
+    """Latin letter for an option marker, or '' if it is not the expected next option."""
+    up = (raw or "").upper()
+    expected = LETTERS[expected_index] if 0 <= expected_index < len(LETTERS) else ""
+    if up in LETTERS:
+        return up
+    russian = LETTERS[CYR_ORDER.index(up)] if up in CYR_ORDER else ""
+    look = CYR_LOOKALIKE.get(up, "")
+    if expected and expected in (russian, look):
+        return expected
+    return russian or look
+
+
+def latin_answer(value: str, russian_order: bool) -> str:
+    """A one-letter Cyrillic answer ("Б", "В") → Latin, consistent with the options' order."""
+    v = str(value or "").strip().strip(".)").upper()
+    if len(v) != 1 or v in LETTERS:
+        return value
+    if russian_order and v in CYR_ORDER:
+        return LETTERS[CYR_ORDER.index(v)]
+    if v in CYR_LOOKALIKE:
+        return CYR_LOOKALIKE[v]
+    if v in CYR_ORDER:
+        return LETTERS[CYR_ORDER.index(v)]
+    return value
 
 
 def normalize_tf(value: str, labels: list[str]) -> str:
@@ -103,7 +140,7 @@ def split_inline_options(text: str) -> tuple[str, list[tuple[str, str, bool]]]:
     matches = list(INLINE_OPTION_RE.finditer(text))
     if len(matches) < 2:
         return text, []
-    letters = [m.group(2) for m in matches]
+    letters = [option_letter(m.group(2), i) for i, m in enumerate(matches)]
     if letters != list(LETTERS[: len(letters)]):
         return text, []
     head = text[: matches[0].start()].strip()
@@ -112,7 +149,7 @@ def split_inline_options(text: str) -> tuple[str, list[tuple[str, str, bool]]]:
         end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
         body = text[m.end() : end].strip()
         star = bool(m.group(1)) or body.endswith("*")
-        opts.append((m.group(2), body.rstrip("*").strip(), star))
+        opts.append((letters[i], body.rstrip("*").strip(), star))
     return head, opts
 
 
@@ -288,6 +325,7 @@ def parse_smart_paste(text: str, default_section: str = "GENERAL") -> dict[str, 
     key: dict[int, str] = {}
     cur = _Block(section=section)
     key_mode = False
+    russian_order = False  # options lettered А Б В Г … (Cyrillic alphabet order)
     last_q: dict[str, Any] | None = None
     after_options = False  # a plain line after options opens the next block
 
@@ -313,7 +351,7 @@ def parse_smart_paste(text: str, default_section: str = "GENERAL") -> dict[str, 
             if single_ans:
                 ans_str = single_ans.group(1).strip()
                 if ans_str:
-                    last_q["answer"] = ans_str
+                    last_q["answer"] = latin_answer(ans_str, russian_order)
                     after_options = True
                     key_mode = False
                     continue
@@ -389,16 +427,20 @@ def parse_smart_paste(text: str, default_section: str = "GENERAL") -> dict[str, 
 
         opt = OPTION_RE.match(line)
         if opt and cur.tf_labels is None:
-            letter = opt.group(2).upper()
+            raw_letter = opt.group(2)
             star = bool(opt.group(1) or opt.group(4))
             body = opt.group(3).strip()
+            if raw_letter.upper() in "БГДЖ":
+                russian_order = True
             if last_q is not None:
+                letter = option_letter(raw_letter, len(last_q["options"]))
                 expected = LETTERS[len(last_q["options"])] if len(last_q["options"]) < len(LETTERS) else ""
                 if letter == expected:
                     last_q["options"].append((letter, body, star))
                     after_options = True
                     continue
             if not cur.questions:
+                letter = option_letter(raw_letter, len(cur.options))
                 expected = LETTERS[len(cur.options)] if len(cur.options) < len(LETTERS) else ""
                 if letter == expected:
                     cur.options.append(body)
@@ -428,6 +470,7 @@ def parse_smart_paste(text: str, default_section: str = "GENERAL") -> dict[str, 
     flush(final=True)
 
     blocks = [b for b in blocks if b["questions"] or b["passage"] or b["gap_text"]]
+    key = {n: latin_answer(v, russian_order) for n, v in key.items()}
     unmatched = apply_answer_key(blocks, key)
     for num in unmatched:
         warnings.append({"code": "key_unmatched", "number": num})
