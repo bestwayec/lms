@@ -23,14 +23,15 @@ CI=1 PLAYWRIGHT_CHROMIUM_EXECUTABLE=<chromium> npx playwright test --trace off  
 | Stage | Status | PR (all draft, none merged/deployed) |
 |---|---|---|
 | 0 Recover baseline | ✅ complete | #135 |
-| 1 Security & data integrity | ✅ code complete for the confirmed defects; **owner actions + production-only checks remain** | #136 (private file access), #137 (nginx, not deployed), Stage 1c (below) |
-| 3a Attendance concurrency | ✅ complete | commit ca0ad07 |
-| 3b Group membership history & search authz | ✅ complete | branch `claude/stage3-attendance-concurrency` |
-| 3c Teacher Workspace 3.0 | ✅ complete | branch `claude/stage3-attendance-concurrency` |
-| 4 Unified Homework Engine | ✅ complete | branch `claude/stage3-attendance-concurrency` |
+| 1 Security & data integrity | ✅ code complete for the confirmed defects; **owner actions + production-only checks remain** | #136 (private file access), #137 (nginx, not deployed), Stage 1c (#138) |
+| 3a Attendance concurrency | ✅ complete | #139 (`claude/stage3-attendance-concurrency`) |
+| 3b Group membership history & search authz | ✅ complete | #139 (`claude/stage3-attendance-concurrency`) |
+| 3c Teacher Workspace 3.0 | ✅ complete | #139 (`claude/stage3-attendance-concurrency`) |
+| 4 Unified Homework Engine | ✅ complete | #139 (`claude/stage3-attendance-concurrency`) |
+| Test Builder 3.0 & Mobile UX | ✅ complete | #139 (`claude/stage3-attendance-concurrency`) |
 | 5–12 | not started | – |
 
-Stacking: #135 ← #136 ← #137, and Stage 1c branches off #136. Merge in that order after review.
+Stacking: #135 ← #136 ← #138 ← #139 (with #137 independent Nginx security PR). Merge in that order after review. Detailed Opus handoff: `docs/GRANDEC_OPUS_HANDOFF.md`.
 
 ## Stage 0 — closure
 
