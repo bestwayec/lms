@@ -55,7 +55,12 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v4 # remote-deploy.sh is piped to VPS via stdin
+      # remote-deploy.sh / compose / nginx templates are piped to the VPS: take
+      # them from the same commit as the image (the one Build built), not from
+      # whatever main points at when Deploy starts (e.g. the release bump).
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Resolve image tag
         id: tag
