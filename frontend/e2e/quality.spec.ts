@@ -264,3 +264,40 @@ for (const width of [375, 1440]) {
     await expect(select).toHaveValue('1');
   });
 }
+
+
+test('private speaking audio is fetched with the Bearer header and played from a blob URL, never a /media/ URL', async ({ page }) => {
+  const errors = await mockApp(page);
+  const wav = Buffer.concat([Buffer.from('RIFF$\x00\x00\x00WAVEfmt ', 'binary'), Buffer.alloc(24)]);
+  let fileAuth: string | null = null;
+  const submission = {
+    id: 7, topic_id: 1, topic_title: 'Journey', part: 'part2', part_label: 'Part 2', audio_url: '/api/v1/files/speaking/7/audio/',
+    duration_seconds: 60, transcript: 'hello', fluency_score: 6, lexical_score: 6, grammar_score: 6, pronunciation_score: 6,
+    overall_band: 6, status: 'completed',
+  };
+  await page.route('**/api/v1/speaking/submissions/7/', (route) => route.fulfill({ json: submission }));
+  await page.route('**/api/v1/files/speaking/7/audio/', (route) => {
+    fileAuth = route.request().headers()['authorization'] ?? null;
+    return route.fulfill({ status: 200, contentType: 'audio/wav', body: wav });
+  });
+  await page.goto('/speaking/result/7');
+  const audio = page.locator('audio');
+  await expect(audio).toHaveCount(1);
+  await expect(audio).toHaveAttribute('src', /^blob:/);
+  expect(fileAuth).toBe('Bearer local-test');
+  expect(await page.content()).not.toContain('/media/');
+  expect(errors).toEqual([]);
+});
+
+test('private audio that the server refuses shows an error instead of a broken player', async ({ page }) => {
+  const errors = await mockApp(page);
+  await page.route('**/api/v1/speaking/submissions/8/', (route) => route.fulfill({ json: {
+    id: 8, topic_id: 1, topic_title: 'Journey', part: 'part2', part_label: 'Part 2', audio_url: '/api/v1/files/speaking/8/audio/',
+    duration_seconds: 60, transcript: 'hello', fluency_score: 6, lexical_score: 6, grammar_score: 6, pronunciation_score: 6,
+    overall_band: 6, status: 'completed' } }));
+  await page.route('**/api/v1/files/speaking/8/audio/', (route) => route.fulfill({ status: 404, json: { detail: 'Not found.' } }));
+  await page.goto('/speaking/result/8');
+  await expect(page.getByRole('alert').filter({ hasText: 'Faylni yuklab bo‘lmadi' })).toBeVisible();
+  await expect(page.locator('audio')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
