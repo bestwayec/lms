@@ -283,6 +283,8 @@ def export_group_to_excel(group: StudentGroup) -> bytes:
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
 
+    from apps.core.spreadsheet import safe_cell
+
     analytics = get_group_full_analytics(group)
 
     wb = openpyxl.Workbook()
@@ -377,7 +379,7 @@ def export_group_to_excel(group: StudentGroup) -> bytes:
         ]
 
         for col_idx, val in enumerate(row_data, start=1):
-            cell = ws.cell(row=current_row, column=col_idx, value=val)
+            cell = ws.cell(row=current_row, column=col_idx, value=safe_cell(val))
             cell.font = FONT_REGULAR
             cell.border = THIN_BORDER
             if row_fill:
@@ -411,7 +413,7 @@ def export_group_to_excel(group: StudentGroup) -> bytes:
         if start_c != end_c:
             ws.merge_cells(f"{start_c}{current_row}:{end_c}{current_row}")
         c = ws[f"{start_c}{current_row}"]
-        c.value = val
+        c.value = safe_cell(val)
         c.font = FONT_BOLD
         c.fill = SUMMARY_BG
         c.alignment = Alignment(horizontal="center", vertical="center")
