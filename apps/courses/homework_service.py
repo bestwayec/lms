@@ -1050,12 +1050,44 @@ def submit_student_homework(student, homework_id: int, payload: dict[str, Any] |
     return _completion_payload(sub, hw)
 
 
+def official_exam_summary(hw: Homework, sub: HomeworkSubmission | None) -> dict[str, Any] | None:
+    """The subject-specific scale exactly as the official pipeline persisted it.
+
+    IELTS tests expose the band, CEFR Multi-level exposes the level and its
+    per-section 0–75 scores; every other exam (Milliy Sertifikat, Studio,
+    general) exposes only its raw score — the pipeline also stores an IELTS
+    conversion for those, which is not meaningful there and is not shown.
+    """
+    if hw.content_type != Homework.ContentType.TEST or hw.test is None:
+        return None
+    attempt = _effective_attempt(hw, _trusted_submission(hw, sub))
+    state, result = _official_test_outcome(attempt)
+    if state != "graded":
+        return None
+    exam_type = hw.test.exam_type
+    out: dict[str, Any] = {
+        "exam_type": exam_type,
+        "correct": result.correct_answers,
+        "total": result.total_questions,
+        "is_passed": result.is_passed,
+    }
+    if exam_type in (Test.ExamType.IELTS_ACADEMIC, Test.ExamType.IELTS_GENERAL) and attempt.band_score is not None:
+        out["band"] = float(attempt.band_score)
+    if exam_type == Test.ExamType.CEFR_MULTILEVEL:
+        out["cefr_level"] = attempt.cefr_level or ""
+        out["section_scores"] = attempt.section_scores or {}
+    return out
+
+
 def get_student_homework_result(student, homework_id: int) -> dict[str, Any]:
     """Result of finished work only; scores only from official grades."""
     data = get_student_homework_detail(student, homework_id)
     if not data["is_completed"]:
         raise HomeworkConflict("Ushbu topshiriq hali yakunlanmagan.", "not_completed")
+    hw = Homework.objects.select_related("test").get(id=homework_id)
+    sub = HomeworkSubmission.objects.filter(homework=hw, student=student).select_related("test_attempt", "result").first()
     return {
+        "official": official_exam_summary(hw, sub),
         "homework_id": data["id"],
         "title": data["title"],
         "status": data["status"],

@@ -4,6 +4,7 @@ import { useLang } from '../i18n/LangContext';
 import {
   HomeworkAPI,
   type StudentHomeworkItem,
+  type HomeworkOfficialResult,
 } from '../lib/school';
 import {
   BookOpen,
@@ -40,6 +41,7 @@ export default function MyHomework() {
     feedback: string;
     status_label: string;
     completed_at: string;
+    official?: HomeworkOfficialResult | null;
   } | null>(null);
   const [submittingAction, setSubmittingAction] = useState(false);
 
@@ -118,6 +120,7 @@ export default function MyHomework() {
         feedback: res.feedback,
         status_label: res.status_label,
         completed_at: res.completed_at,
+        official: res.official ?? null,
       });
       setActiveHw(hw);
       setResultModalOpen(true);
@@ -784,11 +787,24 @@ export default function MyHomework() {
                 {activeHw ? t(`hw_status_${activeHw.status}`, resultData.status_label) : resultData.status_label}
               </div>
               <div style={{ fontSize: 32, fontWeight: 900, color: '#15803D' }}>
-                {resultData.score_display || `${resultData.percentage ?? resultData.score ?? 0}%`}
+                {resultData.score_display ||
+                  (resultData.percentage !== null
+                    ? `${resultData.percentage}%`
+                    : t(`hw_status_${activeHw.status}`, resultData.status_label))}
               </div>
               {resultData.percentage !== null && resultData.score_display !== `${resultData.percentage}%` && (
                 <div style={{ fontSize: 13, color: '#166534', marginTop: 4 }}>
-                  Natija: {resultData.percentage}%
+                  {t('hw_result_percentage', 'Natija')}: {resultData.percentage}%
+                </div>
+              )}
+              {resultData.official?.band !== undefined && (
+                <div style={{ fontSize: 15, fontWeight: 800, color: '#166534', marginTop: 6 }}>
+                  {t('hw_ielts_band', 'IELTS band')}: {resultData.official.band}
+                </div>
+              )}
+              {resultData.official?.cefr_level && (
+                <div style={{ fontSize: 15, fontWeight: 800, color: '#166534', marginTop: 6 }}>
+                  {t('hw_cefr_level', 'CEFR daraja')}: {resultData.official.cefr_level}
                 </div>
               )}
             </div>

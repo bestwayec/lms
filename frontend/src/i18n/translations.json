@@ -3238,7 +3238,10 @@
     "hw_retry_grading": "Natijani qayta tekshirish",
     "hw_deadline_passed": "Muddati tugagan",
     "hw_not_available": "Hozircha mavjud emas",
-    "studio_err_has_assignments": "Test vazifa sifatida berilgan: savollarni o'zgartirish uchun nusxa yarating yoki vazifani bekor qiling."
+    "studio_err_has_assignments": "Test vazifa sifatida berilgan: savollarni o'zgartirish uchun nusxa yarating yoki vazifani bekor qiling.",
+    "hw_result_percentage": "Natija",
+    "hw_ielts_band": "IELTS band",
+    "hw_cefr_level": "CEFR daraja"
   },
   "ru": {
     "spk_practise_again": "Повторить эту тему",
@@ -6479,7 +6482,10 @@
     "hw_retry_grading": "Проверить результат снова",
     "hw_deadline_passed": "Срок истёк",
     "hw_not_available": "Пока недоступно",
-    "studio_err_has_assignments": "Тест назначен как задание: создайте копию или отмените задание, чтобы изменить вопросы."
+    "studio_err_has_assignments": "Тест назначен как задание: создайте копию или отмените задание, чтобы изменить вопросы.",
+    "hw_result_percentage": "Результат",
+    "hw_ielts_band": "IELTS band",
+    "hw_cefr_level": "Уровень CEFR"
   },
   "en": {
     "spk_practise_again": "Practise this topic again",
@@ -9720,6 +9726,9 @@
     "hw_retry_grading": "Check result again",
     "hw_deadline_passed": "Deadline passed",
     "hw_not_available": "Not available yet",
-    "studio_err_has_assignments": "This test is assigned as homework: duplicate it or cancel the homework to change its questions."
+    "studio_err_has_assignments": "This test is assigned as homework: duplicate it or cancel the homework to change its questions.",
+    "hw_result_percentage": "Result",
+    "hw_ielts_band": "IELTS band",
+    "hw_cefr_level": "CEFR level"
   }
 }

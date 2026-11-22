@@ -576,3 +576,24 @@ def test_assigned_test_cannot_be_rebuilt_under_live_homework(teacher, group, tes
 
     cancel_teacher_homework(teacher, hw.id)
     assert not svc.has_live_assignments(test_obj)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "exam_type,expect_band,expect_level",
+    [("ielts_academic", True, False), ("cefr_multilevel", False, True), ("national_cert", False, False), ("general", False, False)],
+)
+def test_result_shows_only_the_subjects_own_official_scale(teacher, group, student, test_obj, exam_type, expect_band, expect_level):
+    from apps.courses.homework_service import get_student_homework_result
+
+    Test.objects.filter(id=test_obj.id).update(exam_type=exam_type)
+    hw = _hw(teacher, group, test_obj)
+    attempt = TestAttempt.objects.get(id=start_student_homework(student, hw.id)["attempt_id"])
+    _answer(attempt, student, correct=True)
+    submit_student_homework(student, hw.id)
+    official = get_student_homework_result(student, hw.id)["official"]
+    assert official["exam_type"] == exam_type
+    assert ("band" in official) is expect_band
+    assert ("cefr_level" in official) is expect_level
+    if expect_band:
+        assert official["band"] == float(TestAttempt.objects.get(id=attempt.id).band_score)
