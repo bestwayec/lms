@@ -997,6 +997,32 @@ def _finalize_test_submission(sub: HomeworkSubmission, hw: Homework, student, no
     return _completion_payload(sub, hw)
 
 
+def homework_pending_for_attempt(attempt_id: int) -> bool:
+    """One cheap EXISTS so ordinary (non-homework) submits pay a single query."""
+    return (
+        HomeworkSubmission.objects.filter(test_attempt_id=attempt_id)
+        .exclude(status=HomeworkSubmission.Status.GRADED)
+        .exists()
+    )
+
+
+def sync_homework_for_attempt(attempt_id: int) -> int:
+    """Record the official outcome on every homework submission linked to this attempt."""
+    changed = 0
+    for sub in (
+        HomeworkSubmission.objects.select_for_update(of=("self",))
+        .select_related("test_attempt", "homework")
+        .filter(test_attempt_id=attempt_id)
+        .exclude(status=HomeworkSubmission.Status.GRADED)
+    ):
+        if _sync_test_submission(sub):
+            sub.completed_at = sub.completed_at or timezone.now()
+            sub.save()
+            _announce(sub)
+            changed += 1
+    return changed
+
+
 def _announce(sub: HomeworkSubmission) -> None:
     from apps.notifications.outbox import enqueue_homework_outcome
 

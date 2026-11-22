@@ -597,3 +597,44 @@ def test_result_shows_only_the_subjects_own_official_scale(teacher, group, stude
     assert ("cefr_level" in official) is expect_level
     if expect_band:
         assert official["band"] == float(TestAttempt.objects.get(id=attempt.id).band_score)
+
+
+@pytest.mark.django_db
+def test_runner_submit_records_homework_outcome_immediately(teacher, group, student, test_obj):
+    """Any official submit path (web runner, Mini App, bot, timeout task) updates homework at once."""
+    from apps.notifications.models import OutboxMessage
+
+    hw = _hw(teacher, group, test_obj)
+    attempt = TestAttempt.objects.get(id=start_student_homework(student, hw.id)["attempt_id"])
+    _answer(attempt, student, correct=True)
+    SubmitAttemptService.execute(attempt.id, student)
+    sub = HomeworkSubmission.objects.get(homework=hw, student=student)
+    assert sub.is_completed and sub.status == "graded" and sub.result.attempt_id == attempt.id
+    assert OutboxMessage.objects.filter(event="homework_result", recipient=student).count() == 1
+
+
+@pytest.mark.django_db
+def test_homework_sync_failure_never_breaks_official_grading(teacher, group, student, test_obj):
+    hw = _hw(teacher, group, test_obj)
+    attempt = TestAttempt.objects.get(id=start_student_homework(student, hw.id)["attempt_id"])
+    with mock.patch("apps.courses.homework_service.sync_homework_for_attempt", side_effect=RuntimeError("boom")):
+        assert TestAttempt.objects.get(id=attempt.id).status == TestAttempt.Status.IN_PROGRESS
+        SubmitAttemptService.execute(attempt.id, student)
+    assert Result.objects.filter(attempt=attempt).exists()
+
+
+@pytest.mark.django_db
+def test_free_student_can_resume_homework_attempt_despite_used_quota(api, teacher, group, student, test_obj):
+    """Live E2E finding: homework start opened the attempt; the public start
+    endpoint then counted it against the free quota and showed the paywall."""
+    hw = _hw(teacher, group, test_obj)
+    attempt_id = start_student_homework(student, hw.id)["attempt_id"]
+    api.force_authenticate(student)
+    with mock.patch(
+        "apps.subscriptions.services.quota.QuotaService.check_test_quota",
+        return_value=(False, "limit", {"allowed": False}),
+    ) as quota:
+        resp = api.post(f"/api/v1/tests/{test_obj.id}/start/", {"mode": "practice"}, format="json")
+    assert resp.status_code in (200, 201), resp.data
+    assert (resp.data.get("id") or resp.data.get("attempt_id")) == attempt_id
+    quota.assert_not_called()
