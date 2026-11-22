@@ -250,6 +250,15 @@ class TestSubmissionRegressionTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200, response.content[:300])
+        # Stage 3b scope: an independent tutor may add only students they
+        # already teach (invite codes cover new students); a stranger is refused.
+        stranger = self.client.post(
+            f"/api/v1/school/groups/{group.pk}/members/",
+            data=json.dumps({"add": [self.student.pk]}),
+            content_type="application/json",
+        )
+        self.assertEqual(stranger.status_code, 400, stranger.content[:300])
+        StudentGroup.objects.create(teacher=self.teacher, name="Existing").students.add(self.student)
         members = self.client.post(
             f"/api/v1/school/groups/{group.pk}/members/",
             data=json.dumps({"add": [self.student.pk]}),

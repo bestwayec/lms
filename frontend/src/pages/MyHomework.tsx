@@ -93,6 +93,19 @@ export default function MyHomework() {
     }
   };
 
+  const handleRetryGrading = async (hw: StudentHomeworkItem) => {
+    setSubmittingAction(true);
+    try {
+      await HomeworkAPI.submitStudentHomework(hw.id, {});
+      await fetchHomeworks(statusFilter);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert(msg || t('hw_result_error'));
+    } finally {
+      setSubmittingAction(false);
+    }
+  };
+
   const handleViewResult = async (hw: StudentHomeworkItem) => {
     setSubmittingAction(true);
     try {
@@ -162,8 +175,28 @@ export default function MyHomework() {
   ).length;
   const overdueCount = homeworks.filter((h) => h.status === 'overdue').length;
 
-  const getStatusBadge = (status: string, statusLabel: string, scoreDisplay?: string) => {
+  const getStatusBadge = (status: string, serverLabel: string, scoreDisplay?: string) => {
+    const statusLabel = t(`hw_status_${status}`, serverLabel);
     switch (status) {
+      case 'grading_failed':
+        return (
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '3px 10px',
+              borderRadius: 20,
+              fontSize: 12,
+              fontWeight: 700,
+              background: 'var(--warning-bg, #FEF3C7)',
+              color: 'var(--warning-text, #92400E)',
+            }}
+          >
+            <Clock size={13} />
+            {statusLabel}
+          </span>
+        );
       case 'graded':
         return (
           <span
@@ -612,7 +645,7 @@ export default function MyHomework() {
                     {hw.time_limit > 0 && (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                         <Clock size={13} />
-                        {hw.time_limit} daqiqa
+                        {hw.time_limit} {t('minutes', 'daqiqa')}
                       </span>
                     )}
                   </div>
@@ -620,7 +653,18 @@ export default function MyHomework() {
 
                 {/* Right: Actions */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                  {isCancelled ? (
+                  {hw.status === 'grading_failed' ? (
+                    <button
+                      type="button"
+                      onClick={() => handleRetryGrading(hw)}
+                      disabled={submittingAction}
+                      className="btn sm secondary"
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, minHeight: 44 }}
+                    >
+                      <Clock size={14} />
+                      <span>{t('hw_retry_grading', 'Natijani qayta tekshirish')}</span>
+                    </button>
+                  ) : isCancelled ? (
                     <span style={{ fontSize: 13, color: '#9CA3AF', fontStyle: 'italic' }}>
                       {t('hw_cancelled') || 'Bekor qilingan'}
                     </span>
@@ -640,6 +684,12 @@ export default function MyHomework() {
                       <Sparkles size={14} color="#059669" />
                       <span>{t('hw_view_result') || "Natijani ko'rish"}</span>
                     </button>
+                  ) : hw.can_start === false ? (
+                    <span style={{ fontSize: 13, color: 'var(--text-secondary, #6B7280)', fontStyle: 'italic' }}>
+                      {hw.status === 'overdue'
+                        ? t('hw_deadline_passed', 'Muddati tugagan')
+                        : t('hw_not_available', 'Hozircha mavjud emas')}
+                    </span>
                   ) : hw.status === 'in_progress' ? (
                     <button
                       type="button"
@@ -731,7 +781,7 @@ export default function MyHomework() {
               }}
             >
               <div style={{ fontSize: 13, color: '#166534', fontWeight: 700, marginBottom: 4 }}>
-                {resultData.status_label}
+                {activeHw ? t(`hw_status_${activeHw.status}`, resultData.status_label) : resultData.status_label}
               </div>
               <div style={{ fontSize: 32, fontWeight: 900, color: '#15803D' }}>
                 {resultData.score_display || `${resultData.percentage ?? resultData.score ?? 0}%`}

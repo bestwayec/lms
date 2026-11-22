@@ -341,9 +341,17 @@ export interface StudentHomeworkItem {
     | 'awaiting_review'
     | 'graded'
     | 'overdue'
-    | 'cancelled';
+    | 'cancelled'
+    | 'grading_failed';
   status_label: string;
   is_completed: boolean;
+  /** Server decides: current recipient, window open, attempts left. */
+  can_start?: boolean;
+  is_current_recipient?: boolean;
+  is_late?: boolean;
+  attempts_used?: number;
+  deadline_at?: string | null;
+  attempt_id?: number | null;
   score: number | null;
   max_score: number | null;
   percentage: number | null;
