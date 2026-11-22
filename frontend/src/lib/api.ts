@@ -2143,8 +2143,11 @@ export const School = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
-  studentSearch: (q: string) =>
-    api<Record<string, unknown>[]>(`/api/v1/school/students/?q=${encodeURIComponent(q)}`),
+  studentSearch: (q: string, groupId?: number | string) => {
+    const params = new URLSearchParams({ q });
+    if (groupId !== undefined && groupId !== null) params.append('group_id', String(groupId));
+    return api<Record<string, unknown>[]>(`/api/v1/school/students/?${params.toString()}`);
+  },
   groupAnalytics: (groupId: number | string) =>
     api<GroupFullAnalyticsResponse>(`/api/v1/school/groups/${groupId}/analytics/`),
   joinGroup: (invite_code: string) =>

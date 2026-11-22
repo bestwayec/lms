@@ -39,6 +39,32 @@ def _teacher_groups(user):
     return StudentGroup.objects.filter(teacher=user)
 
 
+def _eligible_students(user, group=None):
+    """Students already in the actor's groups or in the target's branch/center."""
+    students = User.objects.filter(role="student", is_active=True, is_bot=False)
+    if is_platform_admin(user):
+        return students
+    if getattr(user, "role", None) == "center_admin":
+        scope = Q(branch__director=user) | Q(branch__center__owner=user)
+        if getattr(user, "branch_id", None):
+            scope |= Q(branch_id=user.branch_id)
+        if getattr(user, "learning_center_id", None):
+            scope |= Q(learning_center_id=user.learning_center_id) | Q(branch__center_id=user.learning_center_id)
+        return students.filter(scope).distinct()
+
+    # Teacher
+    scope = Q(pk__in=_teacher_groups(user).values("students__pk"))
+    if group and group.branch_id:
+        scope |= Q(branch_id=group.branch_id)
+        if group.branch.center_id:
+            scope |= Q(learning_center_id=group.branch.center_id)
+    elif getattr(user, "branch_id", None):
+        scope |= Q(branch_id=user.branch_id)
+    elif getattr(user, "learning_center_id", None):
+        scope |= Q(learning_center_id=user.learning_center_id)
+    return students.filter(scope).distinct()
+
+
 # ---------------------------------------------------------------------------
 # Groups
 # ---------------------------------------------------------------------------
@@ -99,13 +125,90 @@ def group_members_view(request, group_id: int):
     group = get_object_or_404(_teacher_groups(request.user), id=group_id)
     add_ids = request.data.get("add", []) or []
     remove_ids = request.data.get("remove", []) or []
+    if not isinstance(add_ids, list) or not isinstance(remove_ids, list) or any(
+        isinstance(pk, bool) or not isinstance(pk, int) or pk <= 0
+        for pk in add_ids + remove_ids
+    ):
+        return Response({"detail": "Student IDs must be lists of positive integers."}, status=400)
+    if set(add_ids) & set(remove_ids):
+        return Response({"detail": "Cannot add and remove the same student."}, status=400)
+    if remove_ids and group.students.filter(pk__in=remove_ids).count() != len(set(remove_ids)):
+        return Response({"detail": "One or more students are not group members."}, status=400)
     if add_ids:
-        students = User.objects.filter(id__in=add_ids, role="student", is_active=True)
-        group.students.add(*students)
+        eligible_students = list(_eligible_students(request.user, group).filter(id__in=add_ids))
+        if len(eligible_students) != len(set(add_ids)):
+            return Response({"detail": "One or more students cannot be added to this group."}, status=400)
+        from apps.courses.group_service import add_student_to_group
+        for st in eligible_students:
+            try:
+                add_student_to_group(group=group, student=st, actor=request.user, reason="manual_add")
+            except ValueError as err:
+                return Response({"detail": str(err)}, status=400)
     if remove_ids:
-        group.students.remove(*User.objects.filter(id__in=remove_ids))
+        from apps.courses.group_service import remove_student_from_group
+        to_remove = list(group.students.filter(id__in=remove_ids))
+        for st in to_remove:
+            remove_student_from_group(group=group, student=st, actor=request.user, reason="manual_remove")
     group.refresh_from_db()
-    return Response(StudentGroupSerializer(group).data)
+    return Response(StudentGroupSerializer(group, context={"request": request, "group": group}).data)
+
+
+@api_view(["GET"])
+@permission_classes([IsTeacherOrAdmin])
+def group_student_results_view(request, group_id: int, student_id: int):
+    """Only results for tests explicitly assigned to this group are shared."""
+    group = get_object_or_404(_teacher_groups(request.user), id=group_id)
+    student = get_object_or_404(group.students, id=student_id)
+    results = (
+        Result.objects.filter(student=student)
+        .filter(Q(test__assigned_group=group) | Q(test__homework_assignments__group=group))
+        .select_related("test", "attempt")
+        .distinct()
+        .order_by("-calculated_at", "-pk")
+    )
+    return Response({
+        "student": {"id": student.pk, "name": student.get_full_name() or student.email},
+        "results": [{
+            "id": result.pk,
+            "test": result.test.title,
+            "subject": result.test.subject,
+            "calculated_at": result.calculated_at,
+            "grading_status": result.grading_status,
+            "score": result.score if result.grading_status == "graded" else None,
+            "max_score": result.max_score if result.grading_status == "graded" else None,
+            "percentage": result.percentage if result.grading_status == "graded" else None,
+        } for result in results[:100]],
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsTeacherOrAdmin])
+def group_membership_history_view(request, group_id: int):
+    """Guruh a'zoligi tarixi va audit jurnali."""
+    group = get_object_or_404(_teacher_groups(request.user), id=group_id)
+    from apps.courses.group_service import get_group_membership_history
+
+    history_qs = get_group_membership_history(group)[:100]
+    data = []
+    for h in history_qs:
+        actor_name = ""
+        if h.actor:
+            actor_name = h.actor.get_full_name() or h.actor.email
+        data.append({
+            "id": h.id,
+            "student_id": h.student_id,
+            "student_name": h.student.get_full_name() or h.student.email,
+            "student_email": h.student.email,
+            "action": h.action,
+            "action_display": h.get_action_display(),
+            "joined_at": h.joined_at,
+            "removed_at": h.removed_at,
+            "actor_id": h.actor_id,
+            "actor_name": actor_name,
+            "reason": h.reason,
+            "created_at": h.created_at,
+        })
+    return Response(data)
 
 
 @api_view(["GET"])
@@ -299,16 +402,22 @@ def group_join_by_token_view(request, token: str):
 def student_search_view(request):
     """Find students to add to groups (email/name search)."""
     q = (request.GET.get("q") or "").strip()
-    qs = User.objects.filter(role="student", is_active=True)
-    if q:
-        qs = qs.filter(
-            Q(email__icontains=q)
-            | Q(first_name__icontains=q)
-            | Q(last_name__icontains=q)
-        )
-    return Response(
-        GroupMemberSerializer(qs.order_by("first_name")[:20], many=True).data
+    group_id = request.GET.get("group_id")
+    group = None
+    if group_id:
+        if not str(group_id).isdigit():
+            return Response({"detail": "Invalid group."}, status=400)
+        group = get_object_or_404(_teacher_groups(request.user), pk=int(group_id))
+    if len(q) < 2:
+        return Response([])
+    qs = _eligible_students(request.user, group).filter(
+        Q(email__icontains=q)
+        | Q(first_name__icontains=q)
+        | Q(last_name__icontains=q)
     )
+    return Response(list(qs.order_by("first_name", "last_name", "pk").values(
+        "id", "email", "first_name", "last_name"
+    )[:20]))
 
 
 # ---------------------------------------------------------------------------

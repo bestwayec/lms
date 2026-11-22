@@ -11,6 +11,7 @@ Modules and Lessons are ordered via `position` so instructors can drag/reorder.
 from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db import models
+from django.utils import timezone
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 
@@ -659,3 +660,89 @@ class GroupEnrollment(models.Model):
             self.payment_status = self.PaymentStatus.PAID
         self.save(update_fields=["payment_status", "updated_at"])
         return self.payment_status
+
+
+# ---------------------------------------------------------------------------
+# GroupMembershipHistory (Guruh a'zoligi tarixi va audit jurnali)
+# ---------------------------------------------------------------------------
+class GroupMembershipHistory(models.Model):
+    """
+    Guruh a'zoligi tarixi va audit jurnali.
+    O'quvchining qachon qo'shilgani, qachon chiqarilgani, kim tomonidan
+    amalga oshirilgani, sababi va harakat turini saqlaydi.
+    """
+
+    class Action(models.TextChoices):
+        JOINED = "joined", _("Qo'shildi")
+        REMOVED = "removed", _("Chiqarildi")
+        REJOINED = "rejoined", _("Qayta qo'shildi")
+
+    group = models.ForeignKey(
+        StudentGroup,
+        on_delete=models.CASCADE,
+        related_name="membership_history",
+        verbose_name=_("guruh"),
+        db_index=True,
+    )
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="group_membership_history",
+        verbose_name=_("talaba"),
+        db_index=True,
+    )
+    action = models.CharField(
+        _("harakat"),
+        max_length=20,
+        choices=Action.choices,
+        default=Action.JOINED,
+        db_index=True,
+    )
+    joined_at = models.DateTimeField(
+        _("qo'shilgan vaqti"),
+        default=timezone.now,
+        db_index=True,
+    )
+    removed_at = models.DateTimeField(
+        _("chiqarilgan vaqti"),
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="authorized_membership_actions",
+        verbose_name=_("tasdiqlagan shaxs"),
+    )
+    reason = models.CharField(
+        _("sabab / manba"),
+        max_length=255,
+        blank=True,
+        default="",
+    )
+    metadata = models.JSONField(
+        _("qo'shimcha audit ma'lumotlari"),
+        default=dict,
+        blank=True,
+    )
+    created_at = models.DateTimeField(
+        _("yozilgan vaqti"),
+        auto_now_add=True,
+    )
+
+    class Meta:
+        verbose_name = _("Guruh a'zoligi tarixi")
+        verbose_name_plural = _("Guruh a'zoliklari tarixi")
+        ordering = ["-joined_at", "-id"]
+        indexes = [
+            models.Index(fields=["group", "student", "-joined_at"]),
+            models.Index(fields=["group", "removed_at"]),
+        ]
+
+    def __str__(self) -> str:
+        status = "Active" if self.removed_at is None else f"Left ({self.removed_at})"
+        return f"{self.student} in {self.group} [{self.action}]: {status}"
+

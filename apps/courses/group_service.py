@@ -216,7 +216,183 @@ def find_group_by_token_or_code(token_or_code: str) -> StudentGroup | None:
     )
 
 
-def _attach_student_to_group(student: User, group: StudentGroup) -> bool:
+def add_student_to_group(
+    group: StudentGroup,
+    student: User,
+    actor: User | None = None,
+    reason: str = "",
+    metadata: dict[str, Any] | None = None,
+) -> tuple[bool, Any]:
+    """
+    O'quvchini guruhga qo'shadi, a'zolik tarixini yozadi va kross-markaz xavfsizligini tekshiradi.
+
+    - Atomik tranzaksiya va guruh qatorini qulflash (select_for_update) orqali
+      konkurrent qo'shilishda duplicate membership oldi olinadi.
+    - Takroriy chaqiriq idempotent: agar o'quvchi allaqachon guruhda bo'lsa, (False, history) qaytaradi.
+    - Kross-markaz tekshiruvi: filial/markazga tegishli guruhga boshqa markaz talabasi
+      qo'shila olmaydi (ValueError ko'tariladi).
+    - Obuna yoki pullik tarif o'zgarmaydi.
+    """
+    from decimal import Decimal
+    from django.utils import timezone
+    from apps.courses.models import GroupEnrollment, GroupMembershipHistory
+
+    with transaction.atomic():
+        # Lock group row to prevent race conditions during concurrent enrollments
+        locked_group = StudentGroup.objects.select_for_update().get(id=group.id)
+
+        # Cross-center tenant validation
+        if locked_group.branch_id:
+            target_center_id = locked_group.branch.center_id
+            if student.learning_center_id and student.learning_center_id != target_center_id:
+                raise ValueError("Talaba boshqa o'quv markaziga biriktirilgan.")
+            if student.branch_id:
+                branch_center_id = getattr(student.branch, "center_id", None)
+                if branch_center_id and branch_center_id != target_center_id:
+                    raise ValueError("Talaba boshqa o'quv markaziga biriktirilgan.")
+
+        # Check if already a member
+        if locked_group.students.filter(id=student.id).exists():
+            existing_history = GroupMembershipHistory.objects.filter(
+                group=locked_group, student=student, removed_at__isnull=True
+            ).first()
+            return False, existing_history
+
+        # Add to M2M
+        locked_group.students.add(student)
+
+        # Update student's branch/learning_center if not set
+        update_fields: list[str] = []
+        branch = locked_group.branch
+        if branch is not None:
+            if not student.branch_id:
+                student.branch = branch
+                update_fields.append("branch")
+            if branch.center_id and not student.learning_center_id:
+                student.learning_center_id = branch.center_id
+                update_fields.append("learning_center")
+        if update_fields:
+            student.save(update_fields=update_fields)
+
+        # Ensure/activate GroupEnrollment
+        today = timezone.localdate()
+        enrollment, created = GroupEnrollment.objects.get_or_create(
+            group=locked_group,
+            student=student,
+            defaults={
+                "monthly_fee": Decimal(str(locked_group.monthly_fee or 400000)),
+                "billing_cycle_day": 10,
+                "last_payment_date": today,
+                "next_payment_due": today + timezone.timedelta(days=30),
+                "payment_status": GroupEnrollment.PaymentStatus.PAID,
+                "is_active": True,
+            },
+        )
+        if not created and not enrollment.is_active:
+            enrollment.is_active = True
+            enrollment.save(update_fields=["is_active", "updated_at"])
+
+        # Record GroupMembershipHistory
+        was_previously_member = GroupMembershipHistory.objects.filter(
+            group=locked_group, student=student
+        ).exists()
+        action = (
+            GroupMembershipHistory.Action.REJOINED
+            if was_previously_member
+            else GroupMembershipHistory.Action.JOINED
+        )
+        now = timezone.now()
+        history = GroupMembershipHistory.objects.create(
+            group=locked_group,
+            student=student,
+            action=action,
+            joined_at=now,
+            removed_at=None,
+            actor=actor,
+            reason=reason or ("rejoined" if was_previously_member else "joined"),
+            metadata=metadata or {},
+        )
+
+        return True, history
+
+
+def remove_student_from_group(
+    group: StudentGroup,
+    student: User,
+    actor: User | None = None,
+    reason: str = "",
+    metadata: dict[str, Any] | None = None,
+) -> bool:
+    """
+    O'quvchini guruhdan chiqaradi va a'zolik tarixiga yozadi.
+
+    XAVFSIZLIK VA MA'LUMOT BUTUNLIGI:
+    - Talabaning test natijalari (Result), urinishlari (TestAttempt),
+      yuborgan esselari (EssaySubmission), davomati (AttendanceRecord)
+      va hisobotlari HECH QACHON O'CHIRILMAYDI.
+    - Faqat guruh a'zoligi to'xtatiladi:
+      `group.students.remove(student)` va `GroupEnrollment.is_active = False`.
+    - Tarixda `removed_at` belgilanadi va REMOVED harakat auditi yoziladi.
+    """
+    from django.utils import timezone
+    from apps.courses.models import GroupEnrollment, GroupMembershipHistory
+
+    with transaction.atomic():
+        locked_group = StudentGroup.objects.select_for_update().get(id=group.id)
+
+        if not locked_group.students.filter(id=student.id).exists():
+            return False
+
+        # Remove from M2M
+        locked_group.students.remove(student)
+
+        # Deactivate GroupEnrollment
+        GroupEnrollment.objects.filter(group=locked_group, student=student).update(
+            is_active=False
+        )
+
+        # Update open history records
+        now = timezone.now()
+        open_records = list(
+            GroupMembershipHistory.objects.filter(
+                group=locked_group, student=student, removed_at__isnull=True
+            )
+        )
+        for rec in open_records:
+            rec.removed_at = now
+            rec.save(update_fields=["removed_at"])
+
+        # Write REMOVED audit entry
+        joined_at = open_records[0].joined_at if open_records else now
+        GroupMembershipHistory.objects.create(
+            group=locked_group,
+            student=student,
+            action=GroupMembershipHistory.Action.REMOVED,
+            joined_at=joined_at,
+            removed_at=now,
+            actor=actor,
+            reason=reason or "manual_remove",
+            metadata=metadata or {},
+        )
+
+        return True
+
+
+def get_group_membership_history(group: StudentGroup):
+    """Guruh a'zoligi tarixi ro'yxati (eng so'nggi harakatlar yuqorida)."""
+    from apps.courses.models import GroupMembershipHistory
+
+    return GroupMembershipHistory.objects.filter(group=group).select_related(
+        "student", "actor"
+    ).order_by("-created_at", "-id")
+
+
+def _attach_student_to_group(
+    student: User,
+    group: StudentGroup,
+    actor: User | None = None,
+    reason: str = "invite",
+) -> bool:
     """
     O'quvchini guruhga biriktiradi va bo'sh filial/markaz maydonlarini to'ldiradi.
 
@@ -227,23 +403,13 @@ def _attach_student_to_group(student: User, group: StudentGroup) -> bool:
 
     Returns True agar o'quvchi yangi qo'shilgan bo'lsa, False agar allaqachon a'zo edi.
     """
-    with transaction.atomic():
-        if group.students.filter(id=student.id).exists():
-            return False
-        group.students.add(student)
-
-        update_fields: list[str] = []
-        branch = group.branch
-        if branch is not None:
-            if not student.branch_id:
-                student.branch = branch
-                update_fields.append("branch")
-            if branch.center_id and not student.learning_center_id:
-                student.learning_center_id = branch.center_id
-                update_fields.append("learning_center")
-        if update_fields:
-            student.save(update_fields=update_fields)
-    return True
+    success, _ = add_student_to_group(
+        group=group,
+        student=student,
+        actor=actor or student,
+        reason=reason,
+    )
+    return success
 
 
 def join_group_by_token(student: User, token_or_code: str) -> tuple[str, StudentGroup]:

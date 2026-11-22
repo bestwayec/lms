@@ -21,6 +21,37 @@ export interface GroupMember {
   essays_count?: number;
 }
 
+export interface GroupStudentResult {
+  id: number;
+  test: string;
+  subject: string;
+  calculated_at: string;
+  grading_status: string;
+  score: number | null;
+  max_score: number | null;
+  percentage: number | null;
+}
+
+export interface GroupStudentResults {
+  student: { id: number; name: string };
+  results: GroupStudentResult[];
+}
+
+export interface GroupMembershipHistoryItem {
+  id: number;
+  student_id: number;
+  student_name: string;
+  student_email: string;
+  action: string;
+  action_display: string;
+  joined_at: string;
+  removed_at: string | null;
+  actor_id: number | null;
+  actor_name: string;
+  reason: string;
+  created_at: string;
+}
+
 export interface SchoolGroup {
   id: number;
   name: string;
@@ -131,6 +162,21 @@ export interface EssayBoard {
 /** GET /api/v1/school/groups/<id>/ — the typed client only has PATCH/DELETE. */
 export function getGroupDetail(id: number | string): Promise<SchoolGroup> {
   return api<SchoolGroup>(`/api/v1/school/groups/${id}/`);
+}
+
+/** GET /api/v1/school/groups/<id>/members/<student_id>/results/ — scoped test results for a group student. */
+export function getGroupStudentResults(
+  groupId: number | string,
+  studentId: number | string,
+): Promise<GroupStudentResults> {
+  return api<GroupStudentResults>(`/api/v1/school/groups/${groupId}/members/${studentId}/results/`);
+}
+
+/** GET /api/v1/school/groups/<id>/history/ — group membership change audit history. */
+export function getGroupMembershipHistory(
+  groupId: number | string,
+): Promise<GroupMembershipHistoryItem[]> {
+  return api<GroupMembershipHistoryItem[]>(`/api/v1/school/groups/${groupId}/history/`);
 }
 
 /** POST /api/v1/school/groups/<id>/broadcast-vedomost/ — sends Leaderboard & PDF Vedomost to linked Telegram group. */

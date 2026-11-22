@@ -24,7 +24,10 @@ CI=1 PLAYWRIGHT_CHROMIUM_EXECUTABLE=<chromium> npx playwright test --trace off  
 |---|---|---|
 | 0 Recover baseline | ✅ complete | #135 |
 | 1 Security & data integrity | ✅ code complete for the confirmed defects; **owner actions + production-only checks remain** | #136 (private file access), #137 (nginx, not deployed), Stage 1c (below) |
-| 2–12 | not started | – |
+| 3a Attendance concurrency | ✅ complete | commit ca0ad07 |
+| 3b Group membership history & search authz | ✅ complete | branch `claude/stage3-attendance-concurrency` |
+| 3c Teacher Workspace 3.0 | 🟡 in progress | branch `claude/stage3-attendance-concurrency` |
+| 4–12 | not started | – |
 
 Stacking: #135 ← #136 ← #137, and Stage 1c branches off #136. Merge in that order after review.
 
@@ -65,6 +68,23 @@ Findings, evidence and status per item: `GRANDEC_NEXT_ARCHITECTURE.md` §7. Depl
 * S5d (JWT in `sessionStorage`), S5e (One Tap without nonce), S7 (public exam media): design decisions, unchanged.
 * Not audited in Stage 1: see "Not covered" under §7 of the architecture doc.
 * The `test-postgres` CI job has not yet run on GitHub.
+
+## Stage 3b — closure (Group membership history & search authorization)
+
+Executed 2026-11-22 on branch `claude/stage3-attendance-concurrency`:
+
+| Check | Result |
+|---|---|
+| `pytest tests/test_stage3b_membership_history.py` (SQLite) | **8 passed, 1 skipped** (1 = PG-only lock test), 0 failed |
+| Group & attendance regression suite (5 test modules) | **47 passed, 2 skipped**, 0 failed |
+| `python manage.py check` & `makemigrations --check` | pass / no changes detected |
+| Frontend `npm test`, `tsc -b`, `npm run lint`, `npm run build` | **24 passed, 0 errors, 0 lint warnings, built successfully** |
+
+Delivered capabilities:
+1. **`GroupMembershipHistory`**: Additive model tracking student, group, action (`JOINED`, `REMOVED`, `REJOINED`), joined/removed timestamps, authorized actor, reason, and metadata.
+2. **Data Preservation**: Removing a student deactivates the membership interval and preserves all historical test attempts, exam results, essay submissions, and attendance logs without cascade deletion.
+3. **Cross-Center Tenant Isolation**: Fixed `/api/v1/school/student-search/` and `/members/` views to prevent user enumeration, leaking exam/subscription counts, or adding students across center boundaries. Independent tutors are scoped to their existing students or invite codes.
+4. **React Groups UI**: Added debounced scoped student search, member removal with preservation confirmations, group student results inspection, and full membership audit history with `uz`, `ru`, `en` translations.
 
 ## Blockers / owner decisions
 

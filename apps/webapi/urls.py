@@ -408,6 +408,16 @@ urlpatterns = [
         name="school-group-members",
     ),
     path(
+        "school/groups/<int:group_id>/members/<int:student_id>/results/",
+        views_school.group_student_results_view,
+        name="school-group-member-results",
+    ),
+    path(
+        "school/groups/<int:group_id>/history/",
+        views_school.group_membership_history_view,
+        name="school-group-membership-history",
+    ),
+    path(
         "school/groups/<int:group_id>/analytics/",
         views_school.group_analytics_view,
         name="school-group-analytics",
