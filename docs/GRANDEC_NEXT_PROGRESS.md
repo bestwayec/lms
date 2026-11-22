@@ -20,11 +20,13 @@ CI=1 PLAYWRIGHT_CHROMIUM_EXECUTABLE=<chromium> npx playwright test --trace off  
 
 ## Stage status
 
-| Stage | Status | PR | Evidence |
-|---|---|---|---|
-| 0 Recover baseline | ✅ complete | #135 (draft) | below |
-| 1 Security & data integrity | in progress | – | below |
-| 2–12 | not started | – | – |
+| Stage | Status | PR (all draft, none merged/deployed) |
+|---|---|---|
+| 0 Recover baseline | ✅ complete | #135 |
+| 1 Security & data integrity | ✅ code complete for the confirmed defects; **owner actions + production-only checks remain** | #136 (private file access), #137 (nginx, not deployed), Stage 1c (below) |
+| 2–12 | not started | – |
+
+Stacking: #135 ← #136 ← #137, and Stage 1c branches off #136. Merge in that order after review.
 
 ## Stage 0 — closure
 
@@ -42,13 +44,27 @@ Closure fixes: seed-command tests are settings-aware (success asserted only on l
 
 PR #134 (enterprise-import credentials): open draft, 4 files, based on current main, CI state not re-checked here; not modified. Integration plan in Stage 1.
 
-## Stage 1 — security & data integrity (in progress)
+## Stage 1 — security & data integrity
 
-See the findings table in `GRANDEC_NEXT_ARCHITECTURE.md` §7 (S1–S6). Order of work:
-1. S1 private files: authenticated downloads (code PR) → nginx/deploy config (separate PR, not deployed).
-2. S3/S6 negative authorization tests (PIN throttling, draft exams, cross-center).
-3. S5 JWT/CSRF/Google OAuth review.
-4. #134 review.
+Findings, evidence and status per item: `GRANDEC_NEXT_ARCHITECTURE.md` §7. Deployment plan for the file/nginx work: `docs/DEPLOY_PRIVATE_MEDIA.md`.
+
+| Increment | Branch / PR | What | Verification (executed) |
+|---|---|---|---|
+| 1a private files (code) | `claude/stage1-private-files` · #136 | authenticated, object-checked downloads; hardened responses; API/admin no longer emit `/media/` URLs; frontend blob loading | SQLite 1738 passed / PostgreSQL 1745 passed (+15); Playwright 22 |
+| 1b nginx | `claude/stage1-nginx-private-media` · #137 | deny `/media/{receipts,tuition/proofs,speaking/audio}`; internal accel location; `deploy/scripts/verify_private_media_nginx.sh` | real nginx 1.24 script PASSED; negative control fails |
+| 1c authz & auth hardening | `claude/stage1-authz-hardening` | PIN lockout; test visibility + exam-content stripping; gradebook 500; Google token-in-URL; SPA URL tokens; CSRF on payment review; spreadsheet injection; cross-tenant probe suite | see "Stage 1c results" below |
+
+### Stage 1c — defects found and fixed (each has a test that fails on the old code unless marked)
+
+1. Anonymous read of a private group-only test's questions + catalogue title (S6a). 2. `group_assignments` → HTTP 500 in 3 views (S6b). 3. PIN brute force (S3). 4. JWTs in the Google redirect URL (S5a) and tokens accepted from the URL (S5b). 5. Receipt review without CSRF (S5c; fails on old code). 6. Formula injection ×3 exports (S8; all 3 fail on old code).
+
+### Open items from Stage 1 (owner decisions / follow-ups)
+
+* Merge + deploy order: #135 → #136 → deploy code → #137 → `nginx -t` → reload → (optional) `PRIVATE_MEDIA_ACCEL_PREFIX`. Treat previously public receipts/audio as exposed.
+* **#134**: reviewed, tests green on both backends, merges cleanly. After it merges: update `EnterpriseDashboard.tsx:971` ("standard password Grand2026!") and surface `manual_setup_required`; rotate already-issued shared passwords via its documented ops procedure.
+* S5d (JWT in `sessionStorage`), S5e (One Tap without nonce), S7 (public exam media): design decisions, unchanged.
+* Not audited in Stage 1: see "Not covered" under §7 of the architecture doc.
+* The `test-postgres` CI job has not yet run on GitHub.
 
 ## Blockers / owner decisions
 

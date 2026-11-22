@@ -186,18 +186,29 @@ Legend: ✅ present · 🟡 partial/inadequate · ❌ missing · ⚠ broken/dupl
 5. **Concurrency:** attendance saves carry a `revision` (token derived from the session's records); stale → HTTP 409 with the fresh sheet; the client keeps local edits.
 6. **Authorization:** one helper per scope (`teacher_groups`, center scope) reused by every new endpoint; tests per role/center.
 
-## 7. Phase 1 — security findings queue (evidence-based; not yet fixed)
+## 7. Phase 1 / Stage 1 — security findings (status after Stage 1; evidence-based)
 
-| # | Finding | Evidence | Severity (initial) | Plan |
-|---|---|---|---|---|
-| S1 | Payment receipts, tuition proofs and speaking audio are served by nginx under `/media/` **without authentication**, with `Cache-Control: public, max-age=2592000`; serializers/views return `.url` | `deploy/nginx/nginx-ssl.conf:145`, `nginx.conf:13`, `webapi/serializers.py:384`, `speaking/views.py:55`; models: `payments.receipt_image`, `tuition.proof`, `speaking.audio_file` | **High** (privacy; unguessable-name not guaranteed, original filenames kept) | private storage + authenticated download views / `X-Accel-Redirect`; keep public media (avatars, topic images) separate |
-| S2 | Imported student credentials were shared/plaintext | **PR #134** (draft, 4 files, based on current main) | High | **Reuse #134 as-is** (review + merge by owner); only add follow-ups for already-issued credentials (ops procedure in its doc). Do not duplicate. |
-| S3 | `Test.access_pin` is a 4-digit PIN — brute-force/throttle behaviour unverified | `tests/models.py:237` | Medium | verify throttling on start endpoint; add tests |
-| S4 | CI does not exercise PostgreSQL (see §3.1) — row-lock/concurrency regressions are invisible | `development.py:33` vs `ci.yml` | Process / High-impact | PG job after harness fixes |
-| S5 | JWT / CSRF / Google OAuth handling | Access **and refresh** tokens are kept in `sessionStorage` (`frontend/src/lib/api.ts:24-36`), i.e. readable by any XSS; mitigations present: 60-min access, 7-day refresh with rotation + blacklist (`base.py:338`), production `SESSION_COOKIE_SECURE`/`CSRF_COOKIE_SECURE`/HSTS (`production.py:60-72`). `CSRF_COOKIE_HTTPONLY=False` by design. Google OAuth handling **not yet located/reviewed** | Medium (needs CSP/XSS review to rate) | focused review in Phase 1; no change proposed yet |
-| S6 | Cross-center / cross-teacher access, draft exam access, enterprise onboarding | not yet audited | Unknown | audit endpoint by endpoint with negative tests |
+Status legend: ✅ fixed in a draft PR (not merged/deployed) · 🟡 reviewed, action needed from the owner · ⏳ not yet audited
 
-No finding in this table is claimed fixed except where §3.1 says so.
+| # | Finding | Evidence | Status |
+|---|---|---|---|
+| S1 | Payment receipts, tuition proofs and speaking audio served by nginx under `/media/` **without authentication**, `Cache-Control: public, max-age=2592000` | `deploy/nginx/nginx.conf`, `webapi/serializers.py`, `speaking/views.py` | ✅ code PR #136 (authenticated, object-checked downloads; 404 for outsiders; API/admin stop emitting `/media/` URLs) + nginx PR #137 (deny rule verified against a **real nginx 1.24**, incl. `//`, `..`, `%72` bypass attempts; negative control fails). Deploy order and rollback: `docs/DEPLOY_PRIVATE_MEDIA.md`. Previously public files must be treated as exposed. |
+| S2 | Imported student credentials shared/plaintext (`Grand2026!`) | PR #134 | 🟡 **Reviewed, not duplicated, not modified.** Its 6 tests pass on SQLite and PostgreSQL, its templates exist, it merges cleanly with Stage 1. Gaps: (a) `frontend/src/pages/EnterpriseDashboard.tsx:971` still shows "standard password `Grand2026!`" and ignores the new `manual_setup_required` count — follow-up after #134 merges; (b) already-issued shared passwords are not rotated (ops procedure in its doc). |
+| S3 | 4-digit test PIN had no attempt limit; non-constant-time compare; mock-join masked a wrong PIN by returning an older attempt | `tests/services.py`, `tests/views.py` | ✅ 5 wrong guesses per (student,test) / 20 per student within 15 min → HTTP 429 + `Retry-After`; correct PIN clears the counter; teachers exempt; `hmac.compare_digest`. 8 tests. |
+| S4 | CI never ran on PostgreSQL | `development.py:33` | ✅ `test-postgres` job (#135); first GitHub run is its verification. |
+| S5a | **Google OAuth callback put access+refresh JWTs in the redirect URL** (history, Referer, logs) | `accounts/google_auth.py` | ✅ redirect carries no credential; the SPA uses the existing session bridge. |
+| S5b | **SPA accepted `?access=&refresh=` from the URL** (login-fixation via crafted link) | `frontend/src/auth/AuthContext.tsx` | ✅ never adopted, stripped from the address bar; Playwright test. |
+| S5c | Payment-receipt approval (`receipt_review_view`) skipped CSRF for session auth | `webapi/views_billing.py` | ✅ session callers must pass CSRF (JWT unaffected); the test fails on the old code. `SameSite=Lax` was the only barrier before. |
+| S5d | JWT pair in `sessionStorage` (XSS-readable) | `lib/api.ts` | 🟡 design trade-off, unchanged. Mitigated by 60-min access / rotating+blacklisted 7-day refresh. An XSS review/CSP tightening is a separate decision. |
+| S5e | `google_auth_verify` (One Tap) verifies audience/expiry but passes `nonce=None` | `google_auth.py` | 🟡 noted; replay needs a stolen ID token (≈1 h). Not changed. |
+| S6a | **Anonymous users could read the full question text of a teacher's private group-only test** (`GET /api/tests/<id>/`) and see its title in the catalogue; the PIN did not protect the questions | probe, `tests/test_cross_tenant_access.py` | ✅ shared visibility rule (`apps/tests/visibility.py`, subqueries only): group-only tests 404 for non-members; detail returns no `questions`/`passages` to anyone but the test's staff; list uses the same rule. |
+| S6b | `test.group_assignments` (non-existent relation) → **HTTP 500** in 3 views (gradebook etc.); teachers of an assigned group locked out | probe | ✅ `homework_assignments`. |
+| S6c | Cross-teacher / cross-center / cross-student isolation | probe: 23 read endpoints + 13 write endpoints × 4 unrelated actors, with route-validity guard and positive controls | ✅ no further leaks found in the probed endpoints (attendance, results, analytics, exports, tuition, studio, panel). **Probe scope is finite**; see "not covered" below. |
+| S8 | CSV/Excel **formula injection** in 3 exports (student/test/center names) | `organizations/views.py`, `courses/group_service.py`, `webapi/views_panel.py` | ✅ `apps/core/spreadsheet.py`; all 3 export tests fail on the old code. |
+| S7 | Exam listening audio/images (`exams/audio`, `exams/images`) are public by URL | `tests/models.py:457,494` | 🟡 left public on purpose (needed by the exam player); matters only for restricted exams. Owner decision. |
+| S9 | Telegram account linking, parent invites | PRs #131/#132 + existing tests | ✅ covered by existing hardening and its tests; **not re-audited** in this stage. |
+
+**Not covered / production-only:** endpoints outside the probe lists (e.g. essays teacher queue, weekly reports, observations, notification destinations, tournaments, parent portal); subscription/payment *validation* logic beyond the CSRF and file-access fixes; behaviour behind Cloudflare/real TLS; real Telegram; real devices.
 
 ## 8. Prioritized implementation ledger
 
@@ -210,10 +221,10 @@ No finding in this table is claimed fixed except where §3.1 says so.
 | P0-5 | 0 | PG-only test-data fixes (arena codes, certificate counter) | S | — | ✅ done |
 | P0-6 | 0 | PG job in CI; resolve seed/Channels/streaming/essay-id harness failures | M | — | ✅ done (see `GRANDEC_NEXT_PROGRESS.md`) |
 | P0-7 | 0 | Correct `CLAUDE.md` (python-telegram-bot, not Aiogram) | S | owner | open |
-| P1-1 | 1 | Private storage + authenticated download for receipts/proofs/speaking audio (S1) | M–L | deploy change (nginx) needs owner approval | open |
-| P1-2 | 1 | Review/merge PR #134 (S2) | — | owner | open |
-| P1-3 | 1 | PIN throttle, draft-exam access, cross-center negative tests (S3, S6) | M | — | open |
-| P1-4 | 1 | JWT/CSRF/Google review (S5) | M | — | open |
+| P1-1 | 1 | Private storage + authenticated download for receipts/proofs/speaking audio (S1) | M–L | deploy approval | ✅ code (#136) + nginx (#137) done, **not deployed** |
+| P1-2 | 1 | Review/merge PR #134 (S2) | — | owner | 🟡 reviewed (tests green); UI follow-up recorded |
+| P1-3 | 1 | PIN throttle, draft-exam access, cross-center negative tests (S3, S6) | M | — | ✅ done (Stage 1c) |
+| P1-4 | 1 | JWT/CSRF/Google review (S5) | M | — | ✅ S5a–c fixed; S5d/e recorded for owner |
 | P2-1 | 2 | Attendance `revision` + 409 on stale save (service + API + Telegram) | M | — | open |
 | P2-2 | 2 | Group membership history model + migration | M | — | open |
 | P2-3 | 2 | Teacher workspace overview endpoint (real queries) | M | P3 data for homework metrics | open |

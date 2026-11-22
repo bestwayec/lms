@@ -226,3 +226,87 @@ def test_teacher_of_an_assigned_group_gets_access_and_an_unrelated_teacher_gets_
     assert _client(helper).get(f"/api/tests/{test.id}/").json()["questions"]  # assigned teacher sees content
     assert _client(world["actors"]["other_teacher"]).get(url).status_code == 403
     assert _client(world["actors"]["other_student"]).get(url).status_code == 403
+
+
+# -- mutations: nothing the victim owns may be changed by an unrelated actor ----------------------
+
+WRITE_ENDPOINTS = [
+    ("attendance mark", "post", "/api/v1/school/attendance/sessions/{session}/mark/",
+     {"student_id": "{student}", "status": "absent"}),
+    ("attendance mark all present", "post", "/api/v1/school/attendance/sessions/{session}/mark-all-present/", {}),
+    ("attendance finalize", "post", "/api/v1/school/attendance/sessions/{session}/finalize/", {"confirm_unmarked": True}),
+    ("update attempt score", "post", "/api/tests/attempts/{attempt}/update-score/", {"score": 0}),
+    ("update attempt score (teacher)", "post", "/api/tests/teacher/attempts/{attempt}/update-score/", {"score": 0}),
+    ("group record payment", "post", "/api/v1/courses/groups/{group}/record-payment/",
+     {"student_id": "{student}", "amount": 1}),
+    ("group payment reminders", "post", "/api/v1/courses/groups/{group}/send-payment-reminders/", {}),
+    ("group broadcast vedomost", "post", "/api/v1/school/groups/{group}/broadcast-vedomost/", {}),
+    ("studio publish", "post", "/api/v1/teacher/studio/tests/{draft}/publish/", {}),
+    ("studio assign", "post", "/api/v1/teacher/studio/tests/{draft}/assign/", {"group_ids": ["{group}"]}),
+    ("generate retest", "post", "/api/tests/attempts/{attempt}/generate-retest/", {}),
+    ("panel question edit", "patch", "/api/v1/panel/tests/{draft}/", {"title": "pwned"}),
+    ("panel status change", "post", "/api/v1/panel/tests/{draft}/status/", {"status": "published"}),
+]
+
+
+def _fill(value, ids):
+    if isinstance(value, str):
+        return int(ids[value[1:-1]]) if value.startswith("{") and value.endswith("}") else value
+    if isinstance(value, list):
+        return [_fill(v, ids) for v in value]
+    if isinstance(value, dict):
+        return {k: _fill(v, ids) for k, v in value.items()}
+    return value
+
+
+def _snapshot(world):
+    from apps.attendance.models import AttendanceRecord
+
+    ids = world["ids"]
+    draft = Test.objects.get(pk=ids["draft"])
+    return {
+        "draft": (draft.title, draft.status, draft.is_active, draft.assigned_group_id),
+        "records": list(AttendanceRecord.objects.filter(session_id=ids["session"]).values_list("student_id", "status")),
+        "session": AttendanceSession.objects.values_list("status", flat=True).get(pk=ids["session"]),
+        "attempt": TestAttempt.objects.values_list("score", "status").get(pk=ids["attempt"]),
+        "result": Result.objects.values_list("score", "percentage").get(pk=ids["result"]),
+        "attempts": TestAttempt.objects.count(),
+    }
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("actor", ["anonymous", "other_student", "other_teacher", "other_center_admin"])
+def test_unrelated_actors_change_nothing_of_the_victim(world, actor):
+    before = _snapshot(world)
+    user = world["actors"][actor]
+    accepted = []
+    for label, method, template, body in WRITE_ENDPOINTS:
+        url = template.format(**world["ids"])
+        response = getattr(_client(user), method)(url, _fill(body, world["ids"]), format="json")
+        if response.status_code < 300:
+            accepted.append(f"{label}: {method.upper()} {url} -> {response.status_code}")
+    assert accepted == []
+    assert _snapshot(world) == before
+
+
+@pytest.mark.django_db
+def test_every_probed_url_is_a_real_api_route_not_the_spa_catch_all(world):
+    """A mistyped path would 'pass' the isolation tests for the wrong reason (404 / SPA shell)."""
+    from django.urls import resolve
+
+    ids = world["ids"]
+    urls = [t.format(**ids) for _, t in READ_ENDPOINTS] + [t.format(**ids) for _, _, t, _ in WRITE_ENDPOINTS]
+    for url in urls:
+        match = resolve(url)
+        assert "core.spa" not in match.func.__module__ and "serve_spa" not in match.func.__name__, url
+
+
+@pytest.mark.django_db
+def test_the_owner_can_use_the_write_endpoints_the_probe_attacks(world):
+    """Positive control: the probe's request shapes are accepted from a legitimate actor."""
+    ids = world["ids"]
+    owner = _client(world["teacher_a"])
+    mark = owner.post(f"/api/v1/school/attendance/sessions/{ids['session']}/mark/",
+                      {"student_id": ids["student"], "status": "late", "late_minutes": 5}, format="json")
+    assert mark.status_code == 200, mark.content
+    assert owner.post(f"/api/v1/school/attendance/sessions/{ids['session']}/mark-all-present/", {}, format="json").status_code == 200
