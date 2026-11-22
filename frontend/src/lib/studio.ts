@@ -142,7 +142,17 @@ export interface FileImportResult {
   blocks: StudioBlock[];
   questions_count: number;
   detected_answers: number;
-  warnings: { row?: number; code: string; question?: number }[];
+  warnings: { row?: number; code: string; question?: number; number?: number }[];
+  source?: { kind: 'text' | 'csv' | 'xlsx' | 'docx' | 'pdf'; filename: string };
+  report?: {
+    total_questions: number;
+    valid_questions: number;
+    missing_answers: number;
+    duplicate_options: number;
+    too_few_options: number;
+    duplicate_numbers: number[];
+    warnings_count: number;
+  };
 }
 
 export interface TestPayload {

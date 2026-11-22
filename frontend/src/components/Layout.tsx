@@ -97,6 +97,20 @@ export default function Layout() {
   };
 
   const close = () => setOpen(false);
+  // Exam Focus Mode: an open attempt gets the whole screen. The runner keeps
+  // its own header with timer, progress and a confirmed safe exit; app
+  // navigation, the subject switcher and the bottom bar are not rendered, so
+  // a student cannot switch subject or leave by accident mid-exam.
+  const examFocus = /^\/take\/\d+/.test(pathname);
+  if (examFocus) {
+    return (
+      <div className="app exam-focus">
+        <main id="main-content" className="content exam-focus-content">
+          <Outlet />
+        </main>
+      </div>
+    );
+  }
   const isTeacher = canTeach(user);
   const isAdmin = isPlatformAdmin(user);
   const isParent = canViewParent(user);
