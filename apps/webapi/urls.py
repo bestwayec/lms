@@ -25,6 +25,7 @@ from . import (
     views_branches,
     views_private_files,
     views_homework,
+    views_classroom,
 )
 from apps.organizations import views as views_enterprise
 from apps.tests import (
@@ -40,6 +41,9 @@ from apps.tests import (
 app_name = "webapi"
 
 urlpatterns = [
+    # -- Teacher & Student Classroom 6.0 ------------------------------------
+    path("classroom/", include("apps.webapi.urls_classroom")),
+
     # -- Teacher Studio (test builder, assignment, item analysis) -----------
     path("teacher/studio/parse/", views_studio.studio_parse_view, name="studio-parse"),
     path("teacher/studio/validate/", views_studio.studio_validate_view, name="studio-validate"),

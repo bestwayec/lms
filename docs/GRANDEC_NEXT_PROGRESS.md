@@ -34,6 +34,7 @@ CI=1 PLAYWRIGHT_CHROMIUM_EXECUTABLE=<chromium> npx playwright test --trace off  
 | **4.0 finalization**: Smart Import Pro, Exam Runner 4.0, Ona tili topics, exam-order fix, CI pinning | ✅ verified increments; several stages remain (see 4.0 section) | `feat/grandec-next-4-finalization` → base `main` |
 | **4.1 Admin Test Control Center + Bot 4.0**: Scoped test center, safe delete, bulk preview, unified homework bot | ✅ verified increments | `feat/grandec-telegram-admin-test-v4` → base `feat/grandec-next-4-finalization` |
 | **5.0 Telegram Group Bot 5.0, Mini App 5.0 & Universal Exam Platform**: Pinned-style group menu, persistent DB attendance, safe unlinking, untimed runner fix, scoring integrity | ✅ verified increments | `feat/grandec-group-bot-miniapp-v5` → base `feat/grandec-next-4-finalization` |
+| **6.0 Teacher Classroom, Group Invitations & Premium Test Access**: Unified access policy (`resolve_test_access`), 4 audience modes, group invitations, truthful billing, classroom endpoints | ✅ verified increments | `feat/grandec-teacher-classroom-access-v6` → base `feat/grandec-next-4-finalization` |
 
 Stacking: #135 ← #136 ← #138 ← #139 ← Opus finalization (with #137 off #136, #134 off main). Merge in that order after review. Detailed Opus handoff: `docs/GRANDEC_OPUS_HANDOFF.md`.
 
