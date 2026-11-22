@@ -3237,7 +3237,8 @@
     "hw_status_grading_failed": "Natija hali tayyor emas",
     "hw_retry_grading": "Natijani qayta tekshirish",
     "hw_deadline_passed": "Muddati tugagan",
-    "hw_not_available": "Hozircha mavjud emas"
+    "hw_not_available": "Hozircha mavjud emas",
+    "studio_err_has_assignments": "Test vazifa sifatida berilgan: savollarni o'zgartirish uchun nusxa yarating yoki vazifani bekor qiling."
   },
   "ru": {
     "spk_practise_again": "Повторить эту тему",
@@ -6477,7 +6478,8 @@
     "hw_status_grading_failed": "Результат ещё не готов",
     "hw_retry_grading": "Проверить результат снова",
     "hw_deadline_passed": "Срок истёк",
-    "hw_not_available": "Пока недоступно"
+    "hw_not_available": "Пока недоступно",
+    "studio_err_has_assignments": "Тест назначен как задание: создайте копию или отмените задание, чтобы изменить вопросы."
   },
   "en": {
     "spk_practise_again": "Practise this topic again",
@@ -9717,6 +9719,7 @@
     "hw_status_grading_failed": "Result not ready yet",
     "hw_retry_grading": "Check result again",
     "hw_deadline_passed": "Deadline passed",
-    "hw_not_available": "Not available yet"
+    "hw_not_available": "Not available yet",
+    "studio_err_has_assignments": "This test is assigned as homework: duplicate it or cancel the homework to change its questions."
   }
 }

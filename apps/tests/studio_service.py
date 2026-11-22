@@ -324,6 +324,12 @@ def has_real_answers(test: Test) -> bool:
     return TestAttempt.objects.filter(test=test, is_preview=False).exists()
 
 
+def has_live_assignments(test: Test) -> bool:
+    from apps.courses.models import Homework
+
+    return Homework.objects.filter(test=test, status=Homework.Status.ACTIVE).exists()
+
+
 def _clear_content(test: Test) -> None:
     # Preview attempts only (checked by the caller): their answers go with the questions.
     TestAttempt.objects.filter(test=test, is_preview=True).delete()
@@ -442,6 +448,10 @@ def save_test(user, payload: dict[str, Any], test: Test | None = None) -> Test:
             raise StudioConflict("not_studio")
         if has_real_answers(test):
             raise StudioConflict("has_attempts")
+        if has_live_assignments(test):
+            # Rebuilding would silently turn assigned homework into a DRAFT
+            # with different questions; duplicate the test instead.
+            raise StudioConflict("has_assignments")
         _clear_content(test)
         test.title = meta.title
         test.subject = meta.subject

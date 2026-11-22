@@ -558,3 +558,21 @@ def test_teacher_roster_uses_authoritative_status(api, teacher, other_teacher, g
 
     api.force_authenticate(other_teacher)
     assert api.get(f"/api/v1/school/teacher/homeworks/{hw.id}/roster/").status_code == 404
+
+
+@pytest.mark.django_db
+def test_assigned_test_cannot_be_rebuilt_under_live_homework(teacher, group, test_obj):
+    from apps.tests import studio_service as svc
+
+    Question.objects.filter(test=test_obj).update(config={"studio_type": "single"})
+    hw = _hw(teacher, group, test_obj)
+    payload = {"title": "changed", "subject": "uzbek", "blocks": []}
+    with pytest.raises(svc.StudioConflict) as exc:
+        svc.save_test(teacher, payload, test=test_obj)
+    assert exc.value.code == "has_assignments"
+    test_obj.refresh_from_db()
+    assert test_obj.status == Test.Status.PUBLISHED and test_obj.questions.count() == 2
+    from apps.courses.homework_service import cancel_teacher_homework
+
+    cancel_teacher_homework(teacher, hw.id)
+    assert not svc.has_live_assignments(test_obj)
