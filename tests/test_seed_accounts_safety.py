@@ -4,12 +4,26 @@ from io import StringIO
 from pathlib import Path
 
 import pytest
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
 User = get_user_model()
 SOURCE = Path(__file__).resolve().parent.parent / "apps/accounts/management/commands/seed_accounts.py"
+
+
+def is_local_database() -> bool:
+    """Mirror of the command's own guard (DEBUG or SQLite), evaluated at call time."""
+    engine = settings.DATABASES["default"].get("ENGINE", "")
+    return bool(settings.DEBUG or engine.endswith("sqlite3"))
+
+
+def assert_refuses_and_creates_nothing():
+    """On PostgreSQL / non-local settings the seed must refuse, not partially run."""
+    with pytest.raises(CommandError):
+        run()
+    assert not User.objects.filter(email="admin.grandec@gmail.com").exists()
 
 
 def run(**kwargs):
@@ -29,6 +43,8 @@ def test_no_password_is_written_in_the_source():
 def test_generated_passwords_are_random_and_shown_once(monkeypatch):
     monkeypatch.delenv("SEED_ADMIN_PASSWORD", raising=False)
     monkeypatch.delenv("SEED_TEACHER_PASSWORD", raising=False)
+    if not is_local_database():
+        return assert_refuses_and_creates_nothing()
     first = run()
     assert "Admin password (shown once" in first and "Teacher password (shown once" in first
     admin = User.objects.get(email="admin.grandec@gmail.com")
@@ -49,6 +65,8 @@ def test_generated_passwords_are_random_and_shown_once(monkeypatch):
 def test_password_from_environment_is_used_and_not_echoed(monkeypatch):
     monkeypatch.setenv("SEED_ADMIN_PASSWORD", "from-env-Pass-987!")
     monkeypatch.setenv("SEED_TEACHER_PASSWORD", "teacher-env-Pass-987!")
+    if not is_local_database():
+        return assert_refuses_and_creates_nothing()
     out = run()
     assert "from-env-Pass-987!" not in out and "teacher-env-Pass-987!" not in out
     assert User.objects.get(email="admin.grandec@gmail.com").check_password("from-env-Pass-987!")
