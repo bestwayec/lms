@@ -464,6 +464,12 @@ urlpatterns = [
     path("school/students/", views_school.student_search_view, name="school-students"),
     path("school/parent/", views_school.parent_overview_view, name="school-parent"),
     path("school/teacher/", views_school.teacher_overview_view, name="school-teacher"),
+    path("school/teacher/homeworks/", views_school.teacher_homeworks_view, name="school-teacher-homeworks"),
+    path(
+        "school/teacher/homeworks/<int:homework_id>/",
+        views_school.teacher_homework_detail_view,
+        name="school-teacher-homework-detail",
+    ),
     path("school/analytics/", views_school.analytics_view, name="school-analytics"),
     path(
         "school/public-stats/",

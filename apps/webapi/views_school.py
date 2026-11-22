@@ -4,7 +4,7 @@ essay leaderboard and CSV imports. Mirrors apps/web/views.py queries.
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from django.conf import settings
 from django.db.models import Avg, Case, Count, F, FloatField, Max, Q, Value, When
@@ -480,75 +480,151 @@ def parent_overview_view(request):
 @api_view(["GET"])
 @permission_classes([IsTeacherOrAdmin])
 def teacher_overview_view(request):
-    user = request.user
-    groups = _teacher_groups(user).prefetch_related("students")
-    student_ids = set()
-    for g in groups:
-        student_ids.update(g.students.values_list("id", flat=True))
-    if is_platform_admin(user):
-        results_qs = Result.objects.all()
-        tests_qs = Test.objects.filter(status=Test.Status.PUBLISHED)
-    else:
-        results_qs = Result.objects.filter(test__course__teacher=user)
-        tests_qs = Test.objects.filter(
-            course__teacher=user, status=Test.Status.PUBLISHED
+    """
+    Teacher Workspace 3.0 overview endpoint.
+    Aggregates today's lessons, active assignments, upcoming deadlines,
+    review queue, attendance summary, and backward-compatible metrics.
+    """
+    from apps.courses.teacher_workspace_service import get_teacher_workspace_overview
+
+    payload = get_teacher_workspace_overview(request.user)
+    return Response(payload)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsTeacherOrAdmin])
+def teacher_homeworks_view(request):
+    """
+    List teacher's homework assignments or create a new homework.
+    """
+    if request.method == "GET":
+        from apps.courses.models import Homework
+        from apps.courses.teacher_workspace_service import get_teacher_groups
+
+        groups = get_teacher_groups(request.user)
+        group_id = request.GET.get("group_id")
+        active_only = request.GET.get("active_only") == "1"
+
+        qs = (
+            Homework.objects.filter(group__in=groups)
+            .select_related("group", "test", "essay_topic")
+            .order_by("-due_date")
         )
-    recent = results_qs.select_related("test", "student", "attempt").order_by(
-        "-calculated_at"
-    )[:10]
-    # Phase 5: essay queue scoped to assigned groups, effective_score, TEACHER_REVIEWED
-    _graded_statuses = [
-        EssaySubmission.Status.GRADED,
-        EssaySubmission.Status.TEACHER_REVIEWED,
-    ]
-    essay_pending_qs = EssaySubmission.objects.filter(
-        status=EssaySubmission.Status.PENDING_TEACHER
-    )
-    essay_graded_qs = EssaySubmission.objects.filter(status__in=_graded_statuses)
-    if not is_platform_admin(user) and student_ids:
-        essay_pending_qs = essay_pending_qs.filter(student_id__in=student_ids)
-        essay_graded_qs = essay_graded_qs.filter(student_id__in=student_ids)
-    elif not is_platform_admin(user) and not student_ids:
-        # Teacher with no groups — no essay visibility (scoped)
-        essay_pending_qs = essay_pending_qs.none()
-        essay_graded_qs = essay_graded_qs.none()
-    essay_pending = essay_pending_qs.count()
-    essay_graded = essay_graded_qs.count()
-    essay_avg = essay_graded_qs.aggregate(
-        avg=Avg(Coalesce(F("final_score"), F("total_score")))
-    )["avg"]
+        if group_id:
+            try:
+                qs = qs.filter(group_id=int(group_id))
+            except (ValueError, TypeError):
+                pass
+        if active_only:
+            qs = qs.filter(due_date__gte=timezone.now())
+
+        results = []
+        for hw in qs[:100]:
+            results.append(
+                {
+                    "id": hw.id,
+                    "title": hw.title,
+                    "description": hw.description,
+                    "group_id": hw.group_id,
+                    "group_name": hw.group.name,
+                    "due_date": hw.due_date.isoformat(),
+                    "is_overdue": hw.due_date < timezone.now(),
+                    "type": (
+                        "test"
+                        if hw.test_id
+                        else ("essay" if hw.essay_topic_id else "custom")
+                    ),
+                    "test_id": hw.test_id,
+                    "test_title": hw.test.title if hw.test else None,
+                    "essay_topic_id": hw.essay_topic_id,
+                    "essay_topic_title": (
+                        hw.essay_topic.title if hw.essay_topic else None
+                    ),
+                    "created_at": hw.created_at.isoformat(),
+                }
+            )
+        return Response({"results": results})
+
+    # POST: create homework
+    from apps.courses.teacher_workspace_service import create_teacher_homework
+
+    data = request.data
+    group_id = data.get("group_id")
+    title = data.get("title")
+    due_date_raw = data.get("due_date")
+    description = data.get("description", "")
+    test_id = data.get("test_id")
+    essay_topic_id = data.get("essay_topic_id")
+
+    if not group_id:
+        return Response({"detail": "Guruh tanlanishi shart."}, status=400)
+    if not title:
+        return Response(
+            {"detail": "Vazifa sarlavhasi kiritilishi shart."}, status=400
+        )
+    if not due_date_raw:
+        return Response(
+            {"detail": "Topshirish muddati (deadline) ko'rsatilishi shart."},
+            status=400,
+        )
+
+    try:
+        due_date = datetime.fromisoformat(
+            str(due_date_raw).replace("Z", "+00:00")
+        )
+    except (ValueError, TypeError):
+        return Response(
+            {"detail": "Topshirish muddati formati noto'g'ri (ISO format kerak)."},
+            status=400,
+        )
+
+    try:
+        hw = create_teacher_homework(
+            request.user,
+            group_id=int(group_id),
+            title=str(title),
+            due_date=due_date,
+            description=str(description or ""),
+            test_id=int(test_id) if test_id else None,
+            essay_topic_id=int(essay_topic_id) if essay_topic_id else None,
+        )
+    except PermissionError as pe:
+        return Response({"detail": str(pe)}, status=403)
+    except ValueError as ve:
+        return Response({"detail": str(ve)}, status=400)
+
     return Response(
         {
-            "groups": StudentGroupSerializer(groups, many=True).data,
-            "student_count": len(student_ids),
-            "published_tests": tests_qs.count(),
-            "active_topics": EssayTopic.objects.filter(is_active=True).count(),
-            "essay_pending": essay_pending,
-            "essay_graded": essay_graded,
-            "essay_avg_score": round(float(essay_avg or 0), 1),
-            "recent_results": [
-                {
-                    "student": r.student.get_full_name() or r.student.email,
-                    "test": r.test.title,
-                    "subject": r.test.subject,
-                    "percentage": float(r.percentage),
-                    "is_passed": r.is_passed,
-                    "cheating_detected": bool(
-                        getattr(r.attempt, "cheating_detected", False)
-                    )
-                    if getattr(r, "attempt", None)
-                    else False,
-                    "violation_count": int(
-                        getattr(r.attempt, "violation_count", 0) or 0
-                    )
-                    if getattr(r, "attempt", None)
-                    else 0,
-                    "date": r.calculated_at.isoformat(),
-                }
-                for r in recent
-            ],
-        }
+            "id": hw.id,
+            "title": hw.title,
+            "description": hw.description,
+            "group_id": hw.group_id,
+            "group_name": hw.group.name,
+            "due_date": hw.due_date.isoformat(),
+            "type": (
+                "test"
+                if hw.test_id
+                else ("essay" if hw.essay_topic_id else "custom")
+            ),
+            "created_at": hw.created_at.isoformat(),
+        },
+        status=201,
     )
+
+
+@api_view(["DELETE"])
+@permission_classes([IsTeacherOrAdmin])
+def teacher_homework_detail_view(request, homework_id: int):
+    """Cancel or delete a teacher's homework."""
+    from apps.courses.teacher_workspace_service import delete_teacher_homework
+
+    try:
+        delete_teacher_homework(request.user, homework_id)
+        return Response({"status": "deleted", "id": homework_id})
+    except PermissionError as pe:
+        return Response({"detail": str(pe)}, status=403)
+    except ValueError as ve:
+        return Response({"detail": str(ve)}, status=404)
 
 
 @api_view(["GET"])

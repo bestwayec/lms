@@ -26,8 +26,9 @@ CI=1 PLAYWRIGHT_CHROMIUM_EXECUTABLE=<chromium> npx playwright test --trace off  
 | 1 Security & data integrity | ✅ code complete for the confirmed defects; **owner actions + production-only checks remain** | #136 (private file access), #137 (nginx, not deployed), Stage 1c (below) |
 | 3a Attendance concurrency | ✅ complete | commit ca0ad07 |
 | 3b Group membership history & search authz | ✅ complete | branch `claude/stage3-attendance-concurrency` |
-| 3c Teacher Workspace 3.0 | 🟡 in progress | branch `claude/stage3-attendance-concurrency` |
-| 4–12 | not started | – |
+| 3c Teacher Workspace 3.0 | ✅ complete | branch `claude/stage3-attendance-concurrency` |
+| 4 Unified Homework Engine | 🟡 next | branch `claude/stage3-attendance-concurrency` |
+| 5–12 | not started | – |
 
 Stacking: #135 ← #136 ← #137, and Stage 1c branches off #136. Merge in that order after review.
 
@@ -85,6 +86,31 @@ Delivered capabilities:
 2. **Data Preservation**: Removing a student deactivates the membership interval and preserves all historical test attempts, exam results, essay submissions, and attendance logs without cascade deletion.
 3. **Cross-Center Tenant Isolation**: Fixed `/api/v1/school/student-search/` and `/members/` views to prevent user enumeration, leaking exam/subscription counts, or adding students across center boundaries. Independent tutors are scoped to their existing students or invite codes.
 4. **React Groups UI**: Added debounced scoped student search, member removal with preservation confirmations, group student results inspection, and full membership audit history with `uz`, `ru`, `en` translations.
+
+## Stage 3c — closure (Teacher Workspace 3.0)
+
+Executed 2026-11-22 on branch `claude/stage3-attendance-concurrency`:
+
+| Check | Result |
+|---|---|
+| `pytest tests/test_stage3c_teacher_workspace.py` (SQLite) | **5 passed, 0 failed** |
+| Combined Stage 3 regression suite (52 tests across 5 modules) | **50 passed, 2 skipped** (2 = PG-only lock tests), 0 failed |
+| `python manage.py check` & `makemigrations --check` | pass / no changes detected |
+| Frontend `npm test`, `tsc -b`, `npm run lint`, `npm run build` | **24 passed, 0 errors, 0 lint warnings, built successfully in 3.29s** |
+
+Delivered capabilities:
+1. **Four Primary Action Hub**:
+   - **Davomat olish**: Displays today's lesson status, attendance summary, and direct links to mark registers using the Stage 3a attendance system.
+   - **Uy vazifasi berish**: Full homework assignment engine (`/api/v1/school/teacher/homeworks/`) supporting deadlines, group assignment, validation, and test/essay synchronization.
+   - **Guruhlarim**: Groups command center with member metrics, invite codes, and QR modals.
+   - **Natijalar**: Submission grades, BMB percentage indicators, vedomost export, and review queue.
+2. **Operational Modules in Workspace**:
+   - **Today's Lessons Schedule**: Real-time status cards (`FINALIZED`, `DRAFT`, `NOT_STARTED`) integrated with `AttendanceSession`.
+   - **Assignments & Upcoming Deadlines**: Active assignments cards with progress bars (`X / Y submitted`), overdue indicators, and cancel/delete controls.
+   - **Review Queue**: Dedicated pending review table for essays awaiting teacher evaluation (`PENDING_TEACHER`) with direct navigation to review pages.
+3. **Frontend Integration & i18n**:
+   - Updated `TeacherDashboard.tsx` with modern action hero cards, responsive layout, smooth anchor navigation, and homework creation modal.
+   - Added complete translation keys across Uzbek, Russian, and English in `translations.json`.
 
 ## Blockers / owner decisions
 

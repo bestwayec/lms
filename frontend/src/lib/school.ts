@@ -78,12 +78,75 @@ export interface RecentResult {
   date: string;
 }
 
+export interface TodayLessonItem {
+  session_id: number | null;
+  group_id: number;
+  group_name: string;
+  lesson_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  status: 'draft' | 'finalized' | 'not_started';
+  title: string;
+  student_count: number;
+  present_count: number;
+  absent_count: number;
+  late_count: number;
+  excused_count: number;
+  unmarked_count: number;
+}
+
+export interface HomeworkAssignmentItem {
+  id: number;
+  title: string;
+  description: string;
+  group_id: number;
+  group_name: string;
+  due_date: string;
+  is_overdue: boolean;
+  type: 'test' | 'essay' | 'custom';
+  test_id?: number | null;
+  test_title?: string | null;
+  essay_topic_id?: number | null;
+  essay_topic_title?: string | null;
+  submissions_count: number;
+  total_students: number;
+  created_at: string;
+}
+
+export interface ReviewQueueItem {
+  id: number;
+  student_id: number;
+  student_name: string;
+  topic_title: string;
+  submitted_at: string;
+  word_count: number;
+  total_score?: number | null;
+}
+
+export interface AttendanceTodaySummary {
+  total_groups: number;
+  today_sessions_count: number;
+  finalized_count: number;
+  draft_count: number;
+  not_started_count: number;
+}
+
 export interface TeacherOverview {
   groups: SchoolGroup[];
   student_count: number;
   published_tests: number;
   active_topics: number;
   recent_results: RecentResult[];
+  // Stage 3c Teacher Workspace 3.0 fields:
+  today_lessons?: TodayLessonItem[];
+  assignments?: HomeworkAssignmentItem[];
+  upcoming_deadlines?: HomeworkAssignmentItem[];
+  review_queue?: ReviewQueueItem[];
+  review_queue_count?: number;
+  attendance_today_summary?: AttendanceTodaySummary;
+  essay_pending?: number;
+  essay_graded?: number;
+  essay_avg_score?: number;
 }
 
 export interface AnalyticsTotals {

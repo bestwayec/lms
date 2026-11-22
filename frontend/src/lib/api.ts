@@ -7,6 +7,7 @@
  */
 
 import { translate, type AppLang } from '../i18n/LangContext';
+import type { HomeworkAssignmentItem } from './school';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
@@ -2301,6 +2302,29 @@ export const School = {
     api<GroupEssaySummary>(`/api/v1/school/essay-summary/?overview=true&days=${days}`),
   parent: () => api<{ children: Record<string, unknown>[] }>('/api/v1/school/parent/'),
   teacher: () => api<Record<string, unknown>>('/api/v1/school/teacher/'),
+  teacherHomeworks: (params?: { group_id?: number | string; active_only?: boolean }) => {
+    const qs = new URLSearchParams();
+    if (params?.group_id) qs.set('group_id', String(params.group_id));
+    if (params?.active_only) qs.set('active_only', '1');
+    const query = qs.toString();
+    return api<{ results: HomeworkAssignmentItem[] }>(`/api/v1/school/teacher/homeworks/${query ? `?${query}` : ''}`);
+  },
+  createHomework: (payload: {
+    group_id: number;
+    title: string;
+    due_date: string;
+    description?: string;
+    test_id?: number;
+    essay_topic_id?: number;
+  }) =>
+    api<HomeworkAssignmentItem>('/api/v1/school/teacher/homeworks/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  deleteHomework: (homeworkId: number | string) =>
+    api<{ status: string; id: number }>(`/api/v1/school/teacher/homeworks/${homeworkId}/`, {
+      method: 'DELETE',
+    }),
   analytics: (days = 14) =>
     api<{ labels: string[]; attempts: number[]; avg_percentage: number[]; totals: Record<string, number> }>(
       `/api/v1/school/analytics/?days=${days}`,
