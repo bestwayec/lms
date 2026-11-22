@@ -242,7 +242,7 @@ def submit_payment_view(request):
     try:
         with transaction.atomic():
             invoice = (
-                CourseInvoice.objects.select_for_update()
+                CourseInvoice.objects.select_for_update(of=("self",))
                 .select_related(
                     "student",
                     "policy",
@@ -558,7 +558,7 @@ def record_invoice_payment_view(request, invoice_id: int):
     try:
         with transaction.atomic():
             invoice = (
-                CourseInvoice.objects.select_for_update()
+                CourseInvoice.objects.select_for_update(of=("self",))
                 .select_related(
                     "student",
                     "policy",
