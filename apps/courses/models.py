@@ -607,6 +607,7 @@ class HomeworkSubmission(models.Model):
         GRADED = "graded", _("Baholandi")
         OVERDUE = "overdue", _("Muddati o'tgan")
         CANCELLED = "cancelled", _("Bekor qilingan")
+        GRADING_FAILED = "grading_failed", _("Baholashda xatolik (qayta urinish mumkin)")
 
     homework = models.ForeignKey(
         Homework,
@@ -658,6 +659,13 @@ class HomeworkSubmission(models.Model):
     )
     answers_payload = models.JSONField(_("javoblar / qoralama"), default=dict, blank=True)
     feedback = models.TextField(_("ustoz fikri / taqriz"), blank=True)
+    grading_error = models.CharField(
+        _("baholash xatosi"),
+        max_length=500,
+        blank=True,
+        default="",
+        help_text=_("Rasmiy baholash amalga oshmagan bo'lsa sababi; ball hech qachon to'qib qo'yilmaydi."),
+    )
     graded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

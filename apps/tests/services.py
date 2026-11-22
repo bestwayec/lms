@@ -921,7 +921,25 @@ class SubmitAttemptService:
     @staticmethod
     @transaction.atomic
     def execute(attempt_id: int, student: Any) -> AttemptResult:
-        """Testni yakunlash va natijani hisoblash."""
+        """Testni yakunlash va natijani hisoblash.
+
+        After grading, homework linked to this attempt records the official
+        outcome in the same transaction (and queues its notification once).
+        A failure there is logged and never affects the grade.
+        """
+        outcome = SubmitAttemptService._execute(attempt_id, student)
+        try:
+            from apps.courses.homework_service import homework_pending_for_attempt, sync_homework_for_attempt
+
+            if homework_pending_for_attempt(attempt_id):
+                with transaction.atomic():
+                    sync_homework_for_attempt(attempt_id)
+        except Exception:
+            logger.exception("Homework sync after submit failed: attempt=%s", attempt_id)
+        return outcome
+
+    @staticmethod
+    def _execute(attempt_id: int, student: Any) -> AttemptResult:
         # -- Attempt ni olish (SELECT FOR UPDATE — double-submit lock) -----
         try:
             attempt = (
@@ -1851,6 +1869,20 @@ class SubmitAttemptService:
     @staticmethod
     @transaction.atomic
     def finalize_pending_grading(attempt_id: int, student: Any) -> AttemptResult:
+        """Finalize, then let linked homework record the now-official grade."""
+        outcome = SubmitAttemptService._finalize_pending_grading(attempt_id, student)
+        try:
+            from apps.courses.homework_service import homework_pending_for_attempt, sync_homework_for_attempt
+
+            if homework_pending_for_attempt(attempt_id):
+                with transaction.atomic():
+                    sync_homework_for_attempt(attempt_id)
+        except Exception:
+            logger.exception("Homework sync after finalize failed: attempt=%s", attempt_id)
+        return outcome
+
+    @staticmethod
+    def _finalize_pending_grading(attempt_id: int, student: Any) -> AttemptResult:
         """Complete a PENDING_GRADING attempt once writing is graded.
 
         Idempotent: repeated calls reuse the existing Result when nothing

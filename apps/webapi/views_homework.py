@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from django.db.models import Q
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -16,8 +17,16 @@ from rest_framework.response import Response
 
 from apps.accounts.access import is_platform_admin
 from apps.courses.homework_service import (
+    HomeworkConflict,
+    HomeworkNotFound,
+    can_assign_essay_topic,
+    can_assign_vocabulary_pack,
     get_student_homework_detail,
     get_student_homework_list,
+    get_homework_live_board,
+    get_student_homework_result,
+    get_teacher_homework_roster,
+    grade_custom_submission,
     save_student_homework_progress,
     start_student_homework,
     submit_student_homework,
@@ -36,144 +45,124 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+def _service_call(fn, *args, success_status=status.HTTP_200_OK, **kwargs):
+    """Map service exceptions to HTTP without leaking internals.
+
+    HomeworkNotFound (non-recipient or missing) → 404, never 403, so ids
+    cannot be probed; HomeworkConflict → 409 with a stable ``code``.
+    """
+    try:
+        return Response(fn(*args, **kwargs), status=success_status)
+    except HomeworkNotFound as exc:
+        return Response({"detail": str(exc), "code": "not_found"}, status=status.HTTP_404_NOT_FOUND)
+    except HomeworkConflict as exc:
+        return Response({"detail": str(exc), "code": exc.code}, status=status.HTTP_409_CONFLICT)
+    except PermissionError as exc:
+        return Response({"detail": str(exc), "code": "forbidden"}, status=status.HTTP_403_FORBIDDEN)
+    except ValueError as exc:
+        return Response({"detail": str(exc), "code": "invalid"}, status=status.HTTP_400_BAD_REQUEST)
+
+
+def _answers_from(request):
+    payload = request.data.get("answers", request.data) if hasattr(request.data, "get") else request.data
+    if payload is None:
+        return {}
+    if not isinstance(payload, dict):
+        payload = {"answers": payload}
+    return payload
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def student_homeworks_view(request):
-    """
-    GET /api/v1/school/student/homeworks/
-    List all homework assignments authorized for the current student.
-    Query params:
-      - status: 'all' | 'pending' | 'completed' | 'overdue'
-    """
-    status_filter = request.GET.get("status")
-    try:
-        items = get_student_homework_list(
-            request.user, status_filter=status_filter
-        )
-        return Response({"results": items, "count": len(items)})
-    except Exception as exc:
-        logger.exception("Error fetching student homework list")
-        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    """GET /api/v1/school/student/homeworks/?status=all|pending|completed|overdue — read-only."""
+    items = get_student_homework_list(request.user, status_filter=request.GET.get("status"))
+    return Response({"results": items, "count": len(items)})
 
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def student_homework_detail_view(request, homework_id: int):
-    """
-    GET /api/v1/school/student/homeworks/<id>/
-    Get detailed specification of a homework assignment for the student.
-    """
-    try:
-        data = get_student_homework_detail(request.user, homework_id)
-        return Response(data)
-    except PermissionError as pe:
-        return Response({"detail": str(pe)}, status=status.HTTP_403_FORBIDDEN)
-    except ValueError as ve:
-        return Response({"detail": str(ve)}, status=status.HTTP_404_NOT_FOUND)
-    except Exception as exc:
-        logger.exception("Error fetching student homework detail: %s", homework_id)
-        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    """GET /api/v1/school/student/homeworks/<id>/ — read-only."""
+    return _service_call(get_student_homework_detail, request.user, homework_id)
 
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def student_homework_start_view(request, homework_id: int):
-    """
-    POST /api/v1/school/student/homeworks/<id>/start/
-    Start or resume a homework attempt.
-    """
-    try:
-        res = start_student_homework(request.user, homework_id)
-        return Response(res, status=status.HTTP_200_OK)
-    except PermissionError as pe:
-        return Response({"detail": str(pe)}, status=status.HTTP_403_FORBIDDEN)
-    except ValueError as ve:
-        return Response({"detail": str(ve)}, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as exc:
-        logger.exception("Error starting student homework: %s", homework_id)
-        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    """POST …/<id>/start/ — start or resume (current recipients only)."""
+    return _service_call(start_student_homework, request.user, homework_id)
 
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def student_homework_save_view(request, homework_id: int):
-    """
-    POST /api/v1/school/student/homeworks/<id>/save/
-    Autosave student progress and draft answers.
-    """
-    payload = request.data.get("answers", request.data)
-    if not isinstance(payload, dict):
-        payload = {"answers": payload}
-    try:
-        res = save_student_homework_progress(request.user, homework_id, payload)
-        return Response(res)
-    except PermissionError as pe:
-        return Response({"detail": str(pe)}, status=status.HTTP_403_FORBIDDEN)
-    except ValueError as ve:
-        return Response({"detail": str(ve)}, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as exc:
-        logger.exception("Error saving student homework progress: %s", homework_id)
-        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    """POST …/<id>/save/ — autosave; 409 after finish or deadline."""
+    return _service_call(save_student_homework_progress, request.user, homework_id, _answers_from(request))
 
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def student_homework_submit_view(request, homework_id: int):
-    """
-    POST /api/v1/school/student/homeworks/<id>/submit/
-    Submit homework for official grading. Idempotent.
-    """
-    payload = request.data.get("answers", request.data)
-    if not isinstance(payload, dict):
-        payload = {"answers": payload}
-    try:
-        res = submit_student_homework(request.user, homework_id, payload)
-        return Response(res, status=status.HTTP_200_OK)
-    except PermissionError as pe:
-        return Response({"detail": str(pe)}, status=status.HTTP_403_FORBIDDEN)
-    except ValueError as ve:
-        return Response({"detail": str(ve)}, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as exc:
-        logger.exception("Error submitting student homework: %s", homework_id)
-        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    """POST …/<id>/submit/ — finish via the official grader. Idempotent."""
+    return _service_call(submit_student_homework, request.user, homework_id, _answers_from(request))
 
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def student_homework_result_view(request, homework_id: int):
-    """
-    GET /api/v1/school/student/homeworks/<id>/result/
-    View authoritative results, scores, and teacher feedback.
-    """
+    """GET …/<id>/result/ — authoritative outcome of finished work."""
+    return _service_call(get_student_homework_result, request.user, homework_id)
+
+
+@api_view(["GET"])
+@permission_classes([IsTeacherOrAdmin])
+def teacher_homework_roster_view(request, homework_id: int):
+    """GET /api/v1/school/teacher/homeworks/<id>/roster/ — per-student authoritative status."""
+    return _service_call(get_teacher_homework_roster, request.user, homework_id)
+
+
+@api_view(["GET"])
+@permission_classes([IsTeacherOrAdmin])
+def teacher_homework_live_view(request, homework_id: int):
+    """GET …/teacher/homeworks/<id>/live/ — live tablo; If-None-Match → 304."""
     try:
-        data = get_student_homework_detail(request.user, homework_id)
-        if not data.get("is_completed") and data.get("status") not in (
-            "graded",
-            "awaiting_review",
-            "submitted",
-        ):
-            return Response(
-                {"detail": "Ushbu topshiriq hali yakunlanmagan."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        return Response(
-            {
-                "homework_id": data["id"],
-                "title": data["title"],
-                "status": data["status"],
-                "status_label": data["status_label"],
-                "score": data["score"],
-                "max_score": data["max_score"],
-                "percentage": data["percentage"],
-                "score_display": data["score_display"],
-                "feedback": data["feedback"],
-                "completed_at": data["completed_at"],
-            }
+        data = get_homework_live_board(request.user, homework_id)
+    except HomeworkNotFound as exc:
+        return Response({"detail": str(exc), "code": "not_found"}, status=status.HTTP_404_NOT_FOUND)
+    etag = f'"{data["revision"]}"'
+    if request.headers.get("If-None-Match") == etag:
+        resp = Response(status=status.HTTP_304_NOT_MODIFIED)
+    else:
+        resp = Response(data)
+    resp["ETag"] = etag
+    resp["Cache-Control"] = "private, no-cache"
+    return resp
+
+
+@api_view(["POST"])
+@permission_classes([IsTeacherOrAdmin])
+def teacher_grade_submission_view(request, submission_id: int):
+    """POST /api/v1/school/teacher/homework-submissions/<id>/grade/ — custom/lesson work only."""
+
+    def _grade():
+        sub = grade_custom_submission(
+            request.user,
+            submission_id,
+            score=request.data.get("score"),
+            max_score=request.data.get("max_score"),
+            feedback=str(request.data.get("feedback") or ""),
         )
-    except PermissionError as pe:
-        return Response({"detail": str(pe)}, status=status.HTTP_403_FORBIDDEN)
-    except ValueError as ve:
-        return Response({"detail": str(ve)}, status=status.HTTP_404_NOT_FOUND)
+        return {
+            "id": sub.id,
+            "status": sub.status,
+            "score": float(sub.score),
+            "max_score": float(sub.max_score),
+            "percentage": sub.percentage,
+            "feedback": sub.feedback,
+        }
+
+    return _service_call(_grade)
 
 
 # ---------------------------------------------------------------------------
@@ -224,16 +213,17 @@ def teacher_homework_catalog_view(request):
 
     # 2. Essays
     if content_type in ("all", "essay"):
-        topics_qs = EssayTopic.objects.filter(is_active=True).order_by("-created_at")
+        topics_qs = EssayTopic.objects.filter(is_active=True).select_related("created_by").order_by("-created_at")
+        topics = [t for t in topics_qs[:200] if can_assign_essay_topic(user, t)][:50]
         response_data["essays"] = [
             {
                 "id": topic.id,
                 "title": topic.title,
-                "task_type": getattr(topic, "task_type", ""),
-                "min_words": getattr(topic, "min_words", 150),
-                "max_words": getattr(topic, "max_words", 300),
+                "subject": getattr(topic, "subject", ""),
+                "min_words": getattr(topic, "word_limit_min", None),
+                "max_words": getattr(topic, "word_limit_max", None),
             }
-            for topic in topics_qs[:50]
+            for topic in topics
         ]
 
     # 3. Vocabulary
@@ -242,33 +232,34 @@ def teacher_homework_catalog_view(request):
             from apps.vocabulary.models import VocabularyPack
 
             packs_qs = VocabularyPack.objects.all().order_by("-created_at")
+            if not is_platform_admin(user):
+                packs_qs = packs_qs.filter(
+                    Q(teacher=user) | Q(group__in=get_teacher_groups(user))
+                )
             response_data["vocabulary"] = [
-                {
-                    "id": p.id,
-                    "title": p.title,
-                    "words_count": p.words.count() if hasattr(p, "words") else 0,
-                }
+                {"id": p.id, "title": p.title, "words_count": p.word_count}
                 for p in packs_qs[:50]
+                if can_assign_vocabulary_pack(user, p)
             ]
         except ImportError:
             pass
 
     # 4. Lessons
     if content_type in ("all", "lesson"):
-        from apps.courses.models import Course, Lesson
+        from apps.courses.models import Lesson
 
         if is_platform_admin(user):
             lessons_qs = Lesson.objects.all()
         else:
-            lessons_qs = Lesson.objects.filter(course__teacher=user)
+            lessons_qs = Lesson.objects.filter(module__course__teacher=user)
 
         response_data["lessons"] = [
             {
                 "id": les.id,
                 "title": les.title,
-                "course_title": les.course.title if les.course else "",
+                "course_title": les.module.course.title if les.module_id else "",
             }
-            for les in lessons_qs.select_related("course")[:50]
+            for les in lessons_qs.select_related("module__course")[:50]
         ]
 
     return Response(response_data)

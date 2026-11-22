@@ -247,3 +247,33 @@ Status legend: ✅ fixed in a draft PR (not merged/deployed) · 🟡 reviewed, a
 
 `apps/tuition/services.py`, `apps/webapi/views_tuition.py`, `frontend/e2e/quality.spec.ts`, `frontend/src/i18n/translations.json`,
 `tests/test_arena_ws_reconnect.py`, `tests/test_high_regressions.py`, `tests/test_teacher_bot_commands.py`, `docs/GRANDEC_NEXT_ARCHITECTURE.md`.
+
+## 11. Opus finalization (branch `feat/grandec-next-opus-finalization`, on top of #139)
+
+### 11.1 Homework engine invariants (`apps/courses/homework_service.py`)
+
+| Invariant | Mechanism | Test |
+|---|---|---|
+| Only current recipients write | `_lock_homework_for_write`: row lock on the PK, then membership check (group member or the assigned student); otherwise `HomeworkNotFound` → **404** (no id probing) | `test_unrelated_*`, `test_other_center_*`, `test_direct_submit_without_start_is_rejected` |
+| Removed students keep history, lose write | read access = current recipient **or** has a submission; writes need current membership | `test_removed_student_keeps_history_but_cannot_write` |
+| GET never writes | list/detail/result are pure reads; legacy fallback that linked any old `Result` by `test_id` deleted | `test_list_does_not_write_or_link_an_older_result` |
+| A score only from an official grade | test: `Result` of the attempt this homework started (`_effective_attempt`: same test, started ≥ homework creation) with `grading_status=graded`; essay: graded `EssaySubmission`; custom/lesson: teacher grade | `test_genuine_zero_is_graded`, `test_legacy_*` |
+| Grader failure ≠ zero | exception / no `Result` / cancelled attempt → `GRADING_FAILED` + `grading_error`, no score, answers kept, attempt left open for retry; next `submit` retries the sync | `test_grader_exception_*`, `test_missing_official_result_*` |
+| Window, timer, attempts | `start_date`, `due_date`, `CANCELLED`/`ARCHIVED`, `max_attempts` on start; custom/lesson personal timer `started_at + time_limit`; tests use the official attempt timer (expired attempt finalized as TIMEOUT with saved answers) | `test_not_yet_open_*`, `test_max_attempts_*`, `test_expired_official_attempt_*` |
+| No autosave after finish | save/submit lock the submission row (`select_for_update(of=self)`); save after finish → 409 `already_completed` | `test_no_autosave_after_finish_*`, PG thread test `test_concurrent_autosave_and_finish_*` |
+| Every official submit path updates homework | `SubmitAttemptService.execute` / `finalize_pending_grading` call `sync_homework_for_attempt` inside their transaction (one `EXISTS` when nothing is linked; failures logged, never affect the grade) | `test_runner_submit_records_*`, `test_homework_sync_failure_never_breaks_*` |
+| Subject scales never mixed | result `official` block: IELTS band only for IELTS, CEFR level/sections only for Multi-level, raw score otherwise | `test_result_shows_only_the_subjects_own_official_scale` |
+
+Status codes: 404 not a recipient / not found · 409 `{code}` for `not_open`, `deadline_passed`, `cancelled`, `closed`, `attempts_exhausted`, `time_expired`, `already_completed`, `not_started`, `attempt_missing`, `essay_missing`, `empty_answer` · 400 invalid input.
+
+Teacher side: `homework_roster` / `summarize_homework_progress` use the same derivation (dashboard counts, `GET …/teacher/homeworks/<id>/roster/`, live tablo `…/live/` with ETag). Custom/lesson grading: `POST …/teacher/homework-submissions/<id>/grade/`.
+
+### 11.2 Notification outbox (`apps/notifications/outbox.py`)
+
+`OutboxMessage(dedup_key UNIQUE, recipient, event, payload{ids}, status pending|leased|sent|suppressed|dead, attempts, max_attempts, next_attempt_at, lease_owner, lease_expires_at)`.
+Producers run inside the business transaction: `homework_assigned` (per recipient), `homework_result` (student only, finished official grade, key `hw_result:<submission>:<attempt#>`), `homework_review` (teacher; awaiting review / final grading failure), `homework_reminder` (24 h before due, unfinished only).
+Worker: `claim_batch` (SKIP LOCKED on PostgreSQL) → `deliver` (preference → telegram link → quiet hours → 5/min rate limit → render from current DB state → send) → fenced `_finish`. Backoff 60 s·2ⁿ, DEAD after `max_attempts`. Preferences: extended `attendance.NotificationPreference`. Off by default (`NOTIFICATION_OUTBOX_ENABLED=False`, tasks not in beat).
+
+### 11.3 Not built in this session
+
+WebSocket live classroom (the tablo is polling + ETag), weak-topic/weekly group analytics beyond the existing studio item analysis and group reports, teacher bot flows for assignment creation/attendance beyond the existing commands, spaced-repetition vocabulary in the bot, Mini App deep links per homework.

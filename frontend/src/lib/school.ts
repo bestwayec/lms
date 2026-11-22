@@ -323,6 +323,17 @@ export function guardCsv(file: File | null): string | null {
   return null;
 }
 
+/** Subject-specific scale exactly as the official grader persisted it. */
+export interface HomeworkOfficialResult {
+  exam_type: string;
+  correct: number;
+  total: number;
+  is_passed: boolean;
+  band?: number;
+  cefr_level?: string;
+  section_scores?: Record<string, unknown>;
+}
+
 export interface StudentHomeworkItem {
   id: number;
   title: string;
@@ -341,9 +352,17 @@ export interface StudentHomeworkItem {
     | 'awaiting_review'
     | 'graded'
     | 'overdue'
-    | 'cancelled';
+    | 'cancelled'
+    | 'grading_failed';
   status_label: string;
   is_completed: boolean;
+  /** Server decides: current recipient, window open, attempts left. */
+  can_start?: boolean;
+  is_current_recipient?: boolean;
+  is_late?: boolean;
+  attempts_used?: number;
+  deadline_at?: string | null;
+  attempt_id?: number | null;
   score: number | null;
   max_score: number | null;
   percentage: number | null;
@@ -431,6 +450,8 @@ export const HomeworkAPI = {
       score_display: string;
       feedback: string;
       completed_at: string;
+      is_late?: boolean;
+      official?: HomeworkOfficialResult | null;
     }>(`/api/v1/school/student/homeworks/${id}/result/`),
   getTeacherCatalog: (contentType?: string) => {
     const qs = contentType ? `?content_type=${encodeURIComponent(contentType)}` : '';

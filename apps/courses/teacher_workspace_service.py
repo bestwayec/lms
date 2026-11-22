@@ -151,29 +151,11 @@ def get_teacher_workspace_overview(user) -> dict[str, Any]:
     )
     assignments = []
     for hw in homework_qs:
-        total_students = hw.group.students.count()
-        if hw.test_id:
-            completed_count = (
-                Result.objects.filter(
-                    test_id=hw.test_id, student__in=hw.group.students.all()
-                )
-                .values("student_id")
-                .distinct()
-                .count()
-            )
-        elif hw.essay_topic_id:
-            completed_count = (
-                EssaySubmission.objects.filter(
-                    topic_id=hw.essay_topic_id,
-                    student__in=hw.group.students.all(),
-                )
-                .values("student_id")
-                .distinct()
-                .count()
-            )
-        else:
-            completed_count = hw.submissions.filter(is_completed=True).count()
+        from apps.courses.homework_service import summarize_homework_progress
 
+        progress = summarize_homework_progress(hw, now)
+        total_students = progress["total_students"]
+        completed_count = progress["submitted"]
         is_overdue = hw.due_date < now
         assignments.append(
             {
@@ -197,6 +179,9 @@ def get_teacher_workspace_overview(user) -> dict[str, Any]:
                 ),
                 "submissions_count": completed_count,
                 "total_students": total_students,
+                "graded_count": progress["graded"],
+                "awaiting_review_count": progress["awaiting_review"],
+                "grading_failed_count": progress["grading_failed"],
                 "created_at": hw.created_at.isoformat(),
             }
         )

@@ -2,6 +2,8 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
+  // e2e/real needs a live Django backend: run with playwright.real.config.ts
+  testIgnore: ['**/real/**'],
   fullyParallel: true,
   workers: 1,
   expect: { timeout: 15_000 },

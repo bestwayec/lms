@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import ClassroomQrModal from '../components/ClassroomQrModal';
 import TeacherHomeworkWizard from '../components/TeacherHomeworkWizard';
+import HomeworkLiveBoard from '../components/HomeworkLiveBoard';
 import type {
   AnalyticsData,
   EssayBoard,
@@ -42,6 +43,7 @@ const EMPTY_RECENT_RESULTS: RecentResult[] = [];
 
 export default function TeacherDashboard() {
   const { t } = useLang();
+  const [liveHomeworkId, setLiveHomeworkId] = useState<number | null>(null);
   const [data, setData] = useState<TeacherOverview | null>(null);
   const [activity, setActivity] = useState<AnalyticsData | null>(null);
   const [board, setBoard] = useState<EssayBoard | null>(null);
@@ -755,7 +757,15 @@ export default function TeacherDashboard() {
                         }}
                       />
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                      <button
+                        type="button"
+                        onClick={() => setLiveHomeworkId(hw.id)}
+                        className="btn sm"
+                        style={{ padding: '4px 10px', fontSize: 11, minHeight: 32 }}
+                      >
+                        {t('hw_live_open', 'Kuzatish')}
+                      </button>
                       <button
                         type="button"
                         onClick={() => handleDeleteHomework(hw.id)}
@@ -780,6 +790,10 @@ export default function TeacherDashboard() {
           </div>
         )}
       </section>
+
+      {liveHomeworkId !== null && (
+        <HomeworkLiveBoard homeworkId={liveHomeworkId} onClose={() => setLiveHomeworkId(null)} />
+      )}
 
       {/* 📬 TEKSHIRISH NAVBATI (Review Queue: Essays & Submissions) */}
       {data?.review_queue && data.review_queue.length > 0 && (

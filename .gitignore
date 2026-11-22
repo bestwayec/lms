@@ -16,6 +16,7 @@ env/
 # Django
 db.sqlite3
 db.sqlite3-journal
+e2e.sqlite3
 db.sqlite3.backup
 .backups/
 staticfiles/

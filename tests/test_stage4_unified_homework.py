@@ -307,7 +307,7 @@ def test_idempotent_homework_creation(teacher_a, group_a, published_test_teacher
     )
     assert created2 is False
     assert hw1.id == hw2.id
-    assert Homework.objects.filter(idempotency_key=key).count() == 1
+    assert Homework.objects.filter(created_by=teacher_a, title=hw1.title).count() == 1
 
 
 # ---------------------------------------------------------------------------

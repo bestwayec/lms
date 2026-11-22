@@ -195,10 +195,16 @@ class TestStartTests(LMSBaseTestCase):
         """Aktiv attempt borligida yangi start bermaslik."""
         client = self.get_authenticated_client()
         # Birinchi start
-        client.post(f"/api/tests/{self.test.id}/start/", format="json")
-        # Ikkinchi start — xato
+        first = client.post(f"/api/tests/{self.test.id}/start/", format="json")
+        # Ikkinchi start — yangi attempt yaratilmaydi: o'sha aktiv attempt qaytadi
+        # (resume). Avval bu 403 edi, lekin faqat tarif kvotasi tufayli — bu esa
+        # o'quvchini o'z vazifa urinishiga qaytishdan to'sib qo'yardi.
         response = client.post(f"/api/tests/{self.test.id}/start/", format="json")
-        self.assertIn(response.status_code, (status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN))
+        self.assertIn(response.status_code, (status.HTTP_200_OK, status.HTTP_201_CREATED))
+        self.assertEqual(response.data["id"], first.data["id"])
+        self.assertEqual(
+            TestAttempt.objects.filter(test=self.test, student=self.student).count(), 1
+        )
 
     def test_teacher_start_is_preview(self):
         """O'qituvchi testni faqat preview rejimida ochadi (statistikaga tushmaydi)."""

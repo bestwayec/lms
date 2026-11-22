@@ -9,6 +9,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 
@@ -428,3 +429,58 @@ class UserFeedback(models.Model):
         author = self.user_name or (self.user and getattr(self.user, "username", "")) or "Anonim"
         status = " [Saytda]" if self.is_published else " [Kutilmoqda]"
         return f"Feedback #{self.pk} by {author} ({self.rating}/5){status}"
+
+
+# ---------------------------------------------------------------------------
+# Transactional outbox (Telegram Bot 3.0)
+# ---------------------------------------------------------------------------
+class OutboxMessage(models.Model):
+    """A notification written in the same transaction as the event that causes it.
+
+    Rows hold *references* (ids), never rendered text: the card is built at
+    delivery time from the official persisted state, so a rolled-back or
+    later-corrected grade can never be announced.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", _("Navbatda")
+        LEASED = "leased", _("Yuborilmoqda")
+        SENT = "sent", _("Yuborildi")
+        SUPPRESSED = "suppressed", _("Yuborilmadi (sozlama/shart)")
+        DEAD = "dead", _("Urinishlar tugadi")
+
+    class Event(models.TextChoices):
+        HOMEWORK_ASSIGNED = "homework_assigned", _("Yangi vazifa")
+        HOMEWORK_REMINDER = "homework_reminder", _("Muddat eslatmasi")
+        HOMEWORK_RESULT = "homework_result", _("Vazifa natijasi")
+        HOMEWORK_REVIEW = "homework_review", _("Tekshiruv kerak (ustoz)")
+
+    dedup_key = models.CharField(_("idempotentlik kaliti"), max_length=200, unique=True)
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="outbox_messages"
+    )
+    event = models.CharField(_("hodisa"), max_length=40, choices=Event.choices, db_index=True)
+    payload = models.JSONField(_("havolalar"), default=dict, blank=True)
+    status = models.CharField(
+        _("holat"), max_length=20, choices=Status.choices, default=Status.PENDING, db_index=True
+    )
+    attempts = models.PositiveSmallIntegerField(default=0)
+    max_attempts = models.PositiveSmallIntegerField(default=5)
+    next_attempt_at = models.DateTimeField(default=timezone.now, db_index=True)
+    lease_owner = models.CharField(max_length=64, blank=True, default="")
+    lease_expires_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.CharField(max_length=500, blank=True, default="")
+    external_id = models.CharField(max_length=100, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = _("Navbatdagi xabar")
+        verbose_name_plural = _("Xabarlar navbati (outbox)")
+        indexes = [
+            models.Index(fields=["status", "next_attempt_at"], name="idx_outbox_due"),
+            models.Index(fields=["recipient", "sent_at"], name="idx_outbox_rate"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.event} → {self.recipient_id} ({self.status})"

@@ -275,7 +275,17 @@ class StartAttemptView(APIView):
         # skips the quota check; StartAttemptService allows it once per test.
         trial = str(request.data.get("trial", "")).lower() in ("1", "true")
 
-        if not is_admin_or_teacher and not trial:
+        # Resuming an attempt that already exists consumes nothing (the
+        # service returns it); a quota gate here locked students out of
+        # homework attempts their teacher's assignment had already opened.
+        resuming = TestAttempt.objects.filter(
+            test_id=test_id,
+            student=request.user,
+            status=TestAttempt.Status.IN_PROGRESS,
+            trial_part__isnull=True,
+        ).exists()
+
+        if not is_admin_or_teacher and not trial and not resuming:
             allowed, quota_msg, quota_details = QuotaService.check_test_quota(request.user, test_id=test_id)
             if not allowed:
                 return Response(
