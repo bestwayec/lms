@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -377,9 +378,13 @@ class TestSubmissionRegressionTests(TestCase):
             course=self.course,
         )
         self.assertGreater(int(second.certificate_number[-6:]), int(first_number[-6:]))
-        self.assertGreater(
-            CertificateNumberCounter.objects.get(year=timezone.now().year).last_value, 1
-        )
+        # SQLite allocates through CertificateNumberCounter; PostgreSQL uses the
+        # cert_number_seq sequence (the counter table stays empty there), where the
+        # strictly-increasing number above is the proof that nothing is reused.
+        if connection.vendor != "postgresql":
+            self.assertGreater(
+                CertificateNumberCounter.objects.get(year=timezone.now().year).last_value, 1
+            )
 
     def test_certificate_verification_reflects_checksum(self):
         attempt = TestAttempt.objects.create(test=self.test, student=self.student)
@@ -425,7 +430,6 @@ class TestSubmissionRegressionTests(TestCase):
         import importlib
         from types import SimpleNamespace
         from django.apps import apps
-        from django.db import connection
         from apps.certificates.services.anti_fraud import verify_certificate_checksum
 
         attempt = TestAttempt.objects.create(test=self.test, student=self.student)
