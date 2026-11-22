@@ -89,9 +89,20 @@ def studio_tests_view(request):
 
     from django.db.models import Count, Q
 
+    search = request.query_params.get("q", "").strip()
+    status_filter = request.query_params.get("status", "").strip().lower()
+    subject_filter = request.query_params.get("subject", "").strip().lower()
+
+    qs = svc.teacher_tests(request.user)
+    if search:
+        qs = qs.filter(Q(title__icontains=search) | Q(mock_code__icontains=search))
+    if status_filter and status_filter != "all":
+        qs = qs.filter(status=status_filter)
+    if subject_filter and subject_filter != "all":
+        qs = qs.filter(subject=subject_filter)
+
     tests = (
-        svc.teacher_tests(request.user)
-        .annotate(
+        qs.annotate(
             question_count=Count("questions", distinct=True),
             attempt_count=Count(
                 "attempts",
@@ -122,16 +133,64 @@ def studio_tests_view(request):
     )
 
 
-@api_view(["GET", "PUT"])
+@api_view(["GET", "PUT", "DELETE"])
 @permission_classes([IsAuthenticated, IsStudioTeacher])
 def studio_test_detail_view(request, test_id: int):
     test = _own_test(request, test_id)
+    if request.method == "DELETE":
+        try:
+            svc.delete_draft_test(request.user, test)
+        except svc.StudioError as e:
+            return _err(e)
+        return Response({"deleted": True}, status=200)
     if request.method == "PUT":
         try:
             test = svc.save_test(request.user, request.data, test=test)
         except svc.StudioError as e:
             return _err(e)
     return Response(_detail(test))
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsStudioTeacher])
+def studio_duplicate_view(request, test_id: int):
+    test = _own_test(request, test_id)
+    try:
+        new_test = svc.duplicate_test(request.user, test)
+    except svc.StudioError as e:
+        return _err(e)
+    return Response(_detail(new_test), status=201)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsStudioTeacher])
+def studio_export_view(request, test_id: int):
+    from django.http import HttpResponse
+
+    test = _own_test(request, test_id)
+    csv_data = svc.export_test_questions_csv(test)
+    response = HttpResponse(csv_data, content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="test_{test.id}_questions.csv"'
+    return response
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsStudioTeacher])
+@parser_classes([MultiPartParser, FormParser, JSONParser])
+def studio_import_file_view(request):
+    upload = request.FILES.get("file")
+    content = ""
+    if upload is not None:
+        content = upload.read()
+    elif "content" in request.data:
+        content = request.data["content"]
+    else:
+        return Response({"code": "file_or_content_required"}, status=400)
+    try:
+        result = svc.parse_csv_test_file(content, default_section=str(request.data.get("section") or "GENERAL"))
+    except svc.StudioError as e:
+        return _err(e)
+    return Response(result, status=200)
 
 
 @api_view(["POST"])
@@ -150,7 +209,16 @@ def studio_publish_view(request, test_id: int):
 def studio_assign_view(request, test_id: int):
     test = _own_test(request, test_id)
     try:
-        payload = svc.assign_test(request.user, test, request.data.get("group_id"), request.data.get("due_at"))
+        payload = svc.assign_test(
+            user=request.user,
+            test=test,
+            group_id=request.data.get("group_id"),
+            due_at=request.data.get("due_at"),
+            student_id=request.data.get("student_id"),
+            time_limit_minutes=request.data.get("time_limit_minutes"),
+            max_attempts=request.data.get("max_attempts"),
+            idempotency_key=request.data.get("idempotency_key"),
+        )
     except svc.StudioError as e:
         return _err(e)
     return Response(payload, status=201)

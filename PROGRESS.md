@@ -2204,11 +2204,32 @@ uff check apps/ 0 xato, pytest tests/test_spa_contract.py 20/20 test 100% PASS.
   * Frontend: `oxlint` 0 xato, `tsc -b && vite build` 0 xato bilan 4.31s da yig'ildi.
   * Mualliflik: `Komiljon Roziyev <kruziyev0@gmail.com>` (Zero AI attribution).
 
+### 2.20. Test Builder 3.0 va To'liq Mobil UX Yangilanishi (Stage 4 Extension)
+- [x] 1-Modul: Test Builder 3.0 (O'qituvchi Test Konstruktori):
+  * 3 ta test yaratish rejimi:
+    - Rejim 1 (Qo'lda kiritish): Savollarni alohida kiritish, ball va izohlar (`points`, `explanation`), savollarni ko'chirish (ChevronUp/ChevronDown), nusxalash (Duplicate) va bir xil variantlarni tekshirish (`duplicate_option`).
+    - Rejim 2 (Smart Paste / Ommaviy kiritish): `Q1. ... A) ... ANSWER: B` (shuningdek `Javob: B`, `Kalit: B`, `Ответ: B`) formatlarini to'g'ridan-to'g'ri tanish, 10/20/30 savollik shablonlar.
+    - Rejim 3 (Fayldan yuklash): CSV formatidagi strukturalangan savollarni yuklash, to'g'ri javoblarni aniqlash, xatoliklar va ogohlantirishlar ro'yxati hamda tasdiqlash dialogi.
+  * 3 bosqichli vizard (Wizard): 1. Asosiy ma'lumotlar -> 2. Savollar tuzish va Jonli preview -> 3. Tekshiruv ro'yxati, 1-klikli muammoga sakrash, qoralama saqlash, nashr qilish va biriktirish.
+  * Test Banki (`TeacherStudio.tsx`): Qidiruv, status va fan filtrlari, test nusxasini olish (`POST /duplicate/`), qoralamani o'chirish (`DELETE /tests/<id>/`), CSV eksport (`GET /export/`) bilan formula inyeksiyasidan himoya (`safe_cell`).
+  * Item Analysis & Baholash: Jami biriktirilgan, topshirilgan, topshirilmagan va tekshiruv kutilayotganlar hisob-kitobi. Ball 0.0 ni kutilayotgan maqom bilan adashtirmaslik (`is_pending: true`).
+- [x] 2-Modul: To'liq Mobil UX Yangilanishi (3.0):
+  * Responsive dizayn: 320px–430px mobil, 768px planshet va desktop ekranlarda to'liq moslashuvchanlik.
+  * Sensor ekranlar uchun standartlar: Barcha tugma va inputlar uchun kamida 44x44px touch targetlar.
+  * Mobil Test Builder: Test tuzishda qulay sticky boshqaruv paneli (Save / Next / Publish), safe-area-inset-bottom qo'llab-quvvatlovi.
+  * Mobil Student Test Runner (`TakeTest.tsx`): Pastki navigatsiya paneli (Bottom bar), savollar palitrasi (Bottom sheet), qulay tanlov variantlari (min-height: 48px), tarmoq uzilishlariga chidamli autosave.
+  * Telegram Mini App (TMA): Mavzu ranglari va viewport sinxronizatsiyasi, uzluksiz avtorizatsiya va moslashuvchan pastki menyu.
+- [x] 3-Modul: QA va Regressiya Sinovlari:
+  * Backend: 64 ta testdan 63 tasi muvaffaqiyatli o'tdi (1 ta SQLite muhitida Postgres lock testi o'tkazib yuborildi), 0 ta xato.
+  * `python manage.py check`: 0 ta xato.
+  * Frontend: 24/24 ta test 100% PASS, `npm run build` (`tsc -b && vite build`) toza yakunlandi.
+  * Zero AI Attribution: Barcha o'zgarishlar `Komiljon Roziyev <kruziyev0@gmail.com>` nomidan rasmiylashtirildi.
+
 ## 3. Jarayonda
-- Barcha 2-bosqich vazifalari (Smart Paste, Moslashuvchan savollar soni, Telegram ulashish) to'liq yakunlandi va VPS serverda (grandec.uz) muvaffaqiyatli ishga tushirildi.
+- Barcha Stage 4 va Test Builder 3.0 / Mobile UX talablari to'liq yakunlandi va branchga birlashtirishga tayyor holga keltirildi.
 
 ---
 
 ## 4. Keyingi qadamlar
-- O'qituvchilar tomonidan yaratilgan yangi testlar va Telegram orqali ulashilgan havolalarning konversiyasini kuzatish.
-- Keyingi bosqich talablari va takomillashtirishlarni amalga oshirish.
+- O'qituvchilar tomonidan testlarni mobil qurilmalarda yaratish va o'quvchilar tomonidan topshirish jarayonini amalda sinovdan o'tkazish.
+- Keyingi rejalashtirilgan takomillashtirishlarni davom ettirish.

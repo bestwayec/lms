@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, ImagePlus, Music, Plus, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Copy, ImagePlus, Music, Plus, Trash2, X } from 'lucide-react';
 import { useLang } from '../../i18n/LangContext';
 import {
   BLOCK_TYPES,
@@ -58,6 +58,29 @@ export default function BlockCard({ block, index, count, issues, nextNumber, onC
         inputs?.[inputs.length - 1]?.focus();
       });
     }
+  };
+
+  const duplicateQuestion = (qi: number) => {
+    const orig = block.questions[qi];
+    if (!orig) return;
+    const dup: StudioQuestion = {
+      ...orig,
+      number: nextNumber,
+      options: [...orig.options],
+    };
+    const nextQs = [...block.questions];
+    nextQs.splice(qi + 1, 0, dup);
+    set({ questions: nextQs });
+  };
+
+  const moveQuestion = (qi: number, dir: -1 | 1) => {
+    const target = qi + dir;
+    if (target < 0 || target >= block.questions.length) return;
+    const nextQs = [...block.questions];
+    const temp = nextQs[qi];
+    nextQs[qi] = nextQs[target];
+    nextQs[target] = temp;
+    set({ questions: nextQs });
   };
 
   const upload = async (file: File | undefined, kind: 'audio' | 'image') => {
@@ -307,14 +330,42 @@ export default function BlockCard({ block, index, count, issues, nextNumber, onC
                       }
                     }}
                   />
-                  <button
-                    type="button"
-                    className="studio-icon"
-                    aria-label={t('studio_remove_question')}
-                    onClick={() => set({ questions: block.questions.filter((_, i) => i !== qi) })}
-                  >
-                    <X size={14} aria-hidden="true" />
-                  </button>
+                  <div className="studio-q__actions" style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      className="studio-icon"
+                      disabled={qi === 0}
+                      aria-label={t('studio_move_up', 'Yuqoriga')}
+                      onClick={() => moveQuestion(qi, -1)}
+                    >
+                      <ChevronUp size={14} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="studio-icon"
+                      disabled={qi === block.questions.length - 1}
+                      aria-label={t('studio_move_down', 'Pastga')}
+                      onClick={() => moveQuestion(qi, 1)}
+                    >
+                      <ChevronDown size={14} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="studio-icon"
+                      aria-label={t('studio_duplicate', 'Nusxalash')}
+                      onClick={() => duplicateQuestion(qi)}
+                    >
+                      <Copy size={14} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="studio-icon is-danger"
+                      aria-label={t('studio_remove_question')}
+                      onClick={() => set({ questions: block.questions.filter((_, i) => i !== qi) })}
+                    >
+                      <X size={14} aria-hidden="true" />
+                    </button>
+                  </div>
                 </div>
 
                 {block.type === 'mcq' && (
@@ -393,10 +444,34 @@ export default function BlockCard({ block, index, count, issues, nextNumber, onC
                     />
                   </label>
                 )}
+                {has(issues, 'duplicate_option', q.number) && (
+                  <span className="studio-err-text">{t('studio_issue_duplicate_option', 'Bir xil variantlar mavjud!')}</span>
+                )}
                 {missing && <span className="studio-err-text">{t('studio_issue_missing_answer')}</span>}
                 {has(issues, 'duplicate_number', q.number) && (
                   <span className="studio-err-text">{t('studio_issue_duplicate_number')}</span>
                 )}
+
+                <div className="studio-q__meta" style={{ display: 'flex', gap: 10, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.85rem' }}>
+                    <span className="muted">{t('studio_q_points', 'Ball')}:</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      style={{ width: 56, padding: '3px 6px', borderRadius: 4, border: '1px solid var(--border)' }}
+                      value={q.points || 1}
+                      onChange={(e) => setQ(qi, { points: Math.max(1, Math.min(100, Number(e.target.value) || 1)) })}
+                    />
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={t('studio_q_explanation_ph', 'Tushuntirish / Izoh (ixtiyoriy)')}
+                    style={{ flex: 1, minWidth: 160, padding: '3px 8px', fontSize: '0.85rem', borderRadius: 4, border: '1px solid var(--border)' }}
+                    value={q.explanation || ''}
+                    onChange={(e) => setQ(qi, { explanation: e.target.value })}
+                  />
+                </div>
               </li>
             );
           })}

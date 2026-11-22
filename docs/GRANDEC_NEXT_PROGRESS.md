@@ -145,6 +145,32 @@ Delivered capabilities:
      - Step 2: Published-only content selection with live preview.
      - Step 3: Deadlines, limits, idempotency, and publication.
 
+## Stage 4 Extension — closure (Test Builder 3.0 & Complete Mobile UX Upgrade)
+
+Executed 2026-11-22 on branch `claude/stage3-attendance-concurrency`:
+
+| Check | Result |
+|---|---|
+| `pytest tests/test_stage4_test_builder_3.py` (SQLite) | **10 passed, 0 failed** |
+| `pytest tests/test_teacher_studio.py` | **29 passed, 0 failed** |
+| Combined Stage 3b, 3c, 4, Test Builder suite (64 tests across 5 modules) | **63 passed, 1 skipped** (1 = PG-only lock test), 0 failed |
+| `python manage.py check` & `makemigrations --check` | pass / no changes detected |
+| Frontend `npm test`, `tsc -b`, `npm run lint`, `npm run build` | **24 passed, 0 errors, 0 lint errors, built successfully** |
+
+Delivered capabilities:
+1. **Teacher Test Builder 3.0**:
+   - **Mode 1 (Manual Builder)**: Question points, explanations, reordering, duplication, live preview, and duplicate option detection.
+   - **Mode 2 (Smart Paste)**: Bulk question entry recognizing `Q1. ... A) ... ANSWER: B` (as well as `Javob:`, `Kalit:`, `Ответ:`) with 10/20/30-question templates.
+   - **Mode 3 (File Import)**: Structured CSV file import with question/choice/answer/explanation/points extraction, preview table, validation warnings, and confirmation dialog.
+   - **3-Step Wizard**: Step 1 (Test info, subject, presets, instructions) -> Step 2 (Questions, Smart Paste, CSV Import, Answer Key Matrix, Live Preview) -> Step 3 (Review checklist, 1-click issue jump, draft save, publish, and assign modal).
+   - **Test Bank**: Search by title/code, filters by status and subject, test duplication (`POST /api/v1/teacher/studio/<id>/duplicate/`), draft deletion (`DELETE /api/v1/teacher/studio/<id>/`), and CSV export with formula injection sanitization (`GET /api/v1/teacher/studio/<id>/export/`).
+   - **Analytics & Item Analysis**: Breakdown of total assigned, submitted, unsubmitted, and pending review counts. Clear distinction between score 0.0 and pending review.
+2. **Complete Mobile UX Upgrade**:
+   - **Touch Targets & Layout**: Form inputs and buttons enforce >= 44x44px touch targets; responsive styling across 320px–430px mobile, 768px tablet, and desktop screens.
+   - **Sticky Action Bar**: Mobile-friendly sticky footer on test builder for quick draft save and wizard navigation without scrolling.
+   - **Mobile Student Exam Runner**: Sticky bottom bar with palette sheet for fast question navigation, full-width comfortable tap targets (>= 48px), and offline/flaky network autosave protection in `TakeTest.tsx`.
+   - **Telegram Mini App (TMA)**: Viewport, theme color synchronization, seamless auth, and safe bottom navigation.
+
 ## Blockers / owner decisions
 
 * Production nginx change for S1 requires owner deployment approval.
