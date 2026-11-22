@@ -15,7 +15,7 @@ from unittest.mock import patch
 from asgiref.sync import async_to_sync
 from channels.testing import WebsocketCommunicator
 from django.contrib.auth import get_user_model
-from django.test import RequestFactory, TestCase, override_settings
+from django.test import RequestFactory, TestCase, TransactionTestCase, override_settings
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -29,7 +29,10 @@ from apps.tests.models import Test as QuizTest, TestAttempt
 User = get_user_model()
 
 
-class AuditChannelsJwtTests(TestCase):
+class AuditChannelsJwtTests(TransactionTestCase):
+    # The Channels middleware resolves the user through database_sync_to_async,
+    # i.e. on another DB connection. On PostgreSQL that connection cannot see rows
+    # that live inside TestCase's open transaction, so the fixture must be committed.
     def setUp(self):
         self.user = User.objects.create_user(
             email="ws-student@example.com",
