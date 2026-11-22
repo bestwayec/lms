@@ -1,5 +1,9 @@
 # GRANDEC NEXT 3.0 — Claude Opus Handoff Specification
 
+> **Superseded (2026-11-22):** this is Gemini's handoff, kept for history. Its test claims were not reproducible
+> (ca33bd1: 3 failing tests) and Stage 4 contained P0 defects. The authoritative state is
+> `docs/GRANDEC_NEXT_PROGRESS.md` → "Opus finalization — closure".
+
 **Document Version:** 1.0  
 **Date:** 2026-11-22  
 **Handoff From:** Gemini 3.8 Flash High (Google Antigravity)  

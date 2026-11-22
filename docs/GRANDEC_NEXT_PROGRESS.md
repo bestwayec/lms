@@ -29,9 +29,10 @@ CI=1 PLAYWRIGHT_CHROMIUM_EXECUTABLE=<chromium> npx playwright test --trace off  
 | 3c Teacher Workspace 3.0 | ✅ complete | #139 (`claude/stage3-attendance-concurrency`) |
 | 4 Unified Homework Engine | ✅ complete | #139 (`claude/stage3-attendance-concurrency`) |
 | Test Builder 3.0 & Mobile UX | ✅ complete | #139 (`claude/stage3-attendance-concurrency`) |
-| 5–12 | not started | – |
+| **Opus finalization**: P0/P1 homework fixes, official-scale results, outbox, bot `/vazifalarim`, live tablo, real E2E | ✅ see section below (partial for Phases 3–6) | `feat/grandec-next-opus-finalization` → base #139 |
+| Remaining Phase 3–6 items | not started — listed under "Remaining work" | – |
 
-Stacking: #135 ← #136 ← #138 ← #139 (with #137 independent Nginx security PR). Merge in that order after review. Detailed Opus handoff: `docs/GRANDEC_OPUS_HANDOFF.md`.
+Stacking: #135 ← #136 ← #138 ← #139 ← Opus finalization (with #137 off #136, #134 off main). Merge in that order after review. Detailed Opus handoff: `docs/GRANDEC_OPUS_HANDOFF.md`.
 
 ## Stage 0 — closure
 
@@ -176,3 +177,104 @@ Delivered capabilities:
 
 * Production nginx change for S1 requires owner deployment approval.
 * Real-Telegram and real-device checks need an authorized staging bot/environment.
+
+
+## Opus finalization — closure (2026-11-22)
+
+Branch `feat/grandec-next-opus-finalization`, created from #139's verified HEAD `ca33bd1`. #139 itself was not modified.
+
+### Correction to the Gemini handoff (`GRANDEC_OPUS_HANDOFF.md`)
+
+The handoff reported a clean suite. Measured on `ca33bd1` (SQLite): **1828 passed, 3 failed, 9 skipped** — 22 i18n keys used by the
+Studio pages were missing from `translations.json` (2 parity tests) and one group-member test conflicted with the Stage 3b scope rule.
+It also cited "92 passed / 23 Playwright"; CI on #135–#139 never ran (see Production readiness). Treat the handoff as history only.
+
+### Confirmed defects fixed (each has a regression test that fails on `ca33bd1`)
+
+| Sev | Defect in #139 | Fix | Tests (`tests/test_homework_integrity.py` unless noted) |
+|---|---|---|---|
+| P0 | `submit` created a `HomeworkSubmission` for **any** authenticated user and graded it | single recipient gate, 404 for non-recipients, submit requires start | `test_unrelated_*` (6), `test_other_center_*`, `test_direct_submit_*` |
+| P0 | grader exception / no `Result` / no attempt stored **GRADED 0** | `GRADING_FAILED` + `grading_error`, no score, answers kept, retry on next submit | `test_grader_exception_*`, `test_missing_official_result_*`, `test_legacy_fabricated_zero_*` |
+| P1 | list (GET) wrote rows and linked an **older Result** of the same test | GET is read-only; only the attempt started by this homework counts; legacy rows ignored by derivation | `test_list_does_not_write_*`, `test_legacy_stale_linked_row_*` |
+| P1 | teacher dashboard counted any past Result as completion | shared roster derivation | `test_teacher_roster_uses_authoritative_status` |
+| P1 | start/save/submit ignored start date, deadline, cancellation, time limit, attempts; save after finish said ok | window/timer/attempt checks, row locks, 409 codes | `test_not_yet_open_*`, `test_no_autosave_after_finish_*`, `test_max_attempts_*`, `test_resume_*`, `test_expired_official_attempt_*`, PG `test_concurrent_autosave_and_finish_*` |
+| P1 | idempotency keys global across teachers | namespaced per creator + race-safe create | `test_idempotency_key_is_isolated_per_teacher` |
+| P1 | any vocabulary pack / essay topic / lesson attachable; lesson lookup used a non-existent `course` FK | ownership checks (catalog too) | `test_foreign_vocabulary_essay_and_lesson_are_rejected` |
+| P1 | assigning a test mutated the shared `Test.assigned_group` (incl. official tests) | removed; access via Homework rows | `test_assigning_does_not_mutate_shared_test` |
+| P1 | cancelled homework still granted test access; individual homework did not | `student_has_assignment` / `member_q` | `test_cancelled_homework_does_not_grant_test_access` |
+| P1 | assigned (unattempted) test could be rebuilt → silently DRAFT under live homework | 409 `has_assignments` | `test_assigned_test_cannot_be_rebuilt_*` |
+| P1 | **free student paywalled when resuming the attempt their homework opened** (found by the live E2E) | quota skipped when resuming an existing attempt | `test_free_student_can_resume_*`, `tests/test_full_flow.py::test_student_cannot_start_twice` (assertion corrected) |
+| P2 | result modal rendered `0%` when there was no grade | shows status instead | real E2E |
+| — | 22 missing i18n keys; stale member-add test | keys added (uz/ru/en); test uses in-scope student + asserts stranger refused | `test_user_facing_messages`, `test_high_regressions` |
+
+### Delivered (new)
+
+* Official subject scale on homework results (IELTS band / CEFR level+sections / raw only for Milliy Sertifikat & Studio).
+* Every official submit path (web, Mini App, bot quiz, OMR, timeout task, writing finalization) updates linked homework in-transaction.
+* Transactional notification outbox (dedup, leases, fencing, quiet hours, preferences, rate limit, backoff, DEAD), **disabled by default**; webhook processes each `update_id` once.
+* Bot `/vazifalarim` (`/homework`): verified private chat only, same data as the website, website + Mini App buttons.
+* Teacher roster, custom-work grading endpoint, live tablo (`/live/`, ETag/304) and dashboard "Kuzatish" modal (checked in light and dark mode).
+* Real Django→React Playwright journey (`frontend/e2e/real`, `playwright.real.config.ts`).
+
+### Migrations (all additive; reviewed)
+
+| Migration | Operation | Data impact |
+|---|---|---|
+| `courses/0016_homeworksubmission_grading_failed` | AddField `grading_error` (CharField, default `''`); AlterField `status` choices (+`grading_failed`) | none; choices change emits no SQL on PostgreSQL |
+| `notifications/0015_outboxmessage` | CreateModel `OutboxMessage` | none |
+| `attendance/0003_notificationpreference_*` | 5 × AddField (3 booleans default True, 2 nullable times) | none |
+
+Rollback: `migrate courses 0015`, `migrate notifications 0014`, `migrate attendance 0002` drop only the new column/table.
+
+### Verification (executed in this session; exact numbers)
+
+| Check | Result |
+|---|---|
+| pytest SQLite (`config.settings.test`), full | **1885 passed, 0 failed, 10 skipped** (10 = PostgreSQL-only lock/thread tests) |
+| pytest PostgreSQL 16.15 (`config.settings.postgres_test`), full | **1895 passed, 0 failed, 0 skipped** |
+| New tests this session | `test_homework_integrity.py` 38 (37 + 1 PG-only), `test_notification_outbox.py` 17 |
+| `ruff check .` / `manage.py check` / `makemigrations --check` | pass / 0 issues / no changes |
+| Frontend `tsc -b`, `npm run lint`, `npm test`, `npm run build` | pass / 0 errors (3 pre-existing warnings, ScanOMR) / 24 passed / built |
+| Playwright mocked suite (`npx playwright test`) | **23 passed** |
+| Playwright **real backend** (`-c playwright.real.config.ts`) | **9 passed**: full journey on desktop 1280 and 390 px touch; `/my-homework` overflow+touch at 320/360/375/390/430/768/1280 |
+
+Real journey covers: group create → add students (cross-center refused) → attendance mark-all-present + finalize → 20-question Studio test → publish → assign → non-recipient 404 ×4, no row → student starts from website → answers → refresh resumes with answers → one answer while **offline** reaches the server after reconnect → 19/20 → `/my-homework` shows Baholandi + 19.00/20.00 → teacher roster and live modal show 95 % and the untouched student → exactly **1** `homework_result` outbox row (pending, not sent) → repeated submit adds none.
+
+### Real E2E — how to run
+
+```bash
+export DJANGO_SETTINGS_MODULE=config.settings.e2e E2E_DB_PATH=/tmp/e2e.sqlite3 SECRET_KEY=e2e-local
+python manage.py migrate && python manage.py seed_e2e_journey
+python manage.py runserver 127.0.0.1:8000 &
+cd frontend && E2E_PYTHON=$(which python) npx playwright test -c playwright.real.config.ts --trace off
+```
+
+### Production readiness (Phase 6 review)
+
+**Not ready to deploy without the owner actions below.** Code-level: the P0/P1 defects above are fixed and tested on both databases.
+
+Findings that block or condition a release:
+1. **CI never ran on #136–#139 or this branch** — `ci.yml`/`security.yml` trigger only for PRs into `main`. First real CI signal arrives when #135 is merged and #136 is retargeted, etc. Option: temporarily add `pull_request: branches: ['**']` (owner decision).
+2. **Merging to `main` may deploy automatically**: `ci → build → deploy` are chained by `workflow_run` on `main`; the only gate is the `production` GitHub environment. Owner must confirm it has required reviewers before merging anything.
+3. Automerge only acts on labelled, non-draft PRs into `main`: the stacked drafts are safe; do not add the `automerge` label to them.
+4. PR #137 (nginx private media) is not deployed: receipts/tuition proofs/speaking audio remain publicly reachable by URL in production until it is. Previously public files should be treated as exposed.
+5. #134 (enterprise import credentials) still open; `EnterpriseDashboard.tsx` text about a shared password must change when it merges.
+6. Billing policy question (owner): homework attempts are created via `StartAttemptService` and may count toward a FREE student's personal test quota; resume is no longer blocked, but whether teacher-assigned work should count is a product decision.
+7. Not re-audited this session: JWT lifetime/rotation, session CSRF beyond #138's receipt fix, payment integrity, upload validation, backups/restore drill.
+
+Release checklist (staging first; every step needs owner approval):
+- [ ] Confirm `production` environment has required reviewers (finding 2).
+- [ ] Merge in order #135 → #136 → #138 → #139 → this PR, retargeting each to `main`; wait for green `CI`, `test-postgres`, `security` on each.
+- [ ] Backup production DB (`docs/BACKUP.md`) and record the image tag for rollback (`deploy.yml` `workflow_dispatch` with previous `sha-…`).
+- [ ] On staging: `migrate` (three additive migrations above), smoke the real E2E against staging.
+- [ ] Deploy #137 nginx with `nginx -t` + `deploy/scripts/verify_private_media_nginx.sh`.
+- [ ] Outbox: keep `NOTIFICATION_OUTBOX_ENABLED=False` until a staging bot has been verified; then enable and add `notifications.process_outbox` (every minute) and `notifications.enqueue_homework_reminders` (hourly) to beat.
+- [ ] Telegram: `TELEGRAM_WEBHOOK_SECRET` set and webhook re-registered (`setup_bot_webhook`); add `/vazifalarim` appears in the command menu after `post_init`.
+
+### Remaining work (not done in this session)
+
+* Phase 3: teacher bot flows for group selection / assignment creation / submission monitoring inside Telegram; student vocabulary practice + spaced repetition in the bot; per-homework Mini App deep links; outbox has not been run against a real staging bot.
+* Phase 4: Continue-Exam / Upcoming-Deadlines / Teacher-Feedback widgets on the student dashboard; real-device (iOS/Android, Telegram WebView) checks; accessibility audit beyond touch-size/overflow checks; MyHomework still uses hard-coded colours in places (dark mode readable but not tokenised).
+* Phase 5: WebSocket live classroom (polling tablo exists), weak-topic and weekly group analytics, exportable homework reports.
+* Phase 6: items 1–7 above.
+* Essay homework links the student's essay on submit; essays written via the essay page without pressing homework "submit" are not linked automatically (no hook in the essay pipeline yet).
