@@ -30,7 +30,8 @@ CI=1 PLAYWRIGHT_CHROMIUM_EXECUTABLE=<chromium> npx playwright test --trace off  
 | 4 Unified Homework Engine | ✅ complete | #139 (`claude/stage3-attendance-concurrency`) |
 | Test Builder 3.0 & Mobile UX | ✅ complete | #139 (`claude/stage3-attendance-concurrency`) |
 | **Opus finalization**: P0/P1 homework fixes, official-scale results, outbox, bot `/vazifalarim`, live tablo, real E2E | ✅ see section below (partial for Phases 3–6) | `feat/grandec-next-opus-finalization` → base #139 |
-| Remaining Phase 3–6 items | not started — listed under "Remaining work" | – |
+| Remaining Phase 3–6 items | partly addressed in 4.0 — see "GRANDEC NEXT 4.0" | – |
+| **4.0 finalization**: Smart Import Pro, Exam Runner 4.0, Ona tili topics, exam-order fix, CI pinning | ✅ verified increments; several stages remain (see 4.0 section) | `feat/grandec-next-4-finalization` → base `main` |
 
 Stacking: #135 ← #136 ← #138 ← #139 ← Opus finalization (with #137 off #136, #134 off main). Merge in that order after review. Detailed Opus handoff: `docs/GRANDEC_OPUS_HANDOFF.md`.
 
@@ -278,3 +279,73 @@ Release checklist (staging first; every step needs owner approval):
 * Phase 5: WebSocket live classroom (polling tablo exists), weak-topic and weekly group analytics, exportable homework reports.
 * Phase 6: items 1–7 above.
 * Essay homework links the student's essay on submit; essays written via the essay page without pressing homework "submit" are not linked automatically (no hook in the essay pipeline yet).
+
+
+## GRANDEC NEXT 4.0 — finalization (2026-11-22)
+
+Branch `feat/grandec-next-4-finalization`, created from `origin/main` `dec26b8` (later merged `9e2aa38`, the release bump).
+
+### Stage 0 — merge verification and baseline
+
+* #135, #136, #138, #139, #140 and #137 are **merged into `main`** (merge commits; every head commit verified as an ancestor of `main`). `main` = #140 + #137's nginx/docs/scripts.
+* #134 (enterprise import credentials) is **still open, unmerged**.
+* Baseline on `main` (SQLite): **1885 passed, 0 failed, 10 skipped**.
+* **Production deploy happened automatically** on 2026-11-22: CI → Build (`dec26b8`) → Release (`9e2aa38`, VERSION bump) → **Deploy succeeded 12:17 UTC**. The `production` environment did not stop it. Consequences: the web entrypoint ran `migrate --noinput` (all migrations additive, reviewed in the Opus ledger); #137's private-media nginx rules were synced and nginx regenerated; Deploy took compose/scripts from `9e2aa38` while the image was `sha-dec26b8`. This sandbox cannot reach grandec.uz, so the live state is **unverified**.
+* **Confirmed P0 live in production:** center (enterprise) imports set every student's password to `Grand2026!` and display it (`apps/organizations/views.py:461,481`, `EnterpriseDashboard.tsx:971`). #134 fixes it. Test-merged onto this branch in a scratch worktree: merges cleanly, its 6 tests pass on SQLite and PostgreSQL; full SQLite suite on the merged tree: **1926 passed, 0 failed, 10 skipped**. Not merged here (owner decision); `EnterpriseDashboard.tsx` text must change together with #134.
+
+### Gap matrix (evidence: code + real-browser runs, not prior reports)
+
+| Area | Found | Status after 4.0 |
+|---|---|---|
+| File import | CSV only; `,` only; non-UTF-8 → latin-1 (Cyrillic mangled); DOCX/XLSX/PDF unsupported | ✅ Smart Import Pro (DOCX, XLSX, text PDF, CSV `,;\t` + cp1251, TXT); scanned PDF refused honestly; size/zip-bomb/format-sniffing guards; review report |
+| Smart Paste | `To‘g‘ri javob:` with `‘` ignored (key silently missing); Cyrillic options `А) Б) В) Г)` not recognised (question degraded to short-answer); `Ответ:`/`Жавоб:` lost | ✅ fixed, position-aware Cyrillic mapping; author text never altered |
+| Exam runner `/take` | chemistry tools shown for every subject; 3 question maps; 2 exits; duplicate A–D row; MCQ labelled "Matnli javob"; ~440 px blank padding on phones; options invisible in light mode; 3D tilt card; app sidebar during exam | ✅ fixed (see commits); one navigator; focus mode |
+| Exam order | unseeded shuffle on every request: refresh/resume moved options and renumbered questions (web + Mini App) | ✅ seeded per attempt |
+| Ona tili teacher | no topic model; no weak-topic view; only an English 10-question sample template | ✅ 11 topics (config-stored, whitelisted), per-topic accuracy, blank 10/20/30/40 starters |
+| Routing | Studio (sectioned) tests of any subject run on the CD/BMB kiosk engine — by design (`has_cd_structure`) | documented; CD engine has no tool buttons |
+| CI/CD | Build/Deploy check out `main` HEAD, not the CI-verified SHA; `production` gate absent in practice | ✅ pinned to `workflow_run.head_sha` (effective after merge); gate = owner action |
+| Teacher bot flows, student dashboard widgets, WebSocket, PDF/CSV group reports, full a11y audit | not built | ❌ remaining (below) |
+
+### Real-browser verification (no API mocks; Django `config.settings.e2e` + Vite)
+
+`npx playwright test -c playwright.real.config.ts` → **20 passed** (final code, fresh DB):
+* **A/E** Ona tili teacher at 1280 px **and 360 px**: DOCX import → report → fixes the deliberately wrong Q20 key → publish → assign (UI only) → student at 390 px answers, reloads, resumes, submits → `20.00/20.00` (only possible if the key fix was saved) → teacher roster 100.
+* **B** CSV, XLSX, selectable-text PDF, Smart Paste (‘ apostrophes + Cyrillic А/Б/В/Г): exact parsed text and keys checked in the editor.
+* **C** legacy Ona tili test on `/take`: no sidebar, no tools, no map panel, one navigator, no overflow; 390 px answers → reload restores; resumes at 1280 px → `5.00/6.00`.
+* **D** runner in uz/ru/en: Uzbek question text unchanged; UI label translated; language switch mid-exam keeps the answer.
+* Stage 1 at 360 px: blank 20-question test + topic tag persisted; stays draft.
+* Previous homework journey (desktop + 390 px) and `/my-homework` overflow at 7 widths still pass.
+
+Mocked Playwright suite: **23 passed**. Visual checks (screenshots, light and dark): runner at 390/1280 px.
+
+### Backend / frontend checks (exact)
+
+| Check | Result |
+|---|---|
+| pytest SQLite, full (final, at `35275ac` + docs) | **1920 passed, 0 failed, 10 skipped** (10 = PostgreSQL-only) |
+| pytest PostgreSQL 16.15, full (same commit) | **1930 passed, 0 failed, 0 skipped** |
+| new backend tests | `test_smart_import_pro.py` 32, `test_exam_order_stability.py` 1 (fails on old code), `test_ona_tili_topics.py` 2 |
+| ruff / `manage.py check` / `makemigrations --check` | pass / 0 issues / no changes (no migrations in 4.0) |
+| frontend `tsc -b` / lint / `npm test` / build | pass / 0 errors (3 pre-existing warnings) / **28 passed** (+4 tool-policy) / built |
+
+### Migration review
+
+None added in 4.0 (topics live in `Question.config`). Requirements: `pypdf` moved from development to base (it was missing from production images).
+
+### Release checklist (owner)
+
+- [ ] **Immediately:** decide on #134 (the shared password is live). If merged: rotate/reset already-imported accounts per `docs/SECURITY_IMPORT_CREDENTIALS.md`; change `EnterpriseDashboard.tsx:971`.
+- [ ] Confirm what is live: `/media/receipts/…` → 404, site healthy, `python manage.py showmigrations` on the VPS.
+- [ ] GitHub → Settings → Environments → `production`: add required reviewers (otherwise every green `main` deploys).
+- [ ] Back up the DB before the next merge to `main`; record the running image tag for rollback (`deploy.yml` workflow_dispatch `tag=sha-<previous>`).
+- [ ] Merge this PR only after CI (lint, test, test-postgres, browser, security) is green on it.
+- [ ] Rebuild images (pypdf now in base requirements) — happens automatically on the next deploy.
+
+### Remaining work (not done in 4.0)
+
+* Stage 5/6: teacher bot flows (group pick, attendance, assign published tests, live progress); student bot vocabulary + spaced repetition; Mini App deep links per homework. Outbox still disabled and never run against a staging bot.
+* Stage 7: student dashboard widgets (Today, Continue exam, Recently graded, Feedback, Weak topics).
+* Stage 8: group/weekly trends, attendance trends, PDF/CSV group reports. Decision: **no WebSockets** — polling + ETag already meets the live-tablo requirement.
+* Stage 9: route-by-route a11y/mobile audit beyond the runner, editor and homework pages; physical devices not tested.
+* Runner: `TakeTest.tsx` is still ~3.2k lines; component extraction (ExamShell/QuestionCard/…) not started. The CD/BMB engine was not audited in this session.
+* Scanned-PDF OCR: intentionally not offered (no tested OCR configured).

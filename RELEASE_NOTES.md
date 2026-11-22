@@ -1,3 +1,22 @@
+# Unreleased — GRANDEC NEXT 4.0 (branch `feat/grandec-next-4-finalization`, after v2.5.0)
+
+**Not deployed.** Verification details: `docs/GRANDEC_NEXT_PROGRESS.md` → "GRANDEC NEXT 4.0".
+
+## For teachers
+- **Smart Import Pro:** import a whole test from Word (.docx), Excel (.xlsx), text PDF, CSV (comma, semicolon or tab; UTF-8 or Windows-1251) or plain text, with a review report (complete questions, missing keys, duplicate options/numbers). Nothing is saved until you confirm. Scanned PDFs are refused with guidance (no OCR).
+- **Smart Paste** now understands `To‘g‘ri javob:` with any Uzbek apostrophe, Cyrillic options `А) Б) В) Г)`, `Ответ:`, `Жавоб:`, `Правильный ответ:` and Cyrillic key lists.
+- **Ona tili & Adabiyot topics** (Fonetika … Milliy sertifikat) per question group, with per-topic accuracy (weakest first) on the results page; blank 10/20/30/40-question starters.
+
+## For students
+- **Exam Runner 4.0** (`/take`): full-screen focus mode, one question navigator, no chemistry/calculator tools outside chemistry/physics/maths, readable options in light and dark mode, no large blank areas on phones, correct question-type labels, translated controls with screen-reader labels.
+- Shuffled question/option order is now **stable across refresh and resume** (web and Telegram Mini App).
+
+## Operations
+- Build and Deploy now use exactly the commit CI verified.
+- `pypdf` is a production dependency.
+
+---
+
 # Release v0.73.0 — Security Hardening, Channels JWT Auth & Production Stability
 
 **Date:** 2026-10-13 · **Tag:** `v0.73.0` · **Base:** `v0.72.0`
