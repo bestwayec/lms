@@ -39,7 +39,7 @@ from .serializers import (
     TestDetailSerializer,
     TestListSerializer,
 )
-from .services import SaveAnswerService, StartAttemptService, SubmitAttemptService, TestPinRequiredError, TestInvalidPinError, TestAccessDeniedError
+from .services import SaveAnswerService, StartAttemptService, SubmitAttemptService, TestPinRequiredError, TestInvalidPinError, TestAccessDeniedError, TestPinLockedError
 
 logger = logging.getLogger(__name__)
 
@@ -323,6 +323,18 @@ class StartAttemptView(APIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        except TestPinLockedError as e:
+            response = Response(
+                {
+                    "error": "PIN_LOCKED",
+                    "code": "PIN_LOCKED",
+                    "message": str(e),
+                    "detail": str(e),
+                },
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+            response["Retry-After"] = str(e.retry_after)
+            return response
         except TestInvalidPinError as e:
             return Response(
                 {
@@ -1298,6 +1310,20 @@ class QuickMockJoinView(APIView):
                         test_id=test.id, student=request.user, pin=pin
                     )
                     attempt_id = attempt.id
+                except TestPinLockedError as err:
+                    locked = Response(
+                        {"error": "PIN_LOCKED", "code": "PIN_LOCKED", "detail": str(err)},
+                        status=status.HTTP_429_TOO_MANY_REQUESTS,
+                    )
+                    locked["Retry-After"] = str(err.retry_after)
+                    return locked
+                except (TestPinRequiredError, TestInvalidPinError) as err:
+                    # A PIN problem must be reported, never papered over by returning an
+                    # unrelated earlier attempt of the same test.
+                    return Response(
+                        {"error": str(err), "detail": str(err)},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
                 except ValueError as err:
                     # e.g. already reached max attempts
                     active = (

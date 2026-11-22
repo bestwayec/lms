@@ -20,6 +20,7 @@ Lifecycle:
 
 from __future__ import annotations
 
+import hmac
 import logging
 from dataclasses import dataclass
 from decimal import Decimal
@@ -116,6 +117,50 @@ class TestInvalidPinError(ValueError):
     pass
 
 
+class TestPinLockedError(ValueError):
+    """Too many wrong PIN guesses: the caller must wait before trying again."""
+
+    retry_after = 0
+
+
+#: A 4-digit PIN has only 10 000 values, so guessing must be rate-limited per account.
+PIN_MAX_FAILURES_PER_TEST = 5
+PIN_MAX_FAILURES_PER_USER = 20
+PIN_LOCK_SECONDS = 15 * 60
+
+
+def _pin_counter_keys(student_id: int, test_id: int) -> tuple[str, str]:
+    return f"testpin:fail:{student_id}:{test_id}", f"testpin:fail:user:{student_id}"
+
+
+def _pin_is_locked(student_id: int, test_id: int) -> bool:
+    from django.core.cache import cache
+
+    per_test, per_user = _pin_counter_keys(student_id, test_id)
+    return (
+        int(cache.get(per_test, 0) or 0) >= PIN_MAX_FAILURES_PER_TEST
+        or int(cache.get(per_user, 0) or 0) >= PIN_MAX_FAILURES_PER_USER
+    )
+
+
+def _pin_register_failure(student_id: int, test_id: int) -> None:
+    """Count a wrong guess. The cache is not transactional, so the count survives the rollback."""
+    from django.core.cache import cache
+
+    for key in _pin_counter_keys(student_id, test_id):
+        cache.add(key, 0, PIN_LOCK_SECONDS)
+        try:
+            cache.incr(key)
+        except ValueError:  # expired between add() and incr()
+            cache.set(key, 1, PIN_LOCK_SECONDS)
+
+
+def _pin_clear(student_id: int, test_id: int) -> None:
+    from django.core.cache import cache
+
+    cache.delete(_pin_counter_keys(student_id, test_id)[0])
+
+
 class TestAccessDeniedError(ValueError):
     """Foydalanuvchiga testga kirish huquqi berilmaganida tashlanadigan xatolik."""
     pass
@@ -183,8 +228,21 @@ class StartAttemptService:
             provided_pin = str(pin or "").strip()
             if not provided_pin:
                 raise TestPinRequiredError("Ushbu test uchun PIN-kod talab etiladi.")
-            if has_pin and provided_pin != str(access_pin).strip():
+            if not is_admin_or_teacher:
+                if _pin_is_locked(student.id, test.id):
+                    err = TestPinLockedError(
+                        "PIN-kod ko'p marta noto'g'ri kiritildi. Birozdan so'ng qayta urinib ko'ring."
+                    )
+                    err.retry_after = PIN_LOCK_SECONDS
+                    raise err
+            if has_pin and not hmac.compare_digest(
+                provided_pin.encode("utf-8"), str(access_pin).strip().encode("utf-8")
+            ):
+                if not is_admin_or_teacher:
+                    _pin_register_failure(student.id, test.id)
                 raise TestInvalidPinError("Kiritilgan PIN-kod noto'g'ri.")
+            if has_pin and not is_admin_or_teacher:
+                _pin_clear(student.id, test.id)
 
         trial_part = None
         if trial:
