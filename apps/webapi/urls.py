@@ -23,6 +23,7 @@ from . import (
     views_question_issues,
     views_referral,
     views_branches,
+    views_private_files,
 )
 from apps.organizations import views as views_enterprise
 from apps.tests import (
@@ -471,6 +472,27 @@ urlpatterns = [
     ),
     path(
         "school/import-test/", views_school.import_test_view, name="school-import-test"
+    ),
+    # -- Private files (authenticated; never served from /media/) ---------
+    path(
+        "files/payment-receipts/<int:receipt_id>/",
+        views_private_files.payment_receipt_file_view,
+        name="private-file-payment-receipt",
+    ),
+    path(
+        "files/subscription-receipts/<int:receipt_id>/",
+        views_private_files.subscription_receipt_file_view,
+        name="private-file-subscription-receipt",
+    ),
+    path(
+        "files/tuition-proofs/<int:payment_id>/",
+        views_private_files.tuition_proof_file_view,
+        name="private-file-tuition-proof",
+    ),
+    path(
+        "files/speaking/<int:submission_id>/audio/",
+        views_private_files.speaking_audio_file_view,
+        name="private-file-speaking-audio",
     ),
     # -- School: attendance ------------------------------------------------
     path(

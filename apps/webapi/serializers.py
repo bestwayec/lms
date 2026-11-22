@@ -348,6 +348,9 @@ class PaymentHistorySerializer(serializers.ModelSerializer):
 
 
 class PaymentReceiptSerializer(serializers.ModelSerializer):
+    # Both fields carry the authenticated download path, never a /media/ URL: the
+    # receipt is private and only readable through views_private_files.
+    receipt_image = serializers.SerializerMethodField()
     receipt_image_url = serializers.SerializerMethodField()
 
     class Meta:
@@ -379,9 +382,14 @@ class PaymentReceiptSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+    def get_receipt_image(self, obj: PaymentReceipt) -> str:
+        return self.get_receipt_image_url(obj)
+
     def get_receipt_image_url(self, obj: PaymentReceipt) -> str:
         if obj.receipt_image:
-            return obj.receipt_image.url
+            from apps.webapi.views_private_files import payment_receipt_path
+
+            return payment_receipt_path(obj.pk)
         return ""
 
 

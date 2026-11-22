@@ -190,6 +190,11 @@ STORAGES = {
 }
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+# Private uploads (receipts, tuition proofs, speaking audio) are only served through
+# authenticated views. When this is set (e.g. "/_private_media/") the view answers with
+# an X-Accel-Redirect to that *internal* nginx location instead of streaming the bytes
+# through Django. Leave empty (default) unless nginx has the matching `internal` block.
+PRIVATE_MEDIA_ACCEL_PREFIX = env("PRIVATE_MEDIA_ACCEL_PREFIX", default="")
 
 # WhiteNoise: long-lived cache headers for static assets (1 year)
 STATICFILES_FINDERS = [
