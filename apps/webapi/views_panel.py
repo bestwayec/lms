@@ -887,6 +887,7 @@ def panel_attendance_export_view(request):
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
 
+    from apps.core.spreadsheet import safe_row
     from apps.attendance.models import AttendanceRecord, AttendanceSession
     from apps.courses.models import StudentGroup
 
@@ -968,7 +969,7 @@ def panel_attendance_export_view(request):
             a_cnt,
             f"{pct}%",
         ]
-        ws.append(row)
+        ws.append(safe_row(row))
         curr_row = ws.max_row
         ws.row_dimensions[curr_row].height = 20
         for c_idx in range(1, 11):

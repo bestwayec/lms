@@ -301,3 +301,19 @@ test('private audio that the server refuses shows an error instead of a broken p
   await expect(page.locator('audio')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+
+test('tokens in the URL are never adopted and are stripped from the address bar', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.stack || e.message));
+  await page.route('**/api/**', (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/session/status/')) return route.fulfill({ json: { authenticated: false, user: null, tokens: null } });
+    return route.fulfill({ json: { results: [], count: 0, enabled: false } });
+  });
+  await page.goto('/login?access=ATTACKER_ACCESS&refresh=ATTACKER_REFRESH&oauth=google&keep=1');
+  await expect(page).toHaveURL(/\/login\?keep=1$/);
+  const stored = await page.evaluate(() => ({ a: sessionStorage.getItem('lms_access'), r: sessionStorage.getItem('lms_refresh'), l: localStorage.getItem('lms_access') }));
+  expect(stored).toEqual({ a: null, r: null, l: null });
+  expect(errors).toEqual([]);
+});

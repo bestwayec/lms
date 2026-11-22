@@ -19,6 +19,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.core.spreadsheet import safe_row
 from apps.accounts.models import Profile
 from apps.organizations.models import CenterBranch, LearningCenter
 from apps.results.models import Result
@@ -511,11 +512,13 @@ def enterprise_report_export_view(request):
 
     writer = csv.writer(response)
     writer.writerow(
-        [
-            "GRAND EDUCATION — B2B ENTERPRISE MONITORING HISOBOTI",
-            f"Markaz: {center.name}",
-            f"Sana: {timezone.now().strftime('%Y-%m-%d %H:%M')}",
-        ]
+        safe_row(
+            [
+                "GRAND EDUCATION — B2B ENTERPRISE MONITORING HISOBOTI",
+                f"Markaz: {center.name}",
+                f"Sana: {timezone.now().strftime('%Y-%m-%d %H:%M')}",
+            ]
+        )
     )
     writer.writerow([])
     writer.writerow(
@@ -525,16 +528,18 @@ def enterprise_report_export_view(request):
     for idx, r in enumerate(results.order_by("-calculated_at")[:1000], start=1):
         branch_name = r.student.branch.name if r.student.branch else "—"
         writer.writerow(
-            [
-                idx,
-                r.student.get_full_name(),
-                branch_name,
-                r.test.title,
-                r.score,
-                f"{r.percentage}%",
-                "O'tdi" if r.is_passed else "O'tmadi",
-                r.calculated_at.strftime("%Y-%m-%d %H:%M") if r.calculated_at else "",
-            ]
+            safe_row(
+                [
+                    idx,
+                    r.student.get_full_name(),
+                    branch_name,
+                    r.test.title,
+                    r.score,
+                    f"{r.percentage}%",
+                    "O'tdi" if r.is_passed else "O'tmadi",
+                    r.calculated_at.strftime("%Y-%m-%d %H:%M") if r.calculated_at else "",
+                ]
+            )
         )
 
     return response

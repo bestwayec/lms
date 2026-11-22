@@ -39,7 +39,8 @@ from .serializers import (
     TestDetailSerializer,
     TestListSerializer,
 )
-from .services import SaveAnswerService, StartAttemptService, SubmitAttemptService, TestPinRequiredError, TestInvalidPinError, TestAccessDeniedError
+from .visibility import can_see_test_content, visible_tests
+from .services import SaveAnswerService, StartAttemptService, SubmitAttemptService, TestPinRequiredError, TestInvalidPinError, TestAccessDeniedError, TestPinLockedError
 
 logger = logging.getLogger(__name__)
 
@@ -168,19 +169,13 @@ class TestListView(generics.ListAPIView):
                     | Q(mock_code__icontains="IELTS")
                 )
 
-            if not user or not user.is_authenticated:
-                return qs.filter(is_active=True)
-            if is_platform_admin(user) or getattr(user, "is_superuser", False):
-                return qs
-            role = getattr(user, "role", "student")
-            if role == "student":
-                return qs.filter(is_active=True)
-            elif role == "teacher":
-                return qs.filter(Q(is_active=True) | Q(course__teacher=user) | Q(created_by=user)).distinct()
-            return qs.filter(is_active=True)
+            # One shared rule (apps/tests/visibility.py): group-only tests are listed only for
+            # their members and staff, drafts only for their authors/teachers.
+            return visible_tests(qs, user)
         except Exception as exc:
             logger.exception("Error in TestListView.get_queryset: %s", exc)
-            return Test.objects.filter(is_active=True)
+            # Fail closed: the public catalogue, never a wider set.
+            return visible_tests(Test.objects.all(), None)
 
 
 # ---------------------------------------------------------------------------
@@ -200,21 +195,8 @@ class TestDetailView(generics.RetrieveAPIView):
     permission_classes = [IsAuthenticatedOrReadOnly]
 
     def get_queryset(self):
-        try:
-            user = getattr(self.request, "user", None)
-            if not user or not user.is_authenticated:
-                return Test.objects.filter(is_active=True)
-            if is_platform_admin(user) or getattr(user, "is_superuser", False):
-                return Test.objects.all()
-            role = getattr(user, "role", "student")
-            if role == "student":
-                return Test.objects.filter(is_active=True)
-            if role == "teacher":
-                return Test.objects.filter(Q(is_active=True) | Q(course__teacher=user) | Q(created_by=user)).distinct()
-            return Test.objects.filter(is_active=True)
-        except Exception as exc:
-            logger.exception("Error in TestDetailView.get_queryset: %s", exc)
-            return Test.objects.filter(is_active=True)
+        # Group-only tests are 404 for non-members; drafts for everyone but their staff.
+        return visible_tests(Test.objects.all(), getattr(self.request, "user", None))
 
     def retrieve(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         try:
@@ -227,7 +209,13 @@ class TestDetailView(generics.RetrieveAPIView):
             )
         try:
             serializer = self.get_serializer(instance)
-            return Response(serializer.data)
+            data = dict(serializer.data)
+            if not can_see_test_content(request.user, instance):
+                # The question text and passages are the exam itself. Students receive them
+                # through their own attempt (after the PIN / access checks), never from here.
+                data["questions"] = []
+                data["passages"] = []
+            return Response(data)
         except Exception as exc:
             logger.exception("Failed to serialize test: %s", exc)
             return Response(
@@ -323,6 +311,18 @@ class StartAttemptView(APIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        except TestPinLockedError as e:
+            response = Response(
+                {
+                    "error": "PIN_LOCKED",
+                    "code": "PIN_LOCKED",
+                    "message": str(e),
+                    "detail": str(e),
+                },
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+            response["Retry-After"] = str(e.retry_after)
+            return response
         except TestInvalidPinError as e:
             return Response(
                 {
@@ -1298,6 +1298,20 @@ class QuickMockJoinView(APIView):
                         test_id=test.id, student=request.user, pin=pin
                     )
                     attempt_id = attempt.id
+                except TestPinLockedError as err:
+                    locked = Response(
+                        {"error": "PIN_LOCKED", "code": "PIN_LOCKED", "detail": str(err)},
+                        status=status.HTTP_429_TOO_MANY_REQUESTS,
+                    )
+                    locked["Retry-After"] = str(err.retry_after)
+                    return locked
+                except (TestPinRequiredError, TestInvalidPinError) as err:
+                    # A PIN problem must be reported, never papered over by returning an
+                    # unrelated earlier attempt of the same test.
+                    return Response(
+                        {"error": str(err), "detail": str(err)},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
                 except ValueError as err:
                     # e.g. already reached max attempts
                     active = (
@@ -1674,7 +1688,7 @@ class TestGradebookView(APIView):
             or (test.created_by_id == user.id)
             or bool(test.course and test.course.teacher_id == user.id)
             or (hasattr(user, "teacher_groups") and user.teacher_groups.filter(id=getattr(test, "group_id", None)).exists())
-            or test.group_assignments.filter(group__teacher=user).exists()
+            or test.homework_assignments.filter(group__teacher=user).exists()
             or (getattr(user, "role", "") == "center_admin" and getattr(user, "branch_id", None) and (getattr(test, "branch_id", None) == user.branch_id or (test.course and getattr(test.course, "branch_id", None) == user.branch_id)))
         )
 
@@ -1879,7 +1893,7 @@ class TestItemAnalysisView(APIView):
             or (test.created_by_id == user.id)
             or bool(test.course and test.course.teacher_id == user.id)
             or (hasattr(user, "teacher_groups") and user.teacher_groups.filter(id=getattr(test, "group_id", None)).exists())
-            or test.group_assignments.filter(group__teacher=user).exists()
+            or test.homework_assignments.filter(group__teacher=user).exists()
             or (getattr(user, "role", "") == "center_admin" and getattr(user, "branch_id", None) and (getattr(test, "branch_id", None) == user.branch_id or (test.course and getattr(test.course, "branch_id", None) == user.branch_id)))
         )
 

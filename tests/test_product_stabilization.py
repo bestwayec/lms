@@ -818,6 +818,14 @@ class GoogleOAuthLinkingTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(urlsplit(response.url).path, reverse("web:dashboard"))
         self.assertEqual(int(self.client.session["_auth_user_id"]), self.existing.pk)
+        # No credential may travel in the redirect URL (history / Referer / logs) ...
+        self.assertEqual(urlsplit(response.url).query, "")
+        self.assertNotIn("access", response.url)
+        self.assertNotIn("refresh", response.url)
+        # ... the SPA gets its JWT pair from the session bridge instead.
+        bridge = self.client.get("/api/auth/session/status/").json()
+        self.assertTrue(bridge["authenticated"])
+        self.assertTrue(bridge["tokens"]["access"] and bridge["tokens"]["refresh"])
 
     @override_settings(
         GOOGLE_CLIENT_ID="client-id",

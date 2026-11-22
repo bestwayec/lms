@@ -325,9 +325,10 @@ def my_payment_receipts_view(request):
     return Response({"results": PaymentReceiptSerializer(receipts, many=True).data})
 
 
-@csrf_exempt
 @api_view(["POST"])
-@authentication_classes([JWTAuthentication, CsrfExemptSessionAuthentication])
+# Approving a receipt grants a paid plan, so a *session* caller must pass Django's CSRF
+# check (SessionAuthentication enforces it); JWT callers are unaffected by CSRF.
+@authentication_classes([JWTAuthentication, SessionAuthentication])
 @permission_classes([IsAuthenticated])
 def receipt_review_view(request, receipt_id: int):
     """
