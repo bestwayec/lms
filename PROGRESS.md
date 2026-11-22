@@ -9,6 +9,42 @@
    - Ustoz kabinetida har bir o'quvchining PRO holati (`⭐ PRO (Faol)`), ishlagan testlari va esselari aks etishi.
 3. Attestatsiya 2026 yangi diagnostika testini 50 ta savoli bilan bazaga seed qilish, kategoriyalashtirish va VPS ga deploy qilish.
 
+### 2.92. Rasmiy Versiya v5.0: Telegram Group Bot 5.0, Mini App 5.0, Universal Exam Platform & Scoring Integrity
+- **Maqsad**:
+  * **Telegram Group Bot 5.0**: Guruhlar uchun pinned-style doimiy menyu (`GRANDEC | Guruh boshqaruvi`) va 8 ta inline amal (Bugungi vazifalar, Faol testlar, Dars jadvali, Davomat, Guruh progressi, Ixtiyoriy reyting, Mini App, Ustoz bilan bog'lanish). Guruhni xavfsiz uzish (`/uzish`, `/unlink_group`).
+  * **Doimiy (Persistent) Kunlik Davomat**: Xotiraga (`context.bot_data`) bog'liq bo'lmagan, `AttendanceSession` (DRAFT) va `AttendanceRecord` asosida ma'lumotlar bazasida tranzaksiyaviy saqlanuvchi, bot qayta ishga tushganda yoki uzilganda ham ma'lumotlarni saqlab qoluvchi to'liq davomat arxitekturasi. Guruh o'quvchisi tasdiqlangach `mark()` orqali qayd etiladi. Ustoz yakunlashidan oldin ko'rib chiqish (`grp_att_rev_`) va yakunlash (`grp_att_fin_` - belgilanmaganlarni ABSENT qilish). O'quvchilarning shaxsiy ma'lumotlari va sabablari ommaviy guruhga chiqarilmaydi (faqat umumiy sonlar).
+  * **Ustoz va Admin Bot Workspaces 5.0**: `/ustoz` (Guruhlarim, Test yaratish, Test yuborish, Davomat, Natijalar, Live monitoring, Eslatmalar, Sozlamalar) va `/admin` (Tenant-scoped: Platform admin vs O'quv markazi admini, Markazlar, Ustozlar, Guruhlar, Testlar, Hisobotlar, Xavfsizlik, Sozlamalar).
+  * **Universal Test & Imtihon Rejimlari**: Fan, baholash maqsadi, vaqt siyosati (TIMED - qolgan soniyalar hisobi; UNTIMED - vaqt chegarasisiz, 0 soniyada majburiy topshirish yo'q), urinishlar va qayta aloqa siyosati.
+  * **Rasch va Standart Baholash Yaxlitligi**: Dinamik vaznli mashq rejimi (mashq deb aniq belgilangan, xom ballni saqlaydi, o'tmishdagi talabalar natijalarini hech qachon o'zgartirmaydi) va Tasdiqlangan Rasch IRT rejimi (kamida 30 ta namuna talab qiladi, aks holda "Kalibratsiya talab qilinadi" qaytaradi).
+  * **Telegram Mini App 5.0 & Test Runner**: `frontend/src/pages/tma/TestFlow.tsx` taymer defekti (vaqt chegarasiz testlarda 0 soniyada avtomatik topshirilish nuqsoni) to'liq bartaraf etildi.
+  * **To'liq Lokalizatsiya**: `frontend/src/i18n/translations.json` da `uz`, `ru`, `en` tillari to'ldirildi.
+- **Bajarildi**:
+  * [x] **Backend & Bot Arxitekturasi**:
+    - `apps/notifications/bot/group_assistant.py`: Doimiy DB sessiyasi (`_db_get_or_create_open_attendance`), atomik qayd etish (`_db_mark_student_present`), xavfsiz yakunlash (`_db_finalize_session`), 8 amalli guruh menyusi (`_build_group_menu_keyboard`, `_render_group_menu`, `group_menu_command`), guruhni uzish (`cmd_unlink_group`), ustoz kabineti (`ustoz_menu_command`, `_build_teacher_workspace_keyboard`), admin kabineti (`admin_bot_menu_command`, `_build_admin_workspace_keyboard`), xavfsiz callback dispetcheri (`group_assistant_callback_dispatcher`).
+    - `apps/notifications/bot/handlers.py`: Yangi guruh va boshqaruv komandalari hamda callback naqshlari ro'yxatga olindi.
+    - `apps/tests/rasch_engine.py`: Tarixiy natijalar daxlsizligi (`recalculate_test_rasch`), Mashq rejimi (`(Mashq)`) va kalibratsiya hajmi tekshiruvi.
+    - `apps/telegram_app/test_api.py`: `tma_test_start_view` javobida `is_timed` bayrog'i va `remaining_seconds` aniq uzatilishi.
+  * [x] **Frontend & Mini App**:
+    - `frontend/src/pages/tma/TestFlow.tsx`: Vaqt chegarasiz testlarda taymer qat'iy to'xtatildi, 0 soniyadagi avto-topshirish yo'qotildi, UI da "Vaqt chegarasiz" ko'rsatilishi.
+    - `frontend/src/pages/tma/api.ts`: `TmaTestStart` interfeysiga `is_timed` maydoni kiritildi.
+    - `frontend/src/i18n/translations.json`: TMA uchun kerakli barcha tarjimalar `uz`, `ru`, `en` qo'shildi.
+  * [x] **Testlar & QA**:
+    - `tests/test_stage5_telegram_group_and_exam_platform.py`: 10 ta test 100% PASS.
+    - `tests/test_admin_test_control_center.py` va `tests/test_teacher_telegram_assignment.py`: barcha testlar PASS.
+    - `python manage.py check`: 0 issues.
+    - `python manage.py makemigrations --check --dry-run`: 0 missing migrations.
+    - `ruff check`: 0 lint errors.
+    - `npm test`: 28 ta test 100% PASS.
+    - `npm run build`: 0 errors.
+- **Jarayonda**:
+  * Git commit va Draft PR yaratish.
+- **Keyingi qadamlar**:
+  * Draft PR ni tekshirish va birlashtirishga tayyorlash.
+- **Muhim qarorlar**:
+  * Davomat ma'lumotlari bot xotirasida emas, to'g'ridan-to'g'ri `AttendanceSession` va `AttendanceRecord` modellarida saqlanadi, bu bot qayta yoqilganda ham uzluksizlikni ta'minlaydi.
+  * O'quvchilarning shaxsiy davomat sabablari umumiy guruhga emas, faqat ustozning shaxsiy chatiga yuboriladi.
+  * Vaqti belgilanmagan testlar hech qachon taymer bo'yicha o'z-o'zidan yakunlanmaydi.
+
 ### 2.91. Rasmiy Versiya v4.1: Admin Test Control Center 4.0 + Telegram Bot 4.0 + Unified Homework Engine Sync
 - **Maqsad**:
   * `/panel/tests` boshqaruv markazini xavfsiz va samarali qilish: ko'p darajali qidiruv va filterlar (`q`, `status`, `subject`, `creator`), umumiy ko'rsatkichlar (Total, Published, Draft, Archived, Attempted), xavfsiz o'chirish (urinishlar, natijalar yoki faol vazifalar mavjud bo'lsa 409 Conflict bilan bloklash), ommaviy amallar (arxivlash, tiklash, qoralamalarni tozalash, JSON eksport, oldindan ko'rish bilan xavfsiz o'chirish) va Django admin audit jurnali (`LogEntry`).

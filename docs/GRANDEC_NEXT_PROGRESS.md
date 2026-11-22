@@ -32,6 +32,8 @@ CI=1 PLAYWRIGHT_CHROMIUM_EXECUTABLE=<chromium> npx playwright test --trace off  
 | **Opus finalization**: P0/P1 homework fixes, official-scale results, outbox, bot `/vazifalarim`, live tablo, real E2E | ✅ see section below (partial for Phases 3–6) | `feat/grandec-next-opus-finalization` → base #139 |
 | Remaining Phase 3–6 items | partly addressed in 4.0 — see "GRANDEC NEXT 4.0" | – |
 | **4.0 finalization**: Smart Import Pro, Exam Runner 4.0, Ona tili topics, exam-order fix, CI pinning | ✅ verified increments; several stages remain (see 4.0 section) | `feat/grandec-next-4-finalization` → base `main` |
+| **4.1 Admin Test Control Center + Bot 4.0**: Scoped test center, safe delete, bulk preview, unified homework bot | ✅ verified increments | `feat/grandec-telegram-admin-test-v4` → base `feat/grandec-next-4-finalization` |
+| **5.0 Telegram Group Bot 5.0, Mini App 5.0 & Universal Exam Platform**: Pinned-style group menu, persistent DB attendance, safe unlinking, untimed runner fix, scoring integrity | ✅ verified increments | `feat/grandec-group-bot-miniapp-v5` → base `feat/grandec-next-4-finalization` |
 
 Stacking: #135 ← #136 ← #138 ← #139 ← Opus finalization (with #137 off #136, #134 off main). Merge in that order after review. Detailed Opus handoff: `docs/GRANDEC_OPUS_HANDOFF.md`.
 
@@ -384,3 +386,39 @@ Executed 2026-11-22 on branch `feat/grandec-telegram-admin-test-v4`:
    - `teacher_assignments.py`: Synchronizes with Unified Homework Engine via `create_unified_homework`, creating proper `Homework` records.
    - Blocks reassigning tests already bound to unrelated groups.
    - Added `📚 Mening vazifalarim` and `📤 Vazifa yuborish` to persistent reply keyboard and quick inline actions.
+
+
+---
+
+## Stage 5.0 — Telegram Group Bot 5.0, Mini App 5.0 & Universal Exam Platform
+
+Executed 2026-11-22 on branch `feat/grandec-group-bot-miniapp-v5`:
+
+| Check | Result |
+|---|---|
+| `pytest tests/test_stage5_telegram_group_and_exam_platform.py` (SQLite) | **10 passed, 0 failed** |
+| `pytest tests/test_admin_test_control_center.py` (SQLite) | **8 passed, 0 failed** |
+| `pytest tests/test_teacher_telegram_assignment.py` (SQLite) | **4 passed, 1 skipped** (PG row-lock) |
+| `python manage.py check` & `makemigrations --check` | pass / no changes detected |
+| `ruff check` on all modified files | **All checks passed!** |
+| Frontend `npm test`, `npm run build` | **28 passed, 0 errors, build in 4.43s** |
+
+### Delivered capabilities
+
+1. **Telegram Group Bot 5.0 & Persistent Attendance**:
+   - Pinned-style classroom group menu (`GRANDEC | Guruh boshqaruvi`) with 8 inline actions: Bugungi vazifalar, Faol testlar, Dars jadvali, Davomat, Guruh progressi, Ixtiyoriy reyting, Mini App, Ustoz bilan bog'lanish.
+   - Migrated from volatile in-memory dictionary state to transactional database-backed attendance using canonical `AttendanceSession` (`DRAFT`) and `AttendanceRecord`.
+   - Attendance sessions are retrieved and restored seamlessly across bot restarts without losing student checks or active session state.
+   - Enrolled student check: Only active group members can mark presence via `mark()`.
+   - Safe group unlinking (`/uzish`, `/unlink_group`) restricted to group teacher or platform admin with audit trail.
+   - Privacy protection: Individual student attendance reasons and nominal details are kept strictly private; public group chat only receives aggregate statistics.
+
+2. **Teacher & Admin Bot Workspaces 5.0**:
+   - `/ustoz` workspace with 8 actions: Guruhlarim, Test yaratish, Test yuborish, Davomat, Natijalar, Live monitoring, Eslatmalar, Sozlamalar.
+   - `/admin` workspace with role-based scoping (Platform Super-Admin vs Learning Center Admin): Markazlar, Ustozlar, Guruhlar, Barcha testlar, Hisobotlar, Xavfsizlik, Sozlamalar.
+
+3. **Universal Exam Mode System & Scoring Integrity**:
+   - Exam policy: Timing (TIMED with remaining seconds vs UNTIMED without timer), attempts, and feedback controls.
+   - Fixed TMA timer defect in `frontend/src/pages/tma/TestFlow.tsx`: Untimed tests never engage timer interval and never auto-submit at 0 seconds.
+   - Rasch scoring integrity in `apps/tests/rasch_engine.py`: Dynamic Weighted Practice mode clearly labeled as `(Mashq)` practice with explicit non-official caveat; verified Rasch requires minimum 30 sample size; historical attempt results are immutable snapshots and never retroactively rewritten when calibrating test item difficulties.
+   - Complete `uz`, `ru`, `en` localization across TMA and bot messages in `frontend/src/i18n/translations.json`.

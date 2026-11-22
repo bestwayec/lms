@@ -56,7 +56,14 @@ export default function TestFlow({
         }
         setAnswers(restored);
         setStart(data);
-        setRemaining(data.remaining_seconds ?? data.time_limit_minutes * 60);
+        const isTestTimed = !!(
+          data.is_timed ?? ((data.time_limit_minutes ?? 0) > 0 && data.remaining_seconds !== null)
+        );
+        if (isTestTimed) {
+          setRemaining(data.remaining_seconds ?? data.time_limit_minutes * 60);
+        } else {
+          setRemaining(0);
+        }
       } catch (e) {
         if (alive) setLoadError(tmaErrorMessage(e, t('tma_loading_error')));
       }
@@ -99,12 +106,17 @@ export default function TestFlow({
     [start, testId, t],
   );
 
-  // Countdown during play (auto-submit at zero).
+  const isTimed = !!(
+    start &&
+    (start.is_timed ?? ((start.time_limit_minutes ?? 0) > 0 && start.remaining_seconds !== null))
+  );
+
+  // Countdown during play (auto-submit at zero only for timed tests).
   const answersRef = useRef(answers);
   answersRef.current = answers;
 
   useEffect(() => {
-    if (phase !== 'play' || !start) return;
+    if (phase !== 'play' || !start || !isTimed) return;
     stopTimer();
     timerRef.current = window.setInterval(() => {
       setRemaining((prev) => {
@@ -119,7 +131,7 @@ export default function TestFlow({
     }, 1000);
     return stopTimer;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, start]);
+  }, [phase, start, isTimed]);
 
   // BackButton: confirm exit mid-test, plain back otherwise.
   useEffect(() => {
@@ -211,7 +223,7 @@ export default function TestFlow({
   }
 
   if (phase === 'info') {
-    const secs = start.remaining_seconds ?? start.time_limit_minutes * 60;
+    const secs = isTimed ? (start.remaining_seconds ?? start.time_limit_minutes * 60) : 0;
     return (
       <div className="tma-slide">
         <div className="tma-card tma-center" style={{ padding: 24 }}>
@@ -226,14 +238,14 @@ export default function TestFlow({
               <p>{t('tma_info_questions')}</p>
             </div>
             <div className="tma-stat" style={{ background: '#F1F5F9' }}>
-              <b>{start.time_limit_minutes}</b>
-              <p>{t('tma_info_minutes')}</p>
+              <b>{isTimed ? start.time_limit_minutes : '∞'}</b>
+              <p>{isTimed ? t('tma_info_minutes') : (t('tma_untimed') || "Vaqt chegarasiz")}</p>
             </div>
           </div>
           <div className="tma-card" style={{ background: 'var(--tma-bg)', marginBottom: 24 }}>
-            <p className="tma-sub">⏱ {t('tma_remaining')}:</p>
-            <p style={{ fontSize: 24, fontFamily: 'ui-monospace,monospace', fontWeight: 800, margin: '4px 0 0', color: secs < 300 ? '#dc2626' : 'var(--tma-ink)' }}>
-              {formatClock(secs)}
+            <p className="tma-sub">⏱ {isTimed ? t('tma_remaining') : (t('tma_time_policy') || "Vaqt tartibi")}:</p>
+            <p style={{ fontSize: 24, fontFamily: 'ui-monospace,monospace', fontWeight: 800, margin: '4px 0 0', color: isTimed && secs < 300 ? '#dc2626' : 'var(--tma-ink)' }}>
+              {isTimed ? formatClock(secs) : (t('tma_untimed') || "Vaqt chegarasiz")}
             </p>
           </div>
           <button className="tma-btn tma-btn-hl" onClick={() => { setIndex(0); setPhase('play'); }}>
@@ -277,7 +289,7 @@ export default function TestFlow({
   }).length;
 
   const submit = () => {
-    if (remaining > 0 && unanswered > 0 && !window.confirm(`${unanswered} ${t('tma_unanswered_suffix')}`)) {
+    if (unanswered > 0 && !window.confirm(`${unanswered} ${t('tma_unanswered_suffix')}`)) {
       return;
     }
     hapticImpact('heavy');
@@ -286,12 +298,14 @@ export default function TestFlow({
   };
 
   const isLast = index === total - 1;
-  const timerClass = remaining <= 60 ? 'danger' : remaining <= 300 ? 'warn' : '';
+  const timerClass = isTimed && remaining <= 60 ? 'danger' : isTimed && remaining <= 300 ? 'warn' : '';
 
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <div className={`tma-timer ${timerClass}`}>⏱ {formatClock(remaining)}</div>
+        <div className={`tma-timer ${isTimed ? timerClass : ''}`}>
+          ⏱ {isTimed ? formatClock(remaining) : (t('tma_untimed') || "Chegarasiz")}
+        </div>
         <div className="tma-timer">
           {index + 1}/{total}
         </div>

@@ -233,104 +233,23 @@ class RaschEngine:
     @transaction.atomic
     def recalculate_test_rasch(cls, test_id: int) -> dict[str, Any]:
         """
-        Full recalculation for a test:
-        1. Recalculates question logits & weights from all student responses.
-        2. Re-scores all completed attempts and results with updated weights.
+        Item calibration update for a test:
+        1. Recalculates question logits & weights from student responses.
+        2. Preserves historical attempt results (immutable snapshots).
         """
-        from apps.results.models import Result
-        from apps.tests.models import Question, Test, TestAttempt
+        from apps.tests.models import Test
 
         test = Test.objects.get(id=test_id)
         stats_result = cls.update_test_question_stats(test_id)
 
-        # Refresh questions from DB with updated weights
-        questions = list(
-            Question.objects.filter(test_id=test_id).order_by("position", "id")
-        )
-        weights_by_qid = {q.id: q.current_rasch_weight for q in questions}
-        logits_by_qid = {q.id: q.difficulty_logit for q in questions}
-        positions_by_qid = {q.id: q.position for q in questions}
-
-        max_rasch_score = round(sum(weights_by_qid.values()), 2)
-
-        # Re-score attempts
-        attempts = list(
-            TestAttempt.objects.filter(
-                test_id=test_id,
-                status__in=[
-                    TestAttempt.Status.COMPLETED,
-                    TestAttempt.Status.TIMEOUT,
-                ],
-            ).prefetch_related("answers")
-        )
-
-        updated_attempts: list[TestAttempt] = []
-        updated_results: list[Result] = []
-
-        for attempt in attempts:
-            earned_rasch = 0.0
-            correct_questions: list[tuple[int, float, float]] = []
-
-            for ans in attempt.answers.all():
-                if ans.is_correct:
-                    qid = ans.question_id
-                    w = weights_by_qid.get(qid, cls.DEFAULT_BASELINE)
-                    earned_rasch += w
-                    correct_questions.append(
-                        (
-                            positions_by_qid.get(qid, 0),
-                            w,
-                            logits_by_qid.get(qid, 0.0),
-                        )
-                    )
-
-            earned_rasch = round(earned_rasch, 2)
-            pct = (
-                round((earned_rasch / max_rasch_score) * 100.0, 2)
-                if max_rasch_score > 0
-                else 0.0
-            )
-            grade = cls.grade_from_percentage(pct)
-            explanation = cls.generate_explanation(
-                correct_questions, len(questions), earned_rasch
-            )
-
-            attempt.rasch_score = Decimal(str(earned_rasch))
-            attempt.rasch_grade = grade
-            updated_attempts.append(attempt)
-
-            # Update associated Result if exists
-            res = Result.objects.filter(attempt_id=attempt.id).first()
-            if res:
-                res.rasch_score = Decimal(str(earned_rasch))
-                res.max_rasch_score = Decimal(str(max_rasch_score))
-                res.rasch_grade = grade
-                res.rasch_explanation = explanation
-                updated_results.append(res)
-
-        if updated_attempts:
-            TestAttempt.objects.bulk_update(
-                updated_attempts, ["rasch_score", "rasch_grade"]
-            )
-        if updated_results:
-            Result.objects.bulk_update(
-                updated_results,
-                [
-                    "rasch_score",
-                    "max_rasch_score",
-                    "rasch_grade",
-                    "rasch_explanation",
-                ],
-            )
-
+        # Questions have been updated with new item difficulty parameters for future attempts.
+        # Historical attempts retain their locked score snapshots to prevent retroactively
+        # changing historical grades when other students submit.
         return {
             "status": "success",
             "test_id": test_id,
             "test_title": test.title,
             "questions_updated": stats_result["questions_updated"],
-            "attempts_updated": len(updated_attempts),
-            "results_updated": len(updated_results),
-            "max_rasch_score": max_rasch_score,
             "questions": stats_result.get("questions", []),
         }
 
@@ -395,8 +314,33 @@ class RaschEngine:
             if max_rasch > 0
             else 0.0
         )
-        grade = cls.grade_from_percentage(pct)
-        explanation = cls.generate_explanation(
+
+        test = getattr(attempt, "test", None)
+        profile = getattr(test, "scoring_profile", None)
+        is_verified = bool(profile and getattr(profile, "is_verified", False))
+
+        # Check calibration volume across items
+        total_sample = sum((q.total_attempts or 0) for q in all_questions)
+        has_adequate_sample = total_sample >= 30
+
+        if is_verified:
+            if has_adequate_sample:
+                grade = cls.grade_from_percentage(pct)
+                exp_prefix = "Tasdiqlangan Rasch IRT tahlili: "
+            else:
+                grade = "Kalibratsiya talab qilinadi"
+                exp_prefix = "Kalibratsiya talab qilinadi (yetarli ma'lumot to'planmagan). "
+        else:
+            # Dynamic Weighted Practice mode (Practice only, clearly labeled)
+            base_grade = cls.grade_from_percentage(pct)
+            grade = f"{base_grade} (Mashq)"
+            exp_prefix = (
+                "Dinamik vaznli mashq bali (taxminiy/tajribaviy). "
+                "Ushbu ball mashq maqsadida dinamik qiyinlik bo'yicha hisoblangan bo'lib, "
+                "rasmiy davlat imtihoni (BMB) sertifikat bali hisoblanmaydi. "
+            )
+
+        explanation = exp_prefix + cls.generate_explanation(
             correct_questions, len(all_questions), earned_rasch
         )
 
