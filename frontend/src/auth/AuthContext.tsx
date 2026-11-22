@@ -123,19 +123,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const oauthAccess = params.get('access');
-    const oauthRefresh = params.get('refresh');
-
-    if (oauthAccess && oauthRefresh) {
-      setTokens(oauthAccess, oauthRefresh);
-      // Clean up URL without reload and redirect to /dashboard if on auth page
-      const isAuthPath = window.location.pathname === '/login' || window.location.pathname === '/register';
-      const cleanUrl = isAuthPath ? '/dashboard' : window.location.pathname;
-      window.history.replaceState({}, document.title, cleanUrl);
-      if (isAuthPath) {
-        window.location.assign('/dashboard');
-        return;
-      }
+    // Credentials are never accepted from the URL: a crafted link could otherwise log a
+    // victim into the attacker's account, and tokens in URLs leak through history, Referer
+    // headers and logs. A legacy ?access=&refresh= link is only stripped from the address bar;
+    // the Google/Telegram session is picked up through SessionAuth.status() below.
+    if (params.has('access') || params.has('refresh') || params.get('oauth')) {
+      params.delete('access');
+      params.delete('refresh');
+      params.delete('oauth');
+      const query = params.toString();
+      window.history.replaceState({}, document.title, window.location.pathname + (query ? `?${query}` : '') + window.location.hash);
     }
 
     const { access, refresh } = getTokens();
