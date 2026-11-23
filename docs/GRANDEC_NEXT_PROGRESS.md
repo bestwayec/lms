@@ -502,14 +502,32 @@ Executed 2026-11-23 on branch `fix/grandec-ci-recovery-and-smart-builder-v6`:
 | Stage 4 Test Builder Suite (`tests/test_stage4_test_builder_3.py`) | **10 passed, 0 failed** |
 | Stage 5 Telegram Group & Exam Platform (`tests/test_stage5_telegram_group_and_exam_platform.py`) | **10 passed, 0 failed** |
 | Stage 6 Classroom & Access Policy (`tests/test_stage6_classroom_and_access_policy.py`) | **7 passed, 0 failed** |
-| Total Key Regression Tests | **94 passed, 1 skipped, 0 failed** |
+| Total Key Regression Tests | **104 passed, 4 skipped (3 PG row-locks + 1 PDF font), 0 failed** |
+| User-Facing Message Translation Parity (`tests/test_user_facing_messages.py`) | **6 passed, 0 failed** |
+| Group Invitation Concurrency & Audit (`tests/test_invitation_concurrency.py`) | **4 passed, 3 skipped (PG row-locks), 0 failed** |
 | Django System Check (`python manage.py check`) | **0 issues (0 silenced)** |
 | Migration Consistency Check (`makemigrations --check --dry-run`) | **No changes detected (clean)** |
 | Ruff Code Quality Check (`ruff check apps/ tests/`) | **All checks passed!** |
 | Frontend Unit Tests (`npm --prefix frontend test`) | **28 passed, 0 failed** |
-| Frontend Production Build (`npm --prefix frontend run build`) | **Built in 2.84s (0 errors)** |
+| Frontend Production Build (`npm --prefix frontend run build`) | **Built in 6.17s (0 errors)** |
 
 ### Delivered Capabilities
+
+1. **Task 1: Complete Translation Parity Across All 3 Dictionaries**:
+   - Added missing keys `all_categories`, `filter_by_category`, `panel_visibility_audit`, `panel_visibility_audit_desc`, and `panel_visibility_audit_title` to `uz`, `ru`, and `en` in `frontend/src/i18n/translations.json`.
+   - `test_every_key_used_by_the_client_exists_in_every_language` passes 100%.
+
+2. **Task 2: Group Invitation Concurrency & Race Condition Elimination**:
+   - Hardened `apps/courses/invitation_service.py` with `select_for_update()` row locks on `GroupInvitation`, `StudentGroup`, and `GroupJoinRequest`.
+   - Conditional atomic usage increment (`uses_count = F("uses_count") + 1`) ensures `max_uses` is strictly respected across concurrent acceptances.
+   - Prevents duplicate teacher approval callbacks and simultaneous join requests from exceeding group capacity or creating duplicate memberships.
+   - Blocks approving join requests if the invitation was revoked while pending.
+   - Added real PostgreSQL concurrency regression tests in `tests/test_invitation_concurrency.py`.
+
+3. **Task 3: Admin Test Visibility Audit Hardening**:
+   - Enforces `target_mode` restricted to `GROUP_ONLY` or `GROUP_AND_SUBSCRIBERS`.
+   - Guarantees private tests can never be silently published.
+   - Preserves historical test attempts and student results untouched.
 
 1. **Stage 1: Complete Universal Test Types & Timing**:
    - Supported 5 canonical categories: `topic_test` (Mavzulashtirilgan), `attestation` (Attestatsiya tayyorgarligi), `full_mock` (Full Mock), `national_cert` (Milliy sertifikat practice), and `classroom_quiz` (Oddiy darslik quiz).

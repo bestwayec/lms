@@ -1572,7 +1572,7 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
                     return {"status": "error", "message": "Ustoz topilmadi"}
                 try:
                     return review_join_request(teacher, r_id, approved=True)
-                except ValidationError as e:
+                except (ValidationError, ValueError) as e:
                     msg = e.messages[0] if hasattr(e, "messages") and e.messages else str(e)
                     return {"status": "error", "message": msg}
             res = await _run_db(_do_appr, tg_user.id if tg_user else 0, req_id)
@@ -1590,7 +1590,7 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
                     return {"status": "error", "message": "Ustoz topilmadi"}
                 try:
                     return review_join_request(teacher, r_id, approved=False, rejection_reason="Ustoz tomonidan rad etildi")
-                except ValidationError as e:
+                except (ValidationError, ValueError) as e:
                     msg = e.messages[0] if hasattr(e, "messages") and e.messages else str(e)
                     return {"status": "error", "message": msg}
             res = await _run_db(_do_rej, tg_user.id if tg_user else 0, req_id)

@@ -34,21 +34,26 @@
     - `apps/tests/models.py`: `assessment_category`, `is_timed`, `available_from`, `available_until` qo'shildi (migratsiya `0024_test_assessment_category_test_available_from_and_more.py`).
     - `apps/notifications/models.py`: `JOIN_REQUEST_SUBMITTED`, `JOIN_REQUEST_APPROVED`, `JOIN_REQUEST_REJECTED`, `GROUP_WELCOME` hodisalari qo'shildi (migratsiya `0016_alter_outboxmessage_event.py`).
     - `apps/notifications/outbox.py`: Join request va group welcome render funksiyalari to'g'rilandi.
-    - `apps/notifications/bot/group_assistant.py`: `review_join_request` uchun `ValidationError` ushlanib, qayta bosilgan callbacklarda xatoliksiz javob qaytarish ta'minlandi.
+    - `apps/notifications/bot/group_assistant.py`: `review_join_request` uchun `ValidationError` va `ValueError` ushlanib, qayta bosilgan callbacklarda xatoliksiz javob qaytarish ta'minlandi.
+    - `apps/courses/invitation_service.py`: `select_for_update()` qator qulflashi va `F("uses_count") + 1` shartli atomik yangilanishi orqali konkurent poygalar (race conditions), ortiqcha a'zolik va takroriy bildirishnomalar bartaraf etildi.
+    - `apps/tests/admin_test_service.py`: Auditoriya auditi faqat guruhga cheklash (`GROUP_ONLY` / `GROUP_AND_SUBSCRIBERS`) bilan chegaralandi, shaxsiy testlarni ommaviy qilib yuborish xavfi yo'qotildi.
     - `apps/tests/views.py`: `TestGradebookView` da `students` va `ranking` ikkalasi ham taqdim etildi.
   * [x] **Frontend & UI/UX**:
+    - `frontend/src/i18n/translations.json`: 5 ta yetishmayotgan kalit (`all_categories`, `filter_by_category`, `panel_visibility_audit`, `panel_visibility_audit_desc`, `panel_visibility_audit_title`) `uz`, `ru`, `en` lug'atlariga kiritildi.
     - `TeacherStudioEditor.tsx`, `TeacherStudio.tsx`, `Tests.tsx`, `TakeTest.tsx`: 5 ta test toifasi, untimed nazorat, schedule availability va uz/ru/en lokalizatsiya to'liq kiritildi.
     - `PanelTests.tsx`: Auditoriya auditi tugmasi va ommaviy testlarni `GROUP_ONLY` ga o'tkazuvchi modal qo'shildi.
     - `TakeTest.tsx`: Vaqtsiz testlar uchun auto-submit himoyasi qo'yildi.
   * [x] **Testlar & QA**:
+    - `tests/test_user_facing_messages.py`: 6 ta test 100% PASS (translation parity to'liq yashil).
+    - `tests/test_invitation_concurrency.py`: 4 passed, 3 skipped (PostgreSQL row-locks), 0 failed.
     - `tests/test_stage2_stage3_invitations_and_telegram_e2e.py`: 9 ta test 100% PASS.
     - `tests/test_stage6_identical_group_multi_center_isolation.py`: 5 ta test 100% PASS.
-    - Core regression suite: 94 ta test PASS, 1 ta skipped (PDF shrift), 0 ta xato.
+    - Core regression suite: 104 ta test PASS, 4 ta skipped, 0 ta xato.
     - `python manage.py check`: 0 issues.
     - `python manage.py makemigrations --check --dry-run`: No changes detected.
     - `ruff check apps/ tests/`: All checks passed.
     - `npm --prefix frontend test`: 28 ta test 100% PASS.
-    - `npm --prefix frontend run build`: 0 xato, 2.84s da build bo'ldi.
+    - `npm --prefix frontend run build`: 0 xato, 6.17s da build bo'ldi.
 - **Jarayonda**:
   * PR #145 ga barcha o'zgarishlarni kiritish va hujjatlashtirish.
 - **Keyingi qadamlar**:

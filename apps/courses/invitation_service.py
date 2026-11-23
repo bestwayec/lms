@@ -21,6 +21,7 @@ from typing import Any
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
+from django.db.models import F
 from django.utils import timezone
 
 from apps.accounts.access import is_platform_admin
@@ -103,60 +104,82 @@ def revoke_group_invitation(teacher: Any, invitation_id: int) -> GroupInvitation
 def join_group_by_token(student: Any, token: str) -> dict[str, Any]:
     """
     Validates token and enrolls the student or creates a pending approval request.
+    Uses database row-locking and atomic conditional updates to prevent race conditions.
     """
     if student is None or not getattr(student, "is_authenticated", False):
         raise ValidationError("Guruhga qo'shilish uchun avval ro'yxatdan o'ting yoki tizimga kiring.")
 
     token = (token or "").strip()
-    invitation = (
-        GroupInvitation.objects.select_related("group", "group__branch", "group__teacher")
-        .filter(token=token)
-        .first()
-    )
-    if not invitation:
+    if not token:
         raise ValidationError("Taklifnoma havolasi noto'g'ri yoki topilmadi.")
 
-    if not invitation.is_usable:
-        if invitation.is_revoked:
-            raise ValidationError("Ushbu taklifnoma bekor qilingan.")
-        if invitation.is_expired:
-            raise ValidationError("Taklifnomaning amal qilish muddati tugagan.")
-        if invitation.max_uses and invitation.uses_count >= invitation.max_uses:
-            raise ValidationError("Ushbu taklifnomadan foydalanish chegarasiga yetildi.")
-        raise ValidationError("Ushbu taklifnomadan foydalanib bo'lmaydi.")
-
-    group = invitation.group
-
-    # Check if already a member
-    if group.students.filter(id=student.id).exists():
-        return {
-            "status": "already_member",
-            "message": f"Siz allaqachon '{group.name}' guruhi a'zosisiz.",
-            "group_id": group.id,
-            "group_name": group.name,
-        }
-
-    # Check approval requirement
-    if invitation.requires_approval:
-        join_req, created = GroupJoinRequest.objects.get_or_create(
-            group=group,
-            student=student,
-            status=GroupJoinRequest.Status.PENDING,
-            defaults={"invitation": invitation},
-        )
-        from apps.notifications.outbox import enqueue_join_request_submitted
-
-        enqueue_join_request_submitted(join_req)
-        return {
-            "status": "pending_approval",
-            "message": f"'{group.name}' guruhiga qo'shilish so'rovingiz qabul qilindi va ustoz tasdig'i kutilmoqda.",
-            "request_id": join_req.id,
-            "group_id": group.id,
-            "group_name": group.name,
-        }
-
-    # Direct addition
     with transaction.atomic():
+        try:
+            invitation = (
+                GroupInvitation.objects.select_for_update()
+                .select_related("group", "group__branch", "group__teacher")
+                .get(token=token)
+            )
+        except GroupInvitation.DoesNotExist:
+            raise ValidationError("Taklifnoma havolasi noto'g'ri yoki topilmadi.")
+
+        if not invitation.is_usable:
+            if invitation.is_revoked:
+                raise ValidationError("Ushbu taklifnoma bekor qilingan.")
+            if invitation.is_expired:
+                raise ValidationError("Taklifnomaning amal qilish muddati tugagan.")
+            if invitation.max_uses and invitation.uses_count >= invitation.max_uses:
+                raise ValidationError("Ushbu taklifnomadan foydalanish chegarasiga yetildi.")
+            raise ValidationError("Ushbu taklifnomadan foydalanib bo'lmaydi.")
+
+        group = invitation.group
+
+        # Check if already a member
+        if group.students.filter(id=student.id).exists():
+            return {
+                "status": "already_member",
+                "message": f"Siz allaqachon '{group.name}' guruhi a'zosisiz.",
+                "group_id": group.id,
+                "group_name": group.name,
+            }
+
+        # Check approval requirement
+        if invitation.requires_approval:
+            join_req, created = GroupJoinRequest.objects.get_or_create(
+                group=group,
+                student=student,
+                status=GroupJoinRequest.Status.PENDING,
+                defaults={"invitation": invitation},
+            )
+            if created:
+                from apps.notifications.outbox import enqueue_join_request_submitted
+                enqueue_join_request_submitted(join_req)
+
+            return {
+                "status": "pending_approval",
+                "message": f"'{group.name}' guruhiga qo'shilish so'rovingiz qabul qilindi va ustoz tasdig'i kutilmoqda.",
+                "request_id": join_req.id,
+                "group_id": group.id,
+                "group_name": group.name,
+            }
+
+        # Direct addition: check max_uses with atomic conditional update
+        if invitation.max_uses:
+            rows_updated = GroupInvitation.objects.filter(
+                pk=invitation.pk,
+                is_revoked=False,
+                uses_count__lt=invitation.max_uses,
+            ).update(uses_count=F("uses_count") + 1)
+            if rows_updated == 0:
+                raise ValidationError("Ushbu taklifnomadan foydalanish chegarasiga yetildi.")
+        else:
+            rows_updated = GroupInvitation.objects.filter(
+                pk=invitation.pk,
+                is_revoked=False,
+            ).update(uses_count=F("uses_count") + 1)
+            if rows_updated == 0:
+                raise ValidationError("Ushbu taklifnoma bekor qilingan.")
+
         added, _ = add_student_to_group(
             group,
             student,
@@ -164,20 +187,17 @@ def join_group_by_token(student: Any, token: str) -> dict[str, Any]:
             reason="invitation_link",
             metadata={"invitation_id": invitation.id},
         )
-        if added:
-            GroupInvitation.objects.filter(pk=invitation.pk).update(
-                uses_count=invitation.uses_count + 1
-            )
-            from apps.notifications.outbox import enqueue_group_welcome
 
+        if added:
+            from apps.notifications.outbox import enqueue_group_welcome
             enqueue_group_welcome(group, student)
 
-    return {
-        "status": "joined",
-        "message": f"'{group.name}' guruhiga muvaffaqiyatli qo'shildingiz!",
-        "group_id": group.id,
-        "group_name": group.name,
-    }
+        return {
+            "status": "joined",
+            "message": f"'{group.name}' guruhiga muvaffaqiyatli qo'shildingiz!",
+            "group_id": group.id,
+            "group_name": group.name,
+        }
 
 
 def join_group_by_code(student: Any, code: str) -> dict[str, Any]:
@@ -199,38 +219,41 @@ def join_group_by_code(student: Any, code: str) -> dict[str, Any]:
         return join_group_by_token(student, invitation.token)
 
     # 2. Search in StudentGroup.invite_code
-    group = (
-        StudentGroup.objects.select_related("teacher", "branch")
-        .filter(invite_code__iexact=code)
-        .first()
-    )
-    if not group:
-        raise ValidationError("Kiritilgan taklif kodi bo'yicha guruh topilmadi.")
+    with transaction.atomic():
+        try:
+            group = (
+                StudentGroup.objects.select_for_update()
+                .select_related("teacher", "branch")
+                .get(invite_code__iexact=code)
+            )
+        except StudentGroup.DoesNotExist:
+            raise ValidationError("Kiritilgan taklif kodi bo'yicha guruh topilmadi.")
 
-    if group.students.filter(id=student.id).exists():
+        if group.students.filter(id=student.id).exists():
+            return {
+                "status": "already_member",
+                "message": f"Siz allaqachon '{group.name}' guruhi a'zosisiz.",
+                "group_id": group.id,
+                "group_name": group.name,
+            }
+
+        added, _ = add_student_to_group(
+            group,
+            student,
+            actor=group.teacher,
+            reason="group_invite_code",
+        )
+
+        if added:
+            from apps.notifications.outbox import enqueue_group_welcome
+            enqueue_group_welcome(group, student)
+
         return {
-            "status": "already_member",
-            "message": f"Siz allaqachon '{group.name}' guruhi a'zosisiz.",
+            "status": "joined",
+            "message": f"'{group.name}' guruhiga muvaffaqiyatli qo'shildingiz!",
             "group_id": group.id,
             "group_name": group.name,
         }
-
-    added, _ = add_student_to_group(
-        group,
-        student,
-        actor=group.teacher,
-        reason="group_invite_code",
-    )
-    if added:
-        from apps.notifications.outbox import enqueue_group_welcome
-
-        enqueue_group_welcome(group, student)
-    return {
-        "status": "joined",
-        "message": f"'{group.name}' guruhiga muvaffaqiyatli qo'shildingiz!",
-        "group_id": group.id,
-        "group_name": group.name,
-    }
 
 
 def review_join_request(
@@ -240,19 +263,38 @@ def review_join_request(
     approved: bool,
     rejection_reason: str = "",
 ) -> dict[str, Any]:
-    """Teacher approves or rejects a pending student join request."""
-    join_req = (
-        GroupJoinRequest.objects.select_related("group", "student")
-        .get(pk=request_id)
-    )
-    _assert_can_manage_group(teacher, join_req.group)
+    """
+    Teacher approves or rejects a pending student join request.
+    Hardened against duplicate callbacks, simultaneous reviews, capacity races,
+    and post-request invitation revocation.
+    """
+    with transaction.atomic():
+        try:
+            join_req = (
+                GroupJoinRequest.objects.select_for_update()
+                .select_related("group", "student", "invitation")
+                .get(pk=request_id)
+            )
+        except GroupJoinRequest.DoesNotExist:
+            raise ValidationError("Qo'shilish so'rovi topilmadi.")
 
-    if join_req.status != GroupJoinRequest.Status.PENDING:
-        raise ValidationError("Ushbu so'rov allaqachon ko'rib chiqilgan.")
+        _assert_can_manage_group(teacher, join_req.group)
 
-    now = timezone.now()
-    if approved:
-        with transaction.atomic():
+        if join_req.status != GroupJoinRequest.Status.PENDING:
+            raise ValidationError("Ushbu so'rov allaqachon ko'rib chiqilgan.")
+
+        now = timezone.now()
+        if approved:
+            # Check if associated invitation was revoked or expired while request was pending
+            if join_req.invitation:
+                inv = GroupInvitation.objects.select_for_update().get(pk=join_req.invitation.pk)
+                if inv.is_revoked:
+                    raise ValidationError("Taklifnoma bekor qilingan, so'rovni tasdiqlab bo'lmaydi.")
+                if inv.is_expired:
+                    raise ValidationError("Taklifnomaning muddati tugagan, so'rovni tasdiqlab bo'lmaydi.")
+                if inv.max_uses and inv.uses_count >= inv.max_uses:
+                    raise ValidationError("Taklifnomadan foydalanish chegarasiga yetilgan, so'rovni tasdiqlab bo'lmaydi.")
+
             add_student_to_group(
                 join_req.group,
                 join_req.student,
@@ -260,38 +302,42 @@ def review_join_request(
                 reason="join_request_approved",
                 metadata={"request_id": join_req.id},
             )
+
             join_req.status = GroupJoinRequest.Status.APPROVED
             join_req.reviewed_by = teacher
             join_req.reviewed_at = now
             join_req.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
+
             if join_req.invitation:
                 GroupInvitation.objects.filter(pk=join_req.invitation.pk).update(
-                    uses_count=join_req.invitation.uses_count + 1
+                    uses_count=F("uses_count") + 1
                 )
+
             from apps.notifications.outbox import enqueue_join_request_reviewed
-
             enqueue_join_request_reviewed(join_req)
-        return {
-            "status": "approved",
-            "message": f"'{join_req.student.get_full_name() or join_req.student.email}' guruhga qabul qilindi.",
-            "student_id": join_req.student.id,
-            "group_id": join_req.group.id,
-        }
-    else:
-        join_req.status = GroupJoinRequest.Status.REJECTED
-        join_req.reviewed_by = teacher
-        join_req.reviewed_at = now
-        join_req.rejection_reason = rejection_reason[:255]
-        join_req.save(update_fields=["status", "reviewed_by", "reviewed_at", "rejection_reason", "updated_at"])
-        from apps.notifications.outbox import enqueue_join_request_reviewed
 
-        enqueue_join_request_reviewed(join_req)
-        return {
-            "status": "rejected",
-            "message": f"So'rov rad etildi.",
-            "student_id": join_req.student.id,
-            "group_id": join_req.group.id,
-        }
+            return {
+                "status": "approved",
+                "message": f"'{join_req.student.get_full_name() or join_req.student.email}' guruhga qabul qilindi.",
+                "student_id": join_req.student.id,
+                "group_id": join_req.group.id,
+            }
+        else:
+            join_req.status = GroupJoinRequest.Status.REJECTED
+            join_req.reviewed_by = teacher
+            join_req.reviewed_at = now
+            join_req.rejection_reason = rejection_reason[:255]
+            join_req.save(update_fields=["status", "reviewed_by", "reviewed_at", "rejection_reason", "updated_at"])
+
+            from apps.notifications.outbox import enqueue_join_request_reviewed
+            enqueue_join_request_reviewed(join_req)
+
+            return {
+                "status": "rejected",
+                "message": "So'rov rad etildi.",
+                "student_id": join_req.student.id,
+                "group_id": join_req.group.id,
+            }
 
 
 def list_teacher_pending_requests(teacher: Any) -> list[dict[str, Any]]:

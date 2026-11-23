@@ -3365,7 +3365,12 @@
     "studio_category_national_cert": "Milliy sertifikat practice",
     "studio_time_untimed": "Vaqt cheklovisiz",
     "studio_available_from": "Boshlanish sanasi (ixtiyoriy)",
-    "studio_available_until": "Tugash muddati (ixtiyoriy)"
+    "studio_available_until": "Tugash muddati (ixtiyoriy)",
+    "all_categories": "Barcha kategoriyalar",
+    "filter_by_category": "Kategoriya bo‘yicha filter",
+    "panel_visibility_audit": "Auditoriya Auditi",
+    "panel_visibility_audit_title": "Ochiq Studio Testlari Auditi",
+    "panel_visibility_audit_desc": "Tizimdagi ochiq (PUBLIC) Studio testlarini tekshirish va ularni xavfsiz tarzda faqat guruhlar (GROUP_ONLY) uchun o'tkazish."
   },
   "ru": {
     "spk_practise_again": "Повторить эту тему",
@@ -6733,7 +6738,12 @@
     "studio_category_national_cert": "Практика Национального сертификата",
     "studio_time_untimed": "Без ограничения по времени",
     "studio_available_from": "Дата начала (необязательно)",
-    "studio_available_until": "Срок сдачи (необязательно)"
+    "studio_available_until": "Срок сдачи (необязательно)",
+    "all_categories": "Все категории",
+    "filter_by_category": "Фильтр по категориям",
+    "panel_visibility_audit": "Аудит видимости",
+    "panel_visibility_audit_title": "Аудит публичных тестов Studio",
+    "panel_visibility_audit_desc": "Проверка публичных (PUBLIC) тестов Studio в системе и безопасный перевод их в режим только для групп (GROUP_ONLY)."
   },
   "en": {
     "spk_practise_again": "Practise this topic again",
@@ -10101,6 +10111,11 @@
     "studio_category_national_cert": "National Certificate Practice",
     "studio_time_untimed": "Untimed (No limit)",
     "studio_available_from": "Available From (optional)",
-    "studio_available_until": "Available Until (optional)"
+    "studio_available_until": "Available Until (optional)",
+    "all_categories": "All categories",
+    "filter_by_category": "Filter by category",
+    "panel_visibility_audit": "Visibility Audit",
+    "panel_visibility_audit_title": "Public Studio Tests Audit",
+    "panel_visibility_audit_desc": "Review public (PUBLIC) Studio tests across the platform and safely migrate them to group-only (GROUP_ONLY) access."
   }
 }

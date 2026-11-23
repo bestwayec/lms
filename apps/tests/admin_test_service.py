@@ -504,18 +504,27 @@ def apply_studio_tests_visibility_transition(
     target_mode: str = "GROUP_ONLY",
 ) -> dict[str, Any]:
     """
-    Safely transitions selected public tests to GROUP_ONLY (or specified mode).
+    Safely transitions selected public tests to GROUP_ONLY (or GROUP_AND_SUBSCRIBERS).
     Scoped to user's permitted queryset so cross-center tampering is prevented.
     Historical attempts and results are preserved untouched.
+    Guarantees private tests can never be silently published.
     """
     from django.contrib.admin.models import CHANGE
+
+    if target_mode not in ("GROUP_ONLY", "GROUP_AND_SUBSCRIBERS"):
+        raise ValueError("Auditoriya auditi faqat guruhlarga cheklash (GROUP_ONLY yoki GROUP_AND_SUBSCRIBERS) uchun mo'ljallangan.")
 
     scoped = get_scoped_tests_queryset(user).filter(id__in=test_ids)
     updated = []
     for t in scoped:
         old_mode = getattr(t, "audience_mode", "PUBLIC_FREE")
+        # Only migrate tests that are currently public (PUBLIC_FREE or access_type == PUBLIC)
+        if old_mode not in ("PUBLIC_FREE",) and t.access_type not in ("PUBLIC",):
+            # Already private test: preserve privacy, never publish
+            continue
+
         t.audience_mode = target_mode
-        t.access_type = "STUDENTS_ONLY" if target_mode == "GROUP_ONLY" else "PUBLIC"
+        t.access_type = "STUDENTS_ONLY"
         t.save(update_fields=["audience_mode", "access_type"])
         log_test_audit(
             user,
