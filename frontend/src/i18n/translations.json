@@ -3348,7 +3348,15 @@
     "studio_warn_pptx_image_only_slide": "Slaydda faqat rasm bor — matnni qo‘lda kiriting (OCR yo‘q).",
     "studio_err_pptx_no_text": "Taqdimotda matn topilmadi (slaydlar rasm bo‘lishi mumkin).",
     "ent_import_setup_links": "Har bir o'quvchiga alohida, taxmin qilib bo'lmaydigan parol beriladi; haqiqiy emaili borlarga parol o'rnatish havolasi yuboriladi.",
-    "ent_import_manual_setup": "{n} ta o‘quvchida email yo‘q — ularga parolni markaz rahbari qo‘lda o‘rnatishi kerak."
+    "ent_import_manual_setup": "{n} ta o‘quvchida email yo‘q — ularga parolni markaz rahbari qo‘lda o‘rnatishi kerak.",
+    "studio_audience": "Kim topshira oladi",
+    "studio_audience_GROUP_ONLY": "Faqat mening guruhlarim (bepul)",
+    "studio_audience_GROUP_AND_SUBSCRIBERS": "Guruhlarim + PRO/Premium katalog",
+    "studio_audience_PUBLIC_FREE": "Hammaga ochiq",
+    "studio_audience_help_GROUP_ONLY": "Faqat siz vazifa qilib bergan o‘quvchilar topshiradi — PRO talab qilinmaydi.",
+    "studio_audience_help_GROUP_AND_SUBSCRIBERS": "Guruhingiz bepul; boshqalar faqat PRO/Premium obuna bilan.",
+    "studio_audience_help_PUBLIC_FREE": "Test kodini bilgan har kim topshira oladi (bepul limit hisoblanadi).",
+    "studio_err_bad_audience": "Auditoriya noto‘g‘ri tanlangan."
   },
   "ru": {
     "spk_practise_again": "Повторить эту тему",
@@ -6699,7 +6707,15 @@
     "studio_warn_pptx_image_only_slide": "На слайде только изображение — введите текст вручную (OCR нет).",
     "studio_err_pptx_no_text": "В презентации нет текста (возможно, слайды — изображения).",
     "ent_import_setup_links": "Каждому ученику выдаётся отдельный непредсказуемый пароль; ученикам с настоящим email отправляется ссылка для установки пароля.",
-    "ent_import_manual_setup": "У {n} учеников нет email — пароль им должен установить руководитель центра вручную."
+    "ent_import_manual_setup": "У {n} учеников нет email — пароль им должен установить руководитель центра вручную.",
+    "studio_audience": "Кто может проходить",
+    "studio_audience_GROUP_ONLY": "Только мои группы (бесплатно)",
+    "studio_audience_GROUP_AND_SUBSCRIBERS": "Мои группы + каталог PRO/Premium",
+    "studio_audience_PUBLIC_FREE": "Открыт для всех",
+    "studio_audience_help_GROUP_ONLY": "Проходят только ученики, которым вы назначили тест, — PRO не нужен.",
+    "studio_audience_help_GROUP_AND_SUBSCRIBERS": "Ваши группы бесплатно; остальные — только с PRO/Premium.",
+    "studio_audience_help_PUBLIC_FREE": "Любой, кто знает код теста (учитывается бесплатный лимит).",
+    "studio_err_bad_audience": "Неверно выбрана аудитория."
   },
   "en": {
     "spk_practise_again": "Practise this topic again",
@@ -10050,6 +10066,14 @@
     "studio_warn_pptx_image_only_slide": "Image-only slide — type its text manually (no OCR).",
     "studio_err_pptx_no_text": "No text found in the presentation (slides may be images).",
     "ent_import_setup_links": "Each student gets a separate, unguessable password; students with a real email receive a password-setup link.",
-    "ent_import_manual_setup": "{n} students have no email — the center admin must set their password manually."
+    "ent_import_manual_setup": "{n} students have no email — the center admin must set their password manually.",
+    "studio_audience": "Who can take it",
+    "studio_audience_GROUP_ONLY": "Only my groups (free)",
+    "studio_audience_GROUP_AND_SUBSCRIBERS": "My groups + PRO/Premium catalog",
+    "studio_audience_PUBLIC_FREE": "Open to everyone",
+    "studio_audience_help_GROUP_ONLY": "Only students you assign it to can take it — no PRO needed.",
+    "studio_audience_help_GROUP_AND_SUBSCRIBERS": "Free for your groups; others need PRO/Premium.",
+    "studio_audience_help_PUBLIC_FREE": "Anyone with the test code can take it (free quota applies).",
+    "studio_err_bad_audience": "Invalid audience."
   }
 }

@@ -30,8 +30,8 @@ def test_topics_round_trip_and_weak_topic_breakdown():
     # Two students: both get every 'imlo' question right, every 'sintaksis' one wrong.
     for k in range(2):
         st = User.objects.create_user(email=f"top_s{k}@example.com", password="p", role="student")
-        test.access_type = "PUBLIC"
-        test.save(update_fields=["access_type"])
+        test.access_type, test.audience_mode = "PUBLIC", "PUBLIC_FREE"
+        test.save(update_fields=["access_type", "audience_mode"])
         att = StartAttemptService.execute(test_id=test.id, student=st)
         for q in test.questions.all():
             right = q.config.get("topic") == "imlo"

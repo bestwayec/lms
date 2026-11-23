@@ -77,6 +77,8 @@ export interface StudioTestSummary {
   mock_code: string;
   access_pin: string;
   description: string;
+  /** Who may take it: own groups (default), groups + PRO/Premium, or everyone. */
+  audience?: StudioAudience;
   editable: boolean;
   is_studio: boolean;
   updated_at: string | null;
@@ -183,11 +185,15 @@ export interface FileImportResult {
   };
 }
 
+export type StudioAudience = 'GROUP_ONLY' | 'GROUP_AND_SUBSCRIBERS' | 'PUBLIC_FREE';
+export const STUDIO_AUDIENCES: StudioAudience[] = ['GROUP_ONLY', 'GROUP_AND_SUBSCRIBERS', 'PUBLIC_FREE'];
+
 export interface TestPayload {
   title: string;
   subject: string;
   time_limit_minutes: number;
   description?: string;
+  audience?: StudioAudience;
   blocks: StudioBlock[];
 }
 

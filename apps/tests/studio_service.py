@@ -310,12 +310,24 @@ def validate_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # Save / load
 # ---------------------------------------------------------------------------
+# Who may take a Studio test. Default: only students the teacher assigns it
+# to (free for them). Opening it to subscribers or everyone is an explicit
+# teacher choice — never the default.
+STUDIO_AUDIENCES = {
+    "GROUP_ONLY": ("STUDENTS_ONLY", "GROUP_ONLY"),
+    "GROUP_AND_SUBSCRIBERS": ("PUBLIC", "GROUP_AND_SUBSCRIBERS"),
+    "PUBLIC_FREE": ("PUBLIC", "PUBLIC_FREE"),
+}
+DEFAULT_STUDIO_AUDIENCE = "GROUP_ONLY"
+
+
 @dataclass
 class TestMeta:
     title: str
     subject: str
     time_limit_minutes: int
     description: str
+    audience: str | None = None  # None = keep (update) / default (create)
 
 
 def _meta(payload: dict[str, Any]) -> TestMeta:
@@ -331,7 +343,21 @@ def _meta(payload: dict[str, Any]) -> TestMeta:
         raise StudioError("bad_time_limit") from None
     if not 0 <= minutes <= 600:
         raise StudioError("bad_time_limit")
-    return TestMeta(title, subject, minutes, _s(payload.get("description"), 2000))
+    audience = payload.get("audience")
+    if audience is not None and audience not in STUDIO_AUDIENCES:
+        raise StudioError("bad_audience")
+    return TestMeta(title, subject, minutes, _s(payload.get("description"), 2000), audience)
+
+
+def _apply_audience(test: Test, audience: str) -> None:
+    test.access_type, test.audience_mode = STUDIO_AUDIENCES[audience]
+
+
+def studio_audience(test: Test) -> str:
+    from apps.tests.access_policy import normalize_audience_mode
+
+    mode = normalize_audience_mode(test)
+    return mode if mode in STUDIO_AUDIENCES else "GROUP_ONLY"
 
 
 def is_studio_test(test: Test) -> bool:
@@ -478,6 +504,8 @@ def save_test(user, payload: dict[str, Any], test: Test | None = None) -> Test:
         test.subject = meta.subject
         test.time_limit_minutes = meta.time_limit_minutes
         test.description = meta.description
+        if meta.audience:
+            _apply_audience(test, meta.audience)
         test.status = Test.Status.DRAFT
         test.save()
     else:
@@ -495,6 +523,8 @@ def save_test(user, payload: dict[str, Any], test: Test | None = None) -> Test:
             max_attempts=1,
             shuffle_choices=False,
             status=Test.Status.DRAFT,
+            access_type=STUDIO_AUDIENCES[meta.audience or DEFAULT_STUDIO_AUDIENCE][0],
+            audience_mode=STUDIO_AUDIENCES[meta.audience or DEFAULT_STUDIO_AUDIENCE][1],
         )
     _build_content(test, blocks)
     return test
@@ -640,6 +670,7 @@ def summarize_test(test: Test) -> dict[str, Any]:
         "mock_code": test.mock_code or "",
         "access_pin": test.access_pin or "",
         "description": test.description,
+        "audience": studio_audience(test),
         "editable": is_studio_test(test) and not has_real_answers(test),
         "is_studio": is_studio_test(test),
         "updated_at": test.updated_at.isoformat() if test.updated_at else None,
@@ -672,11 +703,9 @@ def store_media(upload, kind: str) -> dict[str, str]:
 # Assignment (courses.Homework)
 # ---------------------------------------------------------------------------
 def teacher_groups(user):
-    from apps.courses.models import StudentGroup
+    from apps.courses.teacher_workspace_service import get_teacher_groups
 
-    if is_platform_admin(user):
-        return StudentGroup.objects.all()
-    return StudentGroup.objects.filter(teacher=user)
+    return get_teacher_groups(user)
 
 
 def bot_username() -> str:

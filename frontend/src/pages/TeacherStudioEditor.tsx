@@ -24,6 +24,7 @@ import StudentPreview from '../components/studio/StudentPreview';
 import AssignDialog from '../components/studio/AssignDialog';
 import {
   BLOCK_TYPES,
+  STUDIO_AUDIENCES,
   STUDIO_SUBJECTS,
   StudioApi,
   blankMcqBlock,
@@ -36,6 +37,7 @@ import {
   type StudioDetail,
   type StudioIssue,
   type ParseResult,
+  type StudioAudience,
 } from '../lib/studio';
 
 type Tab = 'blocks' | 'paste' | 'import' | 'key';
@@ -45,6 +47,7 @@ interface Meta {
   subject: string;
   time_limit_minutes: number;
   description?: string;
+  audience: StudioAudience;
 }
 
 const errText = (e: unknown, t: (k: string, fallback?: string) => string) => {
@@ -105,7 +108,7 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
   const { t } = useLang();
 
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(id ? 2 : 1);
-  const [meta, setMeta] = useState<Meta>({ title: '', subject: 'english', time_limit_minutes: 30, description: '' });
+  const [meta, setMeta] = useState<Meta>({ title: '', subject: 'english', time_limit_minutes: 30, description: '', audience: 'GROUP_ONLY' });
   const [blocks, setBlocks] = useState<StudioBlock[]>([]);
   const [detail, setDetail] = useState<StudioDetail | null>(null);
   const [issues, setIssues] = useState<StudioIssue[]>([]);
@@ -131,6 +134,7 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
       subject: d.test.subject,
       time_limit_minutes: d.test.time_limit_minutes,
       description: d.test.description || '',
+      audience: d.test.audience ?? 'GROUP_ONLY',
     });
     setBlocks(withKeys(d.blocks));
     setIssues(d.issues);
@@ -527,6 +531,26 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
                     </option>
                   ))}
                 </select>
+              </label>
+
+              <label className="studio-field">
+                <span style={{ fontWeight: 600 }}>{t('studio_audience', 'Kim topshira oladi')}</span>
+                <select
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)' }}
+                  value={meta.audience}
+                  disabled={locked}
+                  onChange={(e) => editMeta({ audience: e.target.value as StudioAudience })}
+                  aria-describedby="studio-audience-help"
+                >
+                  {STUDIO_AUDIENCES.map((a) => (
+                    <option key={a} value={a}>
+                      {t(`studio_audience_${a}`, a)}
+                    </option>
+                  ))}
+                </select>
+                <small id="studio-audience-help" className="muted">
+                  {t(`studio_audience_help_${meta.audience}`, '')}
+                </small>
               </label>
 
               <label className="studio-field">
