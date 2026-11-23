@@ -206,8 +206,8 @@ class TelegramGroupBotAssistantTests(TestCase):
         async_to_sync(group_davomat_yakun_command)(update_yakun, context)
         self.assertTrue(update_yakun.message.reply_text.called)
         yakun_text = update_yakun.message.reply_text.call_args[0][0]
-        self.assertIn("DAVOMAT YAKUNI", yakun_text)
-        self.assertIn("Diyorbek Xoldorov", yakun_text)
+        self.assertIn("DAVOMAT YAKUNLANDI", yakun_text)  # 5.0 wording
+        self.assertIn("Darsda qatnashganlar:</b> 1 nafar", yakun_text)  # 5.0: counts, no names in group chat
 
         # Verify session in LMS DB
         session = AttendanceSession.objects.filter(group=group).first()
@@ -342,5 +342,5 @@ class TelegramGroupBotAssistantTests(TestCase):
 
         self.assertTrue(update.message.reply_text.called)
         menu_text = update.message.reply_text.call_args[0][0]
-        self.assertIn("Ustoz Menyusi: Hamid Olimjon", menu_text)
-        self.assertIn("Ona tili Olimpiada", menu_text)
+        self.assertIn("Ustoz Kabineti 5.0 | Hamid Olimjon", menu_text)  # 5.0 wording
+        self.assertIn("Biriktirilgan guruhlaringiz: <b>1 ta</b>", menu_text)  # 5.0: groups behind buttons

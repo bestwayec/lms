@@ -239,7 +239,7 @@ class TestTelegramGroupBinding:
 
         assert update.message.reply_text.called
         reply_text = update.message.reply_text.call_args[0][0]
-        assert "✅ Ushbu Telegram guruh Grand Education platformasidagi" in reply_text
+        assert "Guruh muvaffaqiyatli bog'landi" in reply_text  # 5.0 wording
         assert self.group.name in reply_text
 
     def test_manual_ulash_and_link_commands_in_group_chat(self):
@@ -263,7 +263,7 @@ class TestTelegramGroupBinding:
         assert self.group.telegram_chat_id == -10055443322
         assert self.group.telegram_chat_title == "BMB Ona Tili Guruh 1"
         reply_ulash = update_ulash.message.reply_text.call_args[0][0]
-        assert "✅ Ushbu Telegram guruh Grand Education platformasidagi" in reply_ulash
+        assert "Guruh muvaffaqiyatli bog'landi" in reply_ulash  # 5.0 wording
 
         # 2. Test /link <invite_code> in another group chat
         update_link = MagicMock()
