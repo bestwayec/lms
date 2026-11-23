@@ -44,7 +44,10 @@ def test_teacher_menu_is_private_and_only_shows_assigned_group_tests():
     update.effective_chat = SimpleNamespace(id=85201, type="private")
     async_to_sync(ustoz_menu_command)(update, SimpleNamespace())
     private_reply = update.message.reply_text.await_args.args[0]
-    assert "42" in private_reply and not any(m in private_reply for m in leaked)
+    # Ustoz Kabineti 5.0 (#142/#143) shows results behind buttons, not inline:
+    # the private menu names the teacher's own groups and leaks nothing else.
+    assert "Biriktirilgan guruhlaringiz: <b>1 ta</b>" in private_reply
+    assert not any(m in private_reply for m in leaked)
 
 
 @pytest.mark.django_db(transaction=True)
@@ -356,3 +359,26 @@ def test_direct_telegram_id_link_is_rejected_without_mutating_accounts(path):
     admin.refresh_from_db()
     assert victim.telegram_chat_id == 9713 and victim.telegram_identity_verified_at is not None
     assert admin.telegram_chat_id is None and admin.telegram_identity_verified_at is None
+
+
+@pytest.mark.django_db
+def test_attendance_review_callback_is_bound_to_its_group_chat():
+    from datetime import date
+
+    from apps.attendance.models import AttendanceSession
+    from apps.notifications.bot.group_assistant import group_assistant_callback_handler
+
+    teacher = User.objects.create_user(email="att-owner@example.test", password="t", role="teacher", telegram_chat_id=7001)
+    group = StudentGroup.objects.create(name="Att group", teacher=teacher, telegram_chat_id=-100555)
+    session = AttendanceSession.objects.create(group=group, teacher=teacher, lesson_date=date.today())
+    for action in ("rev", "ref"):
+        query = SimpleNamespace(data=f"grp_att_{action}_{session.id}", answer=AsyncMock(), edit_message_text=AsyncMock())
+        foreign = SimpleNamespace(callback_query=query, effective_chat=SimpleNamespace(id=-100999, type="supergroup"),
+                                  effective_user=SimpleNamespace(id=9999))
+        async_to_sync(group_assistant_callback_handler)(foreign, SimpleNamespace())
+        assert query.answer.await_args.kwargs["show_alert"] is True
+        query.edit_message_text.assert_not_awaited()
+        own = SimpleNamespace(callback_query=query, effective_chat=SimpleNamespace(id=-100555, type="supergroup"),
+                              effective_user=SimpleNamespace(id=9999))
+        async_to_sync(group_assistant_callback_handler)(own, SimpleNamespace())
+        query.edit_message_text.assert_awaited()

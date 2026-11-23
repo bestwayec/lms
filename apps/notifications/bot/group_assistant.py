@@ -558,6 +558,8 @@ def _db_get_attendance_session_info(session_id: int):
     return {
         "session_id": session.id,
         "group_id": session.group.id,
+        "group_chat_id": getattr(session.group, "telegram_chat_id", None),
+        "teacher_tg_id": getattr(session.group.teacher, "telegram_chat_id", None),
         "group_name": session.group.name,
         "teacher_name": session.group.teacher.get_full_name() or session.group.teacher.email,
         "date_str": session.lesson_date.strftime("%d.%m.%Y"),
@@ -566,6 +568,19 @@ def _db_get_attendance_session_info(session_id: int):
         "present_names": present_names,
         "status": session.status,
     }
+
+
+def _attendance_view_allowed(info: dict, update) -> bool:
+    """Session details only in that group's own chat, or to its teacher.
+
+    Callback data can be forged by non-official clients, so the id in it is
+    never trusted on its own.
+    """
+    chat = getattr(update, "effective_chat", None)
+    user = getattr(update, "effective_user", None)
+    if chat is not None and info.get("group_chat_id") and chat.id == info["group_chat_id"]:
+        return True
+    return bool(user is not None and info.get("teacher_tg_id") and user.id == info["teacher_tg_id"])
 
 
 def _db_finalize_session(session_id: int, actor_tg_id: int):
@@ -1177,7 +1192,7 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
         return
 
     data = query.data
-    tg_user = update.effective_user
+    tg_user = getattr(update, "effective_user", None)
 
     # 1. Attendance callbacks
     if data.startswith("grp_att_here_"):
@@ -1188,6 +1203,9 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
         info = await _run_db(_db_get_attendance_session_info, sid)
         if not info:
             await query.answer("Sessiya topilmadi.", show_alert=True)
+            return
+        if not _attendance_view_allowed(info, update):
+            await query.answer("⛔️ Bu davomat boshqa guruhga tegishli.", show_alert=True)
             return
         text, markup = _format_attendance_review_message(info)
         await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
@@ -1215,6 +1233,9 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
         info = await _run_db(_db_get_attendance_session_info, sid)
         if not info:
             await query.answer("Sessiya topilmadi.", show_alert=True)
+            return
+        if not _attendance_view_allowed(info, update):
+            await query.answer("⛔️ Bu davomat boshqa guruhga tegishli.", show_alert=True)
             return
         text, markup = _format_attendance_message(info)
         await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
@@ -1696,6 +1717,15 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
             await query.answer()
             return
 
+    # Retired score-editing buttons (old messages may still carry them):
+    # grades change only through the LMS review flow, never from Telegram.
+    if data.startswith("ustoz_"):
+        await query.answer(
+            "⛔️ Baholarni Telegram orqali o'zgartirib bo'lmaydi. LMS dagi tekshiruv sahifasidan foydalaning.",
+            show_alert=True,
+        )
+        return
+
     # 5. Legacy / Vedomost PDF callbacks
     if data.startswith("grp_cmd_vedomost_"):
         chat, user = update.effective_chat, update.effective_user
@@ -1703,6 +1733,20 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
             await query.answer("⛔️ Bu amal faqat tasdiqlangan ustozning shaxsiy chatida mavjud.", show_alert=True)
             return
         gid = int(data.split("_")[-1])
+
+        def _may_export(tg_id: int, g_id: int) -> bool:
+            # Same scope as the web: the verified LMS teacher/admin of this group.
+            from apps.courses.teacher_workspace_service import get_teacher_groups
+            from django.contrib.auth import get_user_model
+
+            actor = get_user_model().objects.filter(
+                telegram_chat_id=tg_id, telegram_identity_verified_at__isnull=False, is_active=True
+            ).first()
+            return bool(actor) and get_teacher_groups(actor).filter(id=g_id).exists()
+
+        if not await _run_db(_may_export, user.id, gid):
+            await query.answer("⛔️ Bu guruh sizga biriktirilmagan.", show_alert=True)
+            return
         await query.answer("Vedomost tayyorlanmoqda...")
         from apps.results.pdf_generator import generate_group_vedomost_pdf
         from apps.courses.models import StudentGroup
