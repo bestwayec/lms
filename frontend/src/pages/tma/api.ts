@@ -36,9 +36,10 @@ export interface TmaTestStart {
   test_title: string;
   test_description?: string;
   time_limit_minutes: number;
+  is_timed?: boolean;
   total_questions: number;
   started_at?: string | null;
-  remaining_seconds: number;
+  remaining_seconds: number | null;
   questions: TmaQuestion[];
 }
 

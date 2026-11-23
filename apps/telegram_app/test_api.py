@@ -159,6 +159,7 @@ def tma_test_start_view(request, test_id: int) -> JsonResponse:
             "test_title": test.title,
             "test_description": test.description,
             "time_limit_minutes": test.time_limit_minutes,
+            "is_timed": bool(test.has_time_limit and attempt.remaining_seconds is not None),
             "total_questions": len(questions_data),
             "started_at": attempt.started_at.isoformat()
             if attempt.started_at

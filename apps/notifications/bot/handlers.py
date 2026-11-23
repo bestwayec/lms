@@ -9625,10 +9625,13 @@ def setup_handlers(app) -> None:
         on_my_chat_member,
         on_new_chat_members,
         link_group_command,
+        cmd_unlink_group,
+        group_menu_command,
         group_davomat_yakun_command,
         group_yangi_test_command,
         group_vedomost_command,
         ustoz_menu_command,
+        admin_bot_menu_command,
         group_assistant_callback_handler,
         unified_davomat_handler,
         unified_leaderboard_handler,
@@ -9659,7 +9662,9 @@ def setup_handlers(app) -> None:
     app.add_handler(CommandHandler("cancel_essay", cancel_essay_handler))
     app.add_handler(CommandHandler("leaderboard", unified_leaderboard_handler))
     app.add_handler(CommandHandler("reyting", unified_leaderboard_handler))
+    app.add_handler(CommandHandler(["menu", "guruh", "boshqaruv"], group_menu_command))
     app.add_handler(CommandHandler(["ulash", "link", "link_group"], link_group_command))
+    app.add_handler(CommandHandler(["uzish", "unlink_group"], cmd_unlink_group))
     app.add_handler(CommandHandler("davomat", unified_davomat_handler))
     app.add_handler(CommandHandler("davomat_yakun", group_davomat_yakun_command))
     app.add_handler(CommandHandler(["vedomost", "report"], group_vedomost_command))
@@ -9739,9 +9744,12 @@ def setup_handlers(app) -> None:
     app.add_handler(CommandHandler("vocab", vocab_handler))
     app.add_handler(CallbackQueryHandler(quiz_callback_handler, pattern=r"^quiz_"))
 
-    # Group Assistant callbacks (must be before generic callback_handler)
+    # Group Assistant & Workspace callbacks (must be before generic callback_handler)
     app.add_handler(
-        CallbackQueryHandler(group_assistant_callback_handler, pattern=r"^(grp_att_|grp_cmd_|ustoz_)")
+        CallbackQueryHandler(
+            group_assistant_callback_handler,
+            pattern=r"^(grp_att_|grp_cmd_|grp_m_|ustoz_|tch_|adm_)",
+        )
     )
 
     # Auth conversation handler — catches text/contact during auth flow
