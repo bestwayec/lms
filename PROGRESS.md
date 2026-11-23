@@ -54,10 +54,18 @@
     - `ruff check apps/ tests/`: All checks passed.
     - `npm --prefix frontend test`: 28 ta test 100% PASS.
     - `npm --prefix frontend run build`: 0 xato, 6.17s da build bo'ldi.
+    - **GitHub Actions CI (Run 45234643306, commit `0313b2b`)**:
+      * Test (PostgreSQL): 2001 passed, 0 failed (100% PASS).
+      * Test (Pytest & Django): 100% PASS.
+      * Lint (Backend & Frontend): PASS.
+      * Browser regressions: PASS.
+      * Build (Frontend & Verification): PASS.
+      * Security (Run 45234643157): PASS.
+      * Automerge (Run 45234638553): PASS.
 - **Jarayonda**:
-  * PR #145 ga barcha o'zgarishlarni kiritish va hujjatlashtirish.
+  * Barcha vazifalar to'liq yakunlandi.
 - **Keyingi qadamlar**:
-  * PR #145 ni push qilish va tavsifini yangilash.
+  * PR #145 loyiha egasi tomonidan ko'rib chiqilib, rasmiy merge qilinishi mumkin.
 - **Muhim qarorlar**:
   * Vaqtsiz testlar topshirilayotganda 0 soniya taymer avtomatik tarzda testni yakunlab yubormaydi.
   * Guruh a'zolariga soxta PRO obunasi berilmaydi, faqat o'sha guruhga biriktirilgan darslik testlar bepul bo'ladi.

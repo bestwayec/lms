@@ -510,6 +510,12 @@ Executed 2026-11-23 on branch `fix/grandec-ci-recovery-and-smart-builder-v6`:
 | Ruff Code Quality Check (`ruff check apps/ tests/`) | **All checks passed!** |
 | Frontend Unit Tests (`npm --prefix frontend test`) | **28 passed, 0 failed** |
 | Frontend Production Build (`npm --prefix frontend run build`) | **Built in 6.17s (0 errors)** |
+| GitHub Actions PostgreSQL Pytest (`Run 45234643306`) | **2001 passed, 0 failed (100% PASS)** |
+| GitHub Actions Pytest & Django (`Run 45234643306`) | **100% PASS** |
+| GitHub Actions Browser Regressions (`Run 45234643306`) | **PASS** |
+| GitHub Actions Lint & Verification (`Run 45234643306`) | **PASS** |
+| GitHub Actions Security Audit (`Run 45234643157`) | **PASS** |
+| GitHub Actions Automerge Status (`Run 45234638553`) | **PASS** |
 
 ### Delivered Capabilities
 
