@@ -423,3 +423,60 @@ Executed 2026-11-22 on branch `feat/grandec-group-bot-miniapp-v5`:
    - Fixed TMA timer defect in `frontend/src/pages/tma/TestFlow.tsx`: Untimed tests never engage timer interval and never auto-submit at 0 seconds.
    - Rasch scoring integrity in `apps/tests/rasch_engine.py`: Dynamic Weighted Practice mode clearly labeled as `(Mashq)` practice with explicit non-official caveat; verified Rasch requires minimum 30 sample size; historical attempt results are immutable snapshots and never retroactively rewritten when calibrating test item difficulties.
    - Complete `uz`, `ru`, `en` localization across TMA and bot messages in `frontend/src/i18n/translations.json`.
+
+## Final requirements (multi-tenant, PPTX, classroom access, release) — 2026-11-23
+
+Branch `fix/grandec-ci-recovery-and-smart-builder-v6`, draft PR #145 (not merged, not deployed).
+
+### CI recovery (main was red after #142–#144)
+- Baseline before: SQLite pytest 35 failed; PostgreSQL pytest 98 failed; `manage.py test` 6F + 6E.
+- Causes fixed: `rasch_grade` varchar(10) overflow on PG ("X (Mashq)") → grade code + new `rasch_mode`
+  field (migrations tests/0023, results/0009, reversible data split); cross-tenant leak in `visible_tests`;
+  global `center_admin`; resume charged quota / hit paywall; group analytics N+1; legacy tests that
+  retook tests on FREE quota; Telegram group-bot callbacks (vedomost IDOR, attendance review binding,
+  stale `ustoz_*` buttons).
+- After (local, exact CI commands, 2026-11-23):
+  - SQLite: `manage.py check` OK; `manage.py test tests` 1275 OK (3 skipped);
+    `pytest tests --cov=apps --cov-fail-under=50` 1970 passed, 10 skipped (PG-only), 0 failed.
+  - PostgreSQL 16: `check` OK; `makemigrations --check` no changes; `pytest` 1980 passed, 0 failed.
+  - Frontend: `tsc --noEmit` OK, lint 0 errors, 28 unit tests pass, `vite build` OK.
+  - GitHub: CI + Security green on PR #145 head 4433b2f.
+
+### Classroom access (P3) and tenancy (P4)
+- One policy (`apps/tests/access_policy.py`) for start/resume/catalog/results; `visible_tests` uses the
+  same audience mapping (`effective_audience_q`).
+- FREE group member: assigned private test, no paywall, no quota. Non-member / other group: denied.
+  PRO outsider: private denied; allowed only for tests explicitly published to the paid catalog.
+  Removed member: no new attempts, history preserved. Joining a group grants no subscription.
+- Studio tests are now created **GROUP_ONLY** by default with an explicit audience choice
+  (group only / group + subscribers / public free). Real E2E caught that Studio tests used to be PUBLIC.
+- One canonical group scope (`get_teacher_groups`) used by school API, essays reports, studio,
+  attendance; center admins see their own center's groups (incl. centers without branches) and nothing else.
+- Cross-tenant suite probes reads and writes for anonymous / other-center student, teacher, admin.
+
+### Smart Import (P2)
+- PPTX: slide order, text boxes, numbered questions/options, table questions, answer keys from notes or a
+  key slide (never invented), multi-slide questions, image-only slide warnings, slide column in review UI.
+- Safe parsing: DOCTYPE/ENTITY refused, zip-bomb limits, extension/content mismatch refused.
+
+### Real E2E (Django + Vite, no mocks): 25/25 passed
+Homework journey (desktop + 390), overflow 320–1280, Ona tili DOCX import (1280/360), runner uz/ru/en,
+legacy /take resume, v7 Scenario A (two centers isolated), C (PPTX), D (scanned PDF refused),
+E (FREE member vs outsider), F (PRO outsider vs paid catalog).
+Repro: see "Real E2E"; also export `E2E_DB_PATH` and `SECRET_KEY` for the spec's DB checks.
+
+### Release pipeline (P1/H)
+PR → CI → Security → merge → CI on main → Build (CI-verified SHA, `sha-xxxxxxx`) → Staging deploy + smoke
+(automatic, skipped with a warning when STAGING_* secrets are absent) → Production **manual only**
+(`workflow_dispatch`, immutable tag, typed `deploy grandec.uz`, `production` environment) → verified
+pre-deploy pg_dump → smoke/health → release report. Rollback = rerun with the previous tag.
+
+### Owner blockers / decisions
+1. GitHub `production` environment: add required reviewers (Settings → Environments). Not configurable
+   from this session. Branch protection needs a paid plan (see `.github/BRANCH_PROTECTION.md`).
+2. Staging: create environment `staging` with STAGING_HOST/USER/SSH_KEY/DOMAIN; until then nothing deploys.
+3. Existing Studio tests in production stay as they are (PUBLIC). Decide whether to switch them to GROUP_ONLY.
+4. Not done this session: Scenario G (Telegram/Mini App end-to-end), test format categories
+   (Mavzulashtirilgan / Attestatsiya / Full Mock / Milliy sertifikat) with timed/untimed, P5 join-request
+   approval and welcome notifications.
+5. PR #134 is merged into this branch; close it after #145 merges. Dependabot PRs untouched.
