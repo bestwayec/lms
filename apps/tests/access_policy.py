@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from django.db import models
 from django.db.models import Q
 from django.utils import timezone
 
@@ -125,11 +126,13 @@ def resolve_test_access(
             is_paid_catalog=(mode in ("GROUP_AND_SUBSCRIBERS", "SUBSCRIBERS_ONLY")),
         )
 
-    # 2. Administrator & Superuser Immunity
+    # 2. Administrator & Superuser Immunity. A center admin is an administrator
+    #    only of tests that belong to their own center (never platform-wide).
     if (
         is_platform_admin(user)
         or getattr(user, "is_superuser", False)
-        or getattr(user, "role", "") in ("admin", "center_admin")
+        or getattr(user, "role", "") == "admin"
+        or (getattr(user, "role", "") == "center_admin" and test_in_user_centers(test, user))
     ):
         return TestAccessDecision(
             allowed=True,
@@ -208,11 +211,21 @@ def resolve_test_access(
     # Look for active Homework assigned to user or user's active groups
     hw = assignment
     if hw is None:
+        # Prefer an active assignment: a cancelled one for another group must
+        # not hide a live assignment for the student's current group.
         hw = (
             Homework.objects.filter(test=test)
             .filter(Q(group__students=user) | Q(student=user))
             .select_related("group")
-            .order_by("-created_at")
+            .order_by(
+                # ACTIVE first, then newest
+                models.Case(
+                    models.When(status=Homework.Status.ACTIVE, then=0),
+                    default=1,
+                    output_field=models.IntegerField(),
+                ),
+                "-created_at",
+            )
             .first()
         )
 
@@ -363,3 +376,64 @@ def resolve_test_access(
         access_source="unknown",
         is_paid_catalog=False,
     )
+
+
+# ---------------------------------------------------------------------------
+# Tenant scope
+# ---------------------------------------------------------------------------
+
+
+def user_center_ids(user: Any) -> set[int]:
+    """Learning centers a user administers or belongs to."""
+    from apps.organizations.models import LearningCenter
+
+    ids: set[int] = set()
+    if getattr(user, "learning_center_id", None):
+        ids.add(user.learning_center_id)
+    branch = getattr(user, "branch", None)
+    if branch is not None and getattr(branch, "center_id", None):
+        ids.add(branch.center_id)
+    if getattr(user, "pk", None):
+        ids.update(LearningCenter.objects.filter(owner_id=user.pk).values_list("id", flat=True))
+    return ids
+
+
+def test_center_ids(test: Any) -> set[int]:
+    """Centers a test belongs to: its author's / course teacher's / assigned group's center."""
+    ids: set[int] = set()
+    for person in (getattr(test, "created_by", None), getattr(getattr(test, "course", None), "teacher", None)):
+        if person is None:
+            continue
+        if getattr(person, "learning_center_id", None):
+            ids.add(person.learning_center_id)
+        branch = getattr(person, "branch", None)
+        if branch is not None and getattr(branch, "center_id", None):
+            ids.add(branch.center_id)
+    group = getattr(test, "assigned_group", None)
+    if group is not None and getattr(group, "branch", None) is not None and group.branch.center_id:
+        ids.add(group.branch.center_id)
+    return ids
+
+
+def test_in_user_centers(test: Any, user: Any) -> bool:
+    mine = user_center_ids(user)
+    return bool(mine) and bool(mine & test_center_ids(test))
+
+
+def effective_audience_q() -> dict[str, Q]:
+    """Query form of :func:`normalize_audience_mode` (keep the two in step).
+
+    Returns Q objects selecting tests whose *effective* audience is each mode.
+    """
+    students_only = Q(access_type="STUDENTS_ONLY")
+    legacy_pro = Q(access_type="PRO_ONLY") & ~Q(audience_mode__in=["GROUP_AND_SUBSCRIBERS", "SUBSCRIBERS_ONLY"])
+    orphan_public = Q(audience_mode="GROUP_ONLY", access_type="PUBLIC", created_by__isnull=True, assigned_group__isnull=True)
+    rest = ~students_only & ~legacy_pro
+    return {
+        "GROUP_ONLY": students_only | (rest & Q(audience_mode="GROUP_ONLY") & ~orphan_public),
+        "GROUP_AND_SUBSCRIBERS": ~students_only
+        & ((legacy_pro & Q(assigned_group__isnull=False)) | (rest & Q(audience_mode="GROUP_AND_SUBSCRIBERS"))),
+        "SUBSCRIBERS_ONLY": ~students_only
+        & ((legacy_pro & Q(assigned_group__isnull=True)) | (rest & Q(audience_mode="SUBSCRIBERS_ONLY"))),
+        "PUBLIC_FREE": rest & (Q(audience_mode="PUBLIC_FREE") | orphan_public),
+    }

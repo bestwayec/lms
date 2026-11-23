@@ -68,37 +68,24 @@ def visible_tests(queryset: QuerySet, user) -> QuerySet:
     if _is_admin(user):
         return queryset
 
-    # Published and active tests for non-staff
+    from .access_policy import effective_audience_q
+
+    # The effective audience (legacy access_type wins for STUDENTS_ONLY / PRO_ONLY),
+    # computed exactly like access_policy.normalize_audience_mode — OR-ing the raw
+    # fields made every STUDENTS_ONLY test with the default audience_mode public.
+    aud = effective_audience_q()
     published_active = Q(is_active=True, status="published")
-
-    # Group/Classroom tests explicitly assigned
-    assigned_members = published_active & (
-        Q(audience_mode="GROUP_ONLY") | Q(access_type=Test.AccessType.STUDENTS_ONLY)
-    ) & member_q(user)
-
-    # Public free tests
-    public_free = published_active & (
-        Q(audience_mode="PUBLIC_FREE") | Q(access_type=Test.AccessType.PUBLIC)
-    )
-
-    # Subscriber tests (available to subscribers or assigned members)
-    subscriber_catalog = published_active & (
-        Q(audience_mode__in=["GROUP_AND_SUBSCRIBERS", "SUBSCRIBERS_ONLY"])
-        | Q(access_type=Test.AccessType.PRO_ONLY)
-    )
-
+    public_free = published_active & aud["PUBLIC_FREE"]
     if not _authenticated(user):
-        return queryset.filter(public_free | (subscriber_catalog & Q(audience_mode="GROUP_AND_SUBSCRIBERS")))
+        return queryset.filter(public_free)
 
-    # Check if authenticated user is a subscriber
-    has_pro = bool(getattr(user, "has_pro_access", False))
-    if has_pro:
-        allowed_catalog = public_free | subscriber_catalog | assigned_members
-    else:
-        # Non-subscriber only sees assigned classroom tests, public tests, and catalog preview of subscriber tests
-        allowed_catalog = public_free | assigned_members | (subscriber_catalog & Q(audience_mode="GROUP_AND_SUBSCRIBERS") & member_q(user))
-
-    return queryset.filter(allowed_catalog | staff_q(user))
+    members = member_q(user)
+    classroom = published_active & (aud["GROUP_ONLY"] | aud["GROUP_AND_SUBSCRIBERS"]) & members
+    paid_catalog = published_active & (aud["GROUP_AND_SUBSCRIBERS"] | aud["SUBSCRIBERS_ONLY"])
+    allowed = public_free | classroom
+    if bool(getattr(user, "has_pro_access", False)):
+        allowed = allowed | paid_catalog
+    return queryset.filter(allowed | staff_q(user))
 
 
 def can_see_test_content(user, test: Test) -> bool:
