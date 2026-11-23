@@ -807,7 +807,8 @@ class SubmitAttemptView(APIView):
                     "pending_written_count": result.pending_written_count,
                     "rasch_score": str(getattr(result, "rasch_score", "0.00")),
                     "max_rasch_score": str(getattr(result, "max_rasch_score", "0.00")),
-                    "rasch_grade": getattr(result, "rasch_grade", ""),
+                    "rasch_grade": getattr(result, "rasch_grade_label", "") or getattr(result, "rasch_grade", ""),
+                    "rasch_mode": getattr(result, "rasch_mode", ""),
                     "rasch_explanation": getattr(result, "rasch_explanation", ""),
                     "streak_info": streak_result,
                 },
@@ -1764,7 +1765,7 @@ class TestGradebookView(APIView):
                 status_label = f"Yakunladi — {round(pct)}%"
 
                 grade_info = calculate_bmb_grade(pct)
-                grade = att.rasch_grade or grade_info["grade"]
+                grade = att.rasch_grade_label or grade_info["grade"]
                 badge_class = grade_info.get("badge_class", "badge-gold")
 
                 total_raw_sum += raw

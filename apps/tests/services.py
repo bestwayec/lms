@@ -92,6 +92,7 @@ class AttemptResult:
     rasch_score: Decimal = Decimal("0")
     max_rasch_score: Decimal = Decimal("0")
     rasch_grade: str = ""
+    rasch_mode: str = ""
     rasch_explanation: str = ""
 
 
@@ -1522,9 +1523,9 @@ class SubmitAttemptService:
 
                 # -- Rasch 1PL continuous dynamic evaluation -----------------------
         from apps.tests.rasch_engine import RaschEngine
-        rasch_score, max_rasch_score, rasch_grade, rasch_explanation = (
-            RaschEngine.evaluate_attempt_rasch(attempt, all_questions, answers_by_qid)
-        )
+        rasch_outcome = RaschEngine.evaluate_attempt_rasch(attempt, all_questions, answers_by_qid)
+        rasch_score, max_rasch_score, rasch_grade, rasch_explanation = rasch_outcome
+        rasch_mode = rasch_outcome.mode
 
         extra_fields: dict[str, Any] = {}
         if attempt.trial_part_id:
@@ -1578,6 +1579,7 @@ class SubmitAttemptService:
             cefr_level=cefr_val,
             rasch_score=rasch_score,
             rasch_grade=rasch_grade,
+            rasch_mode=rasch_mode,
         )
 
         # -- Auto-archive on completion -----------------------------------
@@ -1656,6 +1658,7 @@ class SubmitAttemptService:
                 "rasch_score": rasch_score,
                 "max_rasch_score": max_rasch_score,
                 "rasch_grade": rasch_grade,
+                "rasch_mode": rasch_mode,
                 "rasch_explanation": rasch_explanation,
             },
         )
@@ -1847,6 +1850,7 @@ class SubmitAttemptService:
                 rasch_score=result.rasch_score,
                 max_rasch_score=result.max_rasch_score,
                 rasch_grade=result.rasch_grade,
+                rasch_mode=result.rasch_mode,
                 rasch_explanation=result.rasch_explanation,
                 grading_status=result.grading_status,
                 objective_score=result.objective_score,

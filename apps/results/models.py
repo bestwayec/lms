@@ -96,6 +96,22 @@ class Result(models.Model):
         default="",
         help_text=_("Rasch dinamik bali bo'yicha daraja (A+, A, B+, B, C+, C, Fail)."),
     )
+    rasch_mode = models.CharField(
+        _("Rasch rejimi"),
+        max_length=16,
+        blank=True,
+        default="",
+        help_text=_(
+            "official = tasdiqlangan profil; practice = mashq (rasmiy emas); "
+            "uncalibrated = kalibratsiya kerak (baho berilmaydi). Bo'sh = eski yozuv."
+        ),
+    )
+
+    @property
+    def rasch_grade_label(self) -> str:
+        from apps.tests.rasch_engine import rasch_grade_label
+
+        return rasch_grade_label(self.rasch_grade, self.rasch_mode)
     rasch_explanation = models.TextField(
         _("Rasch tahlil tushuntirishi"),
         blank=True,
