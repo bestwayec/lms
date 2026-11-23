@@ -3346,7 +3346,9 @@
     "classroom_invite_code": "Taklif kodi",
     "studio_slide": "Slayd",
     "studio_warn_pptx_image_only_slide": "Slaydda faqat rasm bor — matnni qo‘lda kiriting (OCR yo‘q).",
-    "studio_err_pptx_no_text": "Taqdimotda matn topilmadi (slaydlar rasm bo‘lishi mumkin)."
+    "studio_err_pptx_no_text": "Taqdimotda matn topilmadi (slaydlar rasm bo‘lishi mumkin).",
+    "ent_import_setup_links": "Har bir o'quvchiga alohida, taxmin qilib bo'lmaydigan parol beriladi; haqiqiy emaili borlarga parol o'rnatish havolasi yuboriladi.",
+    "ent_import_manual_setup": "{n} ta o‘quvchida email yo‘q — ularga parolni markaz rahbari qo‘lda o‘rnatishi kerak."
   },
   "ru": {
     "spk_practise_again": "Повторить эту тему",
@@ -6695,7 +6697,9 @@
     "classroom_invite_code": "Код приглашения",
     "studio_slide": "Слайд",
     "studio_warn_pptx_image_only_slide": "На слайде только изображение — введите текст вручную (OCR нет).",
-    "studio_err_pptx_no_text": "В презентации нет текста (возможно, слайды — изображения)."
+    "studio_err_pptx_no_text": "В презентации нет текста (возможно, слайды — изображения).",
+    "ent_import_setup_links": "Каждому ученику выдаётся отдельный непредсказуемый пароль; ученикам с настоящим email отправляется ссылка для установки пароля.",
+    "ent_import_manual_setup": "У {n} учеников нет email — пароль им должен установить руководитель центра вручную."
   },
   "en": {
     "spk_practise_again": "Practise this topic again",
@@ -10044,6 +10048,8 @@
     "classroom_invite_code": "Invite Code",
     "studio_slide": "Slide",
     "studio_warn_pptx_image_only_slide": "Image-only slide — type its text manually (no OCR).",
-    "studio_err_pptx_no_text": "No text found in the presentation (slides may be images)."
+    "studio_err_pptx_no_text": "No text found in the presentation (slides may be images).",
+    "ent_import_setup_links": "Each student gets a separate, unguessable password; students with a real email receive a password-setup link.",
+    "ent_import_manual_setup": "{n} students have no email — the center admin must set their password manually."
   }
 }

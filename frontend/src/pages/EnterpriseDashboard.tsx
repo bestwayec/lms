@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
+import { useLang } from '../i18n/LangContext';
 
 function getErrMsg(err: unknown, fallback: string): string {
   if (err && typeof err === 'object') {
@@ -88,6 +89,7 @@ interface DashboardResponse {
 }
 
 export default function EnterpriseDashboard() {
+  const { t } = useLang();
   const [center, setCenter] = useState<CenterDetails | null>(null);
   const [centers, setCenters] = useState<CenterDetails[]>([]);
   const [stats, setStats] = useState<CenterStats | null>(null);
@@ -215,11 +217,11 @@ export default function EnterpriseDashboard() {
     setImportResult(null);
 
     try {
-      let res: { message: string };
+      let res: { message: string; manual_setup_required?: number };
       if (selectedFile) {
         const formData = new FormData();
         formData.append('file', selectedFile);
-        res = await api.post<{ message: string }>('/api/v1/enterprise/students/bulk-import/', formData, {
+        res = await api.post<{ message: string; manual_setup_required?: number }>('/api/v1/enterprise/students/bulk-import/', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
       } else if (csvText.trim()) {
@@ -234,14 +236,20 @@ export default function EnterpriseDashboard() {
             branch_name: parts[4] || '',
           };
         });
-        res = await api.post<{ message: string }>('/api/v1/enterprise/students/bulk-import/', { students });
+        res = await api.post<{ message: string; manual_setup_required?: number }>('/api/v1/enterprise/students/bulk-import/', { students });
       } else {
         alert("Iltimos, CSV faylni tanlang yoki matn maydoniga o'quvchilar ma'lumotlarini kiriting.");
         setImporting(false);
         return;
       }
 
-      setImportResult({ success: true, message: res.message });
+      const manual = res.manual_setup_required ?? 0;
+      setImportResult({
+        success: true,
+        message: manual
+          ? `${res.message} ${t('ent_import_manual_setup', '{n} ta o‘quvchida email yo‘q — ularga parolni markaz rahbari qo‘lda o‘rnatishi kerak.').replace('{n}', String(manual))}`
+          : res.message,
+      });
       setSelectedFile(null);
       setCsvText('');
       await loadData(center?.id);
@@ -968,7 +976,10 @@ export default function EnterpriseDashboard() {
             </h2>
             <p className="muted small" style={{ margin: '0 0 18px', lineHeight: 1.5 }}>
               Bir vaqtning o'zida 500 tagacha o'quvchini CSV fayl yoki matn orqali markaz bazasiga kiritish.
-              Barcha yangi o'quvchilar uchun standart parol: <code>Grand2026!</code>
+              {t(
+                'ent_import_setup_links',
+                "Har bir o'quvchiga alohida, taxmin qilib bo'lmaydigan parol beriladi; haqiqiy emaili borlarga parol o'rnatish havolasi yuboriladi.",
+              )}
             </p>
 
             {importResult && (
