@@ -27,16 +27,10 @@ from .serializers import GroupMemberSerializer, StudentGroupSerializer
 
 
 def _teacher_groups(user):
-    if is_platform_admin(user):
-        return StudentGroup.objects.all()
-    if getattr(user, "role", None) == "center_admin":
-        scope = Q(branch__director=user) | Q(branch__center__owner=user)
-        if getattr(user, "branch_id", None):
-            scope |= Q(branch_id=user.branch_id)
-        if getattr(user, "learning_center_id", None):
-            scope |= Q(branch__center_id=user.learning_center_id)
-        return StudentGroup.objects.filter(scope).distinct()
-    return StudentGroup.objects.filter(teacher=user)
+    """The one canonical group scope (platform admin / own center / own groups)."""
+    from apps.courses.teacher_workspace_service import get_teacher_groups
+
+    return get_teacher_groups(user)
 
 
 def _eligible_students(user, group=None):

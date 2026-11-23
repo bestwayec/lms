@@ -32,11 +32,16 @@ def get_teacher_groups(user):
     if is_platform_admin(user):
         return StudentGroup.objects.all()
     if getattr(user, "role", None) == "center_admin":
+        from apps.tests.access_policy import user_center_ids
+
         scope = Q(branch__director=user) | Q(branch__center__owner=user)
         if getattr(user, "branch_id", None):
             scope |= Q(branch_id=user.branch_id)
-        if getattr(user, "learning_center_id", None):
-            scope |= Q(branch__center_id=user.learning_center_id)
+        centers = user_center_ids(user)
+        if centers:
+            # Groups of the center's own teachers count too: many centers have
+            # no branches, and their groups carry no branch at all.
+            scope |= Q(branch__center_id__in=centers) | Q(branch__isnull=True, teacher__learning_center_id__in=centers)
         return StudentGroup.objects.filter(scope).distinct()
     return StudentGroup.objects.filter(teacher=user)
 

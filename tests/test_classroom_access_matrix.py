@@ -167,3 +167,15 @@ def test_classroom_start_does_not_consume_free_quota(world):
     with mock.patch("apps.payments.entitlements.enforce_test_quota") as charge:
         StartAttemptService.execute(test_id=w["test"].id, student=w["free_member"])
     assert charge.call_count == 0
+
+
+@pytest.mark.django_db
+def test_center_admin_sees_own_teachers_groups_without_branches(world):
+    """Many centers have no branches: the admin must still see their teachers' groups — and only theirs."""
+    from apps.courses.teacher_workspace_service import get_teacher_groups
+
+    w = world
+    ids_a = set(get_teacher_groups(w["admin_a"]).values_list("id", flat=True))
+    ids_b = set(get_teacher_groups(w["admin_b"]).values_list("id", flat=True))
+    assert w["ga"].id in ids_a and w["gb"].id not in ids_a
+    assert w["gb"].id in ids_b and w["ga"].id not in ids_b
