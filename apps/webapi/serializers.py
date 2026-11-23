@@ -90,7 +90,31 @@ class CourseMiniSerializer(serializers.ModelSerializer):
 
 class TestAdminSerializer(serializers.ModelSerializer):
     course_title = serializers.CharField(source="course.title", read_only=True)
-    q_count = serializers.IntegerField(read_only=True)
+    q_count = serializers.IntegerField(read_only=True, default=0)
+    attempts_count = serializers.IntegerField(read_only=True, default=0)
+    assignments_count = serializers.IntegerField(read_only=True, default=0)
+    results_count = serializers.IntegerField(read_only=True, default=0)
+    creator_name = serializers.SerializerMethodField()
+    creator_id = serializers.IntegerField(source="created_by_id", read_only=True, allow_null=True)
+    can_delete = serializers.SerializerMethodField()
+    can_archive = serializers.SerializerMethodField()
+
+    def get_creator_name(self, obj: Test) -> str:
+        if not obj.created_by:
+            return ""
+        return obj.created_by.get_full_name() or obj.created_by.email or str(obj.created_by)
+
+    def get_can_delete(self, obj: Test) -> bool:
+        attempts = getattr(obj, "attempts_count", None)
+        assignments = getattr(obj, "assignments_count", None)
+        if attempts is None:
+            attempts = obj.attempts.count()
+        if assignments is None:
+            assignments = obj.homework_assignments.count()
+        return obj.status == "draft" and attempts == 0 and assignments == 0
+
+    def get_can_archive(self, obj: Test) -> bool:
+        return obj.status != "archived"
 
     class Meta:
         model = Test
@@ -114,6 +138,13 @@ class TestAdminSerializer(serializers.ModelSerializer):
             "shuffle_questions",
             "shuffle_choices",
             "q_count",
+            "attempts_count",
+            "assignments_count",
+            "results_count",
+            "creator_name",
+            "creator_id",
+            "can_delete",
+            "can_archive",
             "scoring_profile",
             "created_at",
             "updated_at",

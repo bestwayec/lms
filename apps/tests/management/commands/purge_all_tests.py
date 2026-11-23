@@ -95,6 +95,17 @@ class Command(BaseCommand):
         confirm = options.get("confirm", False)
         demo_only = options.get("demo_only", False)
 
+        from django.conf import settings
+        is_dev = getattr(settings, "DEBUG", False) or "test" in getattr(settings, "SETTINGS_MODULE", "") or getattr(settings, "TESTING", False)
+        if not is_dev and not dry_run:
+            self.stderr.write(
+                self.style.ERROR(
+                    "XAVFSIZLIK CHEKLOVI: purge_all_tests buyrug'i faqat ishlab chiqish (DEBUG/TEST) muhitida ruxsat etiladi.\n"
+                    "Jonli yoki production muhitda ushbu buyruqni avtomatik bajarish qat'iyan rad etiladi!"
+                )
+            )
+            sys.exit(1)
+
         if not confirm and not dry_run:
             self.stderr.write(
                 self.style.ERROR(

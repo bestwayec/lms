@@ -9,6 +9,43 @@
    - Ustoz kabinetida har bir o'quvchining PRO holati (`⭐ PRO (Faol)`), ishlagan testlari va esselari aks etishi.
 3. Attestatsiya 2026 yangi diagnostika testini 50 ta savoli bilan bazaga seed qilish, kategoriyalashtirish va VPS ga deploy qilish.
 
+### 2.91. Rasmiy Versiya v4.1: Admin Test Control Center 4.0 + Telegram Bot 4.0 + Unified Homework Engine Sync
+- **Maqsad**:
+  * `/panel/tests` boshqaruv markazini xavfsiz va samarali qilish: ko'p darajali qidiruv va filterlar (`q`, `status`, `subject`, `creator`), umumiy ko'rsatkichlar (Total, Published, Draft, Archived, Attempted), xavfsiz o'chirish (urinishlar, natijalar yoki faol vazifalar mavjud bo'lsa 409 Conflict bilan bloklash), ommaviy amallar (arxivlash, tiklash, qoralamalarni tozalash, JSON eksport, oldindan ko'rish bilan xavfsiz o'chirish) va Django admin audit jurnali (`LogEntry`).
+  * Telegram Bot 4.0 arxitekturasi va UX optimizatsiyasi: Mavjud `python-telegram-bot` asosida qadamlar sonini kamaytirish (~4-5 tapda uy vazifasi berish: Vazifa yuborish ➔ Guruh ➔ Nashr qilingan test ➔ Muddat ➔ Tasdiqlash). O'quvchi uchun: "Mening vazifalarim" ➔ Kutilayotgan vazifalar ➔ Mini App / Web Runner / Telegram Quiz. Chat spamsiz `edit_message_text` va qaytish tugmalari.
+  * Bot Test Engine: Faqat nashr qilingan (`status="published"`, `is_active=True`) testlarni taqdim etish; murakkab testlarni (IELTS/CEFR/bo'limli/audio/insho) Mini App yoki Web Runnerga yo'naltirish; boshlangan urinishlarni davom ettirish (`resume`); to'g'ri javoblarni callback data orqali sizib chiqishini to'liq bartaraf etish.
+  * Ustoz vazifa integratsiyasi: Unified Homework Engine (`create_unified_homework`) bilan sinxronizatsiya va boshqa guruhga tegishli testlarni buzishning oldini olish.
+- **Bajarildi**:
+  * [x] **Backend & Xizmatlar**:
+    - `apps/tests/admin_test_service.py`: `get_scoped_tests_queryset` (Platform Admin, Center Admin, Ustoz huquqlari bo'yicha RBAC izolyatsiya), `annotate_test_metrics`, `calculate_test_stats`, `check_safe_deletion`, `duplicate_test` (bo'limlar, matnlar, savollar va variantlarni nusxalash), `archive_test`, `restore_test`, `unpublish_test`, `preview_bulk_action`, `execute_bulk_action`.
+    - `apps/webapi/views_panel.py`: `tests_view` qidiruv, filter, paginatsiya va statistika bilan boyitildi; `test_detail_view` DELETE uchun `check_safe_deletion` va 409 Conflict tekshiruvi; `test_duplicate_view`, `test_archive_view`, `test_restore_view`, `test_unpublish_view`, `test_bulk_preview_view`, `test_bulk_view`.
+    - `apps/tests/admin.py`: Django Admin uchun `archive_selected_tests`, `restore_selected_tests` va `delete_model` xavfsizlik to'sig'i.
+    - `apps/tests/management/commands/purge_all_tests.py`: Production va avtomatlashtirilgan muhitda testlarni o'chirishni qat'iy taqiqlovchi xavfsizlik to'sig'i qo'yildi.
+  * [x] **Telegram Bot 4.0 & Homework Integratsiyasi**:
+    - `apps/notifications/bot/quiz.py`: Faqat `published` va `is_active=True` testlarni ishga tushirish; murakkab testlarni (bo'limlar, matnlar, audio, non-MCQ) aniqlab, Mini App (`/tma/#/tests/:id`) yoki Web Runner (`/take-test/:id`) ga havola berish; boshlangan `TestAttempt` ni qayta ishlash (`resume`); course mavjud bo'lmaganda xatolikni oldini olish.
+    - `apps/notifications/bot/teacher_assignments.py`: Unified Homework Engine (`create_unified_homework`) orqali `Homework` yaratish; boshqa guruhga biriktirilgan testni buzishni taqiqlash.
+    - `apps/notifications/bot/handlers.py`: Reply va inline klaviaturalarga "📚 Mening vazifalarim" va "📤 Vazifa yuborish" (`tassign_quick`) qo'shildi.
+  * [x] **Frontend & UI (`frontend/src/pages/PanelTests.tsx`, `api.ts`, `translations.json`)**:
+    - `PanelTests.tsx`: Statistika kartalari (Total, Published, Draft, Archived, Attempted), qidiruv va filter paneli, ommaviy amallar paneli (Arxivlash, Tiklash, Qoralamani tozalash, JSON eksport, Xavfsiz o'chirish), `BulkPreviewModal` (himoyalangan va ta'sirlangan testlarni ko'rsatuvchi modal), nusxalash/arxivlash/tiklash tugmalari.
+    - `api.ts`: Barcha yangi panel test API chaqiruvlari.
+    - `translations.json`: `uz`, `ru`, `en` tillarida 100% lokalizatsiya.
+  * [x] **Testlar & QA**:
+    - `tests/test_admin_test_control_center.py`: 8 ta keng qamrovli test 100% PASS.
+    - `tests/test_teacher_telegram_assignment.py`: 4 ta test PASS, 1 ta skipped (PG-only lock).
+    - `python manage.py check`: 0 issues.
+    - `python manage.py makemigrations --check --dry-run`: 0 missing migrations.
+    - `ruff check`: 0 lint errors.
+    - `npm test`: 28 ta test 100% PASS.
+    - `npm run build`: 0 errors (4.71s muvaffaqiyatli build).
+- **Jarayonda**:
+  * Hujjatlar va test natijalarini qayd etish, git commit va Draft PR yaratish.
+- **Keyingi qadamlar**:
+  * Draft PR tekshiruvi va keyingi bosqichlar (O'quvchi dashboard vidjetlari, guruh trendlari).
+- **Muhim qarorlar**:
+  * Test bazada urinishlar, natijalar yoki faol uy vazifalariga ega bo'lsa, uni o'chirish qat'iyan taqiqlanadi (409 Conflict qaytariladi); faqat ishlatilmagan qoralamalar o'chirilishi mumkin.
+  * Telegram botida to'g'ri javob kalitlari hech qachon `callback_data` ichida yuborilmaydi (xavfsizlik kafolati).
+  * Production muhitida `purge_all_tests` buyrug'i mutlaqo ishga tushirilmaydi.
+
 ### 2.90. Rasmiy Versiya v3.0: Stage 4 — Unified Homework Engine & Student Portal
 - **Maqsad**:
   * Uy vazifalarini xavfsiz bekor qilish (soft-cancellation), testlar xavfsizligini ta'minlash (boshqa ustozning yoki DRAFT testlarini o'g'irlashni taqiqlash), ko'p guruhli test biriktirishda `assigned_group` ni buzmaslik va tranzaksion yaxlitlik.

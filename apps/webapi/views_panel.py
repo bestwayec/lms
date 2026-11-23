@@ -9,9 +9,23 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.accounts.access import is_platform_admin
 from apps.accounts.models import Profile, User
 from apps.essays.models import EssaySubmission, EssayTopic
 from apps.payments.models import PaymentRequest, UserSubscription
+from apps.tests.admin_test_service import (
+    annotate_test_metrics,
+    archive_test,
+    calculate_test_stats,
+    check_safe_deletion,
+    duplicate_test,
+    execute_bulk_action,
+    get_scoped_tests_queryset,
+    log_test_audit,
+    preview_bulk_action,
+    restore_test,
+    unpublish_test,
+)
 from apps.tests.models import (
     Choice,
     GapBlank,
@@ -23,7 +37,11 @@ from apps.tests.models import (
     TestAttempt,
 )
 
-from .permissions import IsPanelAdmin, IsPanelAdminOrEssayCreator
+from .permissions import (
+    IsPanelAdmin,
+    IsPanelAdminOrEssayCreator,
+    IsTeacherOrAdmin,
+)
 from .serializers import (
     EssayTopicSerializer,
     QuestionAdminSerializer,
@@ -204,40 +222,123 @@ def cohort_analytics_view(request):
 
 
 # ---------------------------------------------------------------------------
-# Tests
+# Tests — Admin Test Control Center 4.0
 # ---------------------------------------------------------------------------
 @api_view(["GET", "POST"])
-@permission_classes([IsPanelAdmin])
+@permission_classes([IsTeacherOrAdmin])
 def tests_view(request):
     if request.method == "POST":
         ser = TestAdminSerializer(data=request.data)
         if not ser.is_valid():
             return Response(ser.errors, status=400)
-        ser.save()
-        return Response(ser.data, status=201)
-    qs = Test.objects.select_related("course").annotate(q_count=Count("questions"))
+        test = ser.save(created_by=request.user)
+        return Response(TestAdminSerializer(test).data, status=201)
+
+    base_qs = get_scoped_tests_queryset(request.user).select_related("course", "created_by")
+    stats = calculate_test_stats(base_qs)
+
+    qs = base_qs
     q = (request.GET.get("q") or "").strip()
     status = (request.GET.get("status") or "").strip()
+    subject = (request.GET.get("subject") or "").strip()
+    creator_id = request.GET.get("creator_id")
+    center_id = request.GET.get("center_id")
+
     if q:
-        qs = qs.filter(title__icontains=q)
-    if status in {c[0] for c in Test.Status.choices}:
+        qs = qs.filter(
+            Q(title__icontains=q)
+            | Q(description__icontains=q)
+            | Q(subject__icontains=q)
+            | Q(created_by__first_name__icontains=q)
+            | Q(created_by__last_name__icontains=q)
+            | Q(created_by__email__icontains=q)
+        )
+
+    if status == "published":
+        qs = qs.filter(status="published", is_active=True)
+    elif status == "draft":
+        qs = qs.filter(status="draft")
+    elif status == "archived":
+        qs = qs.filter(status="archived")
+    elif status == "inactive":
+        qs = qs.filter(is_active=False)
+    elif status and status in {c[0] for c in Test.Status.choices}:
         qs = qs.filter(status=status)
-    tests = qs.order_by("-created_at")[:100]
+
+    if subject:
+        qs = qs.filter(subject__iexact=subject)
+
+    if creator_id:
+        try:
+            qs = qs.filter(created_by_id=int(creator_id))
+        except (ValueError, TypeError):
+            pass
+
+    if center_id and is_platform_admin(request.user):
+        try:
+            qs = qs.filter(created_by__learning_center_id=int(center_id))
+        except (ValueError, TypeError):
+            pass
+
+    qs = annotate_test_metrics(qs)
+    total_filtered = qs.count()
+
+    try:
+        page = max(1, int(request.GET.get("page", 1)))
+    except (ValueError, TypeError):
+        page = 1
+    try:
+        page_size = min(100, max(5, int(request.GET.get("page_size", 25))))
+    except (ValueError, TypeError):
+        page_size = 25
+
+    offset = (page - 1) * page_size
+    tests = list(qs.order_by("-created_at")[offset : offset + page_size])
+    total_pages = (total_filtered + page_size - 1) // page_size if total_filtered else 1
+
     return Response(
         {
             "results": TestAdminSerializer(tests, many=True).data,
-            "statuses": [{"value": v, "label": l} for v, l in Test.Status.choices],
+            "statuses": [
+                {"value": "", "label": "Barchasi"},
+                {"value": "published", "label": "E'lon qilingan"},
+                {"value": "draft", "label": "Qoralama"},
+                {"value": "archived", "label": "Arxivlangan"},
+                {"value": "inactive", "label": "Nofaol"},
+            ],
+            "stats": stats,
+            "total": total_filtered,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
         }
     )
 
 
 @api_view(["GET", "PATCH", "DELETE"])
-@permission_classes([IsPanelAdmin])
+@permission_classes([IsTeacherOrAdmin])
 def test_detail_view(request, test_id: int):
-    test = get_object_or_404(Test, id=test_id)
+    test = get_object_or_404(Test.objects.select_related("course", "created_by"), id=test_id)
+    scoped_qs = get_scoped_tests_queryset(request.user)
+    if not scoped_qs.filter(id=test.id).exists():
+        return Response({"detail": "Sizda ushbu testni boshqarish huquqi yo'q."}, status=403)
+
     if request.method == "DELETE":
+        is_safe, reason, details = check_safe_deletion(test)
+        if not is_safe:
+            return Response(
+                {
+                    "detail": reason,
+                    "can_archive": True,
+                    "details": details,
+                },
+                status=409,
+            )
+        from apps.tests.admin_test_service import DELETION
+        log_test_audit(request.user, test, DELETION, f"Test o'chirildi: #{test.id}")
         test.delete()
         return Response(status=204)
+
     ser = TestAdminSerializer(
         test,
         data=request.data if request.method == "PATCH" else None,
@@ -253,15 +354,94 @@ def test_detail_view(request, test_id: int):
 
 
 @api_view(["POST"])
-@permission_classes([IsPanelAdmin])
+@permission_classes([IsTeacherOrAdmin])
 def test_status_view(request, test_id: int):
     test = get_object_or_404(Test, id=test_id)
+    scoped_qs = get_scoped_tests_queryset(request.user)
+    if not scoped_qs.filter(id=test.id).exists():
+        return Response({"detail": "Sizda ushbu testni o'zgartirish huquqi yo'q."}, status=403)
+
     new_status = str(request.data.get("status", "")).strip()
     if new_status not in {c[0] for c in Test.Status.choices}:
         return Response({"detail": "Invalid status."}, status=400)
     test.status = new_status
     test.save()  # keeps is_active in sync (same as HTML view)
     return Response(TestAdminSerializer(test).data)
+
+
+@api_view(["POST"])
+@permission_classes([IsTeacherOrAdmin])
+def test_duplicate_view(request, test_id: int):
+    test = get_object_or_404(Test, id=test_id)
+    scoped_qs = get_scoped_tests_queryset(request.user)
+    if not scoped_qs.filter(id=test.id).exists():
+        return Response({"detail": "Sizda ushbu testni nusxalash huquqi yo'q."}, status=403)
+
+    cloned = duplicate_test(test, request.user)
+    return Response(TestAdminSerializer(cloned).data, status=201)
+
+
+@api_view(["POST"])
+@permission_classes([IsTeacherOrAdmin])
+def test_archive_view(request, test_id: int):
+    test = get_object_or_404(Test, id=test_id)
+    scoped_qs = get_scoped_tests_queryset(request.user)
+    if not scoped_qs.filter(id=test.id).exists():
+        return Response({"detail": "Sizda ushbu testni arxivlash huquqi yo'q."}, status=403)
+
+    archived = archive_test(test, request.user)
+    return Response(TestAdminSerializer(archived).data)
+
+
+@api_view(["POST"])
+@permission_classes([IsTeacherOrAdmin])
+def test_restore_view(request, test_id: int):
+    test = get_object_or_404(Test, id=test_id)
+    scoped_qs = get_scoped_tests_queryset(request.user)
+    if not scoped_qs.filter(id=test.id).exists():
+        return Response({"detail": "Sizda ushbu testni tiklash huquqi yo'q."}, status=403)
+
+    restored = restore_test(test, request.user)
+    return Response(TestAdminSerializer(restored).data)
+
+
+@api_view(["POST"])
+@permission_classes([IsTeacherOrAdmin])
+def test_unpublish_view(request, test_id: int):
+    test = get_object_or_404(Test, id=test_id)
+    scoped_qs = get_scoped_tests_queryset(request.user)
+    if not scoped_qs.filter(id=test.id).exists():
+        return Response({"detail": "Sizda ushbu testni tahrirlash huquqi yo'q."}, status=403)
+
+    unpublished = unpublish_test(test, request.user)
+    return Response(TestAdminSerializer(unpublished).data)
+
+
+@api_view(["POST"])
+@permission_classes([IsTeacherOrAdmin])
+def test_bulk_preview_view(request):
+    test_ids = request.data.get("test_ids") or []
+    action = str(request.data.get("action", "")).strip()
+    if not isinstance(test_ids, list) or not action:
+        return Response({"detail": "test_ids va action parametrlari talab qilinadi."}, status=400)
+
+    preview = preview_bulk_action(test_ids, action, request.user)
+    return Response(preview)
+
+
+@api_view(["POST"])
+@permission_classes([IsTeacherOrAdmin])
+def test_bulk_view(request):
+    test_ids = request.data.get("test_ids") or []
+    action = str(request.data.get("action", "")).strip()
+    if not isinstance(test_ids, list) or not action:
+        return Response({"detail": "test_ids va action parametrlari talab qilinadi."}, status=400)
+
+    try:
+        result = execute_bulk_action(test_ids, action, request.user)
+        return Response(result)
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=400)
 
 
 # ---------------------------------------------------------------------------

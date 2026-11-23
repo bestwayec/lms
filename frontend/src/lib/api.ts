@@ -1551,10 +1551,78 @@ export const PlacementQuiz = {
 export const Panel = {
   dashboard: () => api<PanelDashboardResponse>('/api/v1/panel/dashboard/'),
   cohorts: () => api<CohortAnalyticsResponse>('/api/v1/panel/analytics/cohorts/'),
-  tests: (q = '', status = '') =>
-    api<{ results: Record<string, unknown>[]; statuses: { value: string; label: string }[] }>(
-      `/api/v1/panel/tests/?q=${encodeURIComponent(q)}&status=${encodeURIComponent(status)}`,
-    ),
+  tests: (
+    qOrParams: string | { q?: string; status?: string; subject?: string; page?: number; page_size?: number } = '',
+    status = '',
+  ) => {
+    let qs = '';
+    if (typeof qOrParams === 'object' && qOrParams !== null) {
+      const sp = new URLSearchParams();
+      if (qOrParams.q) sp.set('q', qOrParams.q);
+      if (qOrParams.status) sp.set('status', qOrParams.status);
+      if (qOrParams.subject) sp.set('subject', qOrParams.subject);
+      if (qOrParams.page) sp.set('page', String(qOrParams.page));
+      if (qOrParams.page_size) sp.set('page_size', String(qOrParams.page_size));
+      qs = sp.toString() ? `?${sp.toString()}` : '';
+    } else {
+      const sp = new URLSearchParams();
+      if (qOrParams) sp.set('q', qOrParams);
+      if (status) sp.set('status', status);
+      qs = sp.toString() ? `?${sp.toString()}` : '';
+    }
+    return api<{
+      results: Record<string, unknown>[];
+      statuses: { value: string; label: string }[];
+      stats?: {
+        total_count: number;
+        published_count: number;
+        draft_count: number;
+        archived_count: number;
+        attempted_count: number;
+      };
+      total?: number;
+      page?: number;
+      page_size?: number;
+      total_pages?: number;
+    }>(`/api/v1/panel/tests/${qs}`);
+  },
+  duplicateTest: (id: number | string) =>
+    api<Record<string, unknown>>(`/api/v1/panel/tests/${id}/duplicate/`, { method: 'POST' }),
+  archiveTest: (id: number | string) =>
+    api<Record<string, unknown>>(`/api/v1/panel/tests/${id}/archive/`, { method: 'POST' }),
+  restoreTest: (id: number | string) =>
+    api<Record<string, unknown>>(`/api/v1/panel/tests/${id}/restore/`, { method: 'POST' }),
+  unpublishTest: (id: number | string) =>
+    api<Record<string, unknown>>(`/api/v1/panel/tests/${id}/unpublish/`, { method: 'POST' }),
+  bulkPreviewTests: (testIds: (number | string)[], action: string) =>
+    api<{
+      action: string;
+      total_selected: number;
+      drafts_count: number;
+      published_count: number;
+      archived_count: number;
+      has_assignments_count: number;
+      has_attempts_count: number;
+      safe_to_delete_count: number;
+      blocked_from_delete_count: number;
+      retained_count: number;
+      blocked_tests: {
+        id: number;
+        title: string;
+        status: string;
+        attempts_count: number;
+        assignments_count: number;
+        reason: string;
+      }[];
+    }>('/api/v1/panel/tests/bulk-preview/', {
+      method: 'POST',
+      body: JSON.stringify({ test_ids: testIds, action }),
+    }),
+  bulkActionTests: (testIds: (number | string)[], action: string) =>
+    api<Record<string, unknown>>('/api/v1/panel/tests/bulk/', {
+      method: 'POST',
+      body: JSON.stringify({ test_ids: testIds, action }),
+    }),
   createTest: (payload: Record<string, unknown>) =>
     api<Record<string, unknown>>('/api/v1/panel/tests/', { method: 'POST', body: JSON.stringify(payload) }),
   updateTest: (id: number | string, payload: Record<string, unknown>) =>

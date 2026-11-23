@@ -18,7 +18,7 @@ import random
 from typing import TYPE_CHECKING
 
 from asgiref.sync import sync_to_async
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, WebAppInfo
 from telegram.ext import ContextTypes
 
 if TYPE_CHECKING:
@@ -94,7 +94,7 @@ async def quiz_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     tests = await _run_db(
         lambda: list(
-            Test.objects.filter(is_active=True)
+            Test.objects.filter(is_active=True, status="published")
             .select_related("course")
             .order_by("-created_at")[:10]
         )
@@ -118,7 +118,7 @@ async def quiz_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         [
             InlineKeyboardButton(
                 "📱 Fast CBT Test (Telegram Mini App)",
-                web_app={"url": f"{site_url}/tma/#/tests"},
+                web_app=WebAppInfo(url=f"{site_url}/tma/#/tests"),
             )
         ]
     ]
@@ -211,9 +211,22 @@ async def _start_quiz(
     def _load_test():
         from apps.tests.models import Test
 
-        test = Test.objects.filter(id=test_id, is_active=True).first()
+        test = (
+            Test.objects.filter(id=test_id, is_active=True, status="published")
+            .select_related("course")
+            .first()
+        )
         if not test:
-            return None
+            return None, None, False
+
+        is_complex = bool(
+            test.sections.exists()
+            or test.passages.exists()
+            or test.audio_url
+            or test.questions.exclude(
+                question_type__in=["single", "multiple", "SINGLE", "MULTIPLE"]
+            ).exists()
+        )
 
         questions = list(
             # Text-match questions have no choices to render as inline buttons
@@ -221,15 +234,37 @@ async def _start_quiz(
             .prefetch_related("choices")
             .order_by("position")
         )
-        return test, questions
+        return test, questions, is_complex
 
     result = await _run_db(_load_test)
 
-    if not result:
-        await query.edit_message_text("❌ Test topilmadi yoki faol emas.")
+    if not result or result[0] is None:
+        await query.edit_message_text("❌ Test topilmadi, nashr qilinmagan yoki faol emas.")
         return
 
-    test, questions = result
+    test, questions, is_complex = result
+
+    if is_complex:
+        from django.conf import settings as _settings
+
+        site_url = getattr(_settings, "SITE_URL", "https://grandec.uz").rstrip("/")
+        web_app_url = f"{site_url}/tma/#/tests/{test.id}"
+        web_url = f"{site_url}/take-test/{test.id}"
+
+        text = (
+            f"📖 *{test.title}*\n\n"
+            f"ℹ️ Ushbu test kengaytirilgan formatdagi imtihondir (matnlar, bo'limlar yoki audio materiallar mavjud).\n\n"
+            f"Eng qulay va to'liq tajriba uchun quyidagi tugma orqali topshiring:"
+        )
+        buttons = InlineKeyboardMarkup(
+            [
+                [InlineKeyboardButton("📱 Mini App orqali topshirish", web_app=WebAppInfo(url=web_app_url))],
+                [InlineKeyboardButton("🌐 Veb-saytda topshirish", url=web_url)],
+                [InlineKeyboardButton("🔙 Boshqa testlar", callback_data="menu_tests")],
+            ]
+        )
+        await query.edit_message_text(text, parse_mode="Markdown", reply_markup=buttons)
+        return
 
     if not questions:
         await query.edit_message_text("❌ Bu testda savollar yo'q.")
@@ -266,10 +301,12 @@ async def _start_quiz(
 
     context.user_data[QUIZ_KEY] = quiz_data
 
+    course_title = test.course.title if test.course else "Umumiy"
+
     # Show confirmation
     text = (
         f"🧠 *{test.title}*\n\n"
-        f"📚 Kurs: {test.course.title}\n"
+        f"📚 Kurs: {course_title}\n"
         f"❓ Savollar: *{len(questions)}*\n"
         f"⏱ Vaqt: *{test.time_limit_minutes} daqiqa*\n"
         f"🎯 O'tish: *{test.pass_percentage}%*\n\n"
@@ -725,26 +762,41 @@ def _save_quiz_result_sync(user: "User", quiz: dict) -> dict | None:
     from django.db.models import F
     from django.utils import timezone
 
-    from apps.tests.models import Test
+    from apps.tests.models import Test, TestAttempt
     from apps.tests.services import (
         SaveAnswerService,
         StartAttemptService,
         SubmitAttemptService,
     )
 
-    test = Test.objects.filter(id=quiz["test_id"], is_active=True).first()
+    test = Test.objects.filter(id=quiz["test_id"], is_active=True, status="published").first()
     if not test:
-        logger.warning("Quiz save: test %s not found/inactive", quiz.get("test_id"))
+        logger.warning("Quiz save: test %s not found/inactive/unpublished", quiz.get("test_id"))
         return None
 
-    # 1) Start an official attempt
-    try:
-        attempt = StartAttemptService.execute(test_id=test.id, student=user)
-    except ValueError as exc:
-        # e.g. max_attempts reached, active attempt already in progress, or
-        # the user is not a student — nothing we can (or should) record.
-        logger.warning("Quiz save: could not start attempt: %s", exc)
-        return None
+    # 1) Start an official attempt or resume existing in-progress attempt
+    attempt = TestAttempt.objects.filter(test=test, student=user, status="in_progress").first()
+    if not attempt:
+        try:
+            attempt = StartAttemptService.execute(test_id=test.id, student=user)
+        except ValueError as exc:
+            logger.warning("Quiz save: could not start attempt: %s", exc)
+            last_attempt = (
+                TestAttempt.objects.filter(test=test, student=user)
+                .order_by("-created_at")
+                .first()
+            )
+            if last_attempt and last_attempt.status == "completed":
+                from apps.results.models import Result
+                res = Result.objects.filter(attempt=last_attempt).first()
+                if res:
+                    return {
+                        "correct": res.correct_answers,
+                        "total": res.total_questions,
+                        "percentage": float(res.percentage),
+                        "is_passed": res.is_passed,
+                    }
+            return None
 
     # 2) Record answers + 3) grade through the official pipeline
     try:
