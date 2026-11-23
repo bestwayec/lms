@@ -117,7 +117,6 @@ def join_group_by_token(student: Any, token: str) -> dict[str, Any]:
         try:
             invitation = (
                 GroupInvitation.objects.select_for_update()
-                .select_related("group", "group__branch", "group__teacher")
                 .get(token=token)
             )
         except GroupInvitation.DoesNotExist:
@@ -223,7 +222,6 @@ def join_group_by_code(student: Any, code: str) -> dict[str, Any]:
         try:
             group = (
                 StudentGroup.objects.select_for_update()
-                .select_related("teacher", "branch")
                 .get(invite_code__iexact=code)
             )
         except StudentGroup.DoesNotExist:
@@ -272,7 +270,6 @@ def review_join_request(
         try:
             join_req = (
                 GroupJoinRequest.objects.select_for_update()
-                .select_related("group", "student", "invitation")
                 .get(pk=request_id)
             )
         except GroupJoinRequest.DoesNotExist:
@@ -286,8 +283,8 @@ def review_join_request(
         now = timezone.now()
         if approved:
             # Check if associated invitation was revoked or expired while request was pending
-            if join_req.invitation:
-                inv = GroupInvitation.objects.select_for_update().get(pk=join_req.invitation.pk)
+            if join_req.invitation_id:
+                inv = GroupInvitation.objects.select_for_update().get(pk=join_req.invitation_id)
                 if inv.is_revoked:
                     raise ValidationError("Taklifnoma bekor qilingan, so'rovni tasdiqlab bo'lmaydi.")
                 if inv.is_expired:
@@ -308,8 +305,8 @@ def review_join_request(
             join_req.reviewed_at = now
             join_req.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
 
-            if join_req.invitation:
-                GroupInvitation.objects.filter(pk=join_req.invitation.pk).update(
+            if join_req.invitation_id:
+                GroupInvitation.objects.filter(pk=join_req.invitation_id).update(
                     uses_count=F("uses_count") + 1
                 )
 
