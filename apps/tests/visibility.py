@@ -49,24 +49,16 @@ def staff_q(user) -> Q:
 
 
 def member_q(user) -> Q:
-    """STUDENTS_ONLY tests the user belongs to (same rule as StartAttemptService)."""
+    """Classroom tests the user belongs to via explicit assignment (Homework or assigned_group)."""
     if not _authenticated(user):
         return Q(pk__in=[])
     my_groups = StudentGroup.objects.filter(students=user)
-    my_teachers = my_groups.values("teacher_id")
     return (
         Q(assigned_group_id__in=my_groups.values("pk"))
         | Q(
             pk__in=Homework.objects.filter(Q(group__students=user) | Q(student=user), test__isnull=False)
             .exclude(status=Homework.Status.CANCELLED)
             .values("test_id")
-        )
-        | (
-            Q(assigned_group__isnull=True)
-            & (
-                Q(created_by_id__in=my_teachers)
-                | (Q(created_by__isnull=True) & Q(course__teacher_id__in=my_teachers))
-            )
         )
     )
 
@@ -75,11 +67,38 @@ def visible_tests(queryset: QuerySet, user) -> QuerySet:
     """Restrict *queryset* of ``Test`` to what *user* may see in a catalogue or open directly."""
     if _is_admin(user):
         return queryset
-    public = Q(is_active=True) & ~Q(access_type=Test.AccessType.STUDENTS_ONLY)
+
+    # Published and active tests for non-staff
+    published_active = Q(is_active=True, status="published")
+
+    # Group/Classroom tests explicitly assigned
+    assigned_members = published_active & (
+        Q(audience_mode="GROUP_ONLY") | Q(access_type=Test.AccessType.STUDENTS_ONLY)
+    ) & member_q(user)
+
+    # Public free tests
+    public_free = published_active & (
+        Q(audience_mode="PUBLIC_FREE") | Q(access_type=Test.AccessType.PUBLIC)
+    )
+
+    # Subscriber tests (available to subscribers or assigned members)
+    subscriber_catalog = published_active & (
+        Q(audience_mode__in=["GROUP_AND_SUBSCRIBERS", "SUBSCRIBERS_ONLY"])
+        | Q(access_type=Test.AccessType.PRO_ONLY)
+    )
+
     if not _authenticated(user):
-        return queryset.filter(public)
-    members = Q(is_active=True, access_type=Test.AccessType.STUDENTS_ONLY) & member_q(user)
-    return queryset.filter(public | members | staff_q(user))
+        return queryset.filter(public_free | (subscriber_catalog & Q(audience_mode="GROUP_AND_SUBSCRIBERS")))
+
+    # Check if authenticated user is a subscriber
+    has_pro = bool(getattr(user, "has_pro_access", False))
+    if has_pro:
+        allowed_catalog = public_free | subscriber_catalog | assigned_members
+    else:
+        # Non-subscriber only sees assigned classroom tests, public tests, and catalog preview of subscriber tests
+        allowed_catalog = public_free | assigned_members | (subscriber_catalog & Q(audience_mode="GROUP_AND_SUBSCRIBERS") & member_q(user))
+
+    return queryset.filter(allowed_catalog | staff_q(user))
 
 
 def can_see_test_content(user, test: Test) -> bool:

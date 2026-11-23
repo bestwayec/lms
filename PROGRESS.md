@@ -9,6 +9,65 @@
    - Ustoz kabinetida har bir o'quvchining PRO holati (`⭐ PRO (Faol)`), ishlagan testlari va esselari aks etishi.
 3. Attestatsiya 2026 yangi diagnostika testini 50 ta savoli bilan bazaga seed qilish, kategoriyalashtirish va VPS ga deploy qilish.
 
+### 2.93. Rasmiy Versiya v6.0: Teacher Classroom, Group Invitations & Premium Test Access
+- **Maqsad**:
+  * **Yagona Kirish Siyosati (`resolve_test_access`)**: Ustoz o'z guruhiga mavzuli testlar, attestatsiya mashqlari yoki to'liq mock imtihonlarni biriktirganda, vakolatli guruh a'zolari testni alohida PRO/Premium obunasiz topshira olishi (`is_classroom_entitlement=True`, tijorat kvotasi `consumes_quota=False`).
+  * **To'rtta Auditoriya Rejimi (`audience_mode`)**:
+    - `GROUP_ONLY`: Faqat biriktirilgan guruh o'quvchilari (Classroom). Tashqi obunachilar ham bloklanadi (`DENIED_GROUP_ONLY`).
+    - `GROUP_AND_SUBSCRIBERS`: Guruh o'quvchilari bepul (0 kvota) + platforma PRO/Premium obunachilari (tijorat kvotasi doirasida).
+    - `SUBSCRIBERS_ONLY`: Faqat pullik PRO katalogi. Guruhga aloqador bo'lmagan erkin o'quvchilar uchun to'lov devori (`DENIED_SUBSCRIPTION_REQUIRED`).
+    - `PUBLIC_FREE`: Barcha uchun ochiq va bepul diagnostika testlari.
+  * **Xavfsiz Guruh Taklifnomalari va To'g'ridan-to'g'ri Qo'shilish**:
+    - Xavfsiz token va 6 xonali alfanumerik taklif kodlari (`GroupInvitation`).
+    - Amal qilish muddati (`expires_at`), maksimal foydalanish soni (`max_uses`), bekor qilish (`is_revoked`) va tokenni yangilash (rotate).
+    - Guruh sig'imi nazorati (`max_students`, to'lganda ortiqcha ulanishlarni bloklash).
+    - Ustoz tasdig'i talab etiladigan rejim (`requires_approval=True`, `GroupJoinRequest` - PENDING, APPROVED, REJECTED).
+    - Telegram bot `/start grp_<token_or_code>` chuqur havola (deep link) integratsiyasi.
+  * **Haqiqiy Billing va Tarixiy Natijalar Daxlsizligi**:
+    - Guruhga qo'shilish hech qachon soxta PRO obunani yoqmaydi va yolg'on to'lov (`PAID`) statusini yaratmaydi (to'lov holati `DUE_SOON`, oxirgi to'lov sanasi `None`).
+    - Guruhdan chiqarilgan o'quvchining o'tmishdagi natijalari (`Result`, `TestAttempt`) butunligicha saqlanadi, faqat kelajakdagi yangi urinishlar cheklanadi.
+  * **Classroom API va Webhooklar**:
+    - Ustoz kabineti: `/api/classroom/teacher/overview/`, `/api/classroom/teacher/groups/<id>/`, `/api/classroom/teacher/invitations/create/`, `/api/classroom/teacher/assign-test/`, `/api/classroom/teacher/join-requests/`.
+    - O'quvchi portali: `/api/classroom/student/join/`, `/api/classroom/student/my-groups/`.
+    - Test oldidan kirish huquqini tekshirish: `/api/classroom/tests/<id>/access/`.
+- **Bajarildi**:
+  * [x] **Backend & Modellar**:
+    - `apps/courses/models.py`: `StudentGroup.max_students`, `GroupInvitation`, `GroupJoinRequest` modellari yaratildi.
+    - `apps/tests/models.py`: `Test.AudienceMode` (`GROUP_ONLY`, `GROUP_AND_SUBSCRIBERS`, `SUBSCRIBERS_ONLY`, `PUBLIC_FREE`), `TestAttempt.access_source`, `is_classroom_entitlement`, `classroom_group`, `classroom_assignment` maydonlari qo'shildi.
+    - Migratsiyalar: `apps/courses/migrations/0017_studentgroup_max_students_groupinvitation_and_more.py` va `apps/tests/migrations/0022_test_audience_mode_testattempt_access_source_and_more.py` yaratildi va bazaga qo'llanildi.
+  * [x] **Xizmatlar va Integratsiya**:
+    - `apps/tests/access_policy.py`: To'liq `resolve_test_access` funksiyasi va `TestAccessDecision` klassi yozildi.
+    - `apps/courses/invitation_service.py`: Taklifnoma yaratish, token aylantirish, bekor qilish, qo'shilish va tasdiqlash jarayonlari amalga oshirildi.
+    - `apps/courses/group_service.py`: Guruh sig'imi tekshiruvi, to'lov holatini `DUE_SOON` deb belgilash va soxta PRO yorliqlarini yo'qotish to'liq ta'minlandi.
+    - `apps/tests/services.py`: `StartAttemptService.start_attempt` da `resolve_test_access` tekshiruvi qo'yildi, klassrum urinishlariga tijorat kvotasi sarflanmaydi.
+    - `apps/tests/visibility.py`: Faqat biriktirilgan guruhlarga ko'rsatish filtri qat'iylashtirildi (boshqa guruhlarga sizish oldi olindi).
+    - `apps/telegram_app/test_api.py`: TMA orqali boshlanadigan testlarda ham `resolve_test_access` va klassrum huquqi integratsiya qilindi.
+    - `apps/notifications/bot/handlers.py`: `/start grp_<token_or_code>` deep link orqali Telegram botdan bir bosishda guruhga qo'shilish ulandi.
+  * [x] **Klassrum API Endpoints**:
+    - `apps/webapi/views_classroom.py` va `apps/webapi/urls_classroom.py`: Ustoz kabineti, vazifa biriktirish wizardi, o'quvchi portali va preflight kirish tekshiruvi endpointlari yaratildi.
+    - `config/urls.py` va `apps/webapi/urls.py` ga integratsiya qilindi.
+  * [x] **Frontend & Lokalizatsiya**:
+    - `frontend/src/pages/TestDetail.tsx` va `frontend/src/pages/Tests.tsx`: `DENIED_GROUP_ONLY` holatida noo'rin paywall ko'rsatish o'rniga aniq tushuntirish berildi, klassrum testlari qulflanmagan holatda taqdim etildi.
+    - `frontend/src/i18n/translations.json`: `classroom_*` kalitlari `uz`, `ru`, `en` tillarida to'liq simmetrik kiritildi.
+  * [x] **Testlar & QA**:
+    - `tests/test_stage6_classroom_and_access_policy.py`: 7 ta test 100% PASS.
+    - `tests/test_stage5_telegram_group_and_exam_platform.py`: 10 ta test 100% PASS.
+    - `tests/test_stage4_unified_homework.py`: 11 ta test 100% PASS.
+    - `tests/test_admin_test_control_center.py`: 8 ta test 100% PASS.
+    - `python manage.py check`: 0 issues.
+    - `python manage.py makemigrations --check --dry-run`: 0 missing migrations.
+    - `ruff check`: All checks passed.
+    - `npm test`: 28 ta test 100% PASS.
+    - `npm run build`: 0 errors.
+- **Jarayonda**:
+  * Git commit va Draft PR yaratish.
+- **Keyingi qadamlar**:
+  * Draft PR ni upstream ga taqdim etish.
+- **Muhim qarorlar**:
+  * Guruh a'zosi bo'lish o'quvchiga umumiy PRO obunani bermaydi, faqat o'sha ustoz biriktirgan test va vazifalarni bepul topshirish huquqini beradi.
+  * Guruhga qo'shilgan o'quvchiga yolg'on o'tgan to'lov sanasi qo'yilmaydi, `last_payment_date=None` va `payment_status=DUE_SOON` bo'ladi.
+  * Guruhdan o'quvchi chiqarilganda uning avvalgi test natijalari o'chirilmaydi yoki buzilmaydi, faqat keyingi yangi urinishlar cheklanadi.
+
 ### 2.92. Rasmiy Versiya v5.0: Telegram Group Bot 5.0, Mini App 5.0, Universal Exam Platform & Scoring Integrity
 - **Maqsad**:
   * **Telegram Group Bot 5.0**: Guruhlar uchun pinned-style doimiy menyu (`GRANDEC | Guruh boshqaruvi`) va 8 ta inline amal (Bugungi vazifalar, Faol testlar, Dars jadvali, Davomat, Guruh progressi, Ixtiyoriy reyting, Mini App, Ustoz bilan bog'lanish). Guruhni xavfsiz uzish (`/uzish`, `/unlink_group`).

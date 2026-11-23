@@ -116,7 +116,10 @@ export default function TestDetail() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : t('err_retry_js');
       const code = (e as ApiError)?.code;
-      if (code === 'LIMIT_EXCEEDED' || (code === 'ACCESS_DENIED' && msg.includes('PRO'))) {
+      if (code === 'DENIED_GROUP_ONLY' || msg.includes('guruhi o\'quvchilari') || msg.includes('biriktirilgan guruh')) {
+        setModeModalOpen(false);
+        setErr(msg || "Ushbu test yopiq bo'lib, faqat o'qituvchining biriktirilgan guruhi a'zolari uchun mo'ljallangan.");
+      } else if (code === 'LIMIT_EXCEEDED' || (code === 'ACCESS_DENIED' && msg.includes('PRO')) || code === 'DENIED_SUBSCRIPTION_REQUIRED') {
         setModeModalOpen(false);
         setLimitModalMsg(t(code === 'LIMIT_EXCEEDED' ? 'paywall_reason_test_limit' : 'paywall_reason_pro_only'));
         setLimitModalOpen(true);

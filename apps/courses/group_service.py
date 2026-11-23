@@ -135,6 +135,7 @@ def get_group_full_analytics(group: StudentGroup) -> dict[str, Any]:
         last_active = max(dates).strftime("%d.%m.%Y %H:%M") if dates else None
         s_tuition = tuition_status.get(s.id)
 
+        has_pro_real = bool(getattr(s, "has_pro_access", False))
         roster.append(
             {
                 "student_id": s.id,
@@ -143,8 +144,8 @@ def get_group_full_analytics(group: StudentGroup) -> dict[str, Any]:
                 "email": s.email,
                 "streak": profile_streaks.get(s.id, 0),
                 "streak_days": profile_streaks.get(s.id, 0),
-                "has_pro": True,
-                "pro_status_label": "⭐ PRO (Faol)",
+                "has_pro": has_pro_real,
+                "pro_status_label": "⭐ PRO (Faol)" if has_pro_real else "Guruh a'zosi (Classroom)",
                 "tests_count": tests_count,
                 "tests_taken": tests_count,
                 "avg_test_percentage": avg_test_pct,
@@ -203,6 +204,9 @@ def get_group_full_analytics(group: StudentGroup) -> dict[str, Any]:
     }
 
 
+get_group_analytics = get_group_full_analytics
+
+
 def find_group_by_token_or_code(token_or_code: str) -> StudentGroup | None:
     """Finds a StudentGroup by invite_token or invite_code."""
     if not token_or_code:
@@ -258,6 +262,12 @@ def add_student_to_group(
             ).first()
             return False, existing_history
 
+        # Check group capacity
+        max_cap = getattr(locked_group, "max_students", 50) or 50
+        current_count = locked_group.students.count()
+        if current_count >= max_cap:
+            raise ValueError(f"Guruh to'lgan. Maksimal sig'im: {max_cap} ta o'quvchi.")
+
         # Add to M2M
         locked_group.students.add(student)
 
@@ -274,7 +284,7 @@ def add_student_to_group(
         if update_fields:
             student.save(update_fields=update_fields)
 
-        # Ensure/activate GroupEnrollment
+        # Ensure/activate GroupEnrollment (Truthful billing state: do not fabricate past payments)
         today = timezone.localdate()
         enrollment, created = GroupEnrollment.objects.get_or_create(
             group=locked_group,
@@ -282,9 +292,9 @@ def add_student_to_group(
             defaults={
                 "monthly_fee": Decimal(str(locked_group.monthly_fee or 400000)),
                 "billing_cycle_day": 10,
-                "last_payment_date": today,
-                "next_payment_due": today + timezone.timedelta(days=30),
-                "payment_status": GroupEnrollment.PaymentStatus.PAID,
+                "last_payment_date": None,
+                "next_payment_due": today + timezone.timedelta(days=7),
+                "payment_status": GroupEnrollment.PaymentStatus.DUE_SOON,
                 "is_active": True,
             },
         )

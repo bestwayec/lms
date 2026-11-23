@@ -237,7 +237,8 @@ export default function Tests() {
   };
 
   const action = (i: Item) => {
-    const locked = isFreeUser && !isDiagnostic(i) && (isAttest(i) || isMock4(i) || lower(i.title).includes('#mock'));
+    const isClassroom = Boolean((i as Record<string, unknown>).is_classroom_assigned || (i as Record<string, unknown>).is_assigned);
+    const locked = isFreeUser && !isDiagnostic(i) && !isClassroom && (isAttest(i) || isMock4(i) || lower(i.title).includes('#mock'));
     if (locked) {
       return (
         <button

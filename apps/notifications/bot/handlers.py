@@ -496,6 +496,31 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             await send_group_welcome_message(chat.id, context)
             return
 
+    if args and (args[0].startswith("grp_") or args[0].startswith("invite_")):
+        from apps.courses.invitation_service import join_group_by_token, join_group_by_code
+
+        inv_payload = args[0].removeprefix("grp_").removeprefix("invite_").strip()
+        tg_user = update.effective_user
+        if tg_user:
+            user = await _run_db(lambda: _get_or_create_user(update))
+            if not user:
+                await update.message.reply_text("Iltimos, avval /start buyrug'i orqali hisobingizni faollashtiring.")
+                return
+
+            def _handle_bot_join():
+                try:
+                    return join_group_by_token(user, inv_payload)
+                except Exception:
+                    try:
+                        return join_group_by_code(user, inv_payload)
+                    except Exception as err:
+                        return {"status": "error", "message": str(err)}
+
+            res = await _run_db(_handle_bot_join)
+            msg = res.get("message", "Guruhga qo'shilish amalga oshirildi.")
+            await update.message.reply_text(f"🎓 <b>GRANDEC Klassrum</b>\n\n{msg}", parse_mode="HTML")
+            return
+
     if args and args[0].startswith("parent_"):
         raw_parent_arg = args[0]
         tg_user = update.effective_user

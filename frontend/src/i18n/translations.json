@@ -3335,7 +3335,15 @@
     "panel_archive_test": "Arxivlash",
     "panel_unpublish_test": "E'londan olish",
     "panel_attempts_count": "urinish",
-    "panel_assignments_count": "topshiriq"
+    "panel_assignments_count": "topshiriq",
+    "classroom_title": "Klassrum va guruhlar",
+    "classroom_invite_desc": "Ushbu guruh a'zolari testni alohida PRO obunasiz ishlay oladi.",
+    "classroom_join_success": "Guruhga muvaffaqiyatli qo'shildingiz",
+    "classroom_pending_approval": "Guruhga qo'shilish so'rovingiz ustozga yuborildi",
+    "classroom_my_groups": "Mening guruhlarim",
+    "classroom_teacher_workspace": "Ustoz klassrumi",
+    "classroom_invite_link": "Taklif havolasi",
+    "classroom_invite_code": "Taklif kodi"
   },
   "ru": {
     "spk_practise_again": "Повторить эту тему",
@@ -6673,7 +6681,15 @@
     "panel_archive_test": "Архивировать",
     "panel_unpublish_test": "Снять с публикации",
     "panel_attempts_count": "попыток",
-    "panel_assignments_count": "заданий"
+    "panel_assignments_count": "заданий",
+    "classroom_title": "Классрум и группы",
+    "classroom_invite_desc": "Участники этой группы могут проходить тест без отдельной подписки PRO.",
+    "classroom_join_success": "Вы успешно присоединились к группе",
+    "classroom_pending_approval": "Запрос на вступление отправлен преподавателю",
+    "classroom_my_groups": "Мои группы",
+    "classroom_teacher_workspace": "Классрум преподавателя",
+    "classroom_invite_link": "Ссылка приглашения",
+    "classroom_invite_code": "Код приглашения"
   },
   "en": {
     "spk_practise_again": "Practise this topic again",
@@ -10011,6 +10027,14 @@
     "panel_archive_test": "Archive",
     "panel_unpublish_test": "Unpublish",
     "panel_attempts_count": "attempts",
-    "panel_assignments_count": "assignments"
+    "panel_assignments_count": "assignments",
+    "classroom_title": "Classroom & Groups",
+    "classroom_invite_desc": "Members of this group can take the test without a separate PRO subscription.",
+    "classroom_join_success": "Successfully joined the group",
+    "classroom_pending_approval": "Join request sent to teacher",
+    "classroom_my_groups": "My Groups",
+    "classroom_teacher_workspace": "Teacher Classroom",
+    "classroom_invite_link": "Invite Link",
+    "classroom_invite_code": "Invite Code"
   }
 }

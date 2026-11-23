@@ -206,12 +206,26 @@ class Test(models.Model):
         PRO_ONLY = "PRO_ONLY", _("Faqat PRO")
         STUDENTS_ONLY = "STUDENTS_ONLY", _("Faqat o'quvchilarim")
 
+    class AudienceMode(models.TextChoices):
+        GROUP_ONLY = "GROUP_ONLY", _("Faqat guruh (Classroom)")
+        GROUP_AND_SUBSCRIBERS = "GROUP_AND_SUBSCRIBERS", _("Guruh va obunachilar (PRO/Premium)")
+        SUBSCRIBERS_ONLY = "SUBSCRIBERS_ONLY", _("Faqat obunachilar (PRO/Premium)")
+        PUBLIC_FREE = "PUBLIC_FREE", _("Barcha uchun bepul")
+
     access_type = models.CharField(
         _("kirish huquqi"),
         max_length=20,
         choices=AccessType.choices,
         default=AccessType.PUBLIC,
         db_index=True,
+    )
+    audience_mode = models.CharField(
+        _("auditoriya rejimi"),
+        max_length=30,
+        choices=AudienceMode.choices,
+        default=AudienceMode.PUBLIC_FREE,
+        db_index=True,
+        help_text=_("Testning tarqatish auditoriyasi va obuna siyosati."),
     )
     assigned_group = models.ForeignKey(
         "courses.StudentGroup",
@@ -826,6 +840,36 @@ class TestAttempt(models.Model):
         default=False,
         db_index=True,
         help_text=_("Admin/ustoz sinovi: statistika, reyting va vedomostga tushmaydi."),
+    )
+    access_source = models.CharField(
+        _("kirish manbasi"),
+        max_length=30,
+        default="unknown",
+        blank=True,
+        db_index=True,
+        help_text=_("Klassrum, obuna, ommaviy, muallif yoki admin orqali kirilgani."),
+    )
+    is_classroom_entitlement = models.BooleanField(
+        _("klassrum huquqi"),
+        default=False,
+        db_index=True,
+        help_text=_("Ushbu urinish ustoz guruhi yoki dars topshirig'i orqali (bepul) berilganmi."),
+    )
+    classroom_group = models.ForeignKey(
+        "courses.StudentGroup",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="classroom_attempts",
+        verbose_name=_("klassrum guruhi"),
+    )
+    classroom_assignment = models.ForeignKey(
+        "courses.Homework",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="classroom_attempts",
+        verbose_name=_("klassrum vazifasi"),
     )
     mode = models.CharField(
         _("rejim"),

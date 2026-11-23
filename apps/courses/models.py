@@ -308,6 +308,11 @@ class StudentGroup(models.Model):
         default=400000,
         help_text=_("O'quvchilar uchun oylik to'lov summasi."),
     )
+    max_students = models.PositiveIntegerField(
+        _("maksimal talabalar soni"),
+        default=50,
+        help_text=_("Guruhning maksimal sig'imi (o'quvchilar soni)."),
+    )
     telegram_chat_id = models.BigIntegerField(
         _("Telegram guruh chat ID"),
         null=True,
@@ -890,4 +895,161 @@ class GroupMembershipHistory(models.Model):
     def __str__(self) -> str:
         status = "Active" if self.removed_at is None else f"Left ({self.removed_at})"
         return f"{self.student} in {self.group} [{self.action}]: {status}"
+
+
+# ---------------------------------------------------------------------------
+# GroupInvitation & GroupJoinRequest (Guruh taklifnomalari va a'zolik so'rovlari)
+# ---------------------------------------------------------------------------
+class GroupInvitation(models.Model):
+    """
+    O'qituvchi tomonidan yaratiladigan xavfsiz, muddatli va cheklangan taklifnomalar.
+    """
+    group = models.ForeignKey(
+        StudentGroup,
+        on_delete=models.CASCADE,
+        related_name="invitations",
+        verbose_name=_("guruh"),
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="created_group_invitations",
+        verbose_name=_("yaratuvchi"),
+    )
+    token = models.CharField(
+        _("taklif tokeni"),
+        max_length=64,
+        unique=True,
+        db_index=True,
+    )
+    code = models.CharField(
+        _("taklif kodi"),
+        max_length=32,
+        blank=True,
+        db_index=True,
+    )
+    expires_at = models.DateTimeField(
+        _("amal qilish muddati"),
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+    max_uses = models.PositiveIntegerField(
+        _("maksimal foydalanishlar soni"),
+        null=True,
+        blank=True,
+    )
+    uses_count = models.PositiveIntegerField(
+        _("foydalanilganlar soni"),
+        default=0,
+    )
+    is_revoked = models.BooleanField(
+        _("bekor qilinganmi"),
+        default=False,
+        db_index=True,
+    )
+    requires_approval = models.BooleanField(
+        _("ustoz tasdig'i talab qilinadimi"),
+        default=False,
+    )
+    created_at = models.DateTimeField(_("yaratilgan"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Guruh taklifnomasi")
+        verbose_name_plural = _("Guruh taklifnomalari")
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.group.name} taklifnomasi ({self.code or self.token[:8]})"
+
+    @property
+    def is_expired(self) -> bool:
+        if self.expires_at and timezone.now() > self.expires_at:
+            return True
+        return False
+
+    @property
+    def is_usable(self) -> bool:
+        if self.is_revoked:
+            return False
+        if self.is_expired:
+            return False
+        if self.max_uses is not None and self.uses_count >= self.max_uses:
+            return False
+        return True
+
+
+class GroupJoinRequest(models.Model):
+    """
+    O'quvchining guruhga a'zo bo'lish so'rovi (requires_approval=True bo'lganda).
+    """
+    class Status(models.TextChoices):
+        PENDING = "pending", _("Kutilmoqda")
+        APPROVED = "approved", _("Tasdiqlandi")
+        REJECTED = "rejected", _("Rad etildi")
+        CANCELLED = "cancelled", _("Bekor qilindi")
+
+    group = models.ForeignKey(
+        StudentGroup,
+        on_delete=models.CASCADE,
+        related_name="join_requests",
+        verbose_name=_("guruh"),
+    )
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="group_join_requests",
+        verbose_name=_("o'quvchi"),
+    )
+    invitation = models.ForeignKey(
+        GroupInvitation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="join_requests",
+        verbose_name=_("taklifnoma"),
+    )
+    status = models.CharField(
+        _("holat"),
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reviewed_group_join_requests",
+        verbose_name=_("ko'rib chiqqan ustoz"),
+    )
+    reviewed_at = models.DateTimeField(
+        _("ko'rib chiqilgan vaqt"),
+        null=True,
+        blank=True,
+    )
+    rejection_reason = models.CharField(
+        _("rad etish sababi"),
+        max_length=255,
+        blank=True,
+        default="",
+    )
+    created_at = models.DateTimeField(_("yaratilgan"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("yangilangan"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Guruhga qo'shilish so'rovi")
+        verbose_name_plural = _("Guruhga qo'shilish so'rovlari")
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["group", "student"],
+                condition=models.Q(status="pending"),
+                name="uniq_pending_join_request_per_group_student",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.student} -> {self.group.name} ({self.status})"
 

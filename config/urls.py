@@ -38,6 +38,7 @@ urlpatterns = [
     path("api/results/", include("apps.results.urls")),
     path("api/certificates/", include("apps.certificates.urls")),
     path("api/notifications/", include("apps.notifications.urls")),
+    path("api/classroom/", include("apps.webapi.urls_classroom")),
     path("api/v1/", include("apps.webapi.urls")),  # React SPA API
     # Legacy app HTML routes — serve React SPA shell
     # These apps have been updated to use serve_spa_shell()

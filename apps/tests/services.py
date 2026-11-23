@@ -254,28 +254,21 @@ class StartAttemptService:
             if trial_used(student, test):
                 raise TestAccessDeniedError("Bu test bo'yicha bepul sinovdan foydalangansiz.")
 
-        # -- Ruxsat turi (Access Type) tekshirish -------------------------
-        if access_type == Test.AccessType.PRO_ONLY and not is_admin_or_teacher and not trial:
-            if not getattr(student, "has_pro_access", False):
-                raise TestAccessDeniedError("Ushbu test faqat PRO va PREMIUM obunachilar uchun mo'ljallangan.")
-        elif access_type == Test.AccessType.STUDENTS_ONLY and not is_admin_or_teacher:
-            is_member = False
-            assigned_group = getattr(test, "assigned_group", None)
-            if assigned_group:
-                is_member = assigned_group.students.filter(id=student.id).exists()
-            else:
-                teacher = getattr(test, "created_by", None) or getattr(getattr(test, "course", None), "teacher", None)
-                if teacher and hasattr(student, "student_groups"):
-                    is_member = student.student_groups.filter(teacher=teacher).exists()
-                elif hasattr(student, "student_groups"):
-                    is_member = student.student_groups.exists()
-            if not is_member:
-                # Teacher Studio: the test may be assigned (Homework) to several groups.
-                from apps.tests.studio_service import student_has_assignment
+        # -- Ruxsat turi va kirish huquqini tekshirish (Unified Access Policy 6.0) --
+        from apps.tests.access_policy import resolve_test_access
+        decision = resolve_test_access(student, test, action="start")
+        if not decision.allowed and not trial:
+            raise TestAccessDeniedError(decision.reason)
 
-                is_member = student_has_assignment(student, test)
-            if not is_member:
-                raise TestAccessDeniedError("Ushbu test faqat o'qituvchining biriktirilgan guruhidagi o'quvchilar uchun mo'ljallangan.")
+        # -- Tijoriy test kvotasi (faqat agar klassrum bo'lmasa va kvota talab qilinsa) --
+        if decision.consumes_quota and not trial and not is_admin_or_teacher:
+            from apps.payments.entitlements import enforce_test_quota
+            import uuid
+            enforce_test_quota(
+                student,
+                idempotency_key=f"start-{test.id}-{student.id}-{uuid.uuid4().hex[:8]}",
+                source=decision.access_source,
+            )
 
         # -- Aktiv attempt mavjudmi? --------------------------------------
         active_attempt = TestAttempt.objects.filter(
@@ -341,6 +334,10 @@ class StartAttemptService:
                 # a free trial of one part is never a real result either.
                 is_preview=is_admin_or_teacher or trial_part is not None,
                 trial_part=trial_part,
+                access_source=decision.access_source,
+                is_classroom_entitlement=decision.is_classroom_entitlement,
+                classroom_group=decision.group,
+                classroom_assignment=decision.assignment,
             )
         except IntegrityError:
             active = TestAttempt.objects.filter(
