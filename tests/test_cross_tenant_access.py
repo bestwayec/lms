@@ -79,9 +79,23 @@ def world(db):
     )
     session = AttendanceSession.objects.create(group=group_a, teacher=teacher_a, lesson_date=timezone.localdate())
 
+    from datetime import timedelta
+
+    from apps.courses.models import Homework, HomeworkSubmission
+
+    homework = Homework.objects.create(
+        group=group_a, title="HW A", content_type=Homework.ContentType.CUSTOM, created_by=teacher_a,
+        due_date=timezone.now() + timedelta(days=2),
+    )
+    submission = HomeworkSubmission.objects.create(
+        homework=homework, student=student_a, status=HomeworkSubmission.Status.AWAITING_REVIEW,
+        is_completed=True, answers_payload={"text": "A's answer"}, attempts_count=1, completed_at=timezone.now(),
+    )
+
     return {
         "ids": dict(draft=draft.id, group_test=group_test.id, attempt=attempt.id, result=result.id,
-                    group=group_a.id, student=student_a.id, session=session.id),
+                    group=group_a.id, student=student_a.id, session=session.id,
+                    homework=homework.id, submission=submission.id),
         "actors": {
             "anonymous": None,
             "other_student": student_b,
@@ -117,6 +131,18 @@ READ_ENDPOINTS = [
     ("attendance session", "/api/v1/school/attendance/sessions/{session}/"),
     ("student attendance", "/api/v1/school/attendance/students/{student}/"),
     ("student tuition", "/api/v1/school/tuition/students/{student}/"),
+    # Added for the multi-center audit (Teacher Workspace / Homework / admin panel)
+    ("group history", "/api/v1/school/groups/{group}/history/"),
+    ("group member results", "/api/v1/school/groups/{group}/members/{student}/results/"),
+    ("group monthly report pdf", "/api/v1/school/groups/{group}/export/monthly-report-pdf/"),
+    ("homework roster", "/api/v1/school/teacher/homeworks/{homework}/roster/"),
+    ("homework live tablo", "/api/v1/school/teacher/homeworks/{homework}/live/"),
+    ("student homework detail", "/api/v1/school/student/homeworks/{homework}/"),
+    ("student homework result", "/api/v1/school/student/homeworks/{homework}/result/"),
+    ("panel test detail", "/api/v1/panel/tests/{draft}/"),
+    ("panel test questions", "/api/v1/panel/tests/{draft}/questions/"),
+    ("studio test detail", "/api/v1/teacher/studio/tests/{draft}/"),
+    ("studio test analysis", "/api/v1/teacher/studio/tests/{group_test}/analysis/"),
 ]
 
 
@@ -246,6 +272,14 @@ WRITE_ENDPOINTS = [
     ("generate retest", "post", "/api/tests/attempts/{attempt}/generate-retest/", {}),
     ("panel question edit", "patch", "/api/v1/panel/tests/{draft}/", {"title": "pwned"}),
     ("panel status change", "post", "/api/v1/panel/tests/{draft}/status/", {"status": "published"}),
+    ("homework cancel", "delete", "/api/v1/school/teacher/homeworks/{homework}/", {}),
+    ("homework grade", "post", "/api/v1/school/teacher/homework-submissions/{submission}/grade/",
+     {"score": 0, "max_score": 10}),
+    ("homework submit as non-recipient", "post", "/api/v1/school/student/homeworks/{homework}/submit/",
+     {"answers": {"text": "x"}}),
+    ("group members add", "post", "/api/v1/school/groups/{group}/members/", {"add": ["{student}"]}),
+    ("panel archive", "post", "/api/v1/panel/tests/{draft}/archive/", {}),
+    ("panel duplicate", "post", "/api/v1/panel/tests/{draft}/duplicate/", {}),
 ]
 
 
@@ -271,6 +305,11 @@ def _snapshot(world):
         "attempt": TestAttempt.objects.values_list("score", "status").get(pk=ids["attempt"]),
         "result": Result.objects.values_list("score", "percentage").get(pk=ids["result"]),
         "attempts": TestAttempt.objects.count(),
+        "homework": __import__("apps.courses.models", fromlist=["Homework"]).Homework.objects.values_list(
+            "status", flat=True).get(pk=ids["homework"]),
+        "submissions": list(__import__("apps.courses.models", fromlist=["HomeworkSubmission"]).HomeworkSubmission.objects
+                            .order_by("id").values_list("id", "status", "score")),
+        "tests": Test.objects.count(),
     }
 
 
@@ -310,3 +349,17 @@ def test_the_owner_can_use_the_write_endpoints_the_probe_attacks(world):
                       {"student_id": ids["student"], "status": "late", "late_minutes": 5}, format="json")
     assert mark.status_code == 200, mark.content
     assert owner.post(f"/api/v1/school/attendance/sessions/{ids['session']}/mark-all-present/", {}, format="json").status_code == 200
+
+
+@pytest.mark.django_db
+def test_own_center_admin_sees_own_center_data(world):
+    """Positive control for the center cabinet: Center A's admin reads Center A's records."""
+    ids = world["ids"]
+    admin = _client(world["owner_a"])
+    for url in (
+        f"/api/v1/school/groups/{ids['group']}/",
+        f"/api/v1/school/groups/{ids['group']}/analytics/",
+        f"/api/v1/school/teacher/homeworks/{ids['homework']}/roster/",
+        f"/api/v1/school/attendance/sessions/{ids['session']}/",
+    ):
+        assert admin.get(url).status_code == 200, url
