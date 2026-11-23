@@ -255,23 +255,9 @@ class StartAttemptService:
             if trial_used(student, test):
                 raise TestAccessDeniedError("Bu test bo'yicha bepul sinovdan foydalangansiz.")
 
-        # -- Ruxsat turi va kirish huquqini tekshirish (Unified Access Policy 6.0) --
-        from apps.tests.access_policy import resolve_test_access
-        decision = resolve_test_access(student, test, action="start")
-        if not decision.allowed and not trial:
-            raise TestAccessDeniedError(decision.reason)
-
-        # -- Tijoriy test kvotasi (faqat agar klassrum bo'lmasa va kvota talab qilinsa) --
-        if decision.consumes_quota and not trial and not is_admin_or_teacher:
-            from apps.payments.entitlements import enforce_test_quota
-            import uuid
-            enforce_test_quota(
-                student,
-                idempotency_key=f"start-{test.id}-{student.id}-{uuid.uuid4().hex[:8]}",
-                source=decision.access_source,
-            )
-
-        # -- Aktiv attempt mavjudmi? --------------------------------------
+        # -- Resume first: an existing in-progress attempt is returned as-is.
+        #    Resuming never consumes quota and is never blocked by it (the
+        #    attempt was authorised when it started; a refresh must not paywall it).
         active_attempt = TestAttempt.objects.filter(
             test=test,
             student=student,
@@ -294,6 +280,12 @@ class StartAttemptService:
                     student.id,
                 )
                 return active_attempt
+
+        # -- Ruxsat turi va kirish huquqini tekshirish (Unified Access Policy 6.0) --
+        from apps.tests.access_policy import resolve_test_access
+        decision = resolve_test_access(student, test, action="start")
+        if not decision.allowed and not trial:
+            raise TestAccessDeniedError(decision.reason)
 
         # -- Max attempts tekshirish ---------------------------------------
         if test.max_attempts > 0 and not is_admin_or_teacher and not trial_part:
@@ -318,6 +310,20 @@ class StartAttemptService:
                     f"Test uchun maksimal urinishlar soni ({test.max_attempts}) "
                     f"tugadi. Siz {completed_count} marta topshirdingiz."
                 )
+
+        # -- Tijoriy test kvotasi: classroom assignments never consume it; the
+        #    reservation happens last (inside this transaction) so a refused
+        #    start never costs a unit, and the key is deterministic per new
+        #    attempt so a double click cannot charge twice.
+        if decision.consumes_quota and not trial and not is_admin_or_teacher:
+            from apps.payments.entitlements import enforce_test_quota
+
+            started_before = TestAttempt.objects.filter(test=test, student=student).count()
+            enforce_test_quota(
+                student,
+                idempotency_key=f"start-{test.id}-{student.id}-{started_before + 1}",
+                source=decision.access_source,
+            )
 
         # -- Attempt yaratish ----------------------------------------------
         # DB conditional-unique is the authority against concurrent starts;

@@ -137,3 +137,33 @@ def test_catalog_hides_students_only_test_with_default_audience(world):
     assert not visible_tests(qs, w["admin_b"]).exists()
     assert visible_tests(qs, w["free_member"]).exists()
     assert visible_tests(qs, w["t_a"]).exists()
+
+
+@pytest.mark.django_db
+def test_resume_is_never_charged_or_paywalled_and_retake_is_quota_checked(world):
+    from apps.payments.entitlements import QuotaDenied
+    from apps.tests.models import TestAttempt
+    from apps.tests.services import StartAttemptService, TestAccessDeniedError
+
+    w = world
+    Test.objects.filter(pk=w["test"].pk).update(access_type="PUBLIC", audience_mode="PUBLIC_FREE")
+    student = w["free_outsider"]
+    first = StartAttemptService.execute(test_id=w["test"].id, student=student)
+    # Quota is now used up (FREE = 1). Resuming the same attempt still works and charges nothing.
+    with mock.patch("apps.payments.entitlements.enforce_test_quota") as charge:
+        again = StartAttemptService.execute(test_id=w["test"].id, student=student)
+        assert again.id == first.id and charge.call_count == 0
+    TestAttempt.objects.filter(id=first.id).update(status="completed")
+    # A new (public) attempt is a new start: refused once the free quota is spent.
+    with pytest.raises((TestAccessDeniedError, QuotaDenied)):
+        StartAttemptService.execute(test_id=w["test"].id, student=student)
+
+
+@pytest.mark.django_db
+def test_classroom_start_does_not_consume_free_quota(world):
+    from apps.tests.services import StartAttemptService
+
+    w = world
+    with mock.patch("apps.payments.entitlements.enforce_test_quota") as charge:
+        StartAttemptService.execute(test_id=w["test"].id, student=w["free_member"])
+    assert charge.call_count == 0

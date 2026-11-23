@@ -164,7 +164,9 @@ def resolve_test_access(
     user_role = getattr(user, "role", "student")
     mode = normalize_audience_mode(test)
     if user_role == "teacher":
-        if mode == "GROUP_ONLY" or getattr(test, "created_by_id", None) is not None:
+        # Another teacher's *private* (group-only) test stays closed; public
+        # tests may be previewed (attempts of teachers are previews, no quota).
+        if mode == "GROUP_ONLY":
             return TestAccessDecision(
                 allowed=False,
                 reason_code="DENIED_TEACHER_PRIVATE",
@@ -337,6 +339,15 @@ def resolve_test_access(
             )
 
     if mode == "PUBLIC_FREE":
+        if user_role == "teacher":
+            return TestAccessDecision(
+                allowed=True,
+                reason_code="ALLOWED_TEACHER_PREVIEW",
+                reason="Ustoz uchun ko'rib chiqish (statistikaga kirmaydi).",
+                access_source="public",
+                consumes_quota=False,
+                is_paid_catalog=False,
+            )
         if action == "resume":
             return TestAccessDecision(
                 allowed=True,
