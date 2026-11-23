@@ -579,6 +579,7 @@ export default function MyHomework() {
             return (
               <div
                 key={hw.id}
+                data-homework-id={hw.id}
                 style={{
                   background: 'var(--card-bg, #fff)',
                   border: '1px solid var(--border-color, #E5E7EB)',
