@@ -192,9 +192,15 @@ class PanelTestCrudTests(LMSBaseTestCase):
         self.assertEqual(self.test.status, Test.Status.PUBLISHED)
 
     def test_delete_test(self):
-        response = self.client.delete(
-            reverse("webapi:panel-test-detail", args=[self.test.id])
-        )
+        # Safe-deletion policy (#142): a published test is archived, never hard-deleted.
+        Test.objects.filter(id=self.test.id).update(status="published")
+        response = self.client.delete(reverse("webapi:panel-test-detail", args=[self.test.id]))
+        self.assertEqual(response.status_code, 409)
+        self.assertTrue(response.json()["can_archive"])
+        self.assertTrue(Test.objects.filter(id=self.test.id).exists())
+        # A draft with no attempts, results or assignments can be deleted.
+        Test.objects.filter(id=self.test.id).update(status="draft")
+        response = self.client.delete(reverse("webapi:panel-test-detail", args=[self.test.id]))
         self.assertEqual(response.status_code, 204)
         self.assertFalse(Test.objects.filter(id=self.test.id).exists())
 

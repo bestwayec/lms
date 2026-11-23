@@ -186,7 +186,9 @@ def test_group_analytics_query_count_is_constant(world):
     with CaptureQueriesContext(connection) as big:
         big_data = get_group_full_analytics(group)
 
-    assert len(big) == len(small) <= 5
+    # Constant in group size (no N+1). 6 = the original 5 + one UNION query for
+    # the roster's PRO column added in #144.
+    assert len(big) == len(small) <= 6
     assert big_data["total_students"] == 14
     first = big_data["students"][0]
     assert first["tests_taken"] >= 2 and first["avg_test_pct"] == 70.0

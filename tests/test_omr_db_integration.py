@@ -3,6 +3,7 @@ student review step, no XP, and CEFR parity with the online pipeline."""
 
 import io
 from io import StringIO
+from unittest import mock
 from unittest.mock import patch
 
 import pytest
@@ -182,8 +183,10 @@ def test_confirm_grades_reviewed_answers_without_xp(client, mc_test, student):
     assert res.json()["code"] == "LIMIT_EXCEEDED"
 
     # With a plan, a second sheet is a second attempt — still without XP.
-    unlimited = (True, "", {"tier": "pro", "allowed": True})
-    with patch("apps.subscriptions.services.quota.QuotaService.check_test_quota", return_value=unlimited):
+    # Quota authority is apps.payments.entitlements (QuotaService delegates to it).
+    unlimited = {"test": {"limit": None, "used": 0, "remaining": None}}
+    with patch("apps.payments.entitlements.can_start_test", return_value=(True, None, unlimited)), \
+         patch("apps.payments.entitlements.enforce_test_quota"):
         res = client.post(CONFIRM_URL, {"test_id": mc_test.id, "answers": answers}, format="json")
     assert res.status_code == 200
     assert Profile.objects.get(user=student).xp_points == 0
@@ -238,7 +241,10 @@ def test_cefr_omr_and_online_give_the_same_result(client, cefr_test, student):
     assert res.status_code == 200, res.json()
     omr_attempt = TestAttempt.objects.get(pk=res.json()["attempt_id"])
 
-    online = StartAttemptService.execute(test_id=cefr_test.id, student=student)
+    # The OMR sheet used the FREE plan's single test; compare grading, not quota.
+    with mock.patch("apps.payments.entitlements.can_start_test", return_value=(True, None, {})), \
+         mock.patch("apps.payments.entitlements.enforce_test_quota"):
+        online = StartAttemptService.execute(test_id=cefr_test.id, student=student)
     for nq in chosen:
         q = nq.question
         if q.question_type == Question.QuestionType.INLINE_GAP_FILL:
