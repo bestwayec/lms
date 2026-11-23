@@ -185,3 +185,65 @@ def test_import_endpoint_is_preview_only_and_teacher_only():
     assert Test.objects.count() == before  # nothing saved
     bad = api.post(url, {"file": SimpleUploadedFile("scan.pdf", fx.pdf_bytes(image_only=True))}, format="multipart")
     assert bad.status_code == 400 and bad.data["code"] == "scanned_pdf"
+
+
+# --------------------------------------------------------------------------- PPTX (Smart Import 7.0)
+
+
+def test_pptx_import_slides_tables_notes_and_key_slide():
+    r = svc.import_test_file(fx.pptx_bytes(), "ona.pptx")
+    assert r["source"]["kind"] == "pptx"
+    qs = _questions(r)
+    assert [q["number"] for q in qs] == list(range(1, 13))
+    for q, (text, opts, _a) in zip(qs, fx.ONA_TILI[:12]):
+        assert q["text"] == text and q["options"] == opts  # text unaltered
+    # Q1's key only in the speaker notes; Q2–Q9 from the answer-key slide.
+    assert [q["answer"] for q in qs[:9]] == [a for _, _, a in fx.ONA_TILI[:9]]
+    # Q2's notes are commentary: they must not leak into the question.
+    assert "darsda" not in qs[1]["text"]
+    # The table has no answer column → keys reported missing, never invented.
+    assert [q["answer"] for q in qs[9:12]] == ["", "", ""]
+    assert r["report"]["missing_answers"] == 3
+    # Slide relationships preserved; Q9 starts on its own slide, options on the next.
+    slides = r["source"]["question_slides"]
+    assert slides["1"] == 2 and slides["9"] == 10 and slides["10"] == slides["12"] == 12
+    assert {"code": "pptx_image_only_slide", "slide": 13} in r["warnings"]
+
+
+def test_pptx_without_any_text_is_refused_honestly():
+    from pptx import Presentation
+
+    prs = Presentation()
+    prs.slides.add_slide(prs.slide_layouts[6])
+    buf = io.BytesIO()
+    prs.save(buf)
+    with pytest.raises(svc.StudioError) as e:
+        svc.import_test_file(buf.getvalue(), "empty.pptx")
+    assert e.value.code in ("pptx_no_text", "file_empty", "no_questions_found")
+
+
+def _with_part(data: bytes, name: str, payload: bytes) -> bytes:
+    src = zipfile.ZipFile(io.BytesIO(data))
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+        for item in src.infolist():
+            z.writestr(item, payload if item.filename == name else src.read(item.filename))
+    return out.getvalue()
+
+
+@pytest.mark.parametrize("fmt,part", [("pptx", "ppt/presentation.xml"), ("docx", "word/document.xml")])
+def test_ooxml_with_dtd_entities_is_refused(fmt, part):
+    data = fx.pptx_bytes() if fmt == "pptx" else fx.docx_bytes()
+    evil = (
+        b'<?xml version="1.0"?><!DOCTYPE x [<!ENTITY a "aaaaaaaaaa"><!ENTITY b "&a;&a;&a;&a;&a;&a;">]>'
+        b"<x>&b;</x>"
+    )
+    with pytest.raises(svc.StudioError) as e:
+        svc.import_test_file(_with_part(data, part, evil), f"evil.{fmt}")
+    assert e.value.code == "file_corrupt"
+
+
+def test_pptx_extension_must_match_content():
+    with pytest.raises(ImportError_) as e:
+        sniff(fx.docx_bytes(), "a.pptx")
+    assert e.value.code == "extension_mismatch"

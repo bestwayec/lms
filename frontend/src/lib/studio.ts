@@ -21,6 +21,8 @@ export interface StudioQuestion {
   answer: string;
   points?: number;
   explanation?: string;
+  /** Import preview only (PPTX): the slide the question starts on. */
+  slide?: number;
 }
 
 /** Ona tili & Adabiyot topics — codes match apps.tests.studio_service.TOPICS_BY_SUBJECT. */
@@ -163,8 +165,13 @@ export interface FileImportResult {
   blocks: StudioBlock[];
   questions_count: number;
   detected_answers: number;
-  warnings: { row?: number; code: string; question?: number; number?: number }[];
-  source?: { kind: 'text' | 'csv' | 'xlsx' | 'docx' | 'pdf'; filename: string };
+  warnings: { row?: number; code: string; question?: number; number?: number; slide?: number }[];
+  source?: {
+    kind: 'text' | 'csv' | 'xlsx' | 'docx' | 'pdf' | 'pptx';
+    filename: string;
+    /** PPTX: question number → slide it starts on. */
+    question_slides?: Record<string, number>;
+  };
   report?: {
     total_questions: number;
     valid_questions: number;

@@ -34,6 +34,7 @@ MAX_SHEET_ROWS = 2000
 MIN_TEXT_CHARS_PER_PAGE = 25
 
 EXT_KIND = {
+    "pptx": "pptx",
     "txt": "text",
     "csv": "csv",
     "tsv": "csv",
@@ -43,6 +44,23 @@ EXT_KIND = {
 }
 
 W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+A_NS = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+P_NS = "{http://schemas.openxmlformats.org/presentationml/2006/main}"
+R_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+PKG_REL_NS = "{http://schemas.openxmlformats.org/package/2006/relationships}"
+MAX_SLIDES = 200
+
+
+def _safe_xml(raw: bytes):
+    """Parse one OOXML part. OOXML never uses a DTD: a DOCTYPE/ENTITY means a
+    crafted file (entity expansion, external entities) and is refused."""
+    head = raw[:4096].upper()
+    if b"<!DOCTYPE" in head or b"<!ENTITY" in raw.upper():
+        raise ImportError_("file_corrupt")
+    try:
+        return ET.fromstring(raw)
+    except ET.ParseError:
+        raise ImportError_("file_corrupt") from None
 
 
 class ImportError_(ValueError):
@@ -60,6 +78,7 @@ class Extracted:
     text: str = ""
     rows: list[list[str]] | None = None
     warnings: list[dict[str, Any]] = field(default_factory=list)
+    slide_lines: list[int] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -80,6 +99,8 @@ def _zip_kind(data: bytes) -> str:
         return "docx"
     if "xl/workbook.xml" in names:
         return "xlsx"
+    if "ppt/presentation.xml" in names:
+        return "pptx"
     raise ImportError_("unsupported_format")
 
 
@@ -153,10 +174,7 @@ def extract_docx(data: bytes) -> Extracted:
     with zipfile.ZipFile(io.BytesIO(data)) as zf:
         with zf.open("word/document.xml") as fh:
             xml = fh.read(MAX_ZIP_EXPANDED_BYTES)
-    try:
-        root = ET.fromstring(xml)
-    except ET.ParseError:
-        raise ImportError_("file_corrupt") from None
+    root = _safe_xml(xml)
     body = root.find(f"{W_NS}body")
     if body is None:
         raise ImportError_("file_empty")
@@ -190,6 +208,145 @@ def extract_docx(data: bytes) -> Extracted:
     if not out.text.strip() and not out.rows:
         raise ImportError_("file_empty")
     return out
+
+
+def _ppt_paragraphs(node) -> list[str]:
+    out = []
+    for p in node.iter(f"{A_NS}p"):
+        parts = []
+        for el in p.iter():
+            if el.tag == f"{A_NS}t":
+                parts.append(el.text or "")
+            elif el.tag == f"{A_NS}br":
+                parts.append("\n")
+        text = "".join(parts)
+        if text.strip():
+            out.append(text)
+    return out
+
+
+def _slide_order(zf: zipfile.ZipFile) -> list[str]:
+    """Slide part names in presentation order (sldIdLst → relationships)."""
+    pres = _safe_xml(zf.read("ppt/presentation.xml"))
+    rels = _safe_xml(zf.read("ppt/_rels/presentation.xml.rels"))
+    targets = {r.get("Id"): r.get("Target", "") for r in rels.iter(f"{PKG_REL_NS}Relationship")}
+    order = []
+    lst = pres.find(f"{P_NS}sldIdLst")
+    for sld in (lst if lst is not None else []):
+        target = targets.get(sld.get(f"{R_NS}id"), "")
+        if target:
+            order.append("ppt/" + target.lstrip("/").removeprefix("ppt/"))
+    return order[:MAX_SLIDES]
+
+
+def _notes_for(zf: zipfile.ZipFile, slide_part: str) -> list[str]:
+    rel_part = slide_part.replace("slides/", "slides/_rels/") + ".rels"
+    if rel_part not in zf.namelist():
+        return []
+    for r in _safe_xml(zf.read(rel_part)).iter(f"{PKG_REL_NS}Relationship"):
+        if r.get("Type", "").endswith("/notesSlide"):
+            target = r.get("Target", "")
+            name = "ppt/notesSlides/" + target.rsplit("/", 1)[-1]
+            if name in zf.namelist():
+                return _ppt_paragraphs(_safe_xml(zf.read(name)))
+    return []
+
+
+def extract_pptx(data: bytes) -> Extracted:
+    """Slides in order: text boxes, tables, answer lines from speaker notes.
+
+    Returns the text with a per-line slide map in ``out.slide_lines`` so the
+    caller can tell which slide each question came from. Image-only slides
+    produce a warning (no OCR) instead of being silently skipped.
+    """
+    from apps.tests.studio_parser import KEY_HEADER_RE, KEY_LINE_RE, SINGLE_ANSWER_RE
+
+    out = Extracted(kind="pptx")
+    lines: list[str] = []
+    line_slide: list[int] = []
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        order = _slide_order(zf)
+        if not order:
+            raise ImportError_("file_empty")
+        for number, part in enumerate(order, start=1):
+            if part not in zf.namelist():
+                continue
+            root = _safe_xml(zf.read(part))
+            slide_lines: list[str] = []
+            has_picture = any(True for _ in root.iter(f"{P_NS}pic"))
+            for sp in root.iter(f"{P_NS}sp"):
+                slide_lines.extend(_ppt_paragraphs(sp))
+            for frame in root.iter(f"{P_NS}graphicFrame"):
+                rows = []
+                for tr in frame.iter(f"{A_NS}tr"):
+                    cells = [" ".join(_ppt_paragraphs(tc)).strip() for tc in tr.iter(f"{A_NS}tc")]
+                    if any(cells):
+                        rows.append(cells)
+                slide_lines.extend(_table_as_questions(rows))
+            # Speaker notes: only answer-key lines ("Javob: B", "1-B", "Kalitlar: …");
+            # free commentary would pollute question text.
+            for note in _notes_for(zf, part):
+                stripped = note.strip()
+                if SINGLE_ANSWER_RE.match(stripped) or KEY_HEADER_RE.match(stripped) or KEY_LINE_RE.match(stripped):
+                    slide_lines.append(stripped)
+            if not slide_lines and has_picture:
+                out.warnings.append({"code": "pptx_image_only_slide", "slide": number})
+            for line in slide_lines:
+                lines.append(line)
+                line_slide.append(number)
+            lines.append("")
+            line_slide.append(number)
+    out.text = "\n".join(lines)
+    out.slide_lines = line_slide
+    if not out.text.strip() and not out.rows:
+        raise ImportError_("pptx_no_text")
+    return out
+
+
+_HEAD_Q = ("savol", "question", "вопрос", "savollar")
+_HEAD_ANS = ("javob", "answer", "ответ", "kalit", "to'g'ri javob", "to‘g‘ri javob")
+
+
+def _table_as_questions(rows: list[list[str]]) -> list[str]:
+    """A slide table with a Savol/A/B/C/D(/Javob) header → numbered question lines.
+
+    Other tables are kept as plain lines. The answer column is used only when
+    present; nothing is inferred.
+    """
+    if len(rows) < 2:
+        return [" ".join(c for c in r if c) for r in rows]
+    head = [c.strip().lower().rstrip(":.)") for c in rows[0]]
+    if not head or head[0] not in _HEAD_Q:
+        return [" ".join(c for c in r if c) for r in rows]
+    opt_cols = [i for i, h in enumerate(head) if len(h) == 1 and h.upper() in "ABCDEАБВГД"]
+    ans_col = next((i for i, h in enumerate(head) if h in _HEAD_ANS), None)
+    out: list[str] = []
+    for n, row in enumerate(rows[1:], start=1):
+        q = row[0].strip()
+        if not q:
+            continue
+        if not re.match(r"^\s*\d{1,3}\s*[.)]\s", q):
+            q = f"{n}. {q}"
+        out.append(q)
+        for j, col in enumerate(opt_cols):
+            if col < len(row) and row[col].strip():
+                out.append(f"{'ABCDE'[j]}) {row[col].strip()}")
+        if ans_col is not None and ans_col < len(row) and row[ans_col].strip():
+            out.append(f"Javob: {row[ans_col].strip()}")
+    return out
+
+
+def slide_map(text: str, slide_lines: list[int], numbers: list[int]) -> dict[int, int]:
+    """Question number → slide, from where its "N." line occurs (first match in order)."""
+    import re as _re
+
+    result: dict[int, int] = {}
+    pending = list(numbers)
+    for line, slide in zip(text.split("\n"), slide_lines):
+        m = _re.match(r"^\s*(?:Q(?:uestion)?\s*)?(\d{1,3})\s*[.)]\s+\S", line, _re.IGNORECASE)
+        if m and pending and int(m.group(1)) == pending[0]:
+            result[pending.pop(0)] = slide
+    return result
 
 
 def extract_xlsx(data: bytes) -> Extracted:
@@ -253,6 +410,8 @@ def extract(data: bytes, filename: str = "") -> Extracted:
         return extract_docx(data)
     if kind == "xlsx":
         return extract_xlsx(data)
+    if kind == "pptx":
+        return extract_pptx(data)
     text = decode_text(data)
     if kind == "csv":
         return Extracted(kind="csv", rows=_csv_rows(text))
@@ -280,7 +439,7 @@ def build_report(blocks: list[dict[str, Any]], warnings: list[dict[str, Any]]) -
             valid += not (no_answer or dup or few)
     numbers = [q.get("number") for b in blocks for q in b.get("questions", [])]
     duplicates = sorted({n for n in numbers if numbers.count(n) > 1})
-    invalid = sum(1 for w in warnings if w.get("code") not in ("docx_auto_numbering",))
+    invalid = sum(1 for w in warnings if w.get("code") not in ("docx_auto_numbering", "pptx_image_only_slide"))
     return {
         "total_questions": total,
         "valid_questions": valid,

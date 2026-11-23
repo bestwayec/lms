@@ -3257,7 +3257,7 @@
     "hw_live_left_group": "guruhdan chiqqan",
     "hw_late": "kechikkan",
     "student": "O'quvchi",
-    "studio_smart_import_title": "Fayldan import (Word, Excel, PDF, CSV)",
+    "studio_smart_import_title": "Fayldan import (Word, PowerPoint, Excel, PDF, CSV)",
     "studio_smart_import_desc": "Word yoki PDF: “1. Savol”, “A) … D)” va “Javob: B” ko‘rinishida. Excel/CSV: Savol, A, B, C, D, Javob ustunlari. Hech narsa avtomatik saqlanmaydi — avval tekshirasiz.",
     "studio_upload_file_btn": "Faylni tanlang",
     "studio_import_report": "Import hisoboti",
@@ -3343,7 +3343,10 @@
     "classroom_my_groups": "Mening guruhlarim",
     "classroom_teacher_workspace": "Ustoz klassrumi",
     "classroom_invite_link": "Taklif havolasi",
-    "classroom_invite_code": "Taklif kodi"
+    "classroom_invite_code": "Taklif kodi",
+    "studio_slide": "Slayd",
+    "studio_warn_pptx_image_only_slide": "Slaydda faqat rasm bor — matnni qo‘lda kiriting (OCR yo‘q).",
+    "studio_err_pptx_no_text": "Taqdimotda matn topilmadi (slaydlar rasm bo‘lishi mumkin)."
   },
   "ru": {
     "spk_practise_again": "Повторить эту тему",
@@ -6603,7 +6606,7 @@
     "hw_live_left_group": "вышел из группы",
     "hw_late": "с опозданием",
     "student": "Ученик",
-    "studio_smart_import_title": "Импорт из файла (Word, Excel, PDF, CSV)",
+    "studio_smart_import_title": "Импорт из файла (Word, PowerPoint, Excel, PDF, CSV)",
     "studio_smart_import_desc": "Word или PDF: «1. Вопрос», «A) … D)» и «Ответ: B». Excel/CSV: столбцы Вопрос, A, B, C, D, Ответ. Ничего не сохраняется автоматически — сначала вы проверяете.",
     "studio_upload_file_btn": "Выберите файл",
     "studio_import_report": "Отчёт импорта",
@@ -6689,7 +6692,10 @@
     "classroom_my_groups": "Мои группы",
     "classroom_teacher_workspace": "Классрум преподавателя",
     "classroom_invite_link": "Ссылка приглашения",
-    "classroom_invite_code": "Код приглашения"
+    "classroom_invite_code": "Код приглашения",
+    "studio_slide": "Слайд",
+    "studio_warn_pptx_image_only_slide": "На слайде только изображение — введите текст вручную (OCR нет).",
+    "studio_err_pptx_no_text": "В презентации нет текста (возможно, слайды — изображения)."
   },
   "en": {
     "spk_practise_again": "Practise this topic again",
@@ -9949,7 +9955,7 @@
     "hw_live_left_group": "left the group",
     "hw_late": "late",
     "student": "Student",
-    "studio_smart_import_title": "Import from file (Word, Excel, PDF, CSV)",
+    "studio_smart_import_title": "Import from file (Word, PowerPoint, Excel, PDF, CSV)",
     "studio_smart_import_desc": "Word or PDF: “1. Question”, “A) … D)” and “Answer: B”. Excel/CSV: Question, A, B, C, D, Answer columns. Nothing is saved automatically — you review first.",
     "studio_upload_file_btn": "Choose a file",
     "studio_import_report": "Import report",
@@ -10035,6 +10041,9 @@
     "classroom_my_groups": "My Groups",
     "classroom_teacher_workspace": "Teacher Classroom",
     "classroom_invite_link": "Invite Link",
-    "classroom_invite_code": "Invite Code"
+    "classroom_invite_code": "Invite Code",
+    "studio_slide": "Slide",
+    "studio_warn_pptx_image_only_slide": "Image-only slide — type its text manually (no OCR).",
+    "studio_err_pptx_no_text": "No text found in the presentation (slides may be images)."
   }
 }

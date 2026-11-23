@@ -1192,10 +1192,21 @@ def import_test_file(data: bytes, filename: str = "", default_section: str = "GE
             raise StudioError("no_questions_found")
     warnings = list(ex.warnings) + list(result.get("warnings", []))
     blocks = result["blocks"]
+    source: dict[str, Any] = {"kind": ex.kind, "filename": (filename or "")[:200]}
+    if ex.kind == "pptx" and ex.slide_lines is not None and not ex.rows:
+        from apps.tests.import_extract import slide_map
+
+        numbers = [q["number"] for b in blocks for q in b["questions"]]
+        mapping = slide_map(ex.text, ex.slide_lines, numbers)
+        source["question_slides"] = {str(n): s for n, s in mapping.items()}
+        for b in blocks:
+            for q in b["questions"]:
+                if q["number"] in mapping:
+                    q["slide"] = mapping[q["number"]]
     return {
         **result,
         "warnings": warnings,
-        "source": {"kind": ex.kind, "filename": (filename or "")[:200]},
+        "source": source,
         "report": build_report(blocks, warnings),
         "questions_count": sum(len(b["questions"]) for b in blocks),
         "detected_answers": sum(1 for b in blocks for q in b["questions"] if q.get("answer")),

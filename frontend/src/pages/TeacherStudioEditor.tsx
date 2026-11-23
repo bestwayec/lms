@@ -807,7 +807,7 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".docx,.xlsx,.pdf,.csv,.txt,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf,text/csv,text/plain"
+                    accept=".docx,.pptx,.xlsx,.pdf,.csv,.txt,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf,text/csv,text/plain"
                     aria-label={t('studio_smart_import_title', 'Fayldan import (Word, Excel, PDF, CSV)')}
                     hidden
                     onChange={(e) => {
@@ -839,7 +839,7 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
                     <p style={{ fontWeight: 600, marginBottom: 4 }}>
                       {busy === 'import' ? t('loading', 'Yuklanmoqda...') : t('studio_upload_file_btn', 'Faylni tanlang')}
                     </p>
-                    <span className="muted small">.docx · .xlsx · .pdf · .csv · .txt</span>
+                    <span className="muted small">.docx · .pptx · .xlsx · .pdf · .csv · .txt</span>
                   </div>
 
                   {fileImportError && (
@@ -892,34 +892,45 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
                         <div className="studio-alert is-warn" style={{ marginBottom: 12 }}>
                           <span>⚠️ {t('studio_import_warnings', 'Ogohlantirishlar')}: {fileImportPreview.warnings.length}</span>
                           <ul style={{ margin: '4px 0 0 16px', fontSize: '0.85rem' }}>
-                            {fileImportPreview.warnings.slice(0, 5).map((w, idx) => (
+                            {fileImportPreview.warnings.slice(0, 20).map((w, idx) => (
                               <li key={idx}>
-                                {w.row ? `${t('studio_row', 'Qator')} ${w.row}: ` : ''}{t(`studio_warn_${w.code}`, w.code)}
+                                {w.row ? `${t('studio_row', 'Qator')} ${w.row}: ` : ''}
+                                {w.slide ? `${t('studio_slide', 'Slayd')} ${w.slide}: ` : ''}
+                                {t(`studio_warn_${w.code}`, w.code)}
                               </li>
                             ))}
                           </ul>
                         </div>
                       )}
 
-                      <div className="table-wrap" style={{ maxHeight: 240, overflowY: 'auto' }}>
-                        <table className="data" style={{ fontSize: '0.85rem' }}>
+                      <div className="table-wrap" style={{ maxHeight: 360, overflowY: 'auto' }}>
+                        <table className="data" style={{ fontSize: '0.85rem' }} aria-label={t('studio_detected_qs', 'Aniqlangan savollar')}>
                           <thead>
                             <tr>
                               <th>№</th>
+                              {fileImportPreview.source?.kind === 'pptx' && <th>{t('studio_slide', 'Slayd')}</th>}
                               <th>{t('question', 'Savol')}</th>
                               <th>{t('choices', 'Variantlar')}</th>
                               <th>{t('answer', 'Kalit')}</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {fileImportPreview.blocks[0]?.questions.slice(0, 10).map((q) => (
-                              <tr key={q.number}>
-                                <td>{q.number}</td>
-                                <td>{q.text}</td>
-                                <td>{q.options.join(' | ')}</td>
-                                <td><strong>{q.answer || '—'}</strong></td>
-                              </tr>
-                            ))}
+                            {/* Every detected question from every block — nothing hidden from review. */}
+                            {fileImportPreview.blocks.flatMap((b, bi) =>
+                              b.questions.map((q) => (
+                                <tr key={`${bi}-${q.number}`} className={q.answer ? undefined : 'is-invalid'}>
+                                  <td>{q.number}</td>
+                                  {fileImportPreview.source?.kind === 'pptx' && <td>{q.slide ?? '—'}</td>}
+                                  <td>{q.text}</td>
+                                  <td>{(q.options.length ? q.options : b.options).join(' | ')}</td>
+                                  <td>
+                                    <strong style={{ color: q.answer ? undefined : 'var(--danger, #DC2626)' }}>
+                                      {q.answer || t('studio_report_missing', 'Javob kaliti yo‘q')}
+                                    </strong>
+                                  </td>
+                                </tr>
+                              )),
+                            )}
                           </tbody>
                         </table>
                       </div>

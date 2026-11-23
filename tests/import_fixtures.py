@@ -151,6 +151,71 @@ def has_unicode_font() -> bool:
     return os.path.exists(FONT)
 
 
+def pptx_bytes(items=ONA_TILI, *, image_only_slide: bool = True) -> bytes:
+    """A real PowerPoint deck (python-pptx, test-only dependency).
+
+    Layout teachers actually use:
+    * slide 1: title;
+    * one slide per question for Q1–Q8 (text box, options A–D); Q1's answer is
+      only in the speaker notes ("Javob: B"), Q2's notes hold commentary that
+      must NOT leak into the question;
+    * Q9 spread over two slides (question text, then its options);
+    * a slide with a table of Q10–Q12 (Savol | A | B | C | D);
+    * an image-only slide (when ``image_only_slide``);
+    * a final answer-key slide ("Kalitlar: 2-B, 3-B, …").
+    """
+    from pptx import Presentation
+    from pptx.util import Inches
+
+    prs = Presentation()
+    blank = prs.slide_layouts[6]
+    title = prs.slides.add_slide(prs.slide_layouts[0])
+    title.shapes.title.text = "Ona tili — 12 savol"
+
+    def box(slide, text, top=1.0):
+        tb = slide.shapes.add_textbox(Inches(0.5), Inches(top), Inches(9), Inches(5))
+        tf = tb.text_frame
+        lines = text.split("\n")
+        tf.text = lines[0]
+        for line in lines[1:]:
+            tf.add_paragraph().text = line
+        return tb
+
+    for i, (q, opts, _ans) in enumerate(items[:8], start=1):
+        s = prs.slides.add_slide(blank)
+        box(s, "\n".join([f"{i}. {q}"] + [f"{'ABCD'[j]}) {o}" for j, o in enumerate(opts)]))
+        if i == 1:
+            s.notes_slide.notes_text_frame.text = f"Javob: {items[0][2]}"
+        if i == 2:
+            s.notes_slide.notes_text_frame.text = "Bu savolni darsda tushuntiring, A variant ham muhokama qilinadi."
+    q9, o9, _ = items[8]
+    box(prs.slides.add_slide(blank), f"9. {q9}")
+    box(prs.slides.add_slide(blank), "\n".join(f"{'ABCD'[j]}) {o}" for j, o in enumerate(o9)))
+
+    s = prs.slides.add_slide(blank)
+    table = s.shapes.add_table(4, 5, Inches(0.3), Inches(0.5), Inches(9.4), Inches(3)).table
+    for c, h in enumerate(["Savol", "A", "B", "C", "D"]):
+        table.cell(0, c).text = h
+    for r, (q, opts, _ans) in enumerate(items[9:12], start=1):
+        table.cell(r, 0).text = f"{9 + r}. {q}"
+        for c, o in enumerate(opts, start=1):
+            table.cell(r, c).text = o
+
+    if image_only_slide:
+        img = prs.slides.add_slide(blank)
+        png = (
+            b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde"
+            b"\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
+        )
+        img.shapes.add_picture(io.BytesIO(png), Inches(1), Inches(1), Inches(3), Inches(3))
+
+    key = prs.slides.add_slide(blank)
+    box(key, "Kalitlar:\n" + "\n".join(f"{i}-{ans}" for i, (_, _, ans) in enumerate(items[:9], start=1) if i > 1))
+    buf = io.BytesIO()
+    prs.save(buf)
+    return buf.getvalue()
+
+
 if __name__ == "__main__":  # pragma: no cover - E2E helper
     out = sys.argv[1]
     os.makedirs(out, exist_ok=True)
@@ -159,6 +224,7 @@ if __name__ == "__main__":  # pragma: no cover - E2E helper
         "ona_tili_20.xlsx": xlsx_bytes(),
         "ona_tili_20.csv": csv_bytes(),
         "ona_tili_20.txt": smart_paste_text().encode("utf-8"),
+        "ona_tili_12.pptx": pptx_bytes(),
     }
     if has_unicode_font():
         files["ona_tili_20.pdf"] = pdf_bytes()
