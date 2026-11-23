@@ -72,6 +72,28 @@ export default function PanelTests() {
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [isProcessingBulk, setIsProcessingBulk] = useState(false);
 
+  // Visibility Audit state
+  const [auditModalOpen, setAuditModalOpen] = useState(false);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditData, setAuditData] = useState<{
+    total_public_studio_tests: number;
+    tests: {
+      id: number;
+      title: string;
+      owner_name: string;
+      owner_email: string;
+      learning_center_id: number | null;
+      learning_center_name: string | null;
+      active_assignments: number;
+      existing_attempts: number;
+      results_count: number;
+      access_policy: string;
+      proposed_access_policy: string;
+    }[];
+  } | null>(null);
+  const [selectedAuditIds, setSelectedAuditIds] = useState<number[]>([]);
+  const [isApplyingAudit, setIsApplyingAudit] = useState(false);
+
   const load = useCallback(() => {
     setLoading(true);
     Panel.tests({ q, status, subject, page, page_size: 25 })
@@ -232,6 +254,43 @@ export default function PanelTests() {
     }
   };
 
+  const openVisibilityAudit = async () => {
+    setAuditModalOpen(true);
+    setAuditLoading(true);
+    try {
+      const res = await Panel.visibilityAudit();
+      setAuditData(res);
+      setSelectedAuditIds(res.tests.map((x) => x.id));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Audit maʼlumotlarini yuklashda xatolik');
+      setAuditModalOpen(false);
+    } finally {
+      setAuditLoading(false);
+    }
+  };
+
+  const handleApplyAudit = async () => {
+    if (selectedAuditIds.length === 0) return;
+    if (
+      !window.confirm(
+        `${selectedAuditIds.length} ta testning auditoriyasini xavfsiz GROUP_ONLY rejimiga o'tkazmoqchimisiz?\n\nTarixiy urinishlar va natijalar to'liq saqlanadi.`,
+      )
+    ) {
+      return;
+    }
+    setIsApplyingAudit(true);
+    try {
+      const res = await Panel.applyVisibilityAudit(selectedAuditIds, 'GROUP_ONLY');
+      setSuccessMsg(`${res.updated_count} ta test muvaffaqiyatli GROUP_ONLY rejimiga o'tkazildi!`);
+      setAuditModalOpen(false);
+      load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Auditoriyani o\'zgartirishda xatolik yuz berdi');
+    } finally {
+      setIsApplyingAudit(false);
+    }
+  };
+
   return (
     <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '16px' }}>
       {/* Title & Top Action */}
@@ -245,6 +304,9 @@ export default function PanelTests() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button type="button" className="btn secondary sm" onClick={() => void openVisibilityAudit()}>
+            🛡️ {t('panel_visibility_audit', 'Auditoriya Auditi')}
+          </button>
           <Link className="btn secondary sm" to="/teacher/ai-converter">
             ✨ AI Konvertor
           </Link>
@@ -643,6 +705,188 @@ export default function PanelTests() {
                 {isProcessingBulk ? 'Bajarilmoqda...' : 'Tasdiqlash va davom etish'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Visibility Audit Modal */}
+      {auditModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '16px',
+          }}
+        >
+          <div
+            className="card"
+            style={{
+              maxWidth: '850px',
+              width: '100%',
+              padding: '24px',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 800 }}>
+                🛡️ {t('panel_visibility_audit_title', 'Ochiq Studio Testlari Auditi')}
+              </h2>
+              <button
+                type="button"
+                className="btn sm ghost"
+                onClick={() => setAuditModalOpen(false)}
+                disabled={isApplyingAudit}
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="muted small" style={{ marginBottom: 16 }}>
+              {t(
+                'panel_visibility_audit_desc',
+                'Eski ochiq (PUBLIC_FREE) o‘qituvchi testlarini aniqlash va ularni xavfsiz faqat guruh aʼzolari uchun (GROUP_ONLY) rejimiga o‘tkazish. O‘quvchilarning barcha mavjud urinishlari, topshiriqlari va natijalari 100% tegilmasdan saqlanadi.',
+              )}
+            </p>
+
+            {auditLoading ? (
+              <div style={{ padding: '32px', textAlign: 'center' }}>
+                <p className="muted">{t('loading', 'Tekshirilmoqda...')}</p>
+              </div>
+            ) : !auditData || auditData.tests.length === 0 ? (
+              <div
+                style={{
+                  background: '#ecfdf5',
+                  border: '1px solid #a7f3d0',
+                  borderRadius: 8,
+                  padding: 20,
+                  color: '#065f46',
+                  textAlign: 'center',
+                  marginBottom: 16,
+                }}
+              >
+                <strong>✅ Barcha Studio testlari himoyalangan!</strong>
+                <p style={{ margin: '6px 0 0', fontSize: '0.9rem' }}>
+                  Hozirda noo‘rin ochiq qolgan Studio testlari mavjud emas.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div
+                  style={{
+                    background: '#fffbeb',
+                    border: '1px solid #fde68a',
+                    borderRadius: 8,
+                    padding: '12px 16px',
+                    marginBottom: 16,
+                    color: '#92400e',
+                    fontSize: '0.9rem',
+                  }}
+                >
+                  ⚠️ <strong>{auditData.total_public_studio_tests} ta</strong> ochiq test aniqlandi.
+                  Quyidagi jadvaldan keraklilarini tanlab, bir bosishda <strong>GROUP_ONLY</strong> ga o‘tkazishingiz mumkin.
+                </div>
+
+                <div className="table-wrap" style={{ maxHeight: '360px', overflowY: 'auto', marginBottom: 16 }}>
+                  <table className="data" style={{ fontSize: '0.85rem' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ width: 40 }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedAuditIds.length === auditData.tests.length && auditData.tests.length > 0}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedAuditIds(auditData.tests.map((x) => x.id));
+                              } else {
+                                setSelectedAuditIds([]);
+                              }
+                            }}
+                          />
+                        </th>
+                        <th>Test nomi</th>
+                        <th>O‘qituvchi</th>
+                        <th>Markaz</th>
+                        <th>Topshiriq</th>
+                        <th>Natijalar</th>
+                        <th>Hozirgi</th>
+                        <th>Taklif</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {auditData.tests.map((item) => (
+                        <tr key={item.id}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={selectedAuditIds.includes(item.id)}
+                              onChange={() => {
+                                setSelectedAuditIds((prev) =>
+                                  prev.includes(item.id)
+                                    ? prev.filter((id) => id !== item.id)
+                                    : [...prev, item.id],
+                                );
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <strong>{item.title}</strong>
+                            <div className="muted small">ID: {item.id}</div>
+                          </td>
+                          <td>
+                            <div>{item.owner_name}</div>
+                            <div className="muted small">{item.owner_email}</div>
+                          </td>
+                          <td>{item.learning_center_name || 'Mustaqil'}</td>
+                          <td>{item.active_assignments} ta</td>
+                          <td>{item.results_count || item.existing_attempts} ta</td>
+                          <td>
+                            <span style={{ color: '#d97706', fontWeight: 600 }}>{item.access_policy}</span>
+                          </td>
+                          <td>
+                            <span style={{ color: '#10b981', fontWeight: 700 }}>
+                              {item.proposed_access_policy}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                  <span className="muted small">
+                    {selectedAuditIds.length} ta test tanlandi
+                  </span>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      type="button"
+                      className="btn secondary"
+                      onClick={() => setAuditModalOpen(false)}
+                      disabled={isApplyingAudit}
+                    >
+                      Yopish
+                    </button>
+                    <button
+                      type="button"
+                      className="btn primary"
+                      onClick={() => void handleApplyAudit()}
+                      disabled={selectedAuditIds.length === 0 || isApplyingAudit}
+                    >
+                      {isApplyingAudit ? 'O‘tkazilmoqda...' : 'GROUP_ONLY ga o‘tkazish'}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

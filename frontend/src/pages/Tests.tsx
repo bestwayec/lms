@@ -34,9 +34,16 @@ const isEnglishTest = (i: Item) =>
 const isIelts = (i: Item) => /ielts/.test(lower(i.title) + lower(i.course_title) + lower(i.mock_code) + lower(i.exam_type));
 const isMultiLevel = (i: Item) => lower(i.exam_type) === 'cefr_multilevel' || /multi-level|cefr/.test(lower(i.title) + lower(i.course_title));
 const isAttest = (i: Item) =>
-  ['#mock-attest2026', 'mock-attest2026'].includes(lower(i.mock_code)) || i.category_slug === 'attestatsiya' || lower(i.title).includes('attestatsiya');
+  i.assessment_category === 'attestation' ||
+  ['#mock-attest2026', 'mock-attest2026'].includes(lower(i.mock_code)) ||
+  i.category_slug === 'attestatsiya' ||
+  lower(i.title).includes('attestatsiya');
 const isAdabiyot = (i: Item) => /adabiyot|mumtoz/.test(lower(i.title) + lower(i.course_title));
-const isMilliy = (i: Item) => i.category_slug === 'milliy-sertifikat' || /milliy|bmb/.test(lower(i.title) + lower(i.course_title));
+const isMilliy = (i: Item) =>
+  i.assessment_category === 'national_cert' ||
+  i.assessment_category === 'full_mock' ||
+  i.category_slug === 'milliy-sertifikat' ||
+  /milliy|bmb/.test(lower(i.title) + lower(i.course_title));
 // Paywall rule kept exactly as before this redesign (BMB mock #4 / attestation / "#mock" titles need a plan).
 const isMock4 = (i: Item) => lower(i.mock_code) === '#mock-bmb04' || /mock #4|mock 4/.test(lower(i.title));
 const isDiagnostic = (i: Item) =>

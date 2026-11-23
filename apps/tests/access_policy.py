@@ -185,6 +185,29 @@ def resolve_test_access(
             is_paid_catalog=False,
         )
 
+    # 5a. Scheduled Availability Check (Opening date & Deadline on Test)
+    now = timezone.now()
+    test_from = getattr(test, "available_from", None)
+    if test_from and now < test_from and action in ("start", "new"):
+        return TestAccessDecision(
+            allowed=False,
+            reason_code="DENIED_NOT_YET_OPEN",
+            reason=f"Test hali ochilmagan. Boshlanish vaqti: {test_from.strftime('%d.%m.%Y %H:%M')}",
+            access_source="unknown",
+            is_paid_catalog=False,
+        )
+
+    test_until = getattr(test, "available_until", None)
+    if test_until and now > test_until and action in ("start", "new"):
+        return TestAccessDecision(
+            allowed=False,
+            reason_code="DENIED_DEADLINE_EXPIRED",
+            reason="Test topshirish muddati tugagan.",
+            access_source="unknown",
+            is_paid_catalog=False,
+            deadline=test_until,
+        )
+
     # 6. Active In-Progress Attempt Check
     active_attempt = TestAttempt.objects.filter(
         test=test,
@@ -244,6 +267,20 @@ def resolve_test_access(
                 allowed=False,
                 reason_code="DENIED_CANCELLED",
                 reason="Ushbu vazifa bekor qilingan.",
+                access_source="classroom",
+                assignment=hw,
+                group=target_group,
+                is_classroom_entitlement=True,
+                consumes_quota=False,
+            )
+
+        # Check start date for new attempts
+        hw_start = getattr(hw, "start_date", None)
+        if hw_start and now < hw_start and action in ("start", "new"):
+            return TestAccessDecision(
+                allowed=False,
+                reason_code="DENIED_NOT_YET_OPEN",
+                reason=f"Vazifa hali ochilmagan. Boshlanish vaqti: {hw_start.strftime('%d.%m.%Y %H:%M')}",
                 access_source="classroom",
                 assignment=hw,
                 group=target_group,

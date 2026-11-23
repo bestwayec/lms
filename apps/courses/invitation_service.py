@@ -144,6 +144,9 @@ def join_group_by_token(student: Any, token: str) -> dict[str, Any]:
             status=GroupJoinRequest.Status.PENDING,
             defaults={"invitation": invitation},
         )
+        from apps.notifications.outbox import enqueue_join_request_submitted
+
+        enqueue_join_request_submitted(join_req)
         return {
             "status": "pending_approval",
             "message": f"'{group.name}' guruhiga qo'shilish so'rovingiz qabul qilindi va ustoz tasdig'i kutilmoqda.",
@@ -165,6 +168,9 @@ def join_group_by_token(student: Any, token: str) -> dict[str, Any]:
             GroupInvitation.objects.filter(pk=invitation.pk).update(
                 uses_count=invitation.uses_count + 1
             )
+            from apps.notifications.outbox import enqueue_group_welcome
+
+            enqueue_group_welcome(group, student)
 
     return {
         "status": "joined",
@@ -215,6 +221,10 @@ def join_group_by_code(student: Any, code: str) -> dict[str, Any]:
         actor=group.teacher,
         reason="group_invite_code",
     )
+    if added:
+        from apps.notifications.outbox import enqueue_group_welcome
+
+        enqueue_group_welcome(group, student)
     return {
         "status": "joined",
         "message": f"'{group.name}' guruhiga muvaffaqiyatli qo'shildingiz!",
@@ -258,6 +268,9 @@ def review_join_request(
                 GroupInvitation.objects.filter(pk=join_req.invitation.pk).update(
                     uses_count=join_req.invitation.uses_count + 1
                 )
+            from apps.notifications.outbox import enqueue_join_request_reviewed
+
+            enqueue_join_request_reviewed(join_req)
         return {
             "status": "approved",
             "message": f"'{join_req.student.get_full_name() or join_req.student.email}' guruhga qabul qilindi.",
@@ -270,6 +283,9 @@ def review_join_request(
         join_req.reviewed_at = now
         join_req.rejection_reason = rejection_reason[:255]
         join_req.save(update_fields=["status", "reviewed_by", "reviewed_at", "rejection_reason", "updated_at"])
+        from apps.notifications.outbox import enqueue_join_request_reviewed
+
+        enqueue_join_request_reviewed(join_req)
         return {
             "status": "rejected",
             "message": f"So'rov rad etildi.",

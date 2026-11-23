@@ -4,7 +4,13 @@ import { BarChart3, Copy, Download, PenLine, Plus, Search, Share2, Trash2 } from
 import { useAuth } from '../auth/authState';
 import { useLang } from '../i18n/LangContext';
 import { TeacherEssays, canReviewEssays, type TeacherEssayCard } from '../lib/api';
-import { STUDIO_SUBJECTS, StudioApi, type StudioDetail, type StudioListItem } from '../lib/studio';
+import {
+  ASSESSMENT_CATEGORIES,
+  STUDIO_SUBJECTS,
+  StudioApi,
+  type StudioDetail,
+  type StudioListItem,
+} from '../lib/studio';
 import AssignDialog from '../components/studio/AssignDialog';
 import EssayReviewDrawer from '../components/studio/EssayReviewDrawer';
 
@@ -21,14 +27,20 @@ export default function TeacherStudio() {
   const [search, setSearch] = useState('');
   const [statusTab, setStatusTab] = useState<'all' | 'published' | 'draft'>('all');
   const [subjectFilter, setSubjectFilter] = useState<string>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [busyId, setBusyId] = useState<number | null>(null);
   const reviewer = canReviewEssays(user);
 
   const loadTests = useCallback(() => {
-    StudioApi.list({ q: search.trim() || undefined, status: statusTab, subject: subjectFilter })
+    StudioApi.list({
+      q: search.trim() || undefined,
+      status: statusTab,
+      subject: subjectFilter,
+      category: categoryFilter,
+    })
       .then(setTests)
       .catch((e) => setErr(e instanceof Error ? e.message : t('err_retry_js')));
-  }, [search, statusTab, subjectFilter, t]);
+  }, [search, statusTab, subjectFilter, categoryFilter, t]);
 
   const loadEssays = useCallback(() => {
     if (!reviewer) return;
@@ -145,6 +157,19 @@ export default function TeacherStudio() {
                 </option>
               ))}
             </select>
+            <select
+              style={{ height: 36, borderRadius: 6, border: '1px solid var(--border)', padding: '0 8px', fontSize: '0.9rem' }}
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              aria-label={t('filter_by_category', 'Kategoriya bo‘yicha filter')}
+            >
+              <option value="all">{t('all_categories', 'Barcha kategoriyalar')}</option>
+              {ASSESSMENT_CATEGORIES.map((cat) => (
+                <option key={cat} value={cat}>
+                  {t(`studio_category_${cat}`, cat)}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -200,6 +225,20 @@ export default function TeacherStudio() {
                       <span className={`studio-status is-${test.status}`}>{t(`studio_status_${test.status}`, test.status)}</span>
                       <span>·</span>
                       <span>{t(`studio_subject_${test.subject}`, test.subject)}</span>
+                      {test.assessment_category && (
+                        <>
+                          <span>·</span>
+                          <span style={{ background: 'var(--code-bg, #f3f4f6)', padding: '1px 6px', borderRadius: 4, fontSize: '0.8rem' }}>
+                            {t(`studio_category_${test.assessment_category}`, test.assessment_category)}
+                          </span>
+                        </>
+                      )}
+                      {test.is_timed === false && (
+                        <>
+                          <span>·</span>
+                          <span style={{ color: 'var(--muted)', fontSize: '0.8rem' }}>{t('studio_time_untimed', 'Vaqt cheklovisiz')}</span>
+                        </>
+                      )}
                       <span>·</span>
                       <span>{t('studio_n_questions', '{n} ta savol').replace('{n}', String(test.questions))}</span>
                       <span>·</span>

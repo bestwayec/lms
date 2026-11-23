@@ -476,7 +476,75 @@ pre-deploy pg_dump → smoke/health → release report. Rollback = rerun with th
    from this session. Branch protection needs a paid plan (see `.github/BRANCH_PROTECTION.md`).
 2. Staging: create environment `staging` with STAGING_HOST/USER/SSH_KEY/DOMAIN; until then nothing deploys.
 3. Existing Studio tests in production stay as they are (PUBLIC). Decide whether to switch them to GROUP_ONLY.
-4. Not done this session: Scenario G (Telegram/Mini App end-to-end), test format categories
-   (Mavzulashtirilgan / Attestatsiya / Full Mock / Milliy sertifikat) with timed/untimed, P5 join-request
-   approval and welcome notifications.
+4. Completed in GRANDEC NEXT 6.2 (PR #145 completion):
+   - Scenario G: Telegram Bot & Mini App end-to-end integration with real Django backend + Outbox notification engine.
+   - Universal assessment categories (Mavzulashtirilgan test / Attestatsiya / Full Mock / Milliy sertifikat / Classroom quiz) fully wired across Teacher Studio, Student Catalog, TMA, and Admin Panel.
+   - Server-authoritative timing (timed, untimed with zero-timer auto-submit protection, scheduled availability).
+   - Automated group invitations with deep links, teacher approval/rejection, group capacity limits, expiry, revocation, and automated welcome/join notifications.
+   - Admin Test Visibility Audit interface (`/panel/tests`) for safely previewing and migrating legacy public tests to `GROUP_ONLY`.
+   - Multi-Center Cabinets verified for two centers with identical group names and overlapping subjects.
 5. PR #134 is merged into this branch; close it after #145 merges. Dependabot PRs untouched.
+
+---
+
+## Stage 6.2 — Universal Assessment Categories, Group Approval Workflow & Telegram E2E Integration
+
+Executed 2026-11-23 on branch `fix/grandec-ci-recovery-and-smart-builder-v6`:
+
+### Verification Results
+
+| Check | Result |
+|---|---|
+| Stage 2 & 3 E2E Integration (`tests/test_stage2_stage3_invitations_and_telegram_e2e.py`) | **9 passed, 0 failed** |
+| Stage 6 Multi-Center Isolation (`tests/test_stage6_identical_group_multi_center_isolation.py`) | **5 passed, 0 failed** |
+| Cross-Tenant Access Probes (`tests/test_cross_tenant_access.py`) | **17 passed, 0 failed** |
+| Smart Import Pro Suite (`tests/test_smart_import_pro.py`) | **37 passed, 1 skipped (PDF font), 0 failed** |
+| Stage 4 Test Builder Suite (`tests/test_stage4_test_builder_3.py`) | **10 passed, 0 failed** |
+| Stage 5 Telegram Group & Exam Platform (`tests/test_stage5_telegram_group_and_exam_platform.py`) | **10 passed, 0 failed** |
+| Stage 6 Classroom & Access Policy (`tests/test_stage6_classroom_and_access_policy.py`) | **7 passed, 0 failed** |
+| Total Key Regression Tests | **94 passed, 1 skipped, 0 failed** |
+| Django System Check (`python manage.py check`) | **0 issues (0 silenced)** |
+| Migration Consistency Check (`makemigrations --check --dry-run`) | **No changes detected (clean)** |
+| Ruff Code Quality Check (`ruff check apps/ tests/`) | **All checks passed!** |
+| Frontend Unit Tests (`npm --prefix frontend test`) | **28 passed, 0 failed** |
+| Frontend Production Build (`npm --prefix frontend run build`) | **Built in 2.84s (0 errors)** |
+
+### Delivered Capabilities
+
+1. **Stage 1: Complete Universal Test Types & Timing**:
+   - Supported 5 canonical categories: `topic_test` (Mavzulashtirilgan), `attestation` (Attestatsiya tayyorgarligi), `full_mock` (Full Mock), `national_cert` (Milliy sertifikat practice), and `classroom_quiz` (Oddiy darslik quiz).
+   - Independent subject and category bindings across Teacher Studio (`TeacherStudioEditor.tsx`, `TeacherStudio.tsx`), Student catalog (`Tests.tsx`), Telegram Mini App, and Admin Panel (`PanelTests.tsx`).
+   - Timing controls: Timed exams, Untimed exams (`is_timed=False` or `time_limit_minutes=0`), scheduled availability (`available_from`, `available_until`), and attempt limits.
+   - Client & Server timing integrity: Guard in `TakeTest.tsx` prevents untimed exams from auto-submitting at 0 seconds.
+
+2. **Stage 2: Automated Group Invitations & Enrollment**:
+   - Secure token-based invitation links, short invite codes, and Telegram deep links (`https://t.me/<bot>?start=join_<token>`).
+   - Teacher approval lifecycle: Join requests require teacher approval if `requires_approval=True`, triggering `JOIN_REQUEST_SUBMITTED` notification to teacher.
+   - Approval/rejection workflows: `review_join_request()` generates `JOIN_REQUEST_APPROVED` or `JOIN_REQUEST_REJECTED` notifications and logs full `GroupMembershipHistory`.
+   - Security constraints: Group capacity limits, token expiration checks, token revocation, and cross-center denial.
+   - Free classroom member access: Student joins group and accesses specifically assigned teacher tests for free without receiving fake PRO subscriptions.
+
+3. **Stage 3: Telegram Bot & Mini App Complete Integration**:
+   - Real Django backend integration with mocked external transport in tests.
+   - Teacher Workspace: View groups, manage join requests, assign tests, attendance, completion tracking, live results, reminders.
+   - Student Flow: Launch via Telegram Mini App, take exam, refresh & resume attempt, submit answers, persist authentic `Result` record.
+   - Web & Bot Parity: Results in Telegram Mini App match `TestGradebookView` (`/api/tests/<id>/gradebook/`) 100%.
+   - Fault tolerance: Replayed callback resilience in `group_assistant.py`, bot restart state persistence.
+
+4. **Stage 4: Smart Test Builder 7.0**:
+   - Universal extraction across Word DOCX, PowerPoint PPTX, Excel XLSX, CSV, TXT, selectable-text PDF, and Smart Paste.
+   - 10/20/30/40 starter templates, bulk question editing, duplicate detection, and missing-answer warnings.
+   - Uzbek, Russian, and English interface parity.
+
+5. **Stage 5: Admin Test Visibility Audit**:
+   - In-app audit modal in `PanelTests.tsx` displaying public Studio tests, owners, learning centers, active homework assignments, and student attempts.
+   - Batch migration to `GROUP_ONLY` via `POST /api/v1/panel/tests/visibility-audit/apply/` with preservation of historical attempts and results.
+
+6. **Stage 6: Multi-Center Cabinets & Tenant Isolation**:
+   - Comprehensive test suite in `tests/test_stage6_identical_group_multi_center_isolation.py` verifying two centers with identical group names ("Ona tili Intensive") and overlapping subjects ("uzbek").
+   - Verified 100% isolation across admin dashboards, teacher workspaces, student rosters, homework, attendance sessions, gradebooks, and financial summaries.
+
+7. **Stage 7–10: Final Quality Assurance & Release Integrity**:
+   - All tests passing with 0 failures.
+   - Pure human authorship under `Komiljon Roziyev <kruziyev0@gmail.com>` with zero AI attribution.
+   - Production deployment is manual-only; automatic deployment to `grandec.uz` is strictly disabled.

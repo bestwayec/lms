@@ -454,6 +454,10 @@ class OutboxMessage(models.Model):
         HOMEWORK_REMINDER = "homework_reminder", _("Muddat eslatmasi")
         HOMEWORK_RESULT = "homework_result", _("Vazifa natijasi")
         HOMEWORK_REVIEW = "homework_review", _("Tekshiruv kerak (ustoz)")
+        JOIN_REQUEST_SUBMITTED = "join_request_submitted", _("Guruhga so'rov (ustozga)")
+        JOIN_REQUEST_APPROVED = "join_request_approved", _("Guruhga qabul qilindi")
+        JOIN_REQUEST_REJECTED = "join_request_rejected", _("Guruh so'rovi rad etildi")
+        GROUP_WELCOME = "group_welcome", _("Guruhga xush kelibsiz")
 
     dedup_key = models.CharField(_("idempotentlik kaliti"), max_length=200, unique=True)
     recipient = models.ForeignKey(

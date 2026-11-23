@@ -23,6 +23,7 @@ import AnswerMatrix from '../components/studio/AnswerMatrix';
 import StudentPreview from '../components/studio/StudentPreview';
 import AssignDialog from '../components/studio/AssignDialog';
 import {
+  ASSESSMENT_CATEGORIES,
   BLOCK_TYPES,
   STUDIO_AUDIENCES,
   STUDIO_SUBJECTS,
@@ -31,6 +32,7 @@ import {
   emptyBlock,
   nextNumber,
   withKeys,
+  type AssessmentCategory,
   type BlockType,
   type FileImportResult,
   type StudioBlock,
@@ -45,7 +47,10 @@ type Tab = 'blocks' | 'paste' | 'import' | 'key';
 interface Meta {
   title: string;
   subject: string;
+  assessment_category: AssessmentCategory;
   time_limit_minutes: number;
+  available_from?: string | null;
+  available_until?: string | null;
   description?: string;
   audience: StudioAudience;
 }
@@ -108,7 +113,16 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
   const { t } = useLang();
 
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(id ? 2 : 1);
-  const [meta, setMeta] = useState<Meta>({ title: '', subject: 'english', time_limit_minutes: 30, description: '', audience: 'GROUP_ONLY' });
+  const [meta, setMeta] = useState<Meta>({
+    title: '',
+    subject: 'uzbek',
+    assessment_category: 'classroom_quiz',
+    time_limit_minutes: 30,
+    available_from: null,
+    available_until: null,
+    description: '',
+    audience: 'GROUP_ONLY',
+  });
   const [blocks, setBlocks] = useState<StudioBlock[]>([]);
   const [detail, setDetail] = useState<StudioDetail | null>(null);
   const [issues, setIssues] = useState<StudioIssue[]>([]);
@@ -132,7 +146,10 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
     setMeta({
       title: d.test.title,
       subject: d.test.subject,
+      assessment_category: d.test.assessment_category ?? 'classroom_quiz',
       time_limit_minutes: d.test.time_limit_minutes,
+      available_from: d.test.available_from ? d.test.available_from.slice(0, 16) : null,
+      available_until: d.test.available_until ? d.test.available_until.slice(0, 16) : null,
       description: d.test.description || '',
       audience: d.test.audience ?? 'GROUP_ONLY',
     });
@@ -534,6 +551,22 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
               </label>
 
               <label className="studio-field">
+                <span style={{ fontWeight: 600 }}>{t('studio_category', 'Kategoriya')}</span>
+                <select
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)' }}
+                  value={meta.assessment_category}
+                  disabled={locked}
+                  onChange={(e) => editMeta({ assessment_category: e.target.value as AssessmentCategory })}
+                >
+                  {ASSESSMENT_CATEGORIES.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {t(`studio_category_${cat}`, cat)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="studio-field">
                 <span style={{ fontWeight: 600 }}>{t('studio_audience', 'Kim topshira oladi')}</span>
                 <select
                   style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)' }}
@@ -569,16 +602,39 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
 
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
               <span className="muted small">{t('studio_time_presets', 'Tezkor vaqt')}:</span>
-              {[15, 20, 30, 45, 60, 90].map((m) => (
+              {[0, 15, 20, 30, 45, 60, 90].map((m) => (
                 <button
                   key={m}
                   type="button"
                   className={`btn sm ${meta.time_limit_minutes === m ? 'primary' : 'ghost'}`}
                   onClick={() => editMeta({ time_limit_minutes: m })}
                 >
-                  {m} {t('minutes_short', 'daq')}
+                  {m === 0 ? t('studio_time_untimed', 'Cheklovsiz') : `${m} ${t('minutes_short', 'daq')}`}
                 </button>
               ))}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
+              <label className="studio-field">
+                <span style={{ fontWeight: 600 }}>{t('studio_available_from', 'Boshlanish sanasi (ixtiyoriy)')}</span>
+                <input
+                  type="datetime-local"
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)' }}
+                  value={meta.available_from ?? ''}
+                  disabled={locked}
+                  onChange={(e) => editMeta({ available_from: e.target.value || null })}
+                />
+              </label>
+              <label className="studio-field">
+                <span style={{ fontWeight: 600 }}>{t('studio_available_until', 'Tugash muddati (ixtiyoriy)')}</span>
+                <input
+                  type="datetime-local"
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)' }}
+                  value={meta.available_until ?? ''}
+                  disabled={locked}
+                  onChange={(e) => editMeta({ available_until: e.target.value || null })}
+                />
+              </label>
             </div>
 
             <label className="studio-field">
@@ -1002,7 +1058,9 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
                 <div className="muted small" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <span>{t(`studio_subject_${meta.subject}`, meta.subject)}</span>
                   <span>·</span>
-                  <span>{meta.time_limit_minutes} {t('minutes_short', 'daq')}</span>
+                  <span>{t(`studio_category_${meta.assessment_category}`, meta.assessment_category)}</span>
+                  <span>·</span>
+                  <span>{meta.time_limit_minutes > 0 ? `${meta.time_limit_minutes} ${t('minutes_short', 'daq')}` : t('studio_time_untimed', 'Vaqt cheklovisiz')}</span>
                   <span>·</span>
                   <span>{t('studio_n_questions', '{n} ta savol').replace('{n}', String(questionCount))}</span>
                 </div>

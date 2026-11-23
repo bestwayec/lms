@@ -3356,7 +3356,16 @@
     "studio_audience_help_GROUP_ONLY": "Faqat siz vazifa qilib bergan o‘quvchilar topshiradi — PRO talab qilinmaydi.",
     "studio_audience_help_GROUP_AND_SUBSCRIBERS": "Guruhingiz bepul; boshqalar faqat PRO/Premium obuna bilan.",
     "studio_audience_help_PUBLIC_FREE": "Test kodini bilgan har kim topshira oladi (bepul limit hisoblanadi).",
-    "studio_err_bad_audience": "Auditoriya noto‘g‘ri tanlangan."
+    "studio_err_bad_audience": "Auditoriya noto‘g‘ri tanlangan.",
+    "studio_category": "Test kategoriyasi",
+    "studio_category_classroom_quiz": "Sinf testi (Oddiy dars testi)",
+    "studio_category_topic_test": "Mavzulashtirilgan test",
+    "studio_category_attestation": "Attestatsiya tayyorgarligi",
+    "studio_category_full_mock": "Full Mock",
+    "studio_category_national_cert": "Milliy sertifikat practice",
+    "studio_time_untimed": "Vaqt cheklovisiz",
+    "studio_available_from": "Boshlanish sanasi (ixtiyoriy)",
+    "studio_available_until": "Tugash muddati (ixtiyoriy)"
   },
   "ru": {
     "spk_practise_again": "Повторить эту тему",
@@ -6715,7 +6724,16 @@
     "studio_audience_help_GROUP_ONLY": "Проходят только ученики, которым вы назначили тест, — PRO не нужен.",
     "studio_audience_help_GROUP_AND_SUBSCRIBERS": "Ваши группы бесплатно; остальные — только с PRO/Premium.",
     "studio_audience_help_PUBLIC_FREE": "Любой, кто знает код теста (учитывается бесплатный лимит).",
-    "studio_err_bad_audience": "Неверно выбрана аудитория."
+    "studio_err_bad_audience": "Неверно выбрана аудитория.",
+    "studio_category": "Категория теста",
+    "studio_category_classroom_quiz": "Классный опрос (Обычный тест)",
+    "studio_category_topic_test": "Тематический тест",
+    "studio_category_attestation": "Подготовка к аттестации",
+    "studio_category_full_mock": "Full Mock (Полный мок)",
+    "studio_category_national_cert": "Практика Национального сертификата",
+    "studio_time_untimed": "Без ограничения по времени",
+    "studio_available_from": "Дата начала (необязательно)",
+    "studio_available_until": "Срок сдачи (необязательно)"
   },
   "en": {
     "spk_practise_again": "Practise this topic again",
@@ -10074,6 +10092,15 @@
     "studio_audience_help_GROUP_ONLY": "Only students you assign it to can take it — no PRO needed.",
     "studio_audience_help_GROUP_AND_SUBSCRIBERS": "Free for your groups; others need PRO/Premium.",
     "studio_audience_help_PUBLIC_FREE": "Anyone with the test code can take it (free quota applies).",
-    "studio_err_bad_audience": "Invalid audience."
+    "studio_err_bad_audience": "Invalid audience.",
+    "studio_category": "Assessment Category",
+    "studio_category_classroom_quiz": "Classroom Quiz",
+    "studio_category_topic_test": "Topic-based Test",
+    "studio_category_attestation": "Attestation Preparation",
+    "studio_category_full_mock": "Full Mock Exam",
+    "studio_category_national_cert": "National Certificate Practice",
+    "studio_time_untimed": "Untimed (No limit)",
+    "studio_available_from": "Available From (optional)",
+    "studio_available_until": "Available Until (optional)"
   }
 }

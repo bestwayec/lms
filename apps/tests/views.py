@@ -168,6 +168,16 @@ class TestListView(generics.ListAPIView):
                     | Q(title__icontains="Multi-level")
                     | Q(mock_code__icontains="IELTS")
                 )
+            elif subject in ("biology", "chemistry", "law"):
+                qs = qs.filter(subject=subject)
+
+            category = (
+                self.request.query_params.get("category")
+                or self.request.query_params.get("assessment_category")
+                or ""
+            ).strip().lower()
+            if category:
+                qs = qs.filter(assessment_category=category)
 
             # One shared rule (apps/tests/visibility.py): group-only tests are listed only for
             # their members and staff, drafts only for their authors/teachers.
@@ -1862,6 +1872,7 @@ class TestGradebookView(APIView):
                 "hardest_question": hardest_q_data,
                 "created_at": test.created_at.strftime("%d.%m.%Y"),
                 "students": ranking,
+                "ranking": ranking,
             },
             status=status.HTTP_200_OK,
         )

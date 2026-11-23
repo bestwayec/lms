@@ -9,6 +9,55 @@
    - Ustoz kabinetida har bir o'quvchining PRO holati (`⭐ PRO (Faol)`), ishlagan testlari va esselari aks etishi.
 3. Attestatsiya 2026 yangi diagnostika testini 50 ta savoli bilan bazaga seed qilish, kategoriyalashtirish va VPS ga deploy qilish.
 
+### 2.94. Rasmiy Versiya v6.2: Universal Test Types, Group Approval Workflow & Multi-Center Isolation (PR #145 Yakuniy Qism)
+- **Maqsad**:
+  * **Universal Test Kategoriyalari va Vaqt Boshqaruvi (Stage 1)**:
+    - 5 ta asosiy test toifasi: `topic_test` (Mavzulashtirilgan test), `attestation` (Attestatsiya tayyorgarligi), `full_mock` (Full Mock), `national_cert` (Milliy sertifikat practice), va `classroom_quiz` (Oddiy darslik quiz). Fan va toifa bir-biridan mustaqil tanlanishi ta'minlandi.
+    - Server-avtoritar vaqt siyosati: Timed (vaqt cheklovi bilan) va Untimed (vaqt cheklovisiz). Vaqtsiz testlar hech qachon 0 soniyada avto-submit bo'lib ketmaydi (`TakeTest.tsx` xavfsizlik cheklovi).
+    - Rejali mavjudlik: `available_from` va `available_until` rejalashtirish parametrlari.
+  * **Avtomatlashtirilgan Guruh Taklifnomalari va Tasdiqlash Tizimi (Stage 2)**:
+    - Ustoz tomonidan taklif havolalari, xavfsiz tokenlar, 6 xonali taklif kodlari va Telegram deep linklar (`t.me/<bot>?start=join_<token>`).
+    - Agar `requires_approval=True` bo'lsa, o'quvchi qo'shilish so'rovi (`GroupJoinRequest`) yuboradi, ustozga `JOIN_REQUEST_SUBMITTED` xabarnomasi Outbox ga tushadi.
+    - Ustoz tasdiqlaganda (`review_join_request(approved=True)`) o'quvchiga `JOIN_REQUEST_APPROVED` boradi, a'zolik tarixi (`GroupMembershipHistory`) to'liq yoziladi.
+    - Rad etilganda `JOIN_REQUEST_REJECTED` boradi. Guruh sig'imi (`max_students`), token muddati tugashi va bekor qilish to'liq himoyalangan.
+  * **Telegram Bot & Mini App To'liq Real-Backend Integratsiyasi (Stage 3)**:
+    - Real Django backend xizmatlari va test ma'lumotlar bazasi orqali to'liq E2E sikl: Taklifnoma -> Telegram guruhiga bildirishnoma -> TMA orqali test boshlash -> javoblarni saqlash -> refresh/resume -> submit -> DB da haqiqiy `Result` yaratilishi -> Ustoz veb vedomostida (`/api/tests/<id>/gradebook/`) va botda 100% bir xil natija ko'rinishi.
+    - Tashqi Telegram HTTP transporti testlarda mock qilindi. Qayta bosilgan callbacklar (replayed callbacks) va xatoliklar qat'iy ushlandi.
+  * **Smart Test Builder 7.0 (Stage 4)**:
+    - DOCX, PPTX, XLSX, CSV, TXT, matnli PDF va Smart Paste orqali savollarni import qilish, 10/20/30/40 starter shablonlar, takroriy savollarni aniqlash va javob kalitlari matritsasi.
+  * **Admin Test Auditoriya Auditi (Stage 5)**:
+    - Panelda (`/panel/tests`) auditoriya auditi modali: eski ommaviy testlarni ko'rib chiqish va bir bosishda xavfsiz `GROUP_ONLY` rejimiga o'tkazish (`POST /api/v1/panel/tests/visibility-audit/apply/`).
+  * **Multi-Center Izolyatsiyasi (Stage 6)**:
+    - Ikkita o'quv markazida bir xil guruh nomi ("Ona tili Intensive") va bir xil fan ("uzbek") bo'lganda ham talabalar ro'yxati, testlar, vazifalar, davomat sessiyalari, baholash vedomostlari va moliyaviy hisobotlar o'rtasida 100% tenant izolyatsiyasi ta'minlandi.
+- **Bajarildi**:
+  * [x] **Backend & Modellar**:
+    - `apps/tests/models.py`: `assessment_category`, `is_timed`, `available_from`, `available_until` qo'shildi (migratsiya `0024_test_assessment_category_test_available_from_and_more.py`).
+    - `apps/notifications/models.py`: `JOIN_REQUEST_SUBMITTED`, `JOIN_REQUEST_APPROVED`, `JOIN_REQUEST_REJECTED`, `GROUP_WELCOME` hodisalari qo'shildi (migratsiya `0016_alter_outboxmessage_event.py`).
+    - `apps/notifications/outbox.py`: Join request va group welcome render funksiyalari to'g'rilandi.
+    - `apps/notifications/bot/group_assistant.py`: `review_join_request` uchun `ValidationError` ushlanib, qayta bosilgan callbacklarda xatoliksiz javob qaytarish ta'minlandi.
+    - `apps/tests/views.py`: `TestGradebookView` da `students` va `ranking` ikkalasi ham taqdim etildi.
+  * [x] **Frontend & UI/UX**:
+    - `TeacherStudioEditor.tsx`, `TeacherStudio.tsx`, `Tests.tsx`, `TakeTest.tsx`: 5 ta test toifasi, untimed nazorat, schedule availability va uz/ru/en lokalizatsiya to'liq kiritildi.
+    - `PanelTests.tsx`: Auditoriya auditi tugmasi va ommaviy testlarni `GROUP_ONLY` ga o'tkazuvchi modal qo'shildi.
+    - `TakeTest.tsx`: Vaqtsiz testlar uchun auto-submit himoyasi qo'yildi.
+  * [x] **Testlar & QA**:
+    - `tests/test_stage2_stage3_invitations_and_telegram_e2e.py`: 9 ta test 100% PASS.
+    - `tests/test_stage6_identical_group_multi_center_isolation.py`: 5 ta test 100% PASS.
+    - Core regression suite: 94 ta test PASS, 1 ta skipped (PDF shrift), 0 ta xato.
+    - `python manage.py check`: 0 issues.
+    - `python manage.py makemigrations --check --dry-run`: No changes detected.
+    - `ruff check apps/ tests/`: All checks passed.
+    - `npm --prefix frontend test`: 28 ta test 100% PASS.
+    - `npm --prefix frontend run build`: 0 xato, 2.84s da build bo'ldi.
+- **Jarayonda**:
+  * PR #145 ga barcha o'zgarishlarni kiritish va hujjatlashtirish.
+- **Keyingi qadamlar**:
+  * PR #145 ni push qilish va tavsifini yangilash.
+- **Muhim qarorlar**:
+  * Vaqtsiz testlar topshirilayotganda 0 soniya taymer avtomatik tarzda testni yakunlab yubormaydi.
+  * Guruh a'zolariga soxta PRO obunasi berilmaydi, faqat o'sha guruhga biriktirilgan darslik testlar bepul bo'ladi.
+  * Rasmiy production deployment faqat manual trigger (`workflow_dispatch`) orqali bo'ladi, avtomatik deploy o'chirilgan.
+
 ### 2.93. Rasmiy Versiya v6.0: Teacher Classroom, Group Invitations & Premium Test Access
 - **Maqsad**:
   * **Yagona Kirish Siyosati (`resolve_test_access`)**: Ustoz o'z guruhiga mavzuli testlar, attestatsiya mashqlari yoki to'liq mock imtihonlarni biriktirganda, vakolatli guruh a'zolari testni alohida PRO/Premium obunasiz topshira olishi (`is_classroom_entitlement=True`, tijorat kvotasi `consumes_quota=False`).

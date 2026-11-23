@@ -1638,6 +1638,32 @@ export const Panel = {
     api<{ test: Record<string, unknown>; results: Record<string, unknown>[] }>(
       `/api/v1/panel/tests/${testId}/questions/`,
     ),
+  visibilityAudit: () =>
+    api<{
+      total_public_studio_tests: number;
+      tests: {
+        id: number;
+        title: string;
+        owner_name: string;
+        owner_email: string;
+        learning_center_id: number | null;
+        learning_center_name: string | null;
+        active_assignments: number;
+        existing_attempts: number;
+        results_count: number;
+        access_policy: string;
+        proposed_access_policy: string;
+      }[];
+    }>('/api/v1/panel/tests/visibility-audit/'),
+  applyVisibilityAudit: (testIds: number[], targetMode = 'GROUP_ONLY') =>
+    api<{
+      updated_count: number;
+      target_mode: string;
+      updated_test_ids: number[];
+    }>('/api/v1/panel/tests/visibility-audit/apply/', {
+      method: 'POST',
+      body: JSON.stringify({ test_ids: testIds, target_mode: targetMode }),
+    }),
   createQuestion: (testId: number | string, payload: Record<string, unknown>) =>
     api<Record<string, unknown>>(`/api/v1/panel/tests/${testId}/questions/`, {
       method: 'POST',

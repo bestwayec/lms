@@ -138,6 +138,45 @@ def enqueue_deadline_reminders(now: datetime | None = None, within: timedelta = 
     return count
 
 
+def enqueue_join_request_submitted(join_req) -> None:
+    teacher = getattr(join_req.group, "teacher", None)
+    if teacher:
+        enqueue(
+            teacher,
+            Event.JOIN_REQUEST_SUBMITTED,
+            f"join_req_submitted:{join_req.id}",
+            {"request_id": join_req.id, "group_id": join_req.group_id, "student_id": join_req.student_id},
+        )
+
+
+def enqueue_join_request_reviewed(join_req) -> None:
+    from apps.courses.models import GroupJoinRequest
+
+    if join_req.status == GroupJoinRequest.Status.APPROVED:
+        enqueue(
+            join_req.student,
+            Event.JOIN_REQUEST_APPROVED,
+            f"join_req_approved:{join_req.id}",
+            {"request_id": join_req.id, "group_id": join_req.group_id},
+        )
+    elif join_req.status == GroupJoinRequest.Status.REJECTED:
+        enqueue(
+            join_req.student,
+            Event.JOIN_REQUEST_REJECTED,
+            f"join_req_rejected:{join_req.id}",
+            {"request_id": join_req.id, "group_id": join_req.group_id},
+        )
+
+
+def enqueue_group_welcome(group, student) -> None:
+    enqueue(
+        student,
+        Event.GROUP_WELCOME,
+        f"group_welcome:{group.id}:{student.id}",
+        {"group_id": group.id},
+    )
+
+
 # ---------------------------------------------------------------------------
 # Policy
 # ---------------------------------------------------------------------------
@@ -147,6 +186,10 @@ _PREF_FIELD = {
     Event.HOMEWORK_REMINDER: "homework_deadline_alerts",
     Event.HOMEWORK_RESULT: "test_result_alerts",
     Event.HOMEWORK_REVIEW: "teacher_homework_review",
+    Event.JOIN_REQUEST_SUBMITTED: "teacher_homework_review",
+    Event.JOIN_REQUEST_APPROVED: "homework_assigned_alerts",
+    Event.JOIN_REQUEST_REJECTED: "homework_assigned_alerts",
+    Event.GROUP_WELCOME: "homework_assigned_alerts",
 }
 
 
@@ -207,6 +250,65 @@ def render(msg: OutboxMessage) -> Card | None:
     from apps.courses.homework_service import derive_submission_status, official_exam_summary
     from apps.courses.models import Homework, HomeworkSubmission
 
+    if msg.event == Event.JOIN_REQUEST_SUBMITTED:
+        from apps.courses.models import GroupJoinRequest
+
+        req = GroupJoinRequest.objects.filter(id=msg.payload.get("request_id")).select_related("group", "student").first()
+        if not req or req.status != GroupJoinRequest.Status.PENDING:
+            return None
+        st_name = html.escape(req.student.get_full_name() or req.student.email)
+        grp_name = html.escape(req.group.name)
+        text = (
+            f"🔔 <b>Guruhga qo'shilish so'rovi</b>\n\n"
+            f"O'quvchi: <b>{st_name}</b>\n"
+            f"Guruh: <b>{grp_name}</b>\n\n"
+            "Iltimos, ustoz kabinetida a'zolikni tasdiqlang yoki rad eting."
+        )
+        return Card(text, _open_buttons("/teacher"))
+
+    if msg.event == Event.JOIN_REQUEST_APPROVED:
+        from apps.courses.models import GroupJoinRequest
+
+        req = GroupJoinRequest.objects.filter(id=msg.payload.get("request_id")).select_related("group").first()
+        if not req or req.status != GroupJoinRequest.Status.APPROVED:
+            return None
+        grp_name = html.escape(req.group.name)
+        text = (
+            f"🎉 <b>Guruhga qabul qilindingiz!</b>\n\n"
+            f"Siz <b>{grp_name}</b> guruhiga muvaffaqiyatli qabul qilindingiz. "
+            "Ustozingiz bergan darslar va sinf testlari endi siz uchun ochiq."
+        )
+        return Card(text, _open_buttons("/my-homework"))
+
+    if msg.event == Event.JOIN_REQUEST_REJECTED:
+        from apps.courses.models import GroupJoinRequest
+
+        req = GroupJoinRequest.objects.filter(id=msg.payload.get("request_id")).select_related("group").first()
+        if not req or req.status != GroupJoinRequest.Status.REJECTED:
+            return None
+        grp_name = html.escape(req.group.name)
+        reason = html.escape(req.rejection_reason or "Ustoz tomonidan rad etildi.")
+        text = (
+            f"❌ <b>Guruh so'rovingiz rad etildi</b>\n\n"
+            f"Guruh: <b>{grp_name}</b>\n"
+            f"Sabab: {reason}"
+        )
+        return Card(text, _open_buttons("/my-homework"))
+
+    if msg.event == Event.GROUP_WELCOME:
+        from apps.courses.models import StudentGroup
+
+        grp = StudentGroup.objects.filter(id=msg.payload.get("group_id")).first()
+        if not grp:
+            return None
+        grp_name = html.escape(grp.name)
+        text = (
+            f"👋 <b>Guruhga xush kelibsiz!</b>\n\n"
+            f"Siz <b>{grp_name}</b> guruhiga a'zo bo'ldingiz. "
+            "Ustozingiz bergan barcha dars testlarini bepul topshirishingiz mumkin."
+        )
+        return Card(text, _open_buttons("/my-homework"))
+
     hw = Homework.objects.filter(id=msg.payload.get("homework_id")).select_related("test", "group").first()
     if hw is None:
         return None
@@ -260,6 +362,7 @@ def render(msg: OutboxMessage) -> Card | None:
         who = html.escape(sub.student.get_full_name() or "O'quvchi")
         head = "📝 <b>Tekshiruv kutilmoqda</b>" if status == HomeworkSubmission.Status.AWAITING_REVIEW else "⚠️ <b>Natija hisoblanmadi</b>"
         return Card(f"{head}\n\n{title}\n{who}", _open_buttons("/teacher"))
+
     return None
 
 
@@ -391,8 +494,11 @@ __all__ = [
     "deliver",
     "enqueue",
     "enqueue_deadline_reminders",
+    "enqueue_group_welcome",
     "enqueue_homework_assigned",
     "enqueue_homework_outcome",
+    "enqueue_join_request_reviewed",
+    "enqueue_join_request_submitted",
     "outbox_enabled",
     "process_batch",
     "quiet_hours_end",

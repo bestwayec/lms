@@ -68,12 +68,25 @@ export interface StudioIssue {
   code: string;
 }
 
+export type AssessmentCategory = 'topic_test' | 'attestation' | 'full_mock' | 'national_cert' | 'classroom_quiz';
+export const ASSESSMENT_CATEGORIES: AssessmentCategory[] = [
+  'classroom_quiz',
+  'topic_test',
+  'attestation',
+  'full_mock',
+  'national_cert',
+];
+
 export interface StudioTestSummary {
   id: number;
   title: string;
   subject: string;
+  assessment_category?: AssessmentCategory;
   status: 'draft' | 'published' | 'archived';
   time_limit_minutes: number;
+  is_timed?: boolean;
+  available_from?: string | null;
+  available_until?: string | null;
   mock_code: string;
   access_pin: string;
   description: string;
@@ -111,6 +124,9 @@ export interface StudioListItem {
   id: number;
   title: string;
   subject: string;
+  assessment_category?: AssessmentCategory;
+  is_timed?: boolean;
+  time_limit_minutes?: number;
   status: StudioTestSummary['status'];
   mock_code: string;
   questions: number;
@@ -191,7 +207,11 @@ export const STUDIO_AUDIENCES: StudioAudience[] = ['GROUP_ONLY', 'GROUP_AND_SUBS
 export interface TestPayload {
   title: string;
   subject: string;
+  assessment_category?: AssessmentCategory;
   time_limit_minutes: number;
+  is_timed?: boolean;
+  available_from?: string | null;
+  available_until?: string | null;
   description?: string;
   audience?: StudioAudience;
   blocks: StudioBlock[];
@@ -205,11 +225,13 @@ function clean(blocks: StudioBlock[]): StudioBlock[] {
 }
 
 export const StudioApi = {
-  list: (params?: { q?: string; status?: string; subject?: string }) => {
+  list: (params?: { q?: string; status?: string; subject?: string; category?: string; assessment_category?: string }) => {
     const sp = new URLSearchParams();
     if (params?.q) sp.set('q', params.q);
     if (params?.status && params.status !== 'all') sp.set('status', params.status);
     if (params?.subject && params.subject !== 'all') sp.set('subject', params.subject);
+    const cat = params?.category ?? params?.assessment_category;
+    if (cat && cat !== 'all') sp.set('category', cat);
     const qs = sp.toString();
     return api.get<StudioListItem[]>(`${BASE}/tests/${qs ? `?${qs}` : ''}`);
   },
