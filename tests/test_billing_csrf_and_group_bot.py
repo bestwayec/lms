@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from asgiref.sync import async_to_sync
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, override_settings
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 from PIL import Image
 from rest_framework.test import APIClient
@@ -84,7 +84,10 @@ class BillingReceiptCSRFTests(TestCase):
         self.assertIn(5582178765, admin_ids)
 
 
-class TelegramGroupBotAssistantTests(TestCase):
+class TelegramGroupBotAssistantTests(TransactionTestCase):
+    # Bot handlers run their ORM work through sync_to_async on another
+    # connection; on PostgreSQL that connection cannot see a TestCase
+    # transaction, so a student's 'present' click was invisible there.
     def setUp(self):
         self.teacher = User.objects.create_user(
             email="teacher_bot_test@grandec.uz",
@@ -189,7 +192,12 @@ class TelegramGroupBotAssistantTests(TestCase):
         update_click.effective_user.id = 555666777
         update_click.effective_user.full_name = "Diyorbek Xoldorov"
         update_click.effective_user.username = "diyorbek_x"
-        update_click.callback_query.data = f"grp_att_here_{group.id}"
+        # The real 'Keldim' button carries the attendance *session* id (it used
+        # to pass group.id and worked only because both ids happened to be 1).
+        from apps.attendance.models import AttendanceSession
+
+        session = AttendanceSession.objects.filter(group=group).latest("id")
+        update_click.callback_query.data = f"grp_att_here_{session.id}"
         update_click.callback_query.answer = AsyncMock()
         update_click.callback_query.edit_message_text = AsyncMock()
 
