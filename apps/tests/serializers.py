@@ -92,14 +92,21 @@ class QuestionAdminSerializer(serializers.ModelSerializer):
 # ---------------------------------------------------------------------------
 
 
-def _order_questions(queryset, shuffle: bool) -> list:
+def _rng(seed: Any):
+    """Per-attempt RNG: shuffled order is random per student but stable across
+    refresh/resume (an unseeded shuffle reordered questions and options on every
+    request, so 'question 5' could become 'question 2' mid-exam)."""
+    import random
+
+    return random.Random(str(seed)) if seed is not None else random.Random()
+
+
+def _order_questions(queryset, shuffle: bool, seed: Any = None) -> list:
     """Deterministic order unless the test shuffles (display-only)."""
     try:
         items = list(queryset)
         if shuffle:
-            import random
-
-            random.shuffle(items)
+            _rng(f"q:{seed}" if seed is not None else None).shuffle(items)
         return items
     except Exception as exc:
         logger.warning("Error ordering questions: %s", exc)
@@ -159,6 +166,7 @@ def _student_question_payload(
     *,
     shuffle_choices: bool,
     saved: dict[str, Any] | None = None,
+    seed: Any = None,
 ) -> dict[str, Any]:
     """One question for student APIs. NEVER includes answer keys:
     no is_correct, no accepted gap answers, no matching mappings."""
@@ -168,9 +176,7 @@ def _student_question_payload(
     except Exception:
         choices = []
     if shuffle_choices:
-        import random
-
-        random.shuffle(choices)
+        _rng(f"c:{seed}:{q.id}" if seed is not None else None).shuffle(choices)
 
     passage_obj = getattr(q, "reading_passage", None)
     if not passage_obj and getattr(q, "passage", None):
@@ -242,9 +248,7 @@ def _student_question_payload(
         except Exception:
             options = []
         if shuffle_choices:
-            import random
-
-            random.shuffle(options)
+            _rng(f"m:{seed}:{q.id}" if seed is not None else None).shuffle(options)
         payload["matching_options"] = [
             {"id": getattr(o, "id", 0), "text": getattr(o, "text", "") or ""}
             for o in options
@@ -816,7 +820,7 @@ class AttemptDetailSerializer(serializers.ModelSerializer):
             if obj.trial_part_id:
                 questions = questions.filter(group__part_id=obj.trial_part_id)
             questions_list = _order_questions(
-                questions, bool(getattr(test, "shuffle_questions", False))
+                questions, bool(getattr(test, "shuffle_questions", False)), seed=obj.pk
             )
 
             # Oldingi javoblar xaritasi (bitta query to'plami, Python'da)
@@ -862,6 +866,7 @@ class AttemptDetailSerializer(serializers.ModelSerializer):
                     q,
                     shuffle_choices=bool(getattr(test, "shuffle_choices", True)),
                     saved=saved_map.get(q.id),
+                    seed=obj.pk,
                 )
                 for q in questions_list
             ]

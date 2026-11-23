@@ -64,6 +64,24 @@ MAX_IMAGE_BYTES = 5 * 1024 * 1024
 AUDIO_PREFIX = "exams/audio/"
 IMAGE_PREFIX = "exams/images/"
 STUDIO_SUBJECTS = {"uzbek", "english", "biology", "chemistry", "law"}
+# Ona tili & Adabiyot topic taxonomy (stable codes; labels are translated in the UI).
+# Stored per question in Question.config["topic"] — no schema change.
+TOPICS_BY_SUBJECT: dict[str, tuple[str, ...]] = {
+    "uzbek": (
+        "fonetika",
+        "leksikologiya",
+        "morfologiya",
+        "sintaksis",
+        "imlo",
+        "punktuatsiya",
+        "uslubiyat",
+        "matn_tahlili",
+        "adabiyot",
+        "milliy_sertifikat",
+        "aralash",
+    ),
+}
+ALL_TOPICS = frozenset(t for ts in TOPICS_BY_SUBJECT.values() for t in ts)
 SECTION_NAMES = {"GENERAL": "Test", "READING": "Reading", "LISTENING": "Listening"}
 FLAG_FAIL_RATE = 60.0  # item flagged when more than this % of students failed it
 TYPE_TO_QTYPE = {
@@ -163,6 +181,7 @@ def normalize_blocks(raw_blocks: Any) -> list[dict[str, Any]]:
             "type": btype,
             "section": section,
             "title": _s(raw.get("title"), 255),
+            "topic": raw.get("topic") if raw.get("topic") in ALL_TOPICS else "",
             "instructions": _s(raw.get("instructions"), 3000),
             "passage": _s(raw.get("passage"), 30000),
             "gap_text": _s(raw.get("gap_text"), 30000),
@@ -391,6 +410,8 @@ def _build_content(test: Test, blocks: list[dict[str, Any]]) -> None:
 
         for qi, q in enumerate(b["questions"]):
             config: dict[str, Any] = {"number": q["number"], "studio_type": b["type"]}
+            if b.get("topic"):
+                config["topic"] = b["topic"]
             if b["type"] == "gap" and qi == 0:
                 # Answers stripped: Question.config is sent to students as-is.
                 config["studio_gap_text"] = GAP_RE.sub(lambda m: f"[{m.group(1)}]", b["gap_text"])
@@ -530,6 +551,7 @@ def load_blocks(test: Test) -> list[dict[str, Any]]:
                 "type": btype,
                 "section": part.section.code if part.section.code in SECTIONS else "GENERAL",
                 "title": group.title or part.title,
+                "topic": next((q.config.get("topic") for q in qs if q.config.get("topic")), ""),
                 "instructions": group.instructions,
                 "passage": "",
                 "gap_text": "",
@@ -833,6 +855,7 @@ def item_analysis(test: Test, group=None) -> dict[str, Any]:
                 "number": q.config.get("number") or idx,
                 "text": q.text[:160],
                 "question_type": q.question_type,
+                "topic": (q.config or {}).get("topic", ""),
                 "correct": correct,
                 "answered": answered,
                 "total": n,
@@ -895,8 +918,37 @@ def item_analysis(test: Test, group=None) -> dict[str, Any]:
         "median": round(statistics.median(percentages), 1) if percentages else None,
         "distribution": [{"from": i * 10, "to": i * 10 + 10, "count": c} for i, c in enumerate(buckets)],
         "items": items,
+        "topics": topic_breakdown(items),
         "matrix": rows,
     }
+
+
+def topic_breakdown(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Weak topics from real answers: correct / (questions × finished attempts) per topic.
+
+    Only questions the teacher tagged count; untagged ones are not guessed.
+    Sorted weakest first so the teacher sees what to re-teach.
+    """
+    agg: dict[str, dict[str, int]] = {}
+    for it in items:
+        topic = it.get("topic") or ""
+        if not topic or not it.get("total"):
+            continue
+        row = agg.setdefault(topic, {"questions": 0, "correct": 0, "possible": 0})
+        row["questions"] += 1
+        row["correct"] += it["correct"]
+        row["possible"] += it["total"]
+    out = [
+        {
+            "topic": topic,
+            "questions": r["questions"],
+            "correct": r["correct"],
+            "possible": r["possible"],
+            "accuracy": round(r["correct"] / r["possible"] * 100, 1) if r["possible"] else None,
+        }
+        for topic, r in agg.items()
+    ]
+    return sorted(out, key=lambda r: (r["accuracy"] if r["accuracy"] is not None else 101, r["topic"]))
 
 
 # ---------------------------------------------------------------------------
@@ -942,45 +994,52 @@ def delete_draft_test(user, test: Test) -> None:
 
 
 def parse_csv_test_file(content: str | bytes, default_section: str = "GENERAL") -> dict[str, Any]:
-    """Parse a CSV or structured text file into Studio blocks with questions.
-
-    Supports columns: question/savol, choice_a/a/variant_a, choice_b/b, choice_c/c, choice_d/d, choice_e/e, correct/answer/javob, points/ball, explanation/izoh.
-    """
-    import csv
-    import io
+    """Parse a CSV file (``,`` ``;`` or tab; UTF-8 or Windows-1251) into Studio blocks."""
+    from apps.tests.import_extract import _csv_rows, decode_text
 
     if isinstance(content, bytes):
-        try:
-            content = content.decode("utf-8-sig")
-        except UnicodeDecodeError:
-            content = content.decode("latin-1", errors="replace")
+        content = decode_text(content)
+    rows = _csv_rows(content.strip())
+    return parse_table_rows(rows, default_section)
 
-    reader = csv.reader(io.StringIO(content.strip()))
-    rows = list(reader)
-    if not rows:
+
+def parse_table_rows(rows: list[list[str]], default_section: str = "GENERAL") -> dict[str, Any]:
+    """Rows of a spreadsheet/CSV/DOCX table → one mcq block.
+
+    Columns (any order, uz/ru/en headers): question, choice A–E, correct,
+    points, explanation. Without a header row the order is
+    question, A, B, C, D, correct[, points[, explanation]].
+    """
+    from apps.tests.studio_parser import CYR_ORDER, latin_answer
+
+    rows = [[str(c if c is not None else "") for c in r] for r in rows]
+    if not rows or not any(any(c.strip() for c in r) for r in rows):
         raise StudioError("file_empty")
 
     headers = [h.strip().lower().replace(" ", "_") for h in rows[0]]
     col_map: dict[str, int] = {}
     for idx, h in enumerate(headers):
-        if h in ("question", "savol", "text", "prompt"):
+        h = h.replace("’", "'").replace("‘", "'").replace("ʻ", "'").strip(".):")
+        if h in ("question", "savol", "text", "prompt", "вопрос", "savol_matni"):
             col_map["question"] = idx
-        elif h in ("choice_a", "a", "variant_a", "option_a"):
+        elif h in ("choice_a", "a", "variant_a", "option_a", "а", "вариант_а"):
             col_map["choice_a"] = idx
-        elif h in ("choice_b", "b", "variant_b", "option_b"):
+        elif h in ("choice_b", "b", "variant_b", "option_b", "б", "вариант_б"):
             col_map["choice_b"] = idx
-        elif h in ("choice_c", "c", "variant_c", "option_c"):
+        elif h in ("choice_c", "c", "variant_c", "option_c", "в", "вариант_в"):
             col_map["choice_c"] = idx
-        elif h in ("choice_d", "d", "variant_d", "option_d"):
+        elif h in ("choice_d", "d", "variant_d", "option_d", "г", "вариант_г"):
             col_map["choice_d"] = idx
-        elif h in ("choice_e", "e", "variant_e", "option_e"):
+        elif h in ("choice_e", "e", "variant_e", "option_e", "д", "вариант_д"):
             col_map["choice_e"] = idx
-        elif h in ("correct", "answer", "javob", "kalit", "to'g'ri_javob"):
+        elif h in ("correct", "answer", "javob", "kalit", "to'g'ri_javob", "ответ", "правильный_ответ", "жавоб"):
             col_map["correct"] = idx
-        elif h in ("points", "ball", "point"):
+        elif h in ("points", "ball", "point", "балл", "баллы"):
             col_map["points"] = idx
-        elif h in ("explanation", "izoh", "sharh", "comment"):
+        elif h in ("explanation", "izoh", "sharh", "comment", "пояснение", "объяснение"):
             col_map["explanation"] = idx
+        elif h in ("no", "№", "#", "n", "number", "raqam", "t/r"):
+            col_map["number"] = idx
 
     data_rows = rows[1:] if "question" in col_map else rows
     if "question" not in col_map:
@@ -997,6 +1056,10 @@ def parse_csv_test_file(content: str | bytes, default_section: str = "GENERAL") 
         if len(rows[0]) > 7:
             col_map["explanation"] = 7
 
+    russian_order = any(h in ("б", "г", "вариант_б") for h in headers) or any(
+        "correct" in col_map and len(r) > col_map["correct"] and r[col_map["correct"]].strip().upper() in CYR_ORDER[1:2] + CYR_ORDER[3:]
+        for r in data_rows
+    )
     questions = []
     warnings = []
     q_num = 1
@@ -1019,6 +1082,7 @@ def parse_csv_test_file(content: str | bytes, default_section: str = "GENERAL") 
             warnings.append({"row": row_idx, "code": "too_few_choices", "question": q_num})
 
         ans_raw = row[col_map["correct"]].strip().upper() if "correct" in col_map and len(row) > col_map["correct"] else ""
+        ans_raw = latin_answer(ans_raw, russian_order).upper() if ans_raw else ""
         ans = ""
         if ans_raw in LETTERS[:len(opts)]:
             ans = ans_raw
@@ -1106,3 +1170,33 @@ def export_test_questions_csv(test: Test) -> str:
                 safe_cell(q.get("explanation", "")),
             ])
     return output.getvalue()
+
+
+def import_test_file(data: bytes, filename: str = "", default_section: str = "GENERAL") -> dict[str, Any]:
+    """Smart Import Pro: any supported file → editor blocks + review report.
+
+    Never saves or publishes: the teacher reviews/edits the preview first.
+    """
+    from apps.tests.import_extract import ImportError_, build_report, extract
+    from apps.tests.studio_parser import parse_smart_paste
+
+    try:
+        ex = extract(data, filename)
+    except ImportError_ as e:
+        raise StudioError(e.code, **e.extra) from None
+    if ex.rows:
+        result = parse_table_rows(ex.rows, default_section)
+    else:
+        result = parse_smart_paste(ex.text, default_section)
+        if not any(b["questions"] for b in result["blocks"]):
+            raise StudioError("no_questions_found")
+    warnings = list(ex.warnings) + list(result.get("warnings", []))
+    blocks = result["blocks"]
+    return {
+        **result,
+        "warnings": warnings,
+        "source": {"kind": ex.kind, "filename": (filename or "")[:200]},
+        "report": build_report(blocks, warnings),
+        "questions_count": sum(len(b["questions"]) for b in blocks),
+        "detected_answers": sum(1 for b in blocks for q in b["questions"] if q.get("answer")),
+    }

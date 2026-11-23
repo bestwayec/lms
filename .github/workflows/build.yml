@@ -28,7 +28,19 @@ jobs:
       packages: write
 
     steps:
+      # Build exactly the commit CI verified. A bare checkout on a workflow_run
+      # event takes the branch's *latest* commit, which can be newer (and
+      # untested) if something landed between CI and Build.
+      - name: Resolve verified commit
+        id: vsha
+        run: |
+          SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "short=$(echo "${SHA}" | cut -c1-7)" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.vsha.outputs.sha }}
 
       - name: Docker metadata (sha + latest tags)
         id: meta
@@ -36,7 +48,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=sha,prefix=sha-,format=short
+            type=raw,value=sha-${{ steps.vsha.outputs.short }}
             type=raw,value=latest
 
       - name: Log in to GHCR (push scope, GITHUB_TOKEN)

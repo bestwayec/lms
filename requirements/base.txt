@@ -49,4 +49,5 @@ python-decouple>=3.8,<4.0
 python-slugify>=8.0,<9.0           # Slug generation
 python-dateutil>=2.9.0.post0,<3.0          # Date utilities
 google-auth>=2.0,<3.0             # Verify Google-signed OpenID Connect ID tokens
-openpyxl>=3.1.5,<4.0              # Excel report generation for teachers
+openpyxl>=3.1.5,<4.0              # Excel report generation for teachers; Smart Import XLSX
+pypdf>=6.0,<7.0                   # Smart Import: selectable-text PDF (no OCR)

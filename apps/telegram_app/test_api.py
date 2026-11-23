@@ -113,15 +113,16 @@ def tma_test_start_view(request, test_id: int) -> JsonResponse:
     # Get questions
     questions = list(test.questions.prefetch_related("choices").order_by("position"))
 
+    # Seeded per attempt: stable across Mini App reloads (same rule as the web runner).
     if test.shuffle_questions:
-        random.shuffle(questions)
+        random.Random(f"q:{attempt.pk}").shuffle(questions)
 
     # Build question data (without correct answers)
     questions_data = []
     for q in questions:
         choices = list(q.choices.all())
         if test.shuffle_choices:
-            random.shuffle(choices)
+            random.Random(f"c:{attempt.pk}:{q.id}").shuffle(choices)
 
         # Get previously selected answers
         selected_ids = set()

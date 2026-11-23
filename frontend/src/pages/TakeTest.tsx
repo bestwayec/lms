@@ -20,6 +20,7 @@ import { Tests as TestsApi } from '../lib/api';
 const PeriodicTableModal = lazy(() => import('../components/PeriodicTableModal'));
 const SolubilityTableModal = lazy(() => import('../components/SolubilityTableModal'));
 const CalculatorModal = lazy(() => import('../components/CalculatorModal'));
+import { examToolPolicy } from '../lib/examTools';
 const StreakCelebrationModal = lazy(() =>
   import('../components/StreakBadge').then((m) => ({ default: m.StreakCelebrationModal }))
 );
@@ -42,7 +43,6 @@ import {
 import { cleanChoiceText } from '../lib/testParser';
 import { hapticNotify, hapticSelect } from '../lib/haptics';
 import { ClockIcon } from '../components/icons';
-import TiltCard from '../components/TiltCard';
 import confetti from 'canvas-confetti';
 import { getTokens } from '../lib/api';
 import {
@@ -143,6 +143,7 @@ interface AttemptDetail {
   passages?: PassageDef[];
   section_progress?: SectionProgressDef[];
   subject?: string;
+  exam_type?: string;
   audio_url?: string;
   is_strict_mode?: boolean;
   violation_count?: number;
@@ -225,7 +226,18 @@ function isOpenTextQuestion(q: Question): boolean {
   return false;
 }
 
-function qtypeLabel(qtype: string, t: (k: string) => string): string {
+function qtypeLabel(rawType: string, t: (k: string) => string): string {
+  // Canonical types are stored upper-case (MULTIPLE_CHOICE, …); legacy ones lower-case.
+  const CANONICAL: Record<string, string> = {
+    multiple_choice: 'single',
+    true_false_not_given: 'single',
+    heading_matching: 'matching',
+    map_labeling: 'matching',
+    short_answer: 'short_answer',
+    inline_gap_fill: 'inline_gap_fill',
+  };
+  const lower = (rawType || '').toLowerCase();
+  const qtype = CANONICAL[lower] ?? (lower === 'matching' ? 'matching' : rawType);
   if (qtype === 'single') return t('take_single');
   if (qtype === 'multiple') return t('take_multiple');
   if (qtype === 'gap_fill') return t('take_gap_fill');
@@ -925,6 +937,7 @@ export default function TakeTest() {
     attempt.status === 'cancelled' ||
     attempt.status === 'pending_grading';
 
+  const tools = examToolPolicy(attempt.subject, attempt.exam_type);
   const answeredCount = attempt.questions.filter((q) => {
     const a = answers[q.id];
     if (!a) return false;
@@ -981,20 +994,13 @@ export default function TakeTest() {
     const a = answers[q.id] ?? emptyEntry();
     const hasAnswer = entryHasContent(q, a);
     return (
-      <TiltCard
-        key={q.id}
-        glare={false}
-        maxTilt={isSingleView ? 2 : 3}
-        scale={isSingleView ? 1 : 1.005}
-        style={{ borderRadius: 'var(--radius)', marginBottom: isSingleView ? 0 : 12 }}
-      >
+      <div key={q.id} style={{ borderRadius: 'var(--radius)', marginBottom: isSingleView ? 0 : 12 }}>
         <div
           id={`question-${q.id}`}
           className={`card take-test-card${isSingleView ? ' single-view' : ''}`}
           style={{
             height: '100%',
             margin: 0,
-            paddingBottom: isSingleView && isMobile ? '140px' : undefined,
           }}
         >
           {q.section_id != null && (
@@ -1614,8 +1620,9 @@ export default function TakeTest() {
             </div>
           ) : (
             <div style={{ marginTop: 10 }}>
-              {/* Quick selector pill bar for matching or multi-choice items (Q33-Q35) */}
-              {q.choices.length >= 4 && (
+              {/* Quick selector pill bar for matching-matrix items only (Q33-Q35);
+                  ordinary MCQs already have full-width options — no second input. */}
+              {q.choices.length >= 4 && ['matching', 'matching_matrix', 'heading_matching'].includes((q.question_type || '').toLowerCase()) && (
                 <div
                   style={{
                     display: 'flex',
@@ -1663,7 +1670,6 @@ export default function TakeTest() {
                   display: 'flex',
                   flexDirection: 'column',
                   gap: 10,
-                  paddingBottom: isSingleView ? '140px' : undefined,
                 }}
               >
                 {q.choices.map((c, ci) => {
@@ -1674,58 +1680,14 @@ export default function TakeTest() {
                       key={c.id}
                       type="button"
                       disabled={finished || submitting}
-                      className={`quiz-opt${on ? ' picked' : ''}`}
+                      className={`quiz-opt exam-opt${on ? ' picked' : ''}`}
                       aria-pressed={on}
                       onClick={() => pick(q, c.id)}
-                      style={{
-                        minHeight: 52,
-                        padding: '14px 18px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 14,
-                        width: '100%',
-                        textAlign: 'left',
-                        transition: 'all 0.18s cubic-bezier(0.4, 0, 0.2, 1)',
-                        borderRadius: 14,
-                        border: on ? '2px solid #f59e0b' : '1.5px solid rgba(255, 255, 255, 0.12)',
-                        background: on
-                          ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.22), rgba(217, 119, 6, 0.14))'
-                          : 'rgba(255, 255, 255, 0.03)',
-                        boxShadow: on ? '0 0 20px rgba(245, 158, 11, 0.35)' : 'none',
-                        transform: on ? 'scale(1.015)' : 'scale(1)',
-                        cursor: 'pointer',
-                      }}
                     >
-                      <span
-                        className="quiz-key"
-                        style={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: 10,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontWeight: 800,
-                          fontSize: 16,
-                          background: on ? '#f59e0b' : 'rgba(255, 255, 255, 0.08)',
-                          color: on ? '#111' : 'inherit',
-                          border: on ? 'none' : '1px solid rgba(255, 255, 255, 0.15)',
-                          flexShrink: 0,
-                          transition: 'all 0.15s ease',
-                        }}
-                      >
-                        {on ? '✓' : letter}
+                      <span className="quiz-key exam-opt-key" aria-hidden="true">
+                        {letter}
                       </span>
-                      <span
-                        style={{
-                          fontWeight: on ? 700 : 500,
-                          fontSize: '1.02rem',
-                          lineHeight: 1.5,
-                          flex: 1,
-                          wordBreak: 'break-word',
-                          color: on ? '#fef08a' : 'inherit',
-                        }}
-                      >
+                      <span className="exam-opt-text">
                         <FormulaText text={cleanChoiceText(c.text, letter)} />
                       </span>
                     </button>
@@ -1760,53 +1722,9 @@ export default function TakeTest() {
             </div>
           )}
 
-          {isSingleView && (
-            <div className="single-q-actions">
-              <button
-                type="button"
-                className="btn ghost nav-prev-btn"
-                disabled={i === 0 || finished || submitting}
-                onClick={() => {
-                  setCurrentQIndex((prev) => Math.max(0, prev - 1));
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 44 }}
-              >
-                <ChevronLeft size={18} /> {t('take_prev_q') || 'Oldingi'}
-              </button>
-
-              <span className="muted small q-counter-text" style={{ fontWeight: 700, fontSize: '0.9rem' }}>
-                {i + 1} / {attempt.questions.length}
-              </span>
-
-              {i < attempt.questions.length - 1 ? (
-                <button
-                  type="button"
-                  className="btn primary nav-next-btn"
-                  disabled={finished || submitting}
-                  onClick={() => {
-                    setCurrentQIndex((prev) => Math.min(attempt.questions.length - 1, prev + 1));
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 44 }}
-                >
-                  {t('take_next_q') || 'Keyingi'} <ChevronRight size={18} />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="btn primary nav-finish-btn"
-                  disabled={finished || submitting}
-                  onClick={() => setConfirmOpen(true)}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 44, background: '#10b981', borderColor: '#10b981' }}
-                >
-                  <Check size={18} /> {t('take_finish')}
-                </button>
-              )}
-            </div>
-          )}
+          {/* Navigation lives in the single fixed bottom bar (prev · palette · flag · next/finish). */}
         </div>
-      </TiltCard>
+      </div>
     );
   };
 
@@ -1833,6 +1751,7 @@ export default function TakeTest() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             <button
               type="button"
+              aria-label={t('exit', 'Chiqish')}
               onClick={() => {
                 if (inProgress) {
                   setExitConfirmOpen(true);
@@ -1848,7 +1767,7 @@ export default function TakeTest() {
                 borderRadius: 10,
                 background: 'rgba(255, 255, 255, 0.06)',
                 border: '1px solid rgba(255, 255, 255, 0.12)',
-                color: 'var(--ink, #f8fafc)',
+                color: '#f8fafc', // header is always dark
                 fontSize: 13,
                 fontWeight: 700,
                 cursor: 'pointer',
@@ -1857,7 +1776,7 @@ export default function TakeTest() {
               title="Imtihondan chiqish (xavfsiz tasdiqlash bilan)"
             >
               <ChevronLeft size={16} />
-              <span className="hide-on-phone">Chiqish</span>
+              <span className="hide-on-phone">{t('exit', 'Chiqish')}</span>
             </button>
 
             <span
@@ -1932,8 +1851,8 @@ export default function TakeTest() {
                 }}
                 title="Internet aloqasi yo'q. Javoblar oflayn saqlanmoqda"
               >
-                <span>⚡</span>
-                <span>Oflayn</span>
+                <span aria-hidden="true">⚡</span>
+                <span>{t('exam_offline', 'Oflayn')}</span>
               </span>
             )}
 
@@ -1952,8 +1871,8 @@ export default function TakeTest() {
                   fontWeight: 800,
                 }}
               >
-                <span>✓</span>
-                <span>Onlayn</span>
+                <span aria-hidden="true">✓</span>
+                <span>{t('exam_online', 'Onlayn')}</span>
               </span>
             )}
 
@@ -1977,8 +1896,9 @@ export default function TakeTest() {
             )}
           </div>
 
-          {/* Right: Chemistry Modals & Question Counter */}
+          {/* Right: subject-permitted tools (examToolPolicy) & question counter */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            {tools.periodicTable && (
             <button
               type="button"
               onClick={() => setShowPeriodicModal(true)}
@@ -1996,12 +1916,15 @@ export default function TakeTest() {
                 fontSize: 12,
                 boxShadow: '0 0 10px rgba(245, 158, 11, 0.3)',
               }}
-              title="Mendeleyev davriy jadvali"
+              title={t('exam_tool_periodic', 'Mendeleyev davriy jadvali')}
+              aria-label={t('exam_tool_periodic', 'Mendeleyev davriy jadvali')}
             >
-              <span>🧪</span>
-              <span className="hide-on-phone">Mendeleyev</span>
+              <span aria-hidden="true">🧪</span>
+              <span className="hide-on-phone">{t('exam_tool_periodic_short', 'Mendeleyev')}</span>
             </button>
+            )}
 
+            {tools.solubilityTable && (
             <button
               type="button"
               onClick={() => setShowSolubilityModal(true)}
@@ -2018,12 +1941,15 @@ export default function TakeTest() {
                 cursor: 'pointer',
                 fontSize: 12,
               }}
-              title="Eruvchanlik jadvali"
+              title={t('exam_tool_solubility', 'Eruvchanlik jadvali')}
+              aria-label={t('exam_tool_solubility', 'Eruvchanlik jadvali')}
             >
-              <span>💧</span>
-              <span className="hide-on-phone">Eruvchanlik</span>
+              <span aria-hidden="true">💧</span>
+              <span className="hide-on-phone">{t('exam_tool_solubility_short', 'Eruvchanlik')}</span>
             </button>
+            )}
 
+            {tools.calculator && (
             <button
               type="button"
               onClick={() => setShowCalculatorModal(true)}
@@ -2040,11 +1966,13 @@ export default function TakeTest() {
                 cursor: 'pointer',
                 fontSize: 12,
               }}
-              title="Kalkulyator"
+              title={t('exam_tool_calculator', 'Kalkulyator')}
+              aria-label={t('exam_tool_calculator', 'Kalkulyator')}
             >
-              <span>🧮</span>
-              <span className="hide-on-phone">Kalkulyator</span>
+              <span aria-hidden="true">🧮</span>
+              <span className="hide-on-phone">{t('exam_tool_calculator', 'Kalkulyator')}</span>
             </button>
+            )}
 
             <span
               style={{
@@ -2202,30 +2130,6 @@ export default function TakeTest() {
 
       {/* Mode switch, hotkey hints, quick finish button */}
       <div className="test-top-bar">
-        {(attempt.subject === 'chemistry' || (attempt.test_title || '').toLowerCase().includes('kimyo')) && (
-          <button
-            type="button"
-            onClick={() => setShowPeriodicModal(true)}
-            className="btn sm"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              background: 'rgba(245, 158, 11, 0.16)',
-              border: '1.5px solid #f59e0b',
-              color: '#f59e0b',
-              fontWeight: 800,
-              borderRadius: 8,
-              padding: '6px 14px',
-              cursor: 'pointer',
-              boxShadow: '0 0 10px rgba(245, 158, 11, 0.25)',
-              marginRight: 6,
-            }}
-          >
-            <span style={{ fontSize: 16 }}>🧪</span>
-            <span>Davriy jadval</span>
-          </button>
-        )}
         <div className="test-mode-switch" role="tablist">
           <button
             type="button"
@@ -2256,18 +2160,6 @@ export default function TakeTest() {
 
         {!finished && !result && (
           <div className="hide-on-phone" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button
-              type="button"
-              className="btn sm ghost"
-              onClick={() => {
-                if (window.confirm(t('take_leave_confirm'))) {
-                  navigate('/tests');
-                }
-              }}
-              title="Testdan chiqish"
-            >
-              🚪 {t('exit')}
-            </button>
             <button
               type="button"
               className="btn sm"
@@ -2404,99 +2296,6 @@ export default function TakeTest() {
           )}
         </>
       )}
-      {/* 4. Pastki Raqamlangan Savollar Xaritasi (1–45 Palette Bar) */}
-      {!finished && !result && attempt.questions.length > 0 && (
-        <div
-          className="take-test-sticky-palette-bar"
-          style={{
-            position: 'sticky',
-            bottom: 0,
-            zIndex: 35,
-            background: 'rgba(15, 23, 42, 0.95)',
-            backdropFilter: 'blur(16px)',
-            borderTop: '1px solid rgba(255, 255, 255, 0.12)',
-            padding: '10px 14px',
-            boxShadow: '0 -4px 20px rgba(0, 0, 0, 0.4)',
-            borderRadius: '16px 16px 0 0',
-            marginTop: 20,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
-            <span style={{ fontSize: 12, fontWeight: 800, color: '#f8fafc' }}>
-              SAVOLLAR XARITASI (1–{attempt.questions.length}):
-            </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 11, fontWeight: 700 }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#34d399' }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} /> Yechilgan
-              </span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#f59e0b' }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b' }} /> Joriy
-              </span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#fbbf24' }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#fbbf24' }} /> Bayroqcha
-              </span>
-            </div>
-          </div>
-          <div
-            style={{
-              display: 'flex',
-              gap: 6,
-              overflowX: 'auto',
-              paddingBottom: 4,
-              scrollbarWidth: 'none',
-            }}
-          >
-            {attempt.questions.map((q, i) => {
-              const a = answers[q.id];
-              const done = Boolean(a && entryHasContent(q, a));
-              const isActive = safeQIndex === i;
-              const isFlagged = Boolean(flagged[q.id]);
-              return (
-                <button
-                  key={q.id}
-                  type="button"
-                  onClick={() => {
-                    setCurrentQIndex(i);
-                    if (!singleMode) {
-                      const el = document.getElementById(`question-${q.id}`);
-                      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    }
-                  }}
-                  style={{
-                    minWidth: 38,
-                    height: 38,
-                    borderRadius: 10,
-                    fontSize: 13,
-                    fontWeight: 800,
-                    fontFamily: 'JetBrains Mono, monospace',
-                    flexShrink: 0,
-                    cursor: 'pointer',
-                    border: isActive
-                      ? '2px solid #F59E0B'
-                      : isFlagged
-                      ? '2px solid #EAB308'
-                      : done
-                      ? '1.5px solid #10B981'
-                      : '1px solid rgba(255, 255, 255, 0.12)',
-                    background: isActive
-                      ? 'rgba(245, 158, 11, 0.25)'
-                      : isFlagged
-                      ? 'rgba(234, 179, 8, 0.25)'
-                      : done
-                      ? 'rgba(16, 185, 129, 0.22)'
-                      : 'rgba(255, 255, 255, 0.04)',
-                    color: isActive ? '#FBBF24' : done ? '#34D399' : '#F8FAFC',
-                    boxShadow: isActive ? '0 0 10px rgba(245, 158, 11, 0.5)' : 'none',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  {i + 1}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {confirmOpen && !result && (
         <div
@@ -2628,7 +2427,7 @@ export default function TakeTest() {
           )}
 
           <p className="muted small" style={{ marginBottom: 10 }}>
-            Savollar xaritasi (raqamni bosib to&apos;g&apos;ridan-to&apos;g&apos;ri savolga qaytish mumkin):
+            {t('take_map_hint', 'Savollar xaritasi: raqamni bosib savolga qaytishingiz mumkin')}
           </p>
 
           <div
@@ -2821,10 +2620,10 @@ export default function TakeTest() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: 16.5, fontWeight: 800, color: '#f8fafc' }}>
-                  Savollar Palitrasi ({attempt.questions.length} ta savol)
+                  {t('take_palette_title', 'Savollar palitrasi')} ({attempt.questions.length})
                 </h3>
                 <p style={{ margin: '2px 0 0', fontSize: 12, opacity: 0.7 }}>
-                  Istalgan savolga bitta teginishda sakrang
+                  {t('take_palette_hint', 'Istalgan savolga bitta teginishda o‘ting')}
                 </p>
               </div>
               <button
@@ -3028,7 +2827,8 @@ export default function TakeTest() {
               justifyContent: 'center',
               fontWeight: 700,
             }}
-            title="Oldingi savol"
+            title={t('take_prev_full', 'Oldingi savol')}
+              aria-label={t('take_prev_full', 'Oldingi savol')}
           >
             <ChevronLeft size={20} />
           </button>
@@ -3097,7 +2897,9 @@ export default function TakeTest() {
               justifyContent: 'center',
               fontSize: 18,
             }}
-            title={currentQuestion && flagged[currentQuestion.id] ? 'Belgini olib tashlash' : 'Keyin qaytish uchun belgilash (⭐)'}
+            title={currentQuestion && flagged[currentQuestion.id] ? t('take_unflag', 'Belgini olib tashlash') : t('take_flag_full', 'Keyin qaytish uchun belgilash')}
+            aria-label={currentQuestion && flagged[currentQuestion.id] ? t('take_unflag', 'Belgini olib tashlash') : t('take_flag_full', 'Keyin qaytish uchun belgilash')}
+            aria-pressed={!!(currentQuestion && flagged[currentQuestion.id])}
           >
             {currentQuestion && flagged[currentQuestion.id] ? '⭐' : '☆'}
           </button>
@@ -3121,7 +2923,8 @@ export default function TakeTest() {
                 justifyContent: 'center',
                 fontWeight: 700,
               }}
-              title="Keyingi savol"
+              title={t('take_next_full', 'Keyingi savol')}
+              aria-label={t('take_next_full', 'Keyingi savol')}
             >
               <ChevronRight size={20} />
             </button>
@@ -3143,7 +2946,8 @@ export default function TakeTest() {
                 gap: 4,
                 fontWeight: 800,
               }}
-              title="Testni yakunlash"
+              title={t('take_finish_full', 'Testni yakunlash')}
+              aria-label={t('take_finish_full', 'Testni yakunlash')}
             >
               <Check size={18} />
             </button>

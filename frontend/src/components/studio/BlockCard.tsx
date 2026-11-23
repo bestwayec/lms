@@ -6,6 +6,7 @@ import {
   LETTERS,
   SECTION_CODES,
   StudioApi,
+  TOPICS_BY_SUBJECT,
   TF_LABELS,
   YN_LABELS,
   convertBlock,
@@ -26,13 +27,15 @@ interface Props {
   onChange: (b: StudioBlock) => void;
   onRemove: () => void;
   onMove: (dir: -1 | 1) => void;
+  /** Test subject; decides which topic list (if any) is offered. */
+  subject?: string;
 }
 
 const has = (issues: StudioIssue[], code: string, number: number | null = null, option: number | null = null) =>
   issues.some((i) => i.code === code && i.number === number && (option === null || i.option === option));
 
 /** Editor for one block (one question group). Keyboard: Enter in the last question adds one. */
-export default function BlockCard({ block, index, count, issues, nextNumber, onChange, onRemove, onMove }: Props) {
+export default function BlockCard({ block, index, count, issues, nextNumber, onChange, onRemove, onMove, subject }: Props) {
   const { t } = useLang();
   const [uploading, setUploading] = useState<'audio' | 'image' | null>(null);
   const [uploadErr, setUploadErr] = useState<string | null>(null);
@@ -170,6 +173,19 @@ export default function BlockCard({ block, index, count, issues, nextNumber, onC
           <input value={block.instructions} onChange={(e) => set({ instructions: e.target.value })} maxLength={3000} />
         </label>
       </div>
+      {subject && TOPICS_BY_SUBJECT[subject] && (
+        <label className="studio-field">
+          <span>{t('studio_topic', 'Mavzu (tahlil uchun)')}</span>
+          <select value={block.topic ?? ''} onChange={(e) => set({ topic: e.target.value })}>
+            <option value="">{t('studio_topic_none', '— tanlanmagan —')}</option>
+            {TOPICS_BY_SUBJECT[subject].map((code) => (
+              <option key={code} value={code}>
+                {t(`topic_${code}`, code)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       <label className="studio-field">
         <span>{t('studio_passage')}</span>

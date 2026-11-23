@@ -26,6 +26,7 @@ import {
   BLOCK_TYPES,
   STUDIO_SUBJECTS,
   StudioApi,
+  blankMcqBlock,
   emptyBlock,
   nextNumber,
   withKeys,
@@ -651,6 +652,23 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
               {tab === 'blocks' && (
                 <>
                   {!locked && (
+                    <>
+                    <div className="studio-quickadd card" style={{ padding: 10, margin: '10px 0', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <span className="muted small">{t('studio_blank_test', 'Bo‘sh test')}:</span>
+                      {[10, 20, 30, 40].map((n) => (
+                        <button
+                          key={`blank-${n}`}
+                          type="button"
+                          className="btn sm"
+                          onClick={() => {
+                            const section = blocks.at(-1)?.section ?? (meta.subject === 'english' ? 'READING' : 'GENERAL');
+                            editBlocks([...blocks, blankMcqBlock(n, nextNumber(blocks), section)]);
+                          }}
+                        >
+                          {t('studio_blank_n', '{n} ta savol').replace('{n}', String(n))}
+                        </button>
+                      ))}
+                    </div>
                     <div className="studio-quickadd card" style={{ padding: 10, margin: '10px 0', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                       <span className="muted small">{t('studio_add_type', '+ Savol qo‘shish')}:</span>
                       {BLOCK_TYPES.map((bt, i) => (
@@ -659,6 +677,7 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
                         </button>
                       ))}
                     </div>
+                    </>
                   )}
 
                   {blocks.length === 0 ? (
@@ -683,6 +702,7 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
                           count={blocks.length}
                           issues={issuesByBlock.get(i) ?? []}
                           nextNumber={nextNumber(blocks)}
+                          subject={meta.subject}
                           onChange={(nb) => editBlocks(blocks.map((x, k) => (k === i ? nb : x)))}
                           onRemove={() => {
                             if (window.confirm(t('studio_confirm_remove', 'Ushbu savol guruhini o‘chirmoqchimisiz?'))) {
@@ -775,19 +795,20 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
                 <div className="card studio-file-import" style={{ padding: 20 }}>
                   <h3 style={{ fontSize: '1.1rem', marginBottom: 8 }}>
                     <FileSpreadsheet size={18} style={{ verticalAlign: 'middle', marginRight: 6 }} />
-                    {t('studio_file_import_title', 'CSV fayldan test savollarini yuklash')}
+                    {t('studio_smart_import_title', 'Fayldan import (Word, Excel, PDF, CSV)')}
                   </h3>
                   <p className="muted small" style={{ marginBottom: 16 }}>
                     {t(
-                      'studio_file_import_desc',
-                      'Faylda question, choice_a, choice_b, choice_c, choice_d, correct, points, explanation ustunlari bo‘lishi lozim.',
+                      'studio_smart_import_desc',
+                      'Word yoki PDF: “1. Savol”, “A) … D)” va “Javob: B” ko‘rinishida. Excel/CSV: Savol, A, B, C, D, Javob ustunlari. Hech narsa avtomatik saqlanmaydi — avval tekshirasiz.',
                     )}
                   </p>
 
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".csv,text/csv,text/plain"
+                    accept=".docx,.xlsx,.pdf,.csv,.txt,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf,text/csv,text/plain"
+                    aria-label={t('studio_smart_import_title', 'Fayldan import (Word, Excel, PDF, CSV)')}
                     hidden
                     onChange={(e) => {
                       void handleFileUpload(e.target.files?.[0]);
@@ -804,13 +825,21 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
                       background: 'var(--card-hover, #f9fafb)',
                       cursor: 'pointer',
                     }}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => fileInputRef.current?.click()}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        fileInputRef.current?.click();
+                      }
+                    }}
                   >
                     <Upload size={32} style={{ margin: '0 auto 12px', color: 'var(--primary)' }} />
                     <p style={{ fontWeight: 600, marginBottom: 4 }}>
-                      {busy === 'import' ? t('loading', 'Yuklanmoqda...') : t('studio_upload_csv_btn', 'CSV faylni tanlang yoki shu yerga tashlang')}
+                      {busy === 'import' ? t('loading', 'Yuklanmoqda...') : t('studio_upload_file_btn', 'Faylni tanlang')}
                     </p>
-                    <span className="muted small">.csv format (UTF-8)</span>
+                    <span className="muted small">.docx · .xlsx · .pdf · .csv · .txt</span>
                   </div>
 
                   {fileImportError && (
@@ -823,10 +852,21 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
                     <div style={{ marginTop: 20, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                         <div>
-                          <strong>{t('studio_detected_qs', 'Aniqlangan savollar')}: {fileImportPreview.questions_count} ta</strong>
-                          <span className="muted small" style={{ marginLeft: 8 }}>
-                            ({fileImportPreview.detected_answers} ta to‘g‘ri javob kaliti bilan)
-                          </span>
+                          <strong>{t('studio_detected_qs', 'Aniqlangan savollar')}: {fileImportPreview.questions_count}</strong>
+                          {fileImportPreview.report && (
+                            <ul className="small studio-import-report" aria-label={t('studio_import_report', 'Import hisoboti')} style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                              <li>{t('studio_report_valid', 'To‘liq savollar')}: {fileImportPreview.report.valid_questions}</li>
+                              <li style={{ color: fileImportPreview.report.missing_answers ? 'var(--danger, #DC2626)' : undefined }}>
+                                {t('studio_report_missing', 'Javob kaliti yo‘q')}: {fileImportPreview.report.missing_answers}
+                              </li>
+                              {fileImportPreview.report.duplicate_options > 0 && (
+                                <li>{t('studio_report_dup_options', 'Takror variantli savollar')}: {fileImportPreview.report.duplicate_options}</li>
+                              )}
+                              {fileImportPreview.report.duplicate_numbers.length > 0 && (
+                                <li>{t('studio_report_dup_numbers', 'Takror raqamlar')}: {fileImportPreview.report.duplicate_numbers.join(', ')}</li>
+                              )}
+                            </ul>
+                          )}
                         </div>
                         <div style={{ display: 'flex', gap: 8 }}>
                           <button
@@ -850,11 +890,11 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
 
                       {fileImportPreview.warnings.length > 0 && (
                         <div className="studio-alert is-warn" style={{ marginBottom: 12 }}>
-                          <span>⚠️ {fileImportPreview.warnings.length} ta ogohlantirish aniqlandi:</span>
+                          <span>⚠️ {t('studio_import_warnings', 'Ogohlantirishlar')}: {fileImportPreview.warnings.length}</span>
                           <ul style={{ margin: '4px 0 0 16px', fontSize: '0.85rem' }}>
                             {fileImportPreview.warnings.slice(0, 5).map((w, idx) => (
                               <li key={idx}>
-                                {w.row && `${w.row}-qator: `}{t(`studio_warn_${w.code}`, w.code)}
+                                {w.row ? `${t('studio_row', 'Qator')} ${w.row}: ` : ''}{t(`studio_warn_${w.code}`, w.code)}
                               </li>
                             ))}
                           </ul>

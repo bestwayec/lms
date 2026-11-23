@@ -1725,16 +1725,10 @@ img.auth-logo {
 }
 
 @media (max-width: 767px) {
+  /* One clearance for the fixed bottom question bar (≈64px) + safe area.
+     The card/choices used to add 140px each on top of this. */
   .take-test-page-container {
-    padding-bottom: 160px !important;
-  }
-
-  .take-test-card.single-view {
-    padding-bottom: 140px !important;
-  }
-
-  .take-test-card.single-view .take-test-choices {
-    padding-bottom: 140px !important;
+    padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px)) !important;
   }
 
   .take-test-choices {
@@ -3033,3 +3027,49 @@ html.dark .dsh-week-chip:not(.is-active) {
   border-color: #fbbf24;
   color: #0f172a;
 }
+
+/* ---------- Exam Focus Mode (Layout renders no sidebar/topbar/bottom nav) ---------- */
+.app.exam-focus { min-height: 100svh; }
+.exam-focus-content {
+  max-width: 72rem;
+  padding: 0.5rem 0.75rem calc(1rem + env(safe-area-inset-bottom, 0px));
+}
+@media (min-width: 768px) {
+  .exam-focus-content { padding: 0.75rem 1.25rem 1.5rem; }
+}
+
+/* ---------- Exam answer options (theme tokens; readable in light and dark) ---------- */
+.exam-opt {
+  min-height: 52px;
+  padding: 12px 16px;
+  gap: 14px;
+  border-radius: 14px;
+  border: 1.5px solid var(--border);
+  background: var(--card);
+  color: var(--ink);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.exam-opt:hover { border-color: var(--accent); }
+.exam-opt:active { transform: none; }
+.exam-opt:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.exam-opt.picked {
+  border: 2px solid #d97706;
+  background: color-mix(in srgb, #f59e0b 14%, var(--card));
+}
+.exam-opt-key {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-weight: 800;
+  font-size: 16px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  border: 1px solid var(--border);
+}
+.exam-opt.picked .exam-opt-key { background: #f59e0b; color: #111; border-color: #f59e0b; }
+.exam-opt-text { flex: 1; font-size: 1.02rem; line-height: 1.5; font-weight: 500; word-break: break-word; }
+.exam-opt.picked .exam-opt-text { font-weight: 700; }
+@media (prefers-reduced-motion: reduce) { .exam-opt { transition: none; } }
