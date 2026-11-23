@@ -7,8 +7,8 @@ name: Security
 on:
   push:
     branches: [main]
+  # Every PR, including stacked PRs whose base is another feature branch.
   pull_request:
-    branches: [main]
   schedule:
     - cron: 0 5 * * 1  # Mondays 05:00 UTC
 

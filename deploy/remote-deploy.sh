@@ -30,6 +30,8 @@ if [ -f /tmp/lms_deploy.env ]; then
   set +a
 fi
 rm -f /tmp/lms_deploy.env
+# Target domain: production by default; the staging job passes its own.
+DEPLOY_DOMAIN="${DEPLOY_DOMAIN:-grandec.uz}"
 
 # --- OpenRouter key & model synchronization to .env.prod ---
 if [ -n "${OPENROUTER_API_KEY:-}" ] && [ -f .env.prod ]; then
@@ -71,7 +73,7 @@ echo "$GHCR_READ_TOKEN" | docker login "$REGISTRY" -u "$GHCR_USER" --password-st
 # --- Regenerate the live nginx.conf from template (same substitution as
 # init-letsencrypt.sh) so template fixes actually reach the running nginx.
 # `sed ... > file` truncates in place (same inode — see warning above). ---
-sed -e "s/__DOMAIN__/grandec.uz/g" deploy/nginx/nginx-ssl.conf > deploy/nginx/nginx.conf
+sed -e "s/__DOMAIN__/${DEPLOY_DOMAIN}/g" deploy/nginx/nginx-ssl.conf > deploy/nginx/nginx.conf
 
 ./deploy/preflight.sh
 # NOTE: every `docker compose` call ends with `< /dev/null`. This script arrives
@@ -79,7 +81,16 @@ sed -e "s/__DOMAIN__/grandec.uz/g" deploy/nginx/nginx-ssl.conf > deploy/nginx/ng
 # otherwise SLURP the remaining script as their stdin — bash then sees EOF
 # and exits 0, silently skipping everything below (heal/reload/tag/checks).
 # This exact bug shipped green deploys that skipped half the procedure.
+# --- Verified database backup BEFORE the new image starts. The web
+# entrypoint runs `migrate` on start, so this is the rollback point for data.
+# Fail closed: no verified backup, no deploy. ---
+echo ">>> pre-deploy backup"
+PREDEPLOY_DIR="${PREDEPLOY_BACKUP_DIR:-/opt/backups/lms/pre-deploy}"
+bash deploy/scripts/backup_db.sh "$PREDEPLOY_DIR" < /dev/null
+echo ">>> pre-deploy backup OK: $(ls -1t "$PREDEPLOY_DIR"/daily/*.sql.gz 2>/dev/null | head -1)"
+# Migrations about to run (read-only listing with the NEW image).
 docker compose --env-file .env.prod -f docker-compose.prod.yml pull web celery-worker celery-beat bot < /dev/null
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm --no-deps -e SKIP_DB_STARTUP=1 web python manage.py showmigrations --plan < /dev/null | grep -F "[ ]" || echo ">>> no pending migrations"
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d < /dev/null
 # The bot has no source bind-mount in production. Recreate it explicitly after
 # pulling so a previously running container cannot keep the old handler code
@@ -146,11 +157,11 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T -e PYTHON
 # Basic Auth by design, so 401 means nginx + auth gate are up
 # (the app itself was already proven healthy via 127.0.0.1 above).
 for h in $(seq 1 15); do
-  if curl -fsS https://grandec.uz/healthz/ >/dev/null 2>&1; then break; fi
+  if curl -fsS "https://${DEPLOY_DOMAIN}/healthz/" >/dev/null 2>&1; then break; fi
   sleep 2
 done
-curl -fsS https://grandec.uz/healthz/; echo
-admin_code=$(curl -sS -o /dev/null -w "%{http_code}" https://admin.grandec.uz/healthz/); echo "admin /healthz -> $admin_code"
+curl -fsS "https://${DEPLOY_DOMAIN}/healthz/"; echo
+admin_code=$(curl -sS -o /dev/null -w "%{http_code}" "https://admin.${DEPLOY_DOMAIN}/healthz/"); echo "admin /healthz -> $admin_code"
 case "$admin_code" in 200|401) ;; *) echo "ERROR: admin host unexpected status $admin_code"; exit 1 ;; esac
 docker compose --env-file .env.prod -f docker-compose.prod.yml ps
 # NOTE: rollback = workflow_dispatch with tag=<previous sha from .last_good_tag>

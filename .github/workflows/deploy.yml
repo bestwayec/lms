@@ -1,27 +1,21 @@
 # ============================================================================
-# LMS Platform — Auto-deploy to VPS (grandec.uz + admin.grandec.uz)
+# LMS Platform — Release pipeline
 #
-# Triggers: build.yml success on main + manual (tag input for rollback).
-# Strategy: VPS pulls prebuilt ghcr.io/algorithco/lms:<tag> (no build on VPS).
+#   PR → CI → Security → (merge to main) → CI on main → Build (exact CI SHA,
+#   immutable sha-xxxxxxx image) → STAGING deploy + smoke  [automatic]
+#                                → PRODUCTION deploy      [manual only]
 #
-# Required Actions secrets (Settings → Secrets → Actions, environment
-# `production` — values NEVER appear in logs, GitHub masks them automatically):
-#   VPS_HOST         VPS IPv4 (direct IP, not via Cloudflare proxy)
-#   VPS_USER         e.g. deploy
-#   VPS_SSH_KEY      BASE64 (single line, no wrapping) of the private OpenSSH
-#                    key for VPS_USER (no passphrase). See step comment why.
-#   VPS_SSH_PORT     e.g. 22 (optional)
-#   GHCR_READ_TOKEN  fine-grained PAT, scope read:packages on algorithco/lms
-#                    (used ONLY at deploy runtime; rotated periodically).
-#   GHCR_USER        PAT owner username (docker login username).
+# Production can NEVER deploy automatically from this workflow: the
+# production job runs only on workflow_dispatch, only with an immutable
+# sha-xxxxxxx tag, only after typing the confirmation phrase, and inside the
+# `production` environment (add required reviewers there for a second gate).
+# Rollback = run it again with the previous tag (see .last_good_tag on the VPS);
+# the pre-deploy database backup is in /opt/backups/lms/pre-deploy.
 #
-# GHCR auth design (gap #1 — private image pull):
-#   - Login happens INSIDE the SSH session with a temp DOCKER_CONFIG dir, so
-#     credentials never persist in /root/.docker/config.json on the VPS.
-#   - `set +x` + trap-based `docker logout` + `rm -rf $DOCKER_CONFIG` guarantee
-#     the token is not echoed and not left on disk even on failure.
-#   - PAT is least-privilege (read:packages only). Alternative (not used):
-#     passing GITHUB_TOKEN couples the deploy to one workflow run's lifetime.
+# Secrets (environment-scoped):
+#   staging:    STAGING_HOST STAGING_USER STAGING_SSH_KEY [STAGING_SSH_PORT] STAGING_DOMAIN
+#   production: VPS_HOST VPS_USER VPS_SSH_KEY [VPS_SSH_PORT]
+#   both:       GHCR_USER GHCR_READ_TOKEN [OPENROUTER_API_KEY]
 # ============================================================================
 
 name: Deploy
@@ -34,60 +28,121 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Image tag to deploy (e.g. sha-abc1234 or latest; rollback = previous sha)"
-        required: false
-        default: latest
+        description: "Immutable image tag to put on PRODUCTION (sha-xxxxxxx; for rollback use the previous one)"
+        required: true
+      confirm:
+        description: "Type exactly: deploy grandec.uz"
+        required: true
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
-concurrency:
-  group: production
-  cancel-in-progress: false
-
 jobs:
-  deploy:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+  staging:
+    # Automatic, but only to staging infrastructure.
+    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    environment: production
+    environment: staging
+    concurrency:
+      group: staging
+      cancel-in-progress: false
     permissions:
       contents: read
-
     steps:
-      # remote-deploy.sh / compose / nginx templates are piped to the VPS: take
-      # them from the same commit as the image (the one Build built), not from
-      # whatever main points at when Deploy starts (e.g. the release bump).
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.event.workflow_run.head_sha }}
 
-      - name: Resolve image tag
+      - name: Resolve image tag (the commit CI verified and Build built)
         id: tag
+        run: echo "value=sha-$(echo '${{ github.event.workflow_run.head_sha }}' | cut -c1-7)" >> "$GITHUB_OUTPUT"
+
+      - name: Staging configured?
+        id: cfg
+        env:
+          STAGING_HOST: ${{ secrets.STAGING_HOST }}
+          STAGING_DOMAIN: ${{ secrets.STAGING_DOMAIN }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          if [ -n "${STAGING_HOST}" ] && [ -n "${STAGING_DOMAIN}" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
           else
-            # Must match build.yml: type=sha,prefix=sha-,format=short (= 7 hex).
-            SHORT_SHA="$(echo '${{ github.event.workflow_run.head_sha }}' | cut -c1-7)"
-            echo "value=sha-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
-            # If short/full mismatch ever fails a pull, redeploy via
-            # workflow_dispatch with tag=latest (movable, always exists).
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Staging is not configured (STAGING_HOST / STAGING_DOMAIN secrets missing in the 'staging' environment). Nothing was deployed anywhere."
           fi
 
-      - name: Deploy over SSH (native OpenSSH)
-        # No third-party SSH action: appleboy/drone-ssh cannot parse modern
-        # OpenSSH-format ed25519 keys ("ssh: no key found"). The runner's own
-        # client handles every format. Remote procedure is versioned in
-        # deploy/remote-deploy.sh (reviewed via PR like any other code).
-        # NOTE: VPS_SSH_KEY holds BASE64 of the private key (single line).
-        # Multiline secrets get their newlines mangled somewhere between
-        # `gh secret set` (Windows pipe) and the runner ("error in libcrypto"
-        # on an otherwise valid key); base64 has no newlines to corrupt.
-        # Rotate: base64 -w0 ~/.ssh/grandec_deploy | gh secret set VPS_SSH_KEY
+      - name: Deploy to staging
+        if: ${{ steps.cfg.outputs.ready == 'true' }}
         env:
           IMS_IMAGE_TAG: ${{ steps.tag.outputs.value }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          DEPLOY_DOMAIN: ${{ secrets.STAGING_DOMAIN }}
+          VPS_HOST: ${{ secrets.STAGING_HOST }}
+          VPS_USER: ${{ secrets.STAGING_USER }}
+          VPS_SSH_PORT: ${{ secrets.STAGING_SSH_PORT }}
+          VPS_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
+          GHCR_USER: ${{ secrets.GHCR_USER }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: deploy/ci-ssh-deploy.sh
+
+      - name: Staging smoke tests
+        if: ${{ steps.cfg.outputs.ready == 'true' }}
+        env:
+          DOMAIN: ${{ secrets.STAGING_DOMAIN }}
+        run: deploy/scripts/smoke_test.sh "https://${DOMAIN}"
+
+      - name: Release report
+        if: always()
+        run: |
+          {
+            echo "## Staging release report"
+            echo "- Commit (CI-verified): \`${{ github.event.workflow_run.head_sha }}\`"
+            echo "- Image: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }}\`"
+            echo "- Staging configured: ${{ steps.cfg.outputs.ready }}"
+            echo "- Job status: ${{ job.status }}"
+            echo "- Production: **not deployed** — run *Deploy* manually with tag \`${{ steps.tag.outputs.value }}\` after review."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  production:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    steps:
+      - name: Guard — confirmation and immutable tag
+        env:
+          TAG: ${{ inputs.tag }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "${CONFIRM}" != "deploy grandec.uz" ]; then
+            echo "Confirmation phrase mismatch — refusing to deploy production."; exit 1
+          fi
+          if ! echo "${TAG}" | grep -Eq '^sha-[0-9a-f]{7}$'; then
+            echo "Tag must be an immutable sha-xxxxxxx image tag (got '${TAG}')."; exit 1
+          fi
+
+      - name: Resolve the commit of that image
+        id: src
+        env:
+          TAG: ${{ inputs.tag }}
+        run: echo "sha=${TAG#sha-}" >> "$GITHUB_OUTPUT"
+
+      # Config/scripts from the same commit as the image.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # resolve the short SHA of the image tag
+          ref: ${{ steps.src.outputs.sha }}
+
+      - name: Deploy to production
+        env:
+          IMS_IMAGE_TAG: ${{ inputs.tag }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          DEPLOY_DOMAIN: grandec.uz
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_SSH_PORT: ${{ secrets.VPS_SSH_PORT }}
@@ -95,57 +150,19 @@ jobs:
           GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
           GHCR_USER: ${{ secrets.GHCR_USER }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-        run: |
-          set -euo pipefail
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s' "$VPS_SSH_KEY" | base64 -d > ~/.ssh/lms_deploy_key
-          chmod 600 ~/.ssh/lms_deploy_key
-          ssh-keygen -y -f ~/.ssh/lms_deploy_key >/dev/null # fail fast: key must parse
-          printf 'IMS_IMAGE_TAG=%s\nIMAGE_NAME=%s\nGHCR_USER=%s\nGHCR_READ_TOKEN=%s\nOPENROUTER_API_KEY=%s\n' \
-            "${IMS_IMAGE_TAG:?}" "${IMAGE_NAME:?}" "${GHCR_USER:?}" "${GHCR_READ_TOKEN:?}" "${OPENROUTER_API_KEY:-}" > /tmp/lms_deploy.env
-          chmod 600 /tmp/lms_deploy.env
-          # Key + env file are shredded on EXIT (success or failure).
-          cleanup_ci() { rm -f /tmp/lms_deploy.env ~/.ssh/lms_deploy_key; }
-          trap cleanup_ci EXIT
-          SSH_BASE="-i $HOME/.ssh/lms_deploy_key -o BatchMode=yes -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=6 -o StrictHostKeyChecking=accept-new"
-          SSH="ssh -p ${VPS_SSH_PORT:-22} $SSH_BASE $VPS_USER@$VPS_HOST"
-          SCP="scp -P ${VPS_SSH_PORT:-22} $SSH_BASE"
-          # Versioned config sync: the exact checked-out compose + preflight +
-          # nginx templates land on the VPS first, so deploys never run stale
-          # config. scp writes DIRECTLY onto final paths (truncate in place,
-          # same inode) — Docker bind mounts follow inodes, so mv/install to
-          # a mounted path would orphan the container's view (see
-          # remote-deploy.sh). VPS-only files (.env.prod, deploy/secrets/*,
-          # logs, data, generated nginx.conf) are never synced — nginx.conf
-          # is REGENERATED on the VPS by remote-deploy.sh from the template.
-          # shellcheck disable=SC2086
-          $SCP /tmp/lms_deploy.env "$VPS_USER@$VPS_HOST:/tmp/lms_deploy.env"
-          # shellcheck disable=SC2086
-          $SCP docker-compose.prod.yml "$VPS_USER@$VPS_HOST:/opt/lms/docker-compose.prod.yml"
-          # shellcheck disable=SC2086
-          $SCP deploy/preflight.sh "$VPS_USER@$VPS_HOST:/opt/lms/deploy/preflight.sh"
-          # shellcheck disable=SC2086
-          $SCP deploy/vps_watchdog.py "$VPS_USER@$VPS_HOST:/opt/lms/deploy/vps_watchdog.py"
-          # shellcheck disable=SC2086
-          $SCP deploy/vps-watchdog.service "$VPS_USER@$VPS_HOST:/opt/lms/deploy/vps-watchdog.service"
-          # shellcheck disable=SC2086
-          $SCP deploy/nginx/nginx-main.conf deploy/nginx/nginx-http.conf \
-            deploy/nginx/nginx-ssl.conf "$VPS_USER@$VPS_HOST:/opt/lms/deploy/nginx/"
-          # shellcheck disable=SC2086
-          $SSH 'bash -s' < deploy/remote-deploy.sh
+        run: deploy/ci-ssh-deploy.sh
 
-      - name: Verify Live Deployment Health (HTTP 200 OK)
+      - name: Production health
+        run: deploy/scripts/smoke_test.sh https://grandec.uz
+
+      - name: Release report
+        if: always()
         run: |
-          echo "Verifying production health check on https://grandec.uz/healthz/ ..."
-          for i in {1..12}; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://grandec.uz/healthz/ || true)
-            if [ "$STATUS" = "200" ]; then
-              echo "Production health check passed: HTTP 200 OK"
-              curl -fsS https://grandec.uz/healthz/
-              exit 0
-            fi
-            echo "Attempt $i: status $STATUS, waiting 5s..."
-            sleep 5
-          done
-          echo "FATAL: Health check failed after 60s"
-          exit 1
+          {
+            echo "## Production release report"
+            echo "- Image: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.tag }}\`"
+            echo "- Requested by: ${{ github.actor }}"
+            echo "- Job status: ${{ job.status }}"
+            echo "- Pre-deploy DB backup: /opt/backups/lms/pre-deploy (see deploy log)"
+            echo "- Rollback: run Deploy with the previous tag from /opt/lms/.last_good_tag"
+          } >> "$GITHUB_STEP_SUMMARY"
