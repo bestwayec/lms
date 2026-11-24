@@ -357,6 +357,43 @@ def tma_arena_view(request: Request) -> Response:
 # -----------------------------------------------------------------------
 
 
+def invalidate_tma_tests_cache():
+    """Global invalidation helper for TMA test catalog cache."""
+    from django.core.cache import cache
+
+    try:
+        cache.incr("tma_tests_global_version")
+    except Exception:
+        cache.set("tma_tests_global_version", 2, timeout=None)
+
+
+def _tma_user_cache_key(user) -> str:
+    """Generate a cache key that changes immediately if the user's permissions,
+    enrolled groups, homework assignments, or subscription status change."""
+    from django.core.cache import cache
+    from django.db.models import Q
+    from apps.courses.models import Homework, StudentGroup
+
+    global_ver = cache.get("tma_tests_global_version", 1)
+    is_adm = int(bool(getattr(user, "is_superuser", False) or getattr(user, "role", "") == "admin"))
+    is_stf = int(bool(getattr(user, "is_staff", False) or getattr(user, "role", "") == "teacher"))
+    has_pro = int(bool(getattr(user, "has_pro_access", False)))
+
+    my_group_ids = tuple(
+        StudentGroup.objects.filter(students=user).order_by("id").values_list("id", flat=True)
+    )
+    hw_test_ids = tuple(
+        Homework.objects.filter(Q(group__students=user) | Q(student=user), test__isnull=False)
+        .exclude(status=Homework.Status.CANCELLED)
+        .order_by("test_id")
+        .values_list("test_id", flat=True)
+        .distinct()
+    )
+
+    state_sig = f"{global_ver}_{is_adm}_{is_stf}_{has_pro}_{hash((my_group_ids, hw_test_ids))}"
+    return f"tma_tests_u_{user.id}_{state_sig}"
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def tma_tests_view(request: Request) -> Response:
@@ -366,7 +403,7 @@ def tma_tests_view(request: Request) -> Response:
     from apps.tests.views import visible_tests
 
     user = request.user
-    cache_key = f"tma_tests_u_{user.id}_v3"
+    cache_key = _tma_user_cache_key(user)
     tests_payload = cache.get(cache_key)
 
     if tests_payload is None:

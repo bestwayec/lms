@@ -137,3 +137,37 @@ class TestTmaTestsAccessPolicy7:
         assert self.public_test.id in test_ids
         assert self.group_test.id not in test_ids
         assert self.pro_test.id not in test_ids
+
+    def test_membership_removal_instantly_invalidates_cache_and_hides_private_test(self):
+        # 1. First request caches the results for student_group_a
+        self.client.force_authenticate(user=self.student_group_a)
+        res1 = self.client.get("/tma/api/tests/")
+        assert res1.status_code == 200
+        assert self.group_test.id in [t["id"] for t in res1.data["tests"]]
+
+        # 2. Student is removed from the classroom group
+        self.group_a.students.remove(self.student_group_a)
+
+        # 3. Next request must NOT return stale cached data — group test must disappear immediately
+        res2 = self.client.get("/tma/api/tests/")
+        assert res2.status_code == 200
+        test_ids = [t["id"] for t in res2.data["tests"]]
+        assert self.group_test.id not in test_ids
+        assert self.public_test.id in test_ids
+
+    def test_test_archiving_instantly_invalidates_cache_globally(self):
+        # 1. First request caches public test
+        self.client.force_authenticate(user=self.student_group_b)
+        res1 = self.client.get("/tma/api/tests/")
+        assert res1.status_code == 200
+        assert self.public_test.id in [t["id"] for t in res1.data["tests"]]
+
+        # 2. Test is archived / deactivated by teacher
+        self.public_test.status = "archived"
+        self.public_test.save()
+
+        # 3. Next request must reflect the archived status immediately without waiting for cache timeout
+        res2 = self.client.get("/tma/api/tests/")
+        assert res2.status_code == 200
+        test_ids = [t["id"] for t in res2.data["tests"]]
+        assert self.public_test.id not in test_ids

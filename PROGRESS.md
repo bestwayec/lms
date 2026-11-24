@@ -2479,12 +2479,33 @@ uff check apps/ 0 xato, pytest tests/test_spa_contract.py 20/20 test 100% PASS.
   * Regressiya: 28 ta frontend unit testi, 26 ta classroom/telegram backend testi to'liq PASS.
   * Mualliflik: `Komiljon Roziyev <kruziyev0@gmail.com>` (Zero AI attribution).
 
-## 4. Jarayonda
-- `feat/grandec-next-7` bo'yicha o'zgarishlarni commit qilish va Draft PR ochish.
+## 4. GRANDEC NEXT 7.1 — Release Recovery & Product Hardening
+- [x] **Release Pipeline Recovery (Docker Buildx & GHCR)**:
+  * PR #147 (`fix/build-cache-resilience`) yaratildi: GHA Cache API 504 Gateway Timeout muammosi bartaraf etildi.
+  * `cache-to` rejimi `max` dan `min` ga o'tkazilib, gigabaytlik keraksiz qatlamlar uzatilishining oldi olindi.
+  * Kesh eksporti uzilishlariga qarshi zaxira mexanizmi (`fallback without cache-to`) joriy etildi: kesh yozishdagi vaqtinchalik xatoliklar asosiy imij yig'ilishi va push bo'lishini to'xtatmaydi.
+  * `docker buildx imagetools inspect` orqali GHCR imiji mavjudligi va verifikatsiyasi tekshirilishi qo'shildi.
+  * Qo'lda chaqiriladigan `workflow_dispatch` uchun commit CI'dan o'tganligini tekshiruvchi guard o'rnatildi.
+- [x] **TMA 7.0 Kesh Auditi va Xavfsizligi**:
+  * `apps/telegram_app/views.py` da foydalanuvchi holati imzosi (`state_sig`: guruh a'zoliklari, vazifalar, PRO obuna va global versiya) kiritildi.
+  * Guruhdan o'quvchi chiqarilganda yoki test arxivlanganda eskigan (stale) maxfiy test metama'lumotlari darhol yo'qolishi kafolatlandi (0ms stale window).
+  * `apps/tests/models.py` da test saqlanganda yoki arxivlanganda `tma_tests_global_version` oshirilib, barcha foydalanuvchilar keshi bir zumda yangilanishi ta'minlandi.
+  * `tests/test_tma_tests_access_policy_7.py`: 5/5 test 100% PASS.
+- [x] **Teacher Studio Qoralama Tiklash (Draft Recovery)**:
+  * `TeacherStudioEditor.tsx` da `localStorage` orqali uzluksiz qoralama saqlash va brauzer yopilganda qayta tiklash (Draft Recovery Banner) qo'shildi.
+  * React lazy state initializer orqali oxlint ogohlantirishlari 0 ga tushirildi.
+  * 4 ta yangi tarjima kaliti kiritildi (jami 3,388 kalit, 100% paritet).
+- [x] **QA & Yetkazib Berish**:
+  * 28/28 frontend unit testlari, 4/4 tarjima testlari, 5/5 TMA testlari PASS.
+  * `oxlint` 0 xato/ogohlantirish, `tsc -b && vite build` toza yig'ildi (15.6s).
+  * Mualliflik: `Komiljon Roziyev <kruziyev0@gmail.com>` (Zero AI attribution).
+
+## 5. Jarayonda
+- PR #146 ni yangilash va GitHub Actions tekshiruvlarini kuzatish.
 
 ---
 
-## 5. Keyingi qadamlar
-- GitHub Actions CI ishga tushishi va tekshiruvlarini kuzatish.
-- Foydalanuvchiga GRANDEC 7.0 integratsiya hisobotini taqdim etish.
+## 6. Keyingi qadamlar
+- O'qituvchi va o'quvchi interfeyslarining yakuniy brauzer sinovlarini olib borish.
+
 

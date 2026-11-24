@@ -125,6 +125,72 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const validateTimer = useRef<number | null>(null);
 
+  const draftKey = `studio_draft_${id ?? 'new'}`;
+  const [recoverableDraft, setRecoverableDraft] = useState<{
+    meta?: Meta;
+    blocks?: StudioBlock[];
+    wizardStep?: 1 | 2 | 3;
+    tab?: Tab;
+    paste?: string;
+    timestamp: number;
+  } | null>(() => {
+    try {
+      const raw = localStorage.getItem(draftKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (parsed && (parsed.blocks?.length > 0 || parsed.meta?.title?.trim() || parsed.paste?.trim())) {
+        if (Date.now() - (parsed.timestamp || 0) < 7 * 86400 * 1000) {
+          return parsed;
+        }
+      }
+    } catch {
+      /* ignore storage failure */
+    }
+    return null;
+  });
+
+  // Auto-save local draft
+  useEffect(() => {
+    if (!dirty) return;
+    const timer = window.setTimeout(() => {
+      try {
+        const draft = {
+          meta,
+          blocks,
+          wizardStep,
+          tab,
+          paste,
+          timestamp: Date.now(),
+        };
+        localStorage.setItem(draftKey, JSON.stringify(draft));
+      } catch {
+        /* storage full */
+      }
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [dirty, meta, blocks, wizardStep, tab, paste, draftKey]);
+
+  const restoreDraft = () => {
+    if (!recoverableDraft) return;
+    if (recoverableDraft.meta) setMeta(recoverableDraft.meta);
+    if (recoverableDraft.blocks) setBlocks(withKeys(recoverableDraft.blocks));
+    if (recoverableDraft.wizardStep) setWizardStep(recoverableDraft.wizardStep);
+    if (recoverableDraft.tab) setTab(recoverableDraft.tab);
+    if (recoverableDraft.paste) setPaste(recoverableDraft.paste);
+    setDirty(true);
+    setNotice(t('studio_draft_restored', 'Qoralama muvaffaqiyatli tiklandi!'));
+    setRecoverableDraft(null);
+  };
+
+  const discardDraft = () => {
+    try {
+      localStorage.removeItem(draftKey);
+    } catch {
+      /* ignore */
+    }
+    setRecoverableDraft(null);
+  };
+
   const applyDetail = useCallback((d: StudioDetail) => {
     setDetail(d);
     setMeta({
@@ -223,6 +289,12 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
     try {
       const payload = { ...meta, title: meta.title.trim(), blocks };
       const d = id ? await StudioApi.update(id, payload) : await StudioApi.create(payload);
+      try {
+        localStorage.removeItem(draftKey);
+        setRecoverableDraft(null);
+      } catch {
+        /* ignore */
+      }
       applyDetail(d);
       setNotice(t('studio_saved', 'O‘zgarishlar saqlandi!'));
       if (!id) navigate(`/teacher/studio/${d.test.id}/edit`, { replace: true });
@@ -233,7 +305,7 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
     } finally {
       setBusy(null);
     }
-  }, [id, meta, blocks, applyDetail, navigate, t]);
+  }, [id, meta, blocks, applyDetail, navigate, t, draftKey]);
 
   const publish = async () => {
     const saved = dirty || !detail ? await save() : detail;
@@ -496,6 +568,44 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
         <div className="studio-alert is-ok" role="status">
           <CheckCircle2 size={18} aria-hidden="true" /> {notice}
         </div>
+      )}
+
+      {recoverableDraft && (
+        <aside
+          className="studio-alert"
+          style={{
+            background: 'linear-gradient(135deg, rgba(200, 146, 42, 0.15), rgba(59, 130, 246, 0.12))',
+            borderColor: 'var(--primary, #C8922A)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 12,
+            marginBottom: 16,
+          }}
+          role="status"
+          aria-label={t('studio_draft_found', 'Saqlanmagan qoralama topildi!')}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 20 }}>💾</span>
+            <div>
+              <strong>{t('studio_draft_found', 'Saqlanmagan qoralama topildi!')}</strong>
+              <div className="muted small">
+                {recoverableDraft.meta?.title ? `"${recoverableDraft.meta.title}" · ` : ''}
+                {recoverableDraft.blocks?.length ? `${recoverableDraft.blocks.length} ta guruh · ` : ''}
+                {new Date(recoverableDraft.timestamp).toLocaleTimeString()}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="btn sm primary" onClick={restoreDraft}>
+              {t('studio_draft_restore_btn', 'Qoralamani tiklash')}
+            </button>
+            <button type="button" className="btn sm ghost" onClick={discardDraft}>
+              {t('studio_draft_discard_btn', 'Rad etish')}
+            </button>
+          </div>
+        </aside>
       )}
 
       {/* STEP 1: TEST METADATA */}

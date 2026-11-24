@@ -3383,7 +3383,11 @@
     "studio_matrix_clear": "Tozalash",
     "studio_matrix_clear_confirm": "Barcha javob kalitlarini tozalashni tasdiqlaysizmi?",
     "classroom_assigned_badge": "Guruh testi (Bepul)",
-    "studio_quick_starters": "Tezkor to‘plam"
+    "studio_quick_starters": "Tezkor to‘plam",
+    "studio_draft_found": "Saqlanmagan qoralama topildi!",
+    "studio_draft_restored": "Qoralama muvaffaqiyatli tiklandi!",
+    "studio_draft_restore_btn": "Qoralamani tiklash",
+    "studio_draft_discard_btn": "Rad etish"
   },
   "ru": {
     "spk_practise_again": "Повторить эту тему",
@@ -6769,7 +6773,11 @@
     "studio_matrix_clear": "Очистить",
     "studio_matrix_clear_confirm": "Вы уверены, что хотите очистить все ключи ответов?",
     "classroom_assigned_badge": "Тест группы (Бесплатно)",
-    "studio_quick_starters": "Быстрый набор"
+    "studio_quick_starters": "Быстрый набор",
+    "studio_draft_found": "Найдено несохранённое черновик!",
+    "studio_draft_restored": "Черновик успешно восстановлен!",
+    "studio_draft_restore_btn": "Восстановить черновик",
+    "studio_draft_discard_btn": "Отклонить"
   },
   "en": {
     "spk_practise_again": "Practise this topic again",
@@ -10155,6 +10163,10 @@
     "studio_matrix_clear": "Clear",
     "studio_matrix_clear_confirm": "Are you sure you want to clear all answer keys?",
     "classroom_assigned_badge": "Classroom test (Free)",
-    "studio_quick_starters": "Quick starter"
+    "studio_quick_starters": "Quick starter",
+    "studio_draft_found": "Unsaved draft found!",
+    "studio_draft_restored": "Draft successfully restored!",
+    "studio_draft_restore_btn": "Restore draft",
+    "studio_draft_discard_btn": "Discard"
   }
 }
