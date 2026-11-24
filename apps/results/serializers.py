@@ -63,6 +63,8 @@ class ResultListSerializer(serializers.ModelSerializer):
             "rasch_score",
             "max_rasch_score",
             "rasch_grade",
+            "rasch_mode",
+            "rasch_grade_label",
             "rasch_explanation",
         ]
 

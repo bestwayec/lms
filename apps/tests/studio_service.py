@@ -310,15 +310,32 @@ def validate_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # Save / load
 # ---------------------------------------------------------------------------
+# Who may take a Studio test. Default: only students the teacher assigns it
+# to (free for them). Opening it to subscribers or everyone is an explicit
+# teacher choice — never the default.
+STUDIO_AUDIENCES = {
+    "GROUP_ONLY": ("STUDENTS_ONLY", "GROUP_ONLY"),
+    "GROUP_AND_SUBSCRIBERS": ("PUBLIC", "GROUP_AND_SUBSCRIBERS"),
+    "PUBLIC_FREE": ("PUBLIC", "PUBLIC_FREE"),
+}
+DEFAULT_STUDIO_AUDIENCE = "GROUP_ONLY"
+
+
 @dataclass
 class TestMeta:
     title: str
     subject: str
     time_limit_minutes: int
     description: str
+    audience: str | None = None  # None = keep (update) / default (create)
+    assessment_category: str | None = None
+    available_from: datetime | None = None
+    available_until: datetime | None = None
 
 
 def _meta(payload: dict[str, Any]) -> TestMeta:
+    from django.utils.dateparse import parse_datetime
+
     title = _s(payload.get("title"), 255)
     if not title:
         raise StudioError("title_required")
@@ -331,7 +348,53 @@ def _meta(payload: dict[str, Any]) -> TestMeta:
         raise StudioError("bad_time_limit") from None
     if not 0 <= minutes <= 600:
         raise StudioError("bad_time_limit")
-    return TestMeta(title, subject, minutes, _s(payload.get("description"), 2000))
+    audience = payload.get("audience")
+    if audience is not None and audience not in STUDIO_AUDIENCES:
+        raise StudioError("bad_audience")
+
+    category = payload.get("assessment_category")
+    if category:
+        valid_cats = {c[0] for c in Test.AssessmentCategory.choices}
+        if category not in valid_cats:
+            category = Test.AssessmentCategory.CLASSROOM_QUIZ
+    else:
+        category = Test.AssessmentCategory.CLASSROOM_QUIZ
+
+    avail_from = None
+    if payload.get("available_from"):
+        try:
+            avail_from = parse_datetime(str(payload["available_from"]))
+        except Exception:
+            avail_from = None
+
+    avail_until = None
+    if payload.get("available_until"):
+        try:
+            avail_until = parse_datetime(str(payload["available_until"]))
+        except Exception:
+            avail_until = None
+
+    return TestMeta(
+        title=title,
+        subject=subject,
+        time_limit_minutes=minutes,
+        description=_s(payload.get("description"), 2000),
+        audience=audience,
+        assessment_category=category,
+        available_from=avail_from,
+        available_until=avail_until,
+    )
+
+
+def _apply_audience(test: Test, audience: str) -> None:
+    test.access_type, test.audience_mode = STUDIO_AUDIENCES[audience]
+
+
+def studio_audience(test: Test) -> str:
+    from apps.tests.access_policy import normalize_audience_mode
+
+    mode = normalize_audience_mode(test)
+    return mode if mode in STUDIO_AUDIENCES else "GROUP_ONLY"
 
 
 def is_studio_test(test: Test) -> bool:
@@ -478,6 +541,12 @@ def save_test(user, payload: dict[str, Any], test: Test | None = None) -> Test:
         test.subject = meta.subject
         test.time_limit_minutes = meta.time_limit_minutes
         test.description = meta.description
+        if meta.audience:
+            _apply_audience(test, meta.audience)
+        if meta.assessment_category:
+            test.assessment_category = meta.assessment_category
+        test.available_from = meta.available_from
+        test.available_until = meta.available_until
         test.status = Test.Status.DRAFT
         test.save()
     else:
@@ -490,11 +559,16 @@ def save_test(user, payload: dict[str, Any], test: Test | None = None) -> Test:
             subject=meta.subject,
             exam_type=Test.ExamType.GENERAL,
             scoring_type=Test.ScoringType.STANDARD,
+            assessment_category=meta.assessment_category or Test.AssessmentCategory.CLASSROOM_QUIZ,
+            available_from=meta.available_from,
+            available_until=meta.available_until,
             time_limit_minutes=meta.time_limit_minutes,
             description=meta.description,
             max_attempts=1,
             shuffle_choices=False,
             status=Test.Status.DRAFT,
+            access_type=STUDIO_AUDIENCES[meta.audience or DEFAULT_STUDIO_AUDIENCE][0],
+            audience_mode=STUDIO_AUDIENCES[meta.audience or DEFAULT_STUDIO_AUDIENCE][1],
         )
     _build_content(test, blocks)
     return test
@@ -635,11 +709,16 @@ def summarize_test(test: Test) -> dict[str, Any]:
         "id": test.id,
         "title": test.title,
         "subject": test.subject,
+        "assessment_category": getattr(test, "assessment_category", "classroom_quiz") or "classroom_quiz",
         "status": test.status,
         "time_limit_minutes": test.time_limit_minutes,
+        "is_timed": bool(getattr(test, "has_time_limit", test.time_limit_minutes > 0)),
+        "available_from": test.available_from.isoformat() if getattr(test, "available_from", None) else None,
+        "available_until": test.available_until.isoformat() if getattr(test, "available_until", None) else None,
         "mock_code": test.mock_code or "",
         "access_pin": test.access_pin or "",
         "description": test.description,
+        "audience": studio_audience(test),
         "editable": is_studio_test(test) and not has_real_answers(test),
         "is_studio": is_studio_test(test),
         "updated_at": test.updated_at.isoformat() if test.updated_at else None,
@@ -672,11 +751,9 @@ def store_media(upload, kind: str) -> dict[str, str]:
 # Assignment (courses.Homework)
 # ---------------------------------------------------------------------------
 def teacher_groups(user):
-    from apps.courses.models import StudentGroup
+    from apps.courses.teacher_workspace_service import get_teacher_groups
 
-    if is_platform_admin(user):
-        return StudentGroup.objects.all()
-    return StudentGroup.objects.filter(teacher=user)
+    return get_teacher_groups(user)
 
 
 def bot_username() -> str:
@@ -971,6 +1048,11 @@ def duplicate_test(user, test: Test) -> Test:
         subject=test.subject,
         exam_type=test.exam_type,
         scoring_type=test.scoring_type,
+        assessment_category=getattr(test, "assessment_category", "classroom_quiz"),
+        available_from=test.available_from,
+        available_until=test.available_until,
+        audience_mode=getattr(test, "audience_mode", "GROUP_ONLY"),
+        access_type=getattr(test, "access_type", "STUDENTS_ONLY"),
         time_limit_minutes=test.time_limit_minutes,
         description=test.description,
         max_attempts=test.max_attempts,
@@ -1192,10 +1274,21 @@ def import_test_file(data: bytes, filename: str = "", default_section: str = "GE
             raise StudioError("no_questions_found")
     warnings = list(ex.warnings) + list(result.get("warnings", []))
     blocks = result["blocks"]
+    source: dict[str, Any] = {"kind": ex.kind, "filename": (filename or "")[:200]}
+    if ex.kind == "pptx" and ex.slide_lines is not None and not ex.rows:
+        from apps.tests.import_extract import slide_map
+
+        numbers = [q["number"] for b in blocks for q in b["questions"]]
+        mapping = slide_map(ex.text, ex.slide_lines, numbers)
+        source["question_slides"] = {str(n): s for n, s in mapping.items()}
+        for b in blocks:
+            for q in b["questions"]:
+                if q["number"] in mapping:
+                    q["slide"] = mapping[q["number"]]
     return {
         **result,
         "warnings": warnings,
-        "source": {"kind": ex.kind, "filename": (filename or "")[:200]},
+        "source": source,
         "report": build_report(blocks, warnings),
         "questions_count": sum(len(b["questions"]) for b in blocks),
         "detected_answers": sum(1 for b in blocks for q in b["questions"] if q.get("answer")),

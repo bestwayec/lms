@@ -291,10 +291,14 @@ def test_legacy_fabricated_zero_is_not_shown_as_grade(teacher, group, student, t
 @pytest.mark.django_db
 def test_list_does_not_write_or_link_an_older_result(api, teacher, group, student, test_obj):
     # Student practised the same test before the homework existed.
+    # The test was public while practised; it became a private group test later
+    # (under the classroom policy a private test can't be practised unassigned).
+    Test.objects.filter(id=test_obj.id).update(access_type=Test.AccessType.PUBLIC)
     old = StartAttemptService.execute(test_id=test_obj.id, student=student)
     _answer(old, student, correct=True)
     SubmitAttemptService.execute(old.id, student)
     TestAttempt.objects.filter(id=old.id).update(started_at=timezone.now() - timedelta(days=3))
+    Test.objects.filter(id=test_obj.id).update(access_type=Test.AccessType.STUDENTS_ONLY)
     assert Result.objects.filter(student=student, test=test_obj).exists()
 
     hw = _hw(teacher, group, test_obj)
@@ -307,10 +311,14 @@ def test_list_does_not_write_or_link_an_older_result(api, teacher, group, studen
 
 @pytest.mark.django_db
 def test_legacy_stale_linked_row_is_ignored(teacher, group, student, test_obj):
+    # The test was public while practised; it became a private group test later
+    # (under the classroom policy a private test can't be practised unassigned).
+    Test.objects.filter(id=test_obj.id).update(access_type=Test.AccessType.PUBLIC)
     old = StartAttemptService.execute(test_id=test_obj.id, student=student)
     _answer(old, student, correct=True)
     SubmitAttemptService.execute(old.id, student)
     TestAttempt.objects.filter(id=old.id).update(started_at=timezone.now() - timedelta(days=3))
+    Test.objects.filter(id=test_obj.id).update(access_type=Test.AccessType.STUDENTS_ONLY)
     hw = _hw(teacher, group, test_obj)
     result = Result.objects.get(attempt=old)
     HomeworkSubmission.objects.create(  # what the old GET fallback wrote
@@ -534,9 +542,13 @@ def test_teacher_roster_uses_authoritative_status(api, teacher, other_teacher, g
     peer = _user("hi_peer@example.com")
     group.students.add(peer)
     # peer practised before the homework: must NOT count as a completion
+    # The test was public while practised; it became a private group test later
+    # (under the classroom policy a private test can't be practised unassigned).
+    Test.objects.filter(id=test_obj.id).update(access_type=Test.AccessType.PUBLIC)
     old = StartAttemptService.execute(test_id=test_obj.id, student=peer)
     SubmitAttemptService.execute(old.id, peer)
     TestAttempt.objects.filter(id=old.id).update(started_at=timezone.now() - timedelta(days=2))
+    Test.objects.filter(id=test_obj.id).update(access_type=Test.AccessType.STUDENTS_ONLY)
 
     hw = _hw(teacher, group, test_obj)
     attempt = TestAttempt.objects.get(id=start_student_homework(student, hw.id)["attempt_id"])

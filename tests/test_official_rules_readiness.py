@@ -1035,7 +1035,13 @@ class ResultStateTests(TestCase):
         )
         # Milliy pending → pending_writing.
         ex = build_milliy_exam(teacher, title="State exam")
-        attempt2 = StartAttemptService.execute(test_id=ex["test"].id, student=student)
+        # A retake: the FREE plan's single test is used; this test is about
+        # certificate states, so the plan is treated as unlimited.
+        from unittest import mock
+
+        with mock.patch("apps.payments.entitlements.can_start_test", return_value=(True, None, {})), \
+             mock.patch("apps.payments.entitlements.enforce_test_quota"):
+            attempt2 = StartAttemptService.execute(test_id=ex["test"].id, student=student)
         SaveAnswerService.execute(
             attempt2.id, ex["q_w"].id, [], student, written_text="Matn. " * 30
         )

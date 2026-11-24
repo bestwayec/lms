@@ -24,6 +24,8 @@ logger = logging.getLogger(__name__)
 
 def _jwt_auth(request):
     """Authenticate with SimpleJWT's standard active-user checks."""
+    if hasattr(request, "user") and getattr(request.user, "is_authenticated", False):
+        return request.user
     try:
         from rest_framework_simplejwt.authentication import JWTAuthentication
 

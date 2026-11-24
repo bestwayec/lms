@@ -25,6 +25,10 @@ export interface TestListItem {
   is_strict_mode?: boolean;
   category_slug?: string;
   category_name?: string;
+  assessment_category?: string;
+  is_timed?: boolean;
+  available_from?: string | null;
+  available_until?: string | null;
   mock_code?: string;
   created_at?: string;
   exam_type?: string;

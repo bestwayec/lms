@@ -1984,7 +1984,7 @@ export default function Landing() {
               color: '#64748B',
             }}
           >
-            <span>&copy; {new Date().getFullYear()} GRAND EDUCATION (grandec.uz). {t('foot_rights')}</span>
+            <span>&copy; 2026 GRAND EDUCATION (grandec.uz). {t('foot_rights')}</span>
             <span>
               Website <a href="https://www.instagram.com/rozievkomiljon/" target="_blank" rel="noopener noreferrer" style={{ color: '#fbbf24', textDecoration: 'underline' }}>Komiljon Roziyev</a> tomonidan ishlab chiqilgan
             </span>

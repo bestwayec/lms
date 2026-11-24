@@ -22,6 +22,31 @@ from apps.tests.bmb_grading import calculate_bmb_grade
 logger = logging.getLogger(__name__)
 
 
+def _possible_pro_ids(student_ids: list[int]) -> set[int]:
+    """Students who *could* hold a paid tier: an active override, sponsorship or an
+    unexpired subscription row. A superset; callers confirm with has_pro_access."""
+    from django.db.models import Q
+    from django.utils import timezone
+
+    from apps.payments.models import SubscriptionOverride, TeacherSponsorship, UserSubscription
+
+    if not student_ids:
+        return set()
+    now = timezone.now()
+    live = Q(expires_at__isnull=True) | Q(expires_at__gt=now)
+    subs = UserSubscription.objects.filter(user_id__in=student_ids).filter(live).order_by().values_list("user_id", flat=True)
+    overrides = SubscriptionOverride.objects.filter(user_id__in=student_ids, is_active=True).order_by().values_list(
+        "user_id", flat=True
+    )
+    sponsored = (
+        TeacherSponsorship.objects.filter(student_id__in=student_ids, is_active=True, approved_at__isnull=False)
+        .filter(live)
+        .order_by()
+        .values_list("student_id", flat=True)
+    )
+    return set(subs.union(overrides, sponsored))  # one query
+
+
 def get_group_full_analytics(group: StudentGroup) -> dict[str, Any]:
     """
     Guruh bo'yicha to'liq jonli monitoring:
@@ -96,6 +121,8 @@ def get_group_full_analytics(group: StudentGroup) -> dict[str, Any]:
     bmb_counts = {"A+": 0, "A": 0, "B+": 0, "B": 0, "C+": 0, "C": 0, "Fail": 0}
     all_pcts: list[float] = []
 
+    pro_candidates = _possible_pro_ids(student_ids)
+
     for s in students:
         r_stat = result_stats.get(s.id)
         e_stat = essay_stats.get(s.id)
@@ -135,7 +162,8 @@ def get_group_full_analytics(group: StudentGroup) -> dict[str, Any]:
         last_active = max(dates).strftime("%d.%m.%Y %H:%M") if dates else None
         s_tuition = tuition_status.get(s.id)
 
-        has_pro_real = bool(getattr(s, "has_pro_access", False))
+        # Exact entitlement check only for the few who could be PRO (constant queries otherwise).
+        has_pro_real = s.id in pro_candidates and bool(getattr(s, "has_pro_access", False))
         roster.append(
             {
                 "student_id": s.id,

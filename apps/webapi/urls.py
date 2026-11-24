@@ -258,6 +258,16 @@ urlpatterns = [
         name="panel-test-bulk",
     ),
     path(
+        "panel/tests/visibility-audit/",
+        views_panel.tests_visibility_audit_view,
+        name="panel-tests-visibility-audit",
+    ),
+    path(
+        "panel/tests/visibility-audit/apply/",
+        views_panel.tests_visibility_audit_apply_view,
+        name="panel-tests-visibility-audit-apply",
+    ),
+    path(
         "panel/tests/<int:test_id>/",
         views_panel.test_detail_view,
         name="panel-test-detail",

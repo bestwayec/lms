@@ -58,9 +58,9 @@ def teacher_groups(user):
     """Groups *user* may report on (admins all, teachers their own)."""
     if user is None or not getattr(user, "is_authenticated", False):
         return StudentGroup.objects.none()
-    if is_platform_admin(user):
-        return StudentGroup.objects.all()
-    return StudentGroup.objects.filter(teacher=user)
+    from apps.courses.teacher_workspace_service import get_teacher_groups
+
+    return get_teacher_groups(user)
 
 
 def assert_group_access(user, group) -> None:

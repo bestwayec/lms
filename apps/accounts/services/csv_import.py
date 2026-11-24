@@ -4,8 +4,8 @@ CSV Import Service — Talabalarni CSV fayldan to'plamda qo'shish.
 Supports:
     - CSV with columns: email, first_name, last_name, phone (optional)
     - Duplicate detection (skip existing emails)
-    - Password generation for new students
-    - Welcome email sending
+    - Independent, unguessable initial credentials for new students
+    - One-time password-setup emails (never plaintext passwords)
     - Import summary with success/error counts
 """
 
@@ -17,10 +17,11 @@ import logging
 import secrets
 from typing import Any
 
+from urllib.parse import urlsplit
+
+from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.core.mail import send_mail
-from django.template.loader import render_to_string
-from django.utils.html import strip_tags
+from django.contrib.auth.forms import PasswordResetForm
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -120,7 +121,7 @@ class CSVImportService:
                     continue
 
                 # Generate password
-                password = secrets.token_urlsafe(12)
+                password = secrets.token_urlsafe(32)
 
                 # Create user
                 user = User.objects.create_user(
@@ -145,9 +146,9 @@ class CSVImportService:
                 # Send welcome email
                 if send_welcome:
                     try:
-                        cls._send_welcome_email(user, password)
+                        cls._send_welcome_email(user)
                     except Exception as e:
-                        logger.warning("Welcome email failed for %s: %s", email, e)
+                        logger.warning("Password setup email failed for user_id=%s: %s", user.pk, e)
 
             except Exception as e:
                 errors.append({"row": i, "error": str(e)})
@@ -169,24 +170,32 @@ class CSVImportService:
         }
 
     @classmethod
-    def _send_welcome_email(cls, user: Any, password: str) -> None:
-        """Welcome email yuborish — parol bilan birga."""
-        subject = "Ona Tili & Adabiyot platformasiga xush kelibsiz!"
-        context = {
-            "user": user,
-            "password": password,
-            "site_url": "http://localhost:8000",
-        }
-        html_message = render_to_string("emails/welcome_with_password.html", context)
-        plain_message = strip_tags(html_message)
+    def _send_welcome_email(cls, user: Any) -> None:
+        """Email a one-time password setup link, never an initial password.
 
-        send_mail(
-            subject=subject,
-            message=plain_message,
-            from_email="Ona Tili & Adabiyot <noreply@lms-platform.uz>",
-            recipient_list=[user.email],
-            html_message=html_message,
-            fail_silently=True,
+        Imported accounts have an unguessable independent password and can
+        activate access through the existing one-hour reset confirmation flow.
+        """
+        site = urlsplit(settings.SITE_URL)
+        if (
+            site.scheme not in ("http", "https")
+            or not site.netloc
+            or site.path not in ("", "/")
+            or (not settings.DEBUG and site.scheme != "https")
+        ):
+            raise ValueError("SITE_URL must be a valid HTTPS origin in production")
+
+        form = PasswordResetForm({"email": user.email})
+        if not form.is_valid():
+            raise ValueError("Imported student has no valid email for password setup")
+
+        form.save(
+            domain_override=site.netloc,
+            use_https=(site.scheme == "https"),
+            email_template_name="registration/password_reset_email.txt",
+            subject_template_name="registration/password_reset_subject.txt",
+            html_email_template_name="registration/password_reset_email.html",
+            extra_email_context={"lang": getattr(user, "language", "uz")},
         )
 
     @classmethod

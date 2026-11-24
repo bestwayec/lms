@@ -250,6 +250,8 @@ class RaschEngine:
             "test_id": test_id,
             "test_title": test.title,
             "questions_updated": stats_result["questions_updated"],
+            # Historical attempts are immutable snapshots: never re-scored.
+            "attempts_updated": 0,
             "questions": stats_result.get("questions", []),
         }
 
@@ -259,10 +261,15 @@ class RaschEngine:
         attempt: Any,
         all_questions: Sequence[Any],
         answers_by_qid: dict[int, Any],
-    ) -> tuple[Decimal, Decimal, str, str]:
+    ) -> "RaschOutcome":
         """
         Evaluate Rasch metrics for an attempt currently being graded.
-        Returns: (rasch_score, max_rasch_score, rasch_grade, rasch_explanation)
+
+        Returns a :class:`RaschOutcome`; it still unpacks as the historical
+        4-tuple ``(rasch_score, max_rasch_score, rasch_grade, rasch_explanation)``.
+        ``rasch_grade`` is always a short code ("A+" … "Fail", or "" when no
+        grade may be given) that fits the varchar(10) columns; whether it is an
+        official or a practice result lives in ``mode`` (never in the code).
         """
         # Step 1: Update per-question counters incrementally for this attempt
         questions_to_update: list[Any] = []
@@ -326,14 +333,17 @@ class RaschEngine:
         if is_verified:
             if has_adequate_sample:
                 grade = cls.grade_from_percentage(pct)
+                mode = MODE_OFFICIAL
                 exp_prefix = "Tasdiqlangan Rasch IRT tahlili: "
             else:
-                grade = "Kalibratsiya talab qilinadi"
+                # No grade is issued until the items are calibrated.
+                grade = ""
+                mode = MODE_UNCALIBRATED
                 exp_prefix = "Kalibratsiya talab qilinadi (yetarli ma'lumot to'planmagan). "
         else:
-            # Dynamic Weighted Practice mode (Practice only, clearly labeled)
-            base_grade = cls.grade_from_percentage(pct)
-            grade = f"{base_grade} (Mashq)"
+            # Dynamic Weighted Practice mode (Practice only, clearly labeled via mode)
+            grade = cls.grade_from_percentage(pct)
+            mode = MODE_PRACTICE
             exp_prefix = (
                 "Dinamik vaznli mashq bali (taxminiy/tajribaviy). "
                 "Ushbu ball mashq maqsadida dinamik qiyinlik bo'yicha hisoblangan bo'lib, "
@@ -344,9 +354,53 @@ class RaschEngine:
             correct_questions, len(all_questions), earned_rasch
         )
 
-        return (
-            Decimal(str(earned_rasch)),
-            Decimal(str(max_rasch)),
-            grade,
-            explanation,
+        return RaschOutcome(
+            score=Decimal(str(earned_rasch)),
+            max_score=Decimal(str(max_rasch)),
+            grade=grade,
+            explanation=explanation,
+            mode=mode,
         )
+
+
+# ---------------------------------------------------------------------------
+# Grade code / mode / label (kept apart; the DB columns hold codes only)
+# ---------------------------------------------------------------------------
+MODE_OFFICIAL = "official"
+MODE_PRACTICE = "practice"
+MODE_UNCALIBRATED = "uncalibrated"
+RASCH_MODES = (MODE_OFFICIAL, MODE_PRACTICE, MODE_UNCALIBRATED)
+
+_LABELS = {
+    MODE_PRACTICE: "{grade} (Mashq)",
+    MODE_UNCALIBRATED: "Kalibratsiya talab qilinadi",
+}
+
+
+def rasch_grade_label(grade: str, mode: str) -> str:
+    """Human-readable label; historical rows (mode "") show their stored grade as-is."""
+    if mode == MODE_UNCALIBRATED:
+        return _LABELS[MODE_UNCALIBRATED]
+    if not grade:
+        return ""
+    if mode == MODE_PRACTICE:
+        return _LABELS[MODE_PRACTICE].format(grade=grade)
+    return grade
+
+
+class RaschOutcome(tuple):
+    """(score, max_score, grade, explanation) with ``mode`` and ``label`` attached."""
+
+    def __new__(cls, *, score, max_score, grade: str, explanation: str, mode: str):
+        obj = super().__new__(cls, (score, max_score, grade, explanation))
+        obj.mode = mode
+        return obj
+
+    score = property(lambda self: self[0])
+    max_score = property(lambda self: self[1])
+    grade = property(lambda self: self[2])
+    explanation = property(lambda self: self[3])
+
+    @property
+    def label(self) -> str:
+        return rasch_grade_label(self.grade, self.mode)

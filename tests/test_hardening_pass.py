@@ -57,7 +57,14 @@ class AttemptRaceTests(TestCase):
         student = _make_user("s3@e.com")
         test = _make_test(teacher, max_attempts=0)
         TestAttempt.objects.create(test=test, student=student, status="completed")
-        a = StartAttemptService.execute(test_id=test.id, student=student)
+        # About attempt state, not plan limits: a FREE student who used the one
+        # free test is (correctly) refused a retake of a public test, so the
+        # plan is treated as unlimited here.
+        from unittest import mock
+
+        with mock.patch("apps.payments.entitlements.can_start_test", return_value=(True, None, {})), \
+             mock.patch("apps.payments.entitlements.enforce_test_quota"):
+            a = StartAttemptService.execute(test_id=test.id, student=student)
         self.assertEqual(a.status, "in_progress")
 
 

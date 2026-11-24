@@ -34,6 +34,12 @@ test.beforeAll(() => {
   py(['-m', 'tests.import_fixtures', FX]);
 });
 
+
+/** The MyHomework card for exactly this homework title (cards carry data-homework-id). */
+function homeworkCard(page: Page, title: string) {
+  return page.locator('[data-homework-id]').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
+}
+
 async function login(request: APIRequestContext, email: string): Promise<Login> {
   const r = await request.post(`${API}/api/auth/login/`, { data: { email, password: PASSWORD } });
   expect(r.status()).toBe(200);
@@ -124,7 +130,7 @@ for (const teacherWidth of [1280, 360]) {
     const sp = await pageAs(browser, student.tokens, 390);
     sp.on('pageerror', (e) => errors.push(e.message));
     await sp.goto('/my-homework');
-    const card = sp.locator('div', { has: sp.getByRole('heading', { name: title }) }).filter({ has: sp.getByRole('button', { name: /Boshlash/ }) }).last();
+    const card = homeworkCard(sp, title);
     await card.getByRole('button', { name: /Boshlash/ }).click();
     await sp.getByRole('button', { name: /Testni boshlash|Davom ettirish/ }).first().click();
     const practice = sp.getByRole('button', { name: /Practice/ });
@@ -241,8 +247,7 @@ print(test.id)`]);
     const errors: string[] = [];
     sp.on('pageerror', (e) => errors.push(e.message));
     await sp.goto('/my-homework');
-    const card = sp.locator('div', { has: sp.getByRole('heading', { name: title }) })
-      .filter({ has: sp.getByRole('button', { name: /Boshlash|Davom ettirish/ }) }).last();
+    const card = homeworkCard(sp, title);
     await card.getByRole('button', { name: /Boshlash|Davom ettirish/ }).click();
     await sp.getByRole('button', { name: /Testni boshlash|Davom ettirish/ }).first().click();
     const practice = sp.getByRole('button', { name: /Practice/ });

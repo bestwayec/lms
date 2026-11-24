@@ -306,11 +306,14 @@ def test_rasch_scoring_integrity_and_history_stability(course, student_1, studen
     answers = {q1.id: sa}
 
     # Evaluate attempt
-    score, max_score, grade, explanation = RaschEngine.evaluate_attempt_rasch(att1, questions, answers)
+    outcome = RaschEngine.evaluate_attempt_rasch(att1, questions, answers)
+    score, max_score, grade, explanation = outcome
     assert score > 0
     assert max_score >= score
     # Dynamic Weighted Practice mode must clearly be labeled as practice
-    assert "(Mashq)" in grade
+    # Practice is labelled as practice; the stored code stays short (varchar(10) on PostgreSQL).
+    assert outcome.mode == "practice" and "(Mashq)" in outcome.label
+    assert len(grade) <= 10 and "(Mashq)" not in grade
     assert "Dinamik vaznli mashq bali (taxminiy/tajribaviy)" in explanation
 
     att1.status = TestAttempt.Status.COMPLETED
@@ -363,8 +366,11 @@ def test_verified_rasch_requires_calibration_volume(course, student_1):
 
     att = TestAttempt.objects.create(test=test, student=student_1, status=TestAttempt.Status.IN_PROGRESS)
     # Total sample is 0 (< 30)
-    score, max_score, grade, explanation = RaschEngine.evaluate_attempt_rasch(att, [q1], {})
-    assert "Kalibratsiya talab qilinadi" in grade
+    outcome = RaschEngine.evaluate_attempt_rasch(att, [q1], {})
+    score, max_score, grade, explanation = outcome
+    # No grade is issued before calibration; the reason is in the label, not the column.
+    assert grade == "" and outcome.mode == "uncalibrated"
+    assert "Kalibratsiya talab qilinadi" in outcome.label
     assert "Kalibratsiya talab qilinadi" in explanation
 
 

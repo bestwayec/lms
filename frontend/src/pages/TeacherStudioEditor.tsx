@@ -23,19 +23,23 @@ import AnswerMatrix from '../components/studio/AnswerMatrix';
 import StudentPreview from '../components/studio/StudentPreview';
 import AssignDialog from '../components/studio/AssignDialog';
 import {
+  ASSESSMENT_CATEGORIES,
   BLOCK_TYPES,
+  STUDIO_AUDIENCES,
   STUDIO_SUBJECTS,
   StudioApi,
   blankMcqBlock,
   emptyBlock,
   nextNumber,
   withKeys,
+  type AssessmentCategory,
   type BlockType,
   type FileImportResult,
   type StudioBlock,
   type StudioDetail,
   type StudioIssue,
   type ParseResult,
+  type StudioAudience,
 } from '../lib/studio';
 
 type Tab = 'blocks' | 'paste' | 'import' | 'key';
@@ -43,8 +47,12 @@ type Tab = 'blocks' | 'paste' | 'import' | 'key';
 interface Meta {
   title: string;
   subject: string;
+  assessment_category: AssessmentCategory;
   time_limit_minutes: number;
+  available_from?: string | null;
+  available_until?: string | null;
   description?: string;
+  audience: StudioAudience;
 }
 
 const errText = (e: unknown, t: (k: string, fallback?: string) => string) => {
@@ -105,7 +113,16 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
   const { t } = useLang();
 
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(id ? 2 : 1);
-  const [meta, setMeta] = useState<Meta>({ title: '', subject: 'english', time_limit_minutes: 30, description: '' });
+  const [meta, setMeta] = useState<Meta>({
+    title: '',
+    subject: 'uzbek',
+    assessment_category: 'classroom_quiz',
+    time_limit_minutes: 30,
+    available_from: null,
+    available_until: null,
+    description: '',
+    audience: 'GROUP_ONLY',
+  });
   const [blocks, setBlocks] = useState<StudioBlock[]>([]);
   const [detail, setDetail] = useState<StudioDetail | null>(null);
   const [issues, setIssues] = useState<StudioIssue[]>([]);
@@ -129,8 +146,12 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
     setMeta({
       title: d.test.title,
       subject: d.test.subject,
+      assessment_category: d.test.assessment_category ?? 'classroom_quiz',
       time_limit_minutes: d.test.time_limit_minutes,
+      available_from: d.test.available_from ? d.test.available_from.slice(0, 16) : null,
+      available_until: d.test.available_until ? d.test.available_until.slice(0, 16) : null,
       description: d.test.description || '',
+      audience: d.test.audience ?? 'GROUP_ONLY',
     });
     setBlocks(withKeys(d.blocks));
     setIssues(d.issues);
@@ -530,6 +551,42 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
               </label>
 
               <label className="studio-field">
+                <span style={{ fontWeight: 600 }}>{t('studio_category', 'Kategoriya')}</span>
+                <select
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)' }}
+                  value={meta.assessment_category}
+                  disabled={locked}
+                  onChange={(e) => editMeta({ assessment_category: e.target.value as AssessmentCategory })}
+                >
+                  {ASSESSMENT_CATEGORIES.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {t(`studio_category_${cat}`, cat)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="studio-field">
+                <span style={{ fontWeight: 600 }}>{t('studio_audience', 'Kim topshira oladi')}</span>
+                <select
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)' }}
+                  value={meta.audience}
+                  disabled={locked}
+                  onChange={(e) => editMeta({ audience: e.target.value as StudioAudience })}
+                  aria-describedby="studio-audience-help"
+                >
+                  {STUDIO_AUDIENCES.map((a) => (
+                    <option key={a} value={a}>
+                      {t(`studio_audience_${a}`, a)}
+                    </option>
+                  ))}
+                </select>
+                <small id="studio-audience-help" className="muted">
+                  {t(`studio_audience_help_${meta.audience}`, '')}
+                </small>
+              </label>
+
+              <label className="studio-field">
                 <span style={{ fontWeight: 600 }}>{t('studio_minutes', 'Vaqt limiti (daqiqa)')}</span>
                 <input
                   type="number"
@@ -545,16 +602,39 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
 
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
               <span className="muted small">{t('studio_time_presets', 'Tezkor vaqt')}:</span>
-              {[15, 20, 30, 45, 60, 90].map((m) => (
+              {[0, 15, 20, 30, 45, 60, 90].map((m) => (
                 <button
                   key={m}
                   type="button"
                   className={`btn sm ${meta.time_limit_minutes === m ? 'primary' : 'ghost'}`}
                   onClick={() => editMeta({ time_limit_minutes: m })}
                 >
-                  {m} {t('minutes_short', 'daq')}
+                  {m === 0 ? t('studio_time_untimed', 'Cheklovsiz') : `${m} ${t('minutes_short', 'daq')}`}
                 </button>
               ))}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
+              <label className="studio-field">
+                <span style={{ fontWeight: 600 }}>{t('studio_available_from', 'Boshlanish sanasi (ixtiyoriy)')}</span>
+                <input
+                  type="datetime-local"
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)' }}
+                  value={meta.available_from ?? ''}
+                  disabled={locked}
+                  onChange={(e) => editMeta({ available_from: e.target.value || null })}
+                />
+              </label>
+              <label className="studio-field">
+                <span style={{ fontWeight: 600 }}>{t('studio_available_until', 'Tugash muddati (ixtiyoriy)')}</span>
+                <input
+                  type="datetime-local"
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)' }}
+                  value={meta.available_until ?? ''}
+                  disabled={locked}
+                  onChange={(e) => editMeta({ available_until: e.target.value || null })}
+                />
+              </label>
             </div>
 
             <label className="studio-field">
@@ -807,7 +887,7 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".docx,.xlsx,.pdf,.csv,.txt,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf,text/csv,text/plain"
+                    accept=".docx,.pptx,.xlsx,.pdf,.csv,.txt,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf,text/csv,text/plain"
                     aria-label={t('studio_smart_import_title', 'Fayldan import (Word, Excel, PDF, CSV)')}
                     hidden
                     onChange={(e) => {
@@ -839,7 +919,7 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
                     <p style={{ fontWeight: 600, marginBottom: 4 }}>
                       {busy === 'import' ? t('loading', 'Yuklanmoqda...') : t('studio_upload_file_btn', 'Faylni tanlang')}
                     </p>
-                    <span className="muted small">.docx · .xlsx · .pdf · .csv · .txt</span>
+                    <span className="muted small">.docx · .pptx · .xlsx · .pdf · .csv · .txt</span>
                   </div>
 
                   {fileImportError && (
@@ -892,34 +972,45 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
                         <div className="studio-alert is-warn" style={{ marginBottom: 12 }}>
                           <span>⚠️ {t('studio_import_warnings', 'Ogohlantirishlar')}: {fileImportPreview.warnings.length}</span>
                           <ul style={{ margin: '4px 0 0 16px', fontSize: '0.85rem' }}>
-                            {fileImportPreview.warnings.slice(0, 5).map((w, idx) => (
+                            {fileImportPreview.warnings.slice(0, 20).map((w, idx) => (
                               <li key={idx}>
-                                {w.row ? `${t('studio_row', 'Qator')} ${w.row}: ` : ''}{t(`studio_warn_${w.code}`, w.code)}
+                                {w.row ? `${t('studio_row', 'Qator')} ${w.row}: ` : ''}
+                                {w.slide ? `${t('studio_slide', 'Slayd')} ${w.slide}: ` : ''}
+                                {t(`studio_warn_${w.code}`, w.code)}
                               </li>
                             ))}
                           </ul>
                         </div>
                       )}
 
-                      <div className="table-wrap" style={{ maxHeight: 240, overflowY: 'auto' }}>
-                        <table className="data" style={{ fontSize: '0.85rem' }}>
+                      <div className="table-wrap" style={{ maxHeight: 360, overflowY: 'auto' }}>
+                        <table className="data" style={{ fontSize: '0.85rem' }} aria-label={t('studio_detected_qs', 'Aniqlangan savollar')}>
                           <thead>
                             <tr>
                               <th>№</th>
+                              {fileImportPreview.source?.kind === 'pptx' && <th>{t('studio_slide', 'Slayd')}</th>}
                               <th>{t('question', 'Savol')}</th>
                               <th>{t('choices', 'Variantlar')}</th>
                               <th>{t('answer', 'Kalit')}</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {fileImportPreview.blocks[0]?.questions.slice(0, 10).map((q) => (
-                              <tr key={q.number}>
-                                <td>{q.number}</td>
-                                <td>{q.text}</td>
-                                <td>{q.options.join(' | ')}</td>
-                                <td><strong>{q.answer || '—'}</strong></td>
-                              </tr>
-                            ))}
+                            {/* Every detected question from every block — nothing hidden from review. */}
+                            {fileImportPreview.blocks.flatMap((b, bi) =>
+                              b.questions.map((q) => (
+                                <tr key={`${bi}-${q.number}`} className={q.answer ? undefined : 'is-invalid'}>
+                                  <td>{q.number}</td>
+                                  {fileImportPreview.source?.kind === 'pptx' && <td>{q.slide ?? '—'}</td>}
+                                  <td>{q.text}</td>
+                                  <td>{(q.options.length ? q.options : b.options).join(' | ')}</td>
+                                  <td>
+                                    <strong style={{ color: q.answer ? undefined : 'var(--danger, #DC2626)' }}>
+                                      {q.answer || t('studio_report_missing', 'Javob kaliti yo‘q')}
+                                    </strong>
+                                  </td>
+                                </tr>
+                              )),
+                            )}
                           </tbody>
                         </table>
                       </div>
@@ -967,7 +1058,9 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
                 <div className="muted small" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <span>{t(`studio_subject_${meta.subject}`, meta.subject)}</span>
                   <span>·</span>
-                  <span>{meta.time_limit_minutes} {t('minutes_short', 'daq')}</span>
+                  <span>{t(`studio_category_${meta.assessment_category}`, meta.assessment_category)}</span>
+                  <span>·</span>
+                  <span>{meta.time_limit_minutes > 0 ? `${meta.time_limit_minutes} ${t('minutes_short', 'daq')}` : t('studio_time_untimed', 'Vaqt cheklovisiz')}</span>
                   <span>·</span>
                   <span>{t('studio_n_questions', '{n} ta savol').replace('{n}', String(questionCount))}</span>
                 </div>

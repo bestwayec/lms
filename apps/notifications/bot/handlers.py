@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING
 
 import telegram
 from asgiref.sync import sync_to_async
+from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
 from django.db import transaction
 
@@ -496,10 +497,21 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             await send_group_welcome_message(chat.id, context)
             return
 
-    if args and (args[0].startswith("grp_") or args[0].startswith("invite_")):
+    if args and (
+        args[0].startswith("grp_")
+        or args[0].startswith("invite_")
+        or args[0].startswith("join_")
+        or args[0].startswith("group_")
+        or args[0].upper().startswith("GR-")
+    ):
         from apps.courses.invitation_service import join_group_by_token, join_group_by_code
 
-        inv_payload = args[0].removeprefix("grp_").removeprefix("invite_").strip()
+        inv_payload = args[0]
+        for prefix in ("grp_", "invite_", "join_", "group_"):
+            if inv_payload.startswith(prefix):
+                inv_payload = inv_payload[len(prefix):]
+                break
+        inv_payload = inv_payload.strip()
         tg_user = update.effective_user
         if tg_user:
             user = await _run_db(lambda: _get_or_create_user(update))
@@ -518,7 +530,20 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
             res = await _run_db(_handle_bot_join)
             msg = res.get("message", "Guruhga qo'shilish amalga oshirildi.")
-            await update.message.reply_text(f"🎓 <b>GRANDEC Klassrum</b>\n\n{msg}", parse_mode="HTML")
+            site_url = getattr(settings, "SITE_URL", "https://grandec.uz").rstrip("/")
+            keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "📱 Guruh testlarini topshirish (Mini App)",
+                        web_app=WebAppInfo(url=f"{site_url}/tma/#/tests"),
+                    )
+                ]
+            ])
+            await update.message.reply_text(
+                f"🎓 <b>GRANDEC Klassrum</b>\n\n{msg}",
+                parse_mode="HTML",
+                reply_markup=keyboard if res.get("status") in ("joined", "already_member") else None,
+            )
             return
 
     if args and args[0].startswith("parent_"):

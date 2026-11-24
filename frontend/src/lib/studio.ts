@@ -21,6 +21,8 @@ export interface StudioQuestion {
   answer: string;
   points?: number;
   explanation?: string;
+  /** Import preview only (PPTX): the slide the question starts on. */
+  slide?: number;
 }
 
 /** Ona tili & Adabiyot topics — codes match apps.tests.studio_service.TOPICS_BY_SUBJECT. */
@@ -66,15 +68,30 @@ export interface StudioIssue {
   code: string;
 }
 
+export type AssessmentCategory = 'topic_test' | 'attestation' | 'full_mock' | 'national_cert' | 'classroom_quiz';
+export const ASSESSMENT_CATEGORIES: AssessmentCategory[] = [
+  'classroom_quiz',
+  'topic_test',
+  'attestation',
+  'full_mock',
+  'national_cert',
+];
+
 export interface StudioTestSummary {
   id: number;
   title: string;
   subject: string;
+  assessment_category?: AssessmentCategory;
   status: 'draft' | 'published' | 'archived';
   time_limit_minutes: number;
+  is_timed?: boolean;
+  available_from?: string | null;
+  available_until?: string | null;
   mock_code: string;
   access_pin: string;
   description: string;
+  /** Who may take it: own groups (default), groups + PRO/Premium, or everyone. */
+  audience?: StudioAudience;
   editable: boolean;
   is_studio: boolean;
   updated_at: string | null;
@@ -107,6 +124,9 @@ export interface StudioListItem {
   id: number;
   title: string;
   subject: string;
+  assessment_category?: AssessmentCategory;
+  is_timed?: boolean;
+  time_limit_minutes?: number;
   status: StudioTestSummary['status'];
   mock_code: string;
   questions: number;
@@ -163,8 +183,13 @@ export interface FileImportResult {
   blocks: StudioBlock[];
   questions_count: number;
   detected_answers: number;
-  warnings: { row?: number; code: string; question?: number; number?: number }[];
-  source?: { kind: 'text' | 'csv' | 'xlsx' | 'docx' | 'pdf'; filename: string };
+  warnings: { row?: number; code: string; question?: number; number?: number; slide?: number }[];
+  source?: {
+    kind: 'text' | 'csv' | 'xlsx' | 'docx' | 'pdf' | 'pptx';
+    filename: string;
+    /** PPTX: question number → slide it starts on. */
+    question_slides?: Record<string, number>;
+  };
   report?: {
     total_questions: number;
     valid_questions: number;
@@ -176,11 +201,19 @@ export interface FileImportResult {
   };
 }
 
+export type StudioAudience = 'GROUP_ONLY' | 'GROUP_AND_SUBSCRIBERS' | 'PUBLIC_FREE';
+export const STUDIO_AUDIENCES: StudioAudience[] = ['GROUP_ONLY', 'GROUP_AND_SUBSCRIBERS', 'PUBLIC_FREE'];
+
 export interface TestPayload {
   title: string;
   subject: string;
+  assessment_category?: AssessmentCategory;
   time_limit_minutes: number;
+  is_timed?: boolean;
+  available_from?: string | null;
+  available_until?: string | null;
   description?: string;
+  audience?: StudioAudience;
   blocks: StudioBlock[];
 }
 
@@ -192,11 +225,13 @@ function clean(blocks: StudioBlock[]): StudioBlock[] {
 }
 
 export const StudioApi = {
-  list: (params?: { q?: string; status?: string; subject?: string }) => {
+  list: (params?: { q?: string; status?: string; subject?: string; category?: string; assessment_category?: string }) => {
     const sp = new URLSearchParams();
     if (params?.q) sp.set('q', params.q);
     if (params?.status && params.status !== 'all') sp.set('status', params.status);
     if (params?.subject && params.subject !== 'all') sp.set('subject', params.subject);
+    const cat = params?.category ?? params?.assessment_category;
+    if (cat && cat !== 'all') sp.set('category', cat);
     const qs = sp.toString();
     return api.get<StudioListItem[]>(`${BASE}/tests/${qs ? `?${qs}` : ''}`);
   },

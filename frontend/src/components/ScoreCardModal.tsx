@@ -333,7 +333,7 @@ export default function ScoreCardModal({
   incorrectCount,
   totalQuestions: _totalQuestions,
   timeSpent = '',
-  date = new Date().toLocaleDateString(),
+  date: propDate,
   subject = '',
   branchName = '',
   resultId,
@@ -342,6 +342,8 @@ export default function ScoreCardModal({
   telegramShareUrl = '',
   pdfUrl = '',
 }: ScoreCardModalProps) {
+  const [fallbackDate] = useState(() => new Date().toLocaleDateString());
+  const date = propDate || fallbackDate;
   const [cardBlob, setCardBlob] = useState<Blob | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);

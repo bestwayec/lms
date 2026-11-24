@@ -158,7 +158,7 @@ export default function Layout() {
                 <FolderOpenIcon size={16} className="ico" /> {t('my_groups', 'Mening Guruhlarim')}
               </NavLink>
               <NavLink to="/teacher/studio" className={linkClass} onClick={close}>
-                <LayoutDashboardIcon size={16} className="ico" /> {t('studio_title')}
+                <SparklesIcon size={16} className="ico" /> {t('studio_title')}
               </NavLink>
               <NavLink to="/tests/create" className={linkClass} onClick={close}>
                 <SparklesIcon size={16} className="ico" /> {t('create_smart_test', 'Yangi Test Yaratish')}
@@ -166,8 +166,8 @@ export default function Layout() {
               <NavLink to="/tests" className={testsLinkClass(pathname)} onClick={close}>
                 <FileTextIcon size={16} className="ico" /> {t('my_tests', 'Mening Testlarim')}
               </NavLink>
-              <NavLink to="/teacher" end className={linkClass} onClick={close}>
-                <UsersIcon size={16} className="ico" /> {t('students', 'O‘quvchilar')}
+              <NavLink to="/teacher/finance" className={linkClass} onClick={close}>
+                <CreditCardIcon size={16} className="ico" /> {t('tuition_title')}
               </NavLink>
               <NavLink to="/teacher/ai-converter" className={linkClass} onClick={close}>
                 <SparklesIcon size={16} className="ico" /> AI Test Konvertor

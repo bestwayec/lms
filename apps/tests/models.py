@@ -81,6 +81,23 @@ class Test(models.Model):
         default=ExamType.GENERAL,
         db_index=True,
     )
+    class AssessmentCategory(models.TextChoices):
+        TOPIC_TEST = "topic_test", _("Mavzulashtirilgan test")
+        ATTESTATION = "attestation", _("Attestatsiya tayyorgarligi")
+        FULL_MOCK = "full_mock", _("Full Mock")
+        NATIONAL_CERT = "national_cert", _("Milliy sertifikat practice")
+        CLASSROOM_QUIZ = "classroom_quiz", _("Oddiy sinf testi")
+
+    assessment_category = models.CharField(
+        _("baholash toifasi"),
+        max_length=30,
+        choices=AssessmentCategory.choices,
+        default=AssessmentCategory.CLASSROOM_QUIZ,
+        db_index=True,
+        help_text=_(
+            "Imtihon formati: mavzulashtirilgan, attestatsiya, full mock, milliy sertifikat yoki oddiy sinf testi."
+        ),
+    )
     subject = models.CharField(
         _("fan / yo'nalish"),
         max_length=20,
@@ -116,6 +133,18 @@ class Test(models.Model):
         _("vaqt cheklovi (daqiqa)"),
         default=0,
         help_text=_("0 = cheksiz vaqt."),
+    )
+    available_from = models.DateTimeField(
+        _("boshlanish vaqti (ochilish)"),
+        null=True,
+        blank=True,
+        help_text=_("Rejalashtirilgan ochilish vaqti (ushbu vaqtdan oldin test yechib bo'lmaydi)."),
+    )
+    available_until = models.DateTimeField(
+        _("tugash vaqti (yopilish)"),
+        null=True,
+        blank=True,
+        help_text=_("Test topshirishning oxirgi muddati (deadline)."),
     )
     scoring_profile = models.ForeignKey(
         "ExamScoringProfile",
@@ -309,7 +338,15 @@ class Test(models.Model):
 
     @property
     def has_time_limit(self) -> bool:
-        return self.time_limit_minutes > 0
+        return bool(self.time_limit_minutes and self.time_limit_minutes > 0)
+
+    @property
+    def is_timed(self) -> bool:
+        return self.has_time_limit
+
+    @property
+    def is_scheduled(self) -> bool:
+        return bool(self.available_from or self.available_until)
 
     @property
     def access_code(self) -> str:
@@ -909,6 +946,22 @@ class TestAttempt(models.Model):
         default="",
         help_text=_("Rasch dinamik bali bo'yicha daraja (A+, A, B+, B, C+, C, Fail)."),
     )
+    rasch_mode = models.CharField(
+        _("Rasch rejimi"),
+        max_length=16,
+        blank=True,
+        default="",
+        help_text=_(
+            "official = tasdiqlangan profil; practice = mashq (rasmiy emas); "
+            "uncalibrated = kalibratsiya kerak (baho berilmaydi). Bo'sh = eski yozuv."
+        ),
+    )
+
+    @property
+    def rasch_grade_label(self) -> str:
+        from apps.tests.rasch_engine import rasch_grade_label
+
+        return rasch_grade_label(self.rasch_grade, self.rasch_mode)
     section_scores = models.JSONField(
         _("bo'limlar ballari"),
         default=dict,

@@ -281,8 +281,11 @@ class TestStudioApi:
         assert res.status_code == 409 and res.data["code"] == "has_attempts"
 
 
-def _published(api) -> Test:
-    test_id = api.post("/api/v1/teacher/studio/tests/", _payload(), format="json").data["test"]["id"]
+def _published(api, audience: str = "PUBLIC_FREE") -> Test:
+    # These tests exercise analysis/engine/key privacy with arbitrary students,
+    # so the teacher explicitly opens the test to everyone (the Studio default
+    # is GROUP_ONLY — see TestStudioAudience).
+    test_id = api.post("/api/v1/teacher/studio/tests/", _payload(audience=audience), format="json").data["test"]["id"]
     assert api.post(f"/api/v1/teacher/studio/tests/{test_id}/publish/").status_code == 200
     return Test.objects.get(id=test_id)
 
@@ -404,3 +407,32 @@ def test_non_studio_test_is_never_rebuilt(api, teacher):
     assert detail["is_studio"] is False and detail["editable"] is False
     listed = {t["id"]: t for t in api.get("/api/v1/teacher/studio/tests/").data}
     assert listed[legacy.id]["is_studio"] is False
+
+
+
+@pytest.mark.django_db
+class TestStudioAudience:
+    """Teacher Studio tests are private to the teacher's groups unless the teacher opens them."""
+
+    def test_default_is_group_only_and_outsiders_are_refused(self, api, teacher):
+        from apps.tests.services import TestAccessDeniedError
+
+        test_id = api.post("/api/v1/teacher/studio/tests/", _payload(), format="json").data["test"]["id"]
+        assert api.post(f"/api/v1/teacher/studio/tests/{test_id}/publish/").status_code == 200
+        test = Test.objects.get(id=test_id)
+        assert (test.access_type, test.audience_mode) == ("STUDENTS_ONLY", "GROUP_ONLY")
+        assert api.get(f"/api/v1/teacher/studio/tests/{test_id}/").data["test"]["audience"] == "GROUP_ONLY"
+        outsider = _user("aud_out@studio.test", "student")
+        with pytest.raises(TestAccessDeniedError):
+            StartAttemptService.execute(test_id=test.id, student=outsider)
+
+    def test_teacher_can_explicitly_open_it_and_bad_values_are_rejected(self, api, teacher):
+        test_id = api.post("/api/v1/teacher/studio/tests/", _payload(), format="json").data["test"]["id"]
+        res = api.put(f"/api/v1/teacher/studio/tests/{test_id}/", _payload(audience="GROUP_AND_SUBSCRIBERS"), format="json")
+        assert res.status_code == 200
+        assert Test.objects.get(id=test_id).audience_mode == "GROUP_AND_SUBSCRIBERS"
+        bad = api.put(f"/api/v1/teacher/studio/tests/{test_id}/", _payload(audience="EVERYONE_PREMIUM"), format="json")
+        assert bad.status_code == 400 and bad.data["code"] == "bad_audience"
+        # Saving without 'audience' keeps the teacher's earlier choice.
+        api.put(f"/api/v1/teacher/studio/tests/{test_id}/", _payload(), format="json")
+        assert Test.objects.get(id=test_id).audience_mode == "GROUP_AND_SUBSCRIBERS"

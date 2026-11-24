@@ -437,8 +437,9 @@ class TelegramBotFeaturesTests(TestCase):
         markup = _persistent_menu_keyboard()
         buttons = [[btn.text for btn in row] for row in markup.keyboard]
         self.assertEqual(len(buttons), 3)
-        self.assertEqual(buttons[0], ["✍️ Esse yozish", "📚 Test ishlash"])
-        self.assertEqual(buttons[1], ["📝 Mock Test (#kod)", "⚔️ Arena (1v1)"])
+        # Bot 4.0 (#142): homework first; Arena left the keyboard (still a command).
+        self.assertEqual(buttons[0], ["📚 Mening vazifalarim", "📚 Test ishlash"])
+        self.assertEqual(buttons[1], ["📝 Mock Test (#kod)", "✍️ Esse yozish"])
         self.assertEqual(buttons[2][0], "👤 Natijalar / Profil")
         self.assertIn(
             buttons[2][1],
@@ -622,7 +623,7 @@ class TelegramBotFeaturesTests(TestCase):
         self.assertIn("✍️ Esse yozish", buttons)
         self.assertIn("📚 Test ishlash", buttons)
         self.assertIn("📝 Mock Test (#kod)", buttons)
-        self.assertIn("⚔️ Arena (1v1)", buttons)
+        self.assertIn("📚 Mening vazifalarim", buttons)
         self.assertNotIn("📝 Yangi Mock yaratish (/newmock)", buttons)
         self.assertNotIn("📥 Yangi to'lov cheklari (Tasdiqlash)", buttons)
 

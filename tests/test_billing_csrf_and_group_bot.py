@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from asgiref.sync import async_to_sync
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, override_settings
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 from PIL import Image
 from rest_framework.test import APIClient
@@ -84,7 +84,10 @@ class BillingReceiptCSRFTests(TestCase):
         self.assertIn(5582178765, admin_ids)
 
 
-class TelegramGroupBotAssistantTests(TestCase):
+class TelegramGroupBotAssistantTests(TransactionTestCase):
+    # Bot handlers run their ORM work through sync_to_async on another
+    # connection; on PostgreSQL that connection cannot see a TestCase
+    # transaction, so a student's 'present' click was invisible there.
     def setUp(self):
         self.teacher = User.objects.create_user(
             email="teacher_bot_test@grandec.uz",
@@ -189,7 +192,12 @@ class TelegramGroupBotAssistantTests(TestCase):
         update_click.effective_user.id = 555666777
         update_click.effective_user.full_name = "Diyorbek Xoldorov"
         update_click.effective_user.username = "diyorbek_x"
-        update_click.callback_query.data = f"grp_att_here_{group.id}"
+        # The real 'Keldim' button carries the attendance *session* id (it used
+        # to pass group.id and worked only because both ids happened to be 1).
+        from apps.attendance.models import AttendanceSession
+
+        session = AttendanceSession.objects.filter(group=group).latest("id")
+        update_click.callback_query.data = f"grp_att_here_{session.id}"
         update_click.callback_query.answer = AsyncMock()
         update_click.callback_query.edit_message_text = AsyncMock()
 
@@ -206,8 +214,8 @@ class TelegramGroupBotAssistantTests(TestCase):
         async_to_sync(group_davomat_yakun_command)(update_yakun, context)
         self.assertTrue(update_yakun.message.reply_text.called)
         yakun_text = update_yakun.message.reply_text.call_args[0][0]
-        self.assertIn("DAVOMAT YAKUNI", yakun_text)
-        self.assertIn("Diyorbek Xoldorov", yakun_text)
+        self.assertIn("DAVOMAT YAKUNLANDI", yakun_text)  # 5.0 wording
+        self.assertIn("Darsda qatnashganlar:</b> 1 nafar", yakun_text)  # 5.0: counts, no names in group chat
 
         # Verify session in LMS DB
         session = AttendanceSession.objects.filter(group=group).first()
@@ -342,5 +350,5 @@ class TelegramGroupBotAssistantTests(TestCase):
 
         self.assertTrue(update.message.reply_text.called)
         menu_text = update.message.reply_text.call_args[0][0]
-        self.assertIn("Ustoz Menyusi: Hamid Olimjon", menu_text)
-        self.assertIn("Ona tili Olimpiada", menu_text)
+        self.assertIn("Ustoz Kabineti 5.0 | Hamid Olimjon", menu_text)  # 5.0 wording
+        self.assertIn("Biriktirilgan guruhlaringiz: <b>1 ta</b>", menu_text)  # 5.0: groups behind buttons

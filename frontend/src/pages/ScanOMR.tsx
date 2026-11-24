@@ -31,7 +31,9 @@ export default function ScanOMR() {
   const navigate = useNavigate();
   const subject = useSubject();
   const subjectRef = useRef(subject);
-  subjectRef.current = subject;
+  useEffect(() => {
+    subjectRef.current = subject;
+  }, [subject]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [tests, setTests] = useState<OmrAvailableTest[]>([]);
@@ -49,12 +51,23 @@ export default function ScanOMR() {
   const [values, setValues] = useState<Record<number, string>>({});
   const [resolved, setResolved] = useState<Set<number>>(new Set());
 
+  // React-recommended pattern for adjusting state when prop/subject changes
+  const [prevSubject, setPrevSubject] = useState(subject);
+  if (prevSubject !== subject) {
+    setPrevSubject(subject);
+    setTestId(null);
+    setExamType('');
+    setQuery('');
+    setFile(null);
+    setPreviewUrl(null);
+    setReview(null);
+    setError(null);
+  }
+
   useEffect(() => {
     let active = true;
-    setTestLoading(true);
-    setTestLoadError(false);
     OmrApi.getAvailableTests()
-      .then((data) => { if (active) setTests(data.tests || []); })
+      .then((data) => { if (active) { setTests(data.tests || []); setTestLoadError(false); } })
       .catch(() => { if (active) { setTests([]); setTestLoadError(true); } })
       .finally(() => { if (active) setTestLoading(false); });
     return () => { active = false; };
@@ -74,16 +87,6 @@ export default function ScanOMR() {
     );
   }, [subjectTests, query, examType]);
   const selectedIsVisible = testId !== null && filteredTests.some((test) => test.id === testId);
-
-  useEffect(() => {
-    setTestId(null);
-    setExamType('');
-    setQuery('');
-    setFile(null);
-    setPreviewUrl(null);
-    setReview(null);
-    setError(null);
-  }, [subject]);
 
   const errorText = (err: unknown) => {
     const e = err as ApiError;

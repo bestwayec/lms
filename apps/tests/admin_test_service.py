@@ -174,6 +174,10 @@ def duplicate_test(test: Test, user: Any) -> Test:
         scoring_profile=test.scoring_profile,
         scoring_type=test.scoring_type,
         exam_type=test.exam_type,
+        assessment_category=getattr(test, "assessment_category", "classroom_quiz"),
+        available_from=test.available_from,
+        available_until=test.available_until,
+        audience_mode=getattr(test, "audience_mode", "GROUP_ONLY"),
         status="draft",
         is_active=True,
         show_results_immediately=test.show_results_immediately,
@@ -446,3 +450,93 @@ def execute_bulk_action(test_ids: list[int], action: str, user: Any) -> dict[str
 
     else:
         raise ValueError(f"Noma'lum amaliyot: {action}")
+
+
+def audit_public_studio_tests(user: Any) -> list[dict[str, Any]]:
+    """
+    Audits tests in user's tenant scope that were authored/created in Studio
+    or have public visibility (PUBLIC / PUBLIC_FREE).
+    Identifies candidates for safe migration to GROUP_ONLY.
+    """
+    scoped = get_scoped_tests_queryset(user).select_related("created_by", "created_by__learning_center")
+    public_tests = scoped.filter(
+        Q(audience_mode="PUBLIC_FREE") | Q(access_type="PUBLIC")
+    ).filter(
+        Q(created_by__isnull=False) | Q(questions__config__has_key="studio_type")
+    ).distinct().order_by("-created_at")
+
+    audit_items = []
+    for t in public_tests:
+        hw_count = t.homework_assignments.filter(status="active").count()
+        attempts_count = t.attempts.filter(is_preview=False).count()
+        results_count = t.results.count()
+        owner = t.created_by
+        center = getattr(owner, "learning_center", None) if owner else None
+
+        audit_items.append({
+            "id": t.id,
+            "title": t.title,
+            "subject": t.subject,
+            "assessment_category": getattr(t, "assessment_category", "classroom_quiz"),
+            "status": t.status,
+            "owner_id": owner.id if owner else None,
+            "owner_name": owner.get_full_name() or owner.email if owner else "Noma'lum",
+            "owner_email": owner.email if owner else "",
+            "learning_center_id": center.id if center else None,
+            "learning_center_name": center.name if center else "Mustaqil",
+            "active_assignments_count": hw_count,
+            "existing_attempts_count": attempts_count,
+            "results_count": results_count,
+            "current_access_type": t.access_type,
+            "current_audience_mode": getattr(t, "audience_mode", "PUBLIC_FREE"),
+            "proposed_access_type": "STUDENTS_ONLY",
+            "proposed_audience_mode": "GROUP_ONLY",
+            "safe_to_transition": True,
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+        })
+    return audit_items
+
+
+@transaction.atomic
+def apply_studio_tests_visibility_transition(
+    user: Any,
+    test_ids: list[int],
+    target_mode: str = "GROUP_ONLY",
+) -> dict[str, Any]:
+    """
+    Safely transitions selected public tests to GROUP_ONLY (or GROUP_AND_SUBSCRIBERS).
+    Scoped to user's permitted queryset so cross-center tampering is prevented.
+    Historical attempts and results are preserved untouched.
+    Guarantees private tests can never be silently published.
+    """
+    from django.contrib.admin.models import CHANGE
+
+    if target_mode not in ("GROUP_ONLY", "GROUP_AND_SUBSCRIBERS"):
+        raise ValueError("Auditoriya auditi faqat guruhlarga cheklash (GROUP_ONLY yoki GROUP_AND_SUBSCRIBERS) uchun mo'ljallangan.")
+
+    scoped = get_scoped_tests_queryset(user).filter(id__in=test_ids)
+    updated = []
+    for t in scoped:
+        old_mode = getattr(t, "audience_mode", "PUBLIC_FREE")
+        # Only migrate tests that are currently public (PUBLIC_FREE or access_type == PUBLIC)
+        if old_mode not in ("PUBLIC_FREE",) and t.access_type not in ("PUBLIC",):
+            # Already private test: preserve privacy, never publish
+            continue
+
+        t.audience_mode = target_mode
+        t.access_type = "STUDENTS_ONLY"
+        t.save(update_fields=["audience_mode", "access_type"])
+        log_test_audit(
+            user,
+            t,
+            CHANGE,
+            f"Test audiensiyasi o'zgartirildi: {old_mode} -> {target_mode} (xavfsiz audit orqali)",
+        )
+        updated.append(t.id)
+
+    return {
+        "status": "success",
+        "updated_count": len(updated),
+        "updated_ids": updated,
+        "target_mode": target_mode,
+    }

@@ -92,6 +92,10 @@ def studio_tests_view(request):
     search = request.query_params.get("q", "").strip()
     status_filter = request.query_params.get("status", "").strip().lower()
     subject_filter = request.query_params.get("subject", "").strip().lower()
+    category_filter = (
+        request.query_params.get("category", "")
+        or request.query_params.get("assessment_category", "")
+    ).strip().lower()
 
     qs = svc.teacher_tests(request.user)
     if search:
@@ -100,6 +104,8 @@ def studio_tests_view(request):
         qs = qs.filter(status=status_filter)
     if subject_filter and subject_filter != "all":
         qs = qs.filter(subject=subject_filter)
+    if category_filter and category_filter != "all":
+        qs = qs.filter(assessment_category=category_filter)
 
     tests = (
         qs.annotate(
@@ -121,8 +127,11 @@ def studio_tests_view(request):
                 "id": t.id,
                 "title": t.title,
                 "subject": t.subject,
+                "assessment_category": getattr(t, "assessment_category", "classroom_quiz") or "classroom_quiz",
                 "status": t.status,
                 "mock_code": t.mock_code or "",
+                "time_limit_minutes": t.time_limit_minutes,
+                "is_timed": bool(getattr(t, "has_time_limit", t.time_limit_minutes > 0)),
                 "questions": t.question_count,
                 "attempts": t.attempt_count,
                 "is_studio": t.foreign_count == 0,

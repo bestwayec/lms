@@ -118,12 +118,14 @@ def _lock_for_write(
 
 
 def teacher_groups(user):
-    """Groups *user* may manage. Admins see everything, teachers their own."""
+    """Groups *user* may manage — the one canonical scope used by groups,
+    homework and analytics: platform admins everything, a center admin their
+    own center's groups, a teacher their own."""
     if user is None or not getattr(user, "is_authenticated", False):
         return StudentGroup.objects.none()
-    if is_platform_admin(user):
-        return StudentGroup.objects.all()
-    return StudentGroup.objects.filter(teacher=user)
+    from apps.courses.teacher_workspace_service import get_teacher_groups
+
+    return get_teacher_groups(user)
 
 
 def can_manage_group(user, group) -> bool:

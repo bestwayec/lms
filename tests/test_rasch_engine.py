@@ -163,7 +163,7 @@ def test_full_rasch_recalculation(rasch_test, student_user, student_user2):
     )
     StudentAnswer.objects.create(attempt=att1, question=q1, is_correct=True)
     StudentAnswer.objects.create(attempt=att1, question=q2, is_correct=False)
-    res1 = Result.objects.create(
+    Result.objects.create(
         attempt=att1,
         student=student_user,
         test=rasch_test,
@@ -199,11 +199,14 @@ def test_full_rasch_recalculation(rasch_test, student_user, student_user2):
         is_passed=False,
     )
 
-    # Trigger Rasch recalculation
+    # Snapshot of the historical results before recalibration.
+    before = {r.pk: (r.rasch_score, r.max_rasch_score, r.rasch_grade) for r in Result.objects.filter(test=rasch_test)}
+
+    # Trigger Rasch recalculation (item calibration only, since #143)
     report = RaschEngine.recalculate_test_rasch(rasch_test.id)
     assert report["status"] == "success"
     assert report["questions_updated"] == 2
-    assert report["attempts_updated"] == 2
+    assert report["attempts_updated"] == 0  # historical grades are immutable snapshots
 
     # Refresh questions
     q1.refresh_from_db()
@@ -214,12 +217,9 @@ def test_full_rasch_recalculation(rasch_test, student_user, student_user2):
     assert q2.current_rasch_weight > q1.current_rasch_weight
     assert q2.difficulty_logit > q1.difficulty_logit
 
-    # Refresh results and verify rasch_score and grade
-    res1.refresh_from_db()
-    att1.refresh_from_db()
-    assert float(res1.rasch_score) > 0.0
-    assert float(res1.max_rasch_score) > float(res1.rasch_score)
-    assert res1.rasch_grade != ""
+    # Historical results are untouched by recalibration.
+    after = {r.pk: (r.rasch_score, r.max_rasch_score, r.rasch_grade) for r in Result.objects.filter(test=rasch_test)}
+    assert after == before
 
 
 @pytest.mark.django_db

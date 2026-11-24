@@ -19,6 +19,12 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../.
 type Tokens = { access: string; refresh: string };
 type Login = { tokens: Tokens; user: { id: number } };
 
+
+/** The MyHomework card for exactly this homework title (cards carry data-homework-id). */
+function homeworkCard(page: Page, title: string) {
+  return page.locator('[data-homework-id]').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
+}
+
 async function login(request: APIRequestContext, email: string): Promise<Login> {
   const r = await request.post(`${API}/api/auth/login/`, { data: { email, password: PASSWORD } });
   expect(r.status(), await r.text()).toBe(200);
@@ -111,7 +117,7 @@ test(`teacher → student → result → teacher → one queued notification (re
   // ---------------- student on the website ----------------
   await asUser(page, s1.tokens);
   await page.goto('/my-homework');
-  const card = page.locator('div', { has: page.getByRole('heading', { name: `Journey 20Q ${stamp}` }) }).filter({ has: page.getByRole('button', { name: /Boshlash/ }) }).last();
+  const card = homeworkCard(page, `Journey 20Q ${stamp}`);
   await expect(card).toBeVisible();
   await card.getByRole('button', { name: /Boshlash/ }).click();
   await expect(page).toHaveURL(new RegExp(`/tests/${testId}`));
@@ -158,7 +164,7 @@ test(`teacher → student → result → teacher → one queued notification (re
   }, { timeout: 30_000 }).toBe('19.00/20.00');
 
   await page.goto('/my-homework');
-  const done = page.locator('div', { has: page.getByRole('heading', { name: `Journey 20Q ${stamp}` }) }).filter({ has: page.getByRole('button', { name: /Natijani ko'rish/ }) }).last();
+  const done = homeworkCard(page, `Journey 20Q ${stamp}`);
   await expect(done.getByText('Baholandi')).toBeVisible();
   await done.getByRole('button', { name: /Natijani ko'rish/ }).click();
   await expect(page.getByText('19.00/20.00').first()).toBeVisible();

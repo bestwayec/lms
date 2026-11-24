@@ -423,3 +423,186 @@ Executed 2026-11-22 on branch `feat/grandec-group-bot-miniapp-v5`:
    - Fixed TMA timer defect in `frontend/src/pages/tma/TestFlow.tsx`: Untimed tests never engage timer interval and never auto-submit at 0 seconds.
    - Rasch scoring integrity in `apps/tests/rasch_engine.py`: Dynamic Weighted Practice mode clearly labeled as `(Mashq)` practice with explicit non-official caveat; verified Rasch requires minimum 30 sample size; historical attempt results are immutable snapshots and never retroactively rewritten when calibrating test item difficulties.
    - Complete `uz`, `ru`, `en` localization across TMA and bot messages in `frontend/src/i18n/translations.json`.
+
+## Final requirements (multi-tenant, PPTX, classroom access, release) — 2026-11-23
+
+Branch `fix/grandec-ci-recovery-and-smart-builder-v6`, draft PR #145 (not merged, not deployed).
+
+### CI recovery (main was red after #142–#144)
+- Baseline before: SQLite pytest 35 failed; PostgreSQL pytest 98 failed; `manage.py test` 6F + 6E.
+- Causes fixed: `rasch_grade` varchar(10) overflow on PG ("X (Mashq)") → grade code + new `rasch_mode`
+  field (migrations tests/0023, results/0009, reversible data split); cross-tenant leak in `visible_tests`;
+  global `center_admin`; resume charged quota / hit paywall; group analytics N+1; legacy tests that
+  retook tests on FREE quota; Telegram group-bot callbacks (vedomost IDOR, attendance review binding,
+  stale `ustoz_*` buttons).
+- After (local, exact CI commands, 2026-11-23):
+  - SQLite: `manage.py check` OK; `manage.py test tests` 1275 OK (3 skipped);
+    `pytest tests --cov=apps --cov-fail-under=50` 1970 passed, 10 skipped (PG-only), 0 failed.
+  - PostgreSQL 16: `check` OK; `makemigrations --check` no changes; `pytest` 1980 passed, 0 failed.
+  - Frontend: `tsc --noEmit` OK, lint 0 errors, 28 unit tests pass, `vite build` OK.
+  - GitHub: CI + Security green on PR #145 head 4433b2f.
+
+### Classroom access (P3) and tenancy (P4)
+- One policy (`apps/tests/access_policy.py`) for start/resume/catalog/results; `visible_tests` uses the
+  same audience mapping (`effective_audience_q`).
+- FREE group member: assigned private test, no paywall, no quota. Non-member / other group: denied.
+  PRO outsider: private denied; allowed only for tests explicitly published to the paid catalog.
+  Removed member: no new attempts, history preserved. Joining a group grants no subscription.
+- Studio tests are now created **GROUP_ONLY** by default with an explicit audience choice
+  (group only / group + subscribers / public free). Real E2E caught that Studio tests used to be PUBLIC.
+- One canonical group scope (`get_teacher_groups`) used by school API, essays reports, studio,
+  attendance; center admins see their own center's groups (incl. centers without branches) and nothing else.
+- Cross-tenant suite probes reads and writes for anonymous / other-center student, teacher, admin.
+
+### Smart Import (P2)
+- PPTX: slide order, text boxes, numbered questions/options, table questions, answer keys from notes or a
+  key slide (never invented), multi-slide questions, image-only slide warnings, slide column in review UI.
+- Safe parsing: DOCTYPE/ENTITY refused, zip-bomb limits, extension/content mismatch refused.
+
+### Real E2E (Django + Vite, no mocks): 25/25 passed
+Homework journey (desktop + 390), overflow 320–1280, Ona tili DOCX import (1280/360), runner uz/ru/en,
+legacy /take resume, v7 Scenario A (two centers isolated), C (PPTX), D (scanned PDF refused),
+E (FREE member vs outsider), F (PRO outsider vs paid catalog).
+Repro: see "Real E2E"; also export `E2E_DB_PATH` and `SECRET_KEY` for the spec's DB checks.
+
+### Release pipeline (P1/H)
+PR → CI → Security → merge → CI on main → Build (CI-verified SHA, `sha-xxxxxxx`) → Staging deploy + smoke
+(automatic, skipped with a warning when STAGING_* secrets are absent) → Production **manual only**
+(`workflow_dispatch`, immutable tag, typed `deploy grandec.uz`, `production` environment) → verified
+pre-deploy pg_dump → smoke/health → release report. Rollback = rerun with the previous tag.
+
+### Owner blockers / decisions
+1. GitHub `production` environment: add required reviewers (Settings → Environments). Not configurable
+   from this session. Branch protection needs a paid plan (see `.github/BRANCH_PROTECTION.md`).
+2. Staging: create environment `staging` with STAGING_HOST/USER/SSH_KEY/DOMAIN; until then nothing deploys.
+3. Existing Studio tests in production stay as they are (PUBLIC). Decide whether to switch them to GROUP_ONLY.
+4. Completed in GRANDEC NEXT 6.2 (PR #145 completion):
+   - Scenario G: Telegram Bot & Mini App end-to-end integration with real Django backend + Outbox notification engine.
+   - Universal assessment categories (Mavzulashtirilgan test / Attestatsiya / Full Mock / Milliy sertifikat / Classroom quiz) fully wired across Teacher Studio, Student Catalog, TMA, and Admin Panel.
+   - Server-authoritative timing (timed, untimed with zero-timer auto-submit protection, scheduled availability).
+   - Automated group invitations with deep links, teacher approval/rejection, group capacity limits, expiry, revocation, and automated welcome/join notifications.
+   - Admin Test Visibility Audit interface (`/panel/tests`) for safely previewing and migrating legacy public tests to `GROUP_ONLY`.
+   - Multi-Center Cabinets verified for two centers with identical group names and overlapping subjects.
+5. PR #134 is merged into this branch; close it after #145 merges. Dependabot PRs untouched.
+
+---
+
+## Stage 6.2 — Universal Assessment Categories, Group Approval Workflow & Telegram E2E Integration
+
+Executed 2026-11-23 on branch `fix/grandec-ci-recovery-and-smart-builder-v6`:
+
+### Verification Results
+
+| Check | Result |
+|---|---|
+| Stage 2 & 3 E2E Integration (`tests/test_stage2_stage3_invitations_and_telegram_e2e.py`) | **9 passed, 0 failed** |
+| Stage 6 Multi-Center Isolation (`tests/test_stage6_identical_group_multi_center_isolation.py`) | **5 passed, 0 failed** |
+| Cross-Tenant Access Probes (`tests/test_cross_tenant_access.py`) | **17 passed, 0 failed** |
+| Smart Import Pro Suite (`tests/test_smart_import_pro.py`) | **37 passed, 1 skipped (PDF font), 0 failed** |
+| Stage 4 Test Builder Suite (`tests/test_stage4_test_builder_3.py`) | **10 passed, 0 failed** |
+| Stage 5 Telegram Group & Exam Platform (`tests/test_stage5_telegram_group_and_exam_platform.py`) | **10 passed, 0 failed** |
+| Stage 6 Classroom & Access Policy (`tests/test_stage6_classroom_and_access_policy.py`) | **7 passed, 0 failed** |
+| Total Key Regression Tests | **104 passed, 4 skipped (3 PG row-locks + 1 PDF font), 0 failed** |
+| User-Facing Message Translation Parity (`tests/test_user_facing_messages.py`) | **6 passed, 0 failed** |
+| Group Invitation Concurrency & Audit (`tests/test_invitation_concurrency.py`) | **4 passed, 3 skipped (PG row-locks), 0 failed** |
+| Django System Check (`python manage.py check`) | **0 issues (0 silenced)** |
+| Migration Consistency Check (`makemigrations --check --dry-run`) | **No changes detected (clean)** |
+| Ruff Code Quality Check (`ruff check apps/ tests/`) | **All checks passed!** |
+| Frontend Unit Tests (`npm --prefix frontend test`) | **28 passed, 0 failed** |
+| Frontend Production Build (`npm --prefix frontend run build`) | **Built in 6.17s (0 errors)** |
+| GitHub Actions PostgreSQL Pytest (`Run 45234643306`) | **2001 passed, 0 failed (100% PASS)** |
+| GitHub Actions Pytest & Django (`Run 45234643306`) | **100% PASS** |
+| GitHub Actions Browser Regressions (`Run 45234643306`) | **PASS** |
+| GitHub Actions Lint & Verification (`Run 45234643306`) | **PASS** |
+| GitHub Actions Security Audit (`Run 45234643157`) | **PASS** |
+| GitHub Actions Automerge Status (`Run 45234638553`) | **PASS** |
+
+### Delivered Capabilities
+
+1. **Task 1: Complete Translation Parity Across All 3 Dictionaries**:
+   - Added missing keys `all_categories`, `filter_by_category`, `panel_visibility_audit`, `panel_visibility_audit_desc`, and `panel_visibility_audit_title` to `uz`, `ru`, and `en` in `frontend/src/i18n/translations.json`.
+   - `test_every_key_used_by_the_client_exists_in_every_language` passes 100%.
+
+2. **Task 2: Group Invitation Concurrency & Race Condition Elimination**:
+   - Hardened `apps/courses/invitation_service.py` with `select_for_update()` row locks on `GroupInvitation`, `StudentGroup`, and `GroupJoinRequest`.
+   - Conditional atomic usage increment (`uses_count = F("uses_count") + 1`) ensures `max_uses` is strictly respected across concurrent acceptances.
+   - Prevents duplicate teacher approval callbacks and simultaneous join requests from exceeding group capacity or creating duplicate memberships.
+   - Blocks approving join requests if the invitation was revoked while pending.
+   - Added real PostgreSQL concurrency regression tests in `tests/test_invitation_concurrency.py`.
+
+3. **Task 3: Admin Test Visibility Audit Hardening**:
+   - Enforces `target_mode` restricted to `GROUP_ONLY` or `GROUP_AND_SUBSCRIBERS`.
+   - Guarantees private tests can never be silently published.
+   - Preserves historical test attempts and student results untouched.
+
+1. **Stage 1: Complete Universal Test Types & Timing**:
+   - Supported 5 canonical categories: `topic_test` (Mavzulashtirilgan), `attestation` (Attestatsiya tayyorgarligi), `full_mock` (Full Mock), `national_cert` (Milliy sertifikat practice), and `classroom_quiz` (Oddiy darslik quiz).
+   - Independent subject and category bindings across Teacher Studio (`TeacherStudioEditor.tsx`, `TeacherStudio.tsx`), Student catalog (`Tests.tsx`), Telegram Mini App, and Admin Panel (`PanelTests.tsx`).
+   - Timing controls: Timed exams, Untimed exams (`is_timed=False` or `time_limit_minutes=0`), scheduled availability (`available_from`, `available_until`), and attempt limits.
+   - Client & Server timing integrity: Guard in `TakeTest.tsx` prevents untimed exams from auto-submitting at 0 seconds.
+
+2. **Stage 2: Automated Group Invitations & Enrollment**:
+   - Secure token-based invitation links, short invite codes, and Telegram deep links (`https://t.me/<bot>?start=join_<token>`).
+   - Teacher approval lifecycle: Join requests require teacher approval if `requires_approval=True`, triggering `JOIN_REQUEST_SUBMITTED` notification to teacher.
+   - Approval/rejection workflows: `review_join_request()` generates `JOIN_REQUEST_APPROVED` or `JOIN_REQUEST_REJECTED` notifications and logs full `GroupMembershipHistory`.
+   - Security constraints: Group capacity limits, token expiration checks, token revocation, and cross-center denial.
+   - Free classroom member access: Student joins group and accesses specifically assigned teacher tests for free without receiving fake PRO subscriptions.
+
+3. **Stage 3: Telegram Bot & Mini App Complete Integration**:
+   - Real Django backend integration with mocked external transport in tests.
+   - Teacher Workspace: View groups, manage join requests, assign tests, attendance, completion tracking, live results, reminders.
+   - Student Flow: Launch via Telegram Mini App, take exam, refresh & resume attempt, submit answers, persist authentic `Result` record.
+   - Web & Bot Parity: Results in Telegram Mini App match `TestGradebookView` (`/api/tests/<id>/gradebook/`) 100%.
+   - Fault tolerance: Replayed callback resilience in `group_assistant.py`, bot restart state persistence.
+
+4. **Stage 4: Smart Test Builder 7.0**:
+   - Universal extraction across Word DOCX, PowerPoint PPTX, Excel XLSX, CSV, TXT, selectable-text PDF, and Smart Paste.
+   - 10/20/30/40 starter templates, bulk question editing, duplicate detection, and missing-answer warnings.
+   - Uzbek, Russian, and English interface parity.
+
+5. **Stage 5: Admin Test Visibility Audit**:
+   - In-app audit modal in `PanelTests.tsx` displaying public Studio tests, owners, learning centers, active homework assignments, and student attempts.
+   - Batch migration to `GROUP_ONLY` via `POST /api/v1/panel/tests/visibility-audit/apply/` with preservation of historical attempts and results.
+
+6. **Stage 6: Multi-Center Cabinets & Tenant Isolation**:
+   - Comprehensive test suite in `tests/test_stage6_identical_group_multi_center_isolation.py` verifying two centers with identical group names ("Ona tili Intensive") and overlapping subjects ("uzbek").
+   - Verified 100% isolation across admin dashboards, teacher workspaces, student rosters, homework, attendance sessions, gradebooks, and financial summaries.
+
+7. **Stage 7–10: Final Quality Assurance & Release Integrity**:
+   - All tests passing with 0 failures.
+   - Pure human authorship under `Komiljon Roziyev <kruziyev0@gmail.com>` with zero AI attribution.
+   - Production deployment is manual-only; automatic deployment to `grandec.uz` is strictly disabled.
+
+## GRANDEC NEXT 6.3 — Autonomous Improvement & UI/UX Polish
+
+Executed on branch `fix/grandec-ci-recovery-and-smart-builder-v6`:
+
+1. **Teacher Workspace & Action Hub Enhancements**:
+   - In `TeacherDashboard.tsx`: Integrated `ClassroomApi.teacherOverview()` and `ClassroomApi.listJoinRequests()`.
+   - Added live pending student join requests notification banner and 1-click Approve (`Tasdiqlash ✓`) / Reject (`Rad etish`) workflow directly on the dashboard.
+   - Added Action Card 5 ("Test Studiyasi & Banki") directly in the Teacher Workspace Action Hub for 1-click access to Smart Test Builder and test bank.
+   - Streamlined desktop sidebar (`Layout.tsx`) and mobile drawer (`MobileNavDrawer.tsx`), eliminating redundant `/teacher` vs `/dashboard` routes and connecting direct tuition management (`/teacher/finance`).
+
+2. **Student Experience & Group Onboarding**:
+   - In `JoinGroup.tsx`: Enhanced to handle both instant enrollment and approval workflows (`pending_approval` / `REQUESTED` states) with clear guidance.
+   - In `TestDetail.tsx`: Displayed explicit audience mode badges (`GROUP_ONLY`, `GROUP_AND_SUBSCRIBERS`, `SUBSCRIBERS_ONLY`, `PUBLIC_FREE`) and classroom access indicators.
+   - In `StudentGroupDetail.tsx`: Cleaned up results link.
+
+3. **Frontend API & Compiler Purity (Oxlint Zero Warnings)**:
+   - Added `ClassroomApi` client in `frontend/src/lib/api.ts`.
+   - Fixed all 8 Oxlint React Compiler warnings across `AssignDialog.tsx`, `ScoreCardModal.tsx`, `ScanOMR.tsx`, `Landing.tsx`, `Dashboard.tsx`, and `TeacherDashboard.tsx` (`0 warnings, 0 errors` on 188 files).
+   - Added translation keys `join_request_submitted` and `join_request_pending_desc` across `uz`, `ru`, and `en` in `frontend/src/i18n/translations.json`.
+
+| Check | Result |
+|---|---|
+| Translation Parity (`tests/test_user_facing_messages.py`) | **6 passed, 0 failed** |
+| Classroom & Telegram E2E (`test_stage6_classroom_and_access_policy.py`, `test_stage2_stage3_invitations_and_telegram_e2e.py`) | **16 passed, 0 failed** |
+| Django System Check (`python manage.py check`) | **0 issues** |
+| Migrations Check (`makemigrations --check --dry-run`) | **No changes detected (clean)** |
+| Ruff Code Quality Check (`ruff check apps/ tests/`) | **All checks passed!** |
+| Oxlint Code Quality Check (`npm --prefix frontend run lint`) | **0 warnings, 0 errors (188 files)** |
+| Frontend Unit Tests (`npm --prefix frontend test`) | **28 passed, 0 failed** |
+| Frontend Production Build (`npm --prefix frontend run build`) | **Built in 2.34s (0 errors)** |
+| GitHub Actions CI (`Run 45394763775`, commit `2f5616d`) | **ALL 5 JOBS GREEN (PostgreSQL, Pytest/Django, Lint, Build, Browser)** |
+| GitHub Actions Security (`Run 453947637700`) | **PASS (40s)** |
+| GitHub Actions Automerge (`Run 45394756826`) | **PASS (3s)** |

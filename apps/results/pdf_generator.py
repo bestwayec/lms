@@ -317,7 +317,7 @@ def generate_student_vedomost_pdf(attempt_id: int) -> str:
     status_text = "O'TDI (PASSED)" if attempt.is_passed else "O'TMADI (FAILED)"
     status_color = VedomostColors.SUCCESS if attempt.is_passed else VedomostColors.DANGER
 
-    band_or_level = attempt.cefr_level or (f"Band {attempt.band_score}" if attempt.band_score else attempt.rasch_grade or "-")
+    band_or_level = attempt.cefr_level or (f"Band {attempt.band_score}" if attempt.band_score else attempt.rasch_grade_label or "-")
 
     metrics_data = [
         [
@@ -654,7 +654,7 @@ def generate_group_vedomost_pdf(group_id: int, test_id: int | None = None) -> st
                 elif "WRIT" in k_upper or "ESSAY" in k_upper:
                     wri_val = score_str
 
-            band_lvl = att.cefr_level or (f"{att.band_score}" if att.band_score else att.rasch_grade or "-")
+            band_lvl = att.cefr_level or (f"{att.band_score}" if att.band_score else att.rasch_grade_label or "-")
             status_text = "O'tdi" if att.is_passed else "Qoldi"
             status_color = VedomostColors.SUCCESS if att.is_passed else VedomostColors.DANGER
 

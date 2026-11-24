@@ -272,12 +272,17 @@ class EnglishExamIntegrationTests(APITestCase):
         # Complete attempt
         SubmitAttemptService.execute(attempt_strict.id, self.user)
 
-        # Practice mode start
-        attempt_practice = StartAttemptService.execute(
-            test_id=self.test.id,
-            student=self.user,
-            mode="practice",
-        )
+        # Practice mode start — a retake; the FREE plan's single test is used,
+        # so treat the plan as unlimited (this test is about modes, not quota).
+        from unittest import mock
+
+        with mock.patch("apps.payments.entitlements.can_start_test", return_value=(True, None, {})), \
+             mock.patch("apps.payments.entitlements.enforce_test_quota"):
+            attempt_practice = StartAttemptService.execute(
+                test_id=self.test.id,
+                student=self.user,
+                mode="practice",
+            )
         self.assertEqual(attempt_practice.mode, TestAttempt.Mode.PRACTICE)
 
     def test_anti_cheat_violation_and_auto_termination(self):

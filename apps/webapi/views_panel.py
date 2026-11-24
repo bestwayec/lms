@@ -15,7 +15,9 @@ from apps.essays.models import EssaySubmission, EssayTopic
 from apps.payments.models import PaymentRequest, UserSubscription
 from apps.tests.admin_test_service import (
     annotate_test_metrics,
+    apply_studio_tests_visibility_transition,
     archive_test,
+    audit_public_studio_tests,
     calculate_test_stats,
     check_safe_deletion,
     duplicate_test,
@@ -442,6 +444,33 @@ def test_bulk_view(request):
         return Response(result)
     except ValueError as exc:
         return Response({"detail": str(exc)}, status=400)
+
+
+@api_view(["GET"])
+@permission_classes([IsTeacherOrAdmin])
+def tests_visibility_audit_view(request):
+    """Admin audit of public tests with proposed GROUP_ONLY transition."""
+    audit_list = audit_public_studio_tests(request.user)
+    return Response({
+        "status": "success",
+        "total_public_tests": len(audit_list),
+        "tests": audit_list,
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsTeacherOrAdmin])
+def tests_visibility_audit_apply_view(request):
+    """Safely apply proposed visibility changes (e.g. GROUP_ONLY) to selected tests."""
+    test_ids = request.data.get("test_ids") or []
+    target_mode = str(request.data.get("target_mode", "GROUP_ONLY")).strip()
+    if not isinstance(test_ids, list) or not test_ids:
+        return Response({"detail": "test_ids ro'yxati talab qilinadi."}, status=400)
+    if target_mode not in ("GROUP_ONLY", "GROUP_AND_SUBSCRIBERS", "SUBSCRIBERS_ONLY", "PUBLIC_FREE"):
+        return Response({"detail": "Noto'g'ri target_mode."}, status=400)
+
+    result = apply_studio_tests_visibility_transition(request.user, test_ids, target_mode=target_mode)
+    return Response(result)
 
 
 # ---------------------------------------------------------------------------

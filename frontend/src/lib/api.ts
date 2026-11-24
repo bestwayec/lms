@@ -1638,6 +1638,32 @@ export const Panel = {
     api<{ test: Record<string, unknown>; results: Record<string, unknown>[] }>(
       `/api/v1/panel/tests/${testId}/questions/`,
     ),
+  visibilityAudit: () =>
+    api<{
+      total_public_studio_tests: number;
+      tests: {
+        id: number;
+        title: string;
+        owner_name: string;
+        owner_email: string;
+        learning_center_id: number | null;
+        learning_center_name: string | null;
+        active_assignments: number;
+        existing_attempts: number;
+        results_count: number;
+        access_policy: string;
+        proposed_access_policy: string;
+      }[];
+    }>('/api/v1/panel/tests/visibility-audit/'),
+  applyVisibilityAudit: (testIds: number[], targetMode = 'GROUP_ONLY') =>
+    api<{
+      updated_count: number;
+      target_mode: string;
+      updated_test_ids: number[];
+    }>('/api/v1/panel/tests/visibility-audit/apply/', {
+      method: 'POST',
+      body: JSON.stringify({ test_ids: testIds, target_mode: targetMode }),
+    }),
   createQuestion: (testId: number | string, payload: Record<string, unknown>) =>
     api<Record<string, unknown>>(`/api/v1/panel/tests/${testId}/questions/`, {
       method: 'POST',
@@ -3009,6 +3035,90 @@ export const GroupInviteApi = {
     api<GroupJoinResult>(`/api/v1/groups/join/${encodeURIComponent(token)}/`, {
       method: 'POST',
     }),
+};
+
+// -- Classroom 6.0 API (Teacher Approval & Student Enrollment) -------------
+export interface TeacherPendingJoinRequest {
+  id: number;
+  student_id: number;
+  student_name: string;
+  student_email: string;
+  group_id: number;
+  group_name: string;
+  created_at: string;
+  token?: string;
+}
+
+export interface TeacherClassroomOverview {
+  groups: {
+    id: number;
+    name: string;
+    subject: string;
+    teacher_name: string;
+    students_count: number;
+    max_students: number;
+    invite_code: string;
+    active_homework_count: number;
+  }[];
+  total_groups: number;
+  pending_join_requests_count: number;
+  pending_join_requests: TeacherPendingJoinRequest[];
+}
+
+export interface StudentJoinResponse {
+  status: 'JOINED' | 'REQUESTED' | 'ALREADY_MEMBER' | 'joined' | 'pending_approval' | 'already_member';
+  group_id?: number;
+  group_name?: string;
+  request_id?: number;
+  message: string;
+}
+
+export interface TestAccessResponse {
+  test_id: number;
+  can_take: boolean;
+  audience_mode: string;
+  is_classroom_entitlement: boolean;
+  requires_subscription: boolean;
+  reason: string;
+}
+
+export const ClassroomApi = {
+  teacherOverview: () =>
+    api<TeacherClassroomOverview>('/api/classroom/teacher/overview/'),
+  listJoinRequests: () =>
+    api<{ pending_requests: TeacherPendingJoinRequest[]; total: number }>('/api/classroom/teacher/join-requests/'),
+  reviewJoinRequest: (requestId: number, approved: boolean) =>
+    api<{ status: string; message: string; group_id: number; student_id: number }>(
+      `/api/classroom/teacher/join-requests/${requestId}/review/`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ approved }),
+      },
+    ),
+  createInvitation: (payload: { group_id: number; expires_in_hours?: number; max_uses?: number; requires_approval?: boolean }) =>
+    api<{
+      status: string;
+      invitation_id: number;
+      token: string;
+      code: string;
+      deep_link: string;
+      web_link: string;
+      expires_at: string;
+      max_uses: number;
+      requires_approval: boolean;
+    }>('/api/classroom/teacher/invitations/create/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  studentJoin: (payload: { code?: string; token?: string }) =>
+    api<StudentJoinResponse>('/api/classroom/student/join/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  studentMyGroups: () =>
+    api<{ groups: Array<Record<string, unknown>>; total_groups: number }>('/api/classroom/student/my-groups/'),
+  checkTestAccess: (testId: number) =>
+    api<TestAccessResponse>(`/api/classroom/tests/${testId}/access/`),
 };
 
 // -- Referral & Viral Bonus Engine -----------------------------------------

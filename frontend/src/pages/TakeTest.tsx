@@ -136,6 +136,8 @@ interface AttemptDetail {
   test: number;
   test_title: string;
   status: string;
+  time_limit_minutes?: number;
+  is_timed?: boolean;
   remaining_seconds: number | null;
   questions: Question[];
   answered_count: number;
@@ -624,11 +626,16 @@ export default function TakeTest() {
   }, [attempt, submitting, result, cheatedModalOpen, attemptId, violationCount, navigate, doSubmit]);
 
   useEffect(() => {
-    if (remaining !== null && remaining <= 0 && attempt && !result && !submittedRef.current) {
+    const isTimedExam =
+      attempt &&
+      attempt.is_timed !== false &&
+      (attempt.time_limit_minutes === undefined || attempt.time_limit_minutes > 0);
+
+    if (isTimedExam && remaining !== null && remaining <= 0 && !result && !submittedRef.current) {
       doSubmit(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remaining]);
+  }, [remaining, attempt]);
 
   const save = useCallback(
     async (q: Question, a?: AnswerEntry) => {

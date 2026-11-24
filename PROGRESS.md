@@ -9,6 +9,104 @@
    - Ustoz kabinetida har bir o'quvchining PRO holati (`⭐ PRO (Faol)`), ishlagan testlari va esselari aks etishi.
 3. Attestatsiya 2026 yangi diagnostika testini 50 ta savoli bilan bazaga seed qilish, kategoriyalashtirish va VPS ga deploy qilish.
 
+### 2.95. Rasmiy Versiya v6.3: Autonomous Improvement & UI/UX Polish (Ustoz va O'quvchi Tajribasi Mukammalligi)
+- **Maqsad**:
+  * **Ustoz Tajribasi va Boshqaruv Qulayligi**:
+    - `TeacherDashboard.tsx` boshqaruv paneliga yangi o'quvchilarning kutayotgan so'rovlari (`pending_join_requests`) bo'limi kiritildi — ustoz 1 ta bosishda o'quvchini tasdiqlashi (`Tasdiqlash ✓`) yoki rad etishi mumkin.
+    - Asosiy amallar paneliga (Action Hub) 5-amal sifatida to'g'ridan-to'g'ri **Test Studiyasi va Smart Builder** (`/teacher/studio`) kiritildi.
+    - Desktop yon menyusi (`Layout.tsx`) va mobil menyuda (`MobileNavDrawer.tsx`) dublikat `/teacher` va `/dashboard` havolalari tozalanib, to'g'ridan-to'g'ri kurs to'lovlari (`/teacher/finance`) ulandi.
+  * **O'quvchi Tajribasi va Sinfxona Kirish Huquqi**:
+    - Guruhga taklif kodi yoki havola orqali qo'shilishda (`JoinGroup.tsx`) ham to'g'ridan-to'g'ri a'zolik, ham ustoz tasdig'i talab etiladigan holat (`REQUESTED` / `pending_approval`) uchun tushunarli holat kartasi va yo'naltirish qo'shildi.
+    - Test tafsilotlari (`TestDetail.tsx`) sahifasida auditoriya rejimi belgilari (`GROUP_ONLY`, `GROUP_AND_SUBSCRIBERS`, `SUBSCRIBERS_ONLY`, `PUBLIC_FREE`) aniq ko'rsatilib, sinfxona a'zolari bepul kirish huquqiga ega ekanligi yorlig'i bilan boyitildi.
+    - Guruh sahifasida (`StudentGroupDetail.tsx`) yakunlangan test natijalariga o'tish linki tozalandi.
+  * **Frontend API va Kompilyator Tozaligi**:
+    - `frontend/src/lib/api.ts` ga to'liq `ClassroomApi` mijozi qo'shildi (overview, join requests, review, invitations, student join, check test access).
+    - Oxlint React Compiler qoidalari bo'yicha barcha 8 ta ogohlantirish (purity, ref access during render, cascading render effect) 100% bartaraf etildi (0 warnings, 0 errors).
+    - `uz`, `ru`, `en` tillarida tarjimalar to'liq paritetga keltirildi (`join_request_submitted`, `join_request_pending_desc`).
+- **Bajarildi**:
+  * [x] `frontend/src/lib/api.ts`: `ClassroomApi` qo'shildi.
+  * [x] `TeacherDashboard.tsx`: Kutilayotgan so'rovlar kartasi va Test Studiyasi 5-amali qo'shildi.
+  * [x] `Layout.tsx` va `MobileNavDrawer.tsx`: Navigatsiya optimallashdi, to'lovlar ulandi.
+  * [x] `JoinGroup.tsx`: So'rov yuborilgan holat va tasdiqlash yo'riqnomasi qo'yildi.
+  * [x] `TestDetail.tsx`: Auditoriya rejimi belgilari va sinfxona kirish yorliqlari boyitildi.
+  * [x] `AssignDialog.tsx`, `ScoreCardModal.tsx`, `ScanOMR.tsx`, `Landing.tsx`, `Dashboard.tsx`: Oxlint tozaligi (0 warning, 0 error).
+  * [x] `npm --prefix frontend run lint`: 0 warnings, 0 errors (188 fayl).
+  * [x] `npm --prefix frontend test`: 28 passed, 0 failed (100% PASS).
+  * [x] `npm --prefix frontend run build`: 0 xato, toza ishlab chiqarish yig'masi (built in 2.34s).
+  * [x] `pytest tests/test_user_facing_messages.py`: 6 passed, 0 failed.
+  * [x] `pytest tests/test_stage6_classroom_and_access_policy.py tests/test_stage2_stage3_invitations_and_telegram_e2e.py`: 16 passed, 0 failed.
+  * [x] `python manage.py check`: 0 issues.
+  * [x] `ruff check apps/ tests/`: All checks passed.
+  * [x] `GitHub Actions CI (Run 45394763775, commit 2f5616d)`: ALL 5 JOBS GREEN (PostgreSQL, Pytest/Django, Lint, Build, Browser).
+  * [x] `GitHub Actions Security (Run 45394763700)`: PASS (40s).
+  * [x] `GitHub Actions Automerge (Run 45394756826)`: PASS (3s).
+- **Jarayonda**:
+  * Yakuniy reliz auditi to'liq yakunlandi.
+- **Keyingi qadamlar**:
+  * PR #145 loyiha egasi tomonidan ko'rib chiqilib, rasmiy merge va manual deployment qilinishi mumkin.
+
+### 2.94. Rasmiy Versiya v6.2: Universal Test Types, Group Approval Workflow & Multi-Center Isolation (PR #145 Yakuniy Qism)
+- **Maqsad**:
+  * **Universal Test Kategoriyalari va Vaqt Boshqaruvi (Stage 1)**:
+    - 5 ta asosiy test toifasi: `topic_test` (Mavzulashtirilgan test), `attestation` (Attestatsiya tayyorgarligi), `full_mock` (Full Mock), `national_cert` (Milliy sertifikat practice), va `classroom_quiz` (Oddiy darslik quiz). Fan va toifa bir-biridan mustaqil tanlanishi ta'minlandi.
+    - Server-avtoritar vaqt siyosati: Timed (vaqt cheklovi bilan) va Untimed (vaqt cheklovisiz). Vaqtsiz testlar hech qachon 0 soniyada avto-submit bo'lib ketmaydi (`TakeTest.tsx` xavfsizlik cheklovi).
+    - Rejali mavjudlik: `available_from` va `available_until` rejalashtirish parametrlari.
+  * **Avtomatlashtirilgan Guruh Taklifnomalari va Tasdiqlash Tizimi (Stage 2)**:
+    - Ustoz tomonidan taklif havolalari, xavfsiz tokenlar, 6 xonali taklif kodlari va Telegram deep linklar (`t.me/<bot>?start=join_<token>`).
+    - Agar `requires_approval=True` bo'lsa, o'quvchi qo'shilish so'rovi (`GroupJoinRequest`) yuboradi, ustozga `JOIN_REQUEST_SUBMITTED` xabarnomasi Outbox ga tushadi.
+    - Ustoz tasdiqlaganda (`review_join_request(approved=True)`) o'quvchiga `JOIN_REQUEST_APPROVED` boradi, a'zolik tarixi (`GroupMembershipHistory`) to'liq yoziladi.
+    - Rad etilganda `JOIN_REQUEST_REJECTED` boradi. Guruh sig'imi (`max_students`), token muddati tugashi va bekor qilish to'liq himoyalangan.
+  * **Telegram Bot & Mini App To'liq Real-Backend Integratsiyasi (Stage 3)**:
+    - Real Django backend xizmatlari va test ma'lumotlar bazasi orqali to'liq E2E sikl: Taklifnoma -> Telegram guruhiga bildirishnoma -> TMA orqali test boshlash -> javoblarni saqlash -> refresh/resume -> submit -> DB da haqiqiy `Result` yaratilishi -> Ustoz veb vedomostida (`/api/tests/<id>/gradebook/`) va botda 100% bir xil natija ko'rinishi.
+    - Tashqi Telegram HTTP transporti testlarda mock qilindi. Qayta bosilgan callbacklar (replayed callbacks) va xatoliklar qat'iy ushlandi.
+  * **Smart Test Builder 7.0 (Stage 4)**:
+    - DOCX, PPTX, XLSX, CSV, TXT, matnli PDF va Smart Paste orqali savollarni import qilish, 10/20/30/40 starter shablonlar, takroriy savollarni aniqlash va javob kalitlari matritsasi.
+  * **Admin Test Auditoriya Auditi (Stage 5)**:
+    - Panelda (`/panel/tests`) auditoriya auditi modali: eski ommaviy testlarni ko'rib chiqish va bir bosishda xavfsiz `GROUP_ONLY` rejimiga o'tkazish (`POST /api/v1/panel/tests/visibility-audit/apply/`).
+  * **Multi-Center Izolyatsiyasi (Stage 6)**:
+    - Ikkita o'quv markazida bir xil guruh nomi ("Ona tili Intensive") va bir xil fan ("uzbek") bo'lganda ham talabalar ro'yxati, testlar, vazifalar, davomat sessiyalari, baholash vedomostlari va moliyaviy hisobotlar o'rtasida 100% tenant izolyatsiyasi ta'minlandi.
+- **Bajarildi**:
+  * [x] **Backend & Modellar**:
+    - `apps/tests/models.py`: `assessment_category`, `is_timed`, `available_from`, `available_until` qo'shildi (migratsiya `0024_test_assessment_category_test_available_from_and_more.py`).
+    - `apps/notifications/models.py`: `JOIN_REQUEST_SUBMITTED`, `JOIN_REQUEST_APPROVED`, `JOIN_REQUEST_REJECTED`, `GROUP_WELCOME` hodisalari qo'shildi (migratsiya `0016_alter_outboxmessage_event.py`).
+    - `apps/notifications/outbox.py`: Join request va group welcome render funksiyalari to'g'rilandi.
+    - `apps/notifications/bot/group_assistant.py`: `review_join_request` uchun `ValidationError` va `ValueError` ushlanib, qayta bosilgan callbacklarda xatoliksiz javob qaytarish ta'minlandi.
+    - `apps/courses/invitation_service.py`: `select_for_update()` qator qulflashi va `F("uses_count") + 1` shartli atomik yangilanishi orqali konkurent poygalar (race conditions), ortiqcha a'zolik va takroriy bildirishnomalar bartaraf etildi.
+    - `apps/tests/admin_test_service.py`: Auditoriya auditi faqat guruhga cheklash (`GROUP_ONLY` / `GROUP_AND_SUBSCRIBERS`) bilan chegaralandi, shaxsiy testlarni ommaviy qilib yuborish xavfi yo'qotildi.
+    - `apps/tests/views.py`: `TestGradebookView` da `students` va `ranking` ikkalasi ham taqdim etildi.
+  * [x] **Frontend & UI/UX**:
+    - `frontend/src/i18n/translations.json`: 5 ta yetishmayotgan kalit (`all_categories`, `filter_by_category`, `panel_visibility_audit`, `panel_visibility_audit_desc`, `panel_visibility_audit_title`) `uz`, `ru`, `en` lug'atlariga kiritildi.
+    - `TeacherStudioEditor.tsx`, `TeacherStudio.tsx`, `Tests.tsx`, `TakeTest.tsx`: 5 ta test toifasi, untimed nazorat, schedule availability va uz/ru/en lokalizatsiya to'liq kiritildi.
+    - `PanelTests.tsx`: Auditoriya auditi tugmasi va ommaviy testlarni `GROUP_ONLY` ga o'tkazuvchi modal qo'shildi.
+    - `TakeTest.tsx`: Vaqtsiz testlar uchun auto-submit himoyasi qo'yildi.
+  * [x] **Testlar & QA**:
+    - `tests/test_user_facing_messages.py`: 6 ta test 100% PASS (translation parity to'liq yashil).
+    - `tests/test_invitation_concurrency.py`: 4 passed, 3 skipped (PostgreSQL row-locks), 0 failed.
+    - `tests/test_stage2_stage3_invitations_and_telegram_e2e.py`: 9 ta test 100% PASS.
+    - `tests/test_stage6_identical_group_multi_center_isolation.py`: 5 ta test 100% PASS.
+    - Core regression suite: 104 ta test PASS, 4 ta skipped, 0 ta xato.
+    - `python manage.py check`: 0 issues.
+    - `python manage.py makemigrations --check --dry-run`: No changes detected.
+    - `ruff check apps/ tests/`: All checks passed.
+    - `npm --prefix frontend test`: 28 ta test 100% PASS.
+    - `npm --prefix frontend run build`: 0 xato, 6.17s da build bo'ldi.
+    - **GitHub Actions CI (Run 45234643306, commit `0313b2b`)**:
+      * Test (PostgreSQL): 2001 passed, 0 failed (100% PASS).
+      * Test (Pytest & Django): 100% PASS.
+      * Lint (Backend & Frontend): PASS.
+      * Browser regressions: PASS.
+      * Build (Frontend & Verification): PASS.
+      * Security (Run 45234643157): PASS.
+      * Automerge (Run 45234638553): PASS.
+- **Jarayonda**:
+  * Barcha vazifalar to'liq yakunlandi.
+- **Keyingi qadamlar**:
+  * PR #145 loyiha egasi tomonidan ko'rib chiqilib, rasmiy merge qilinishi mumkin.
+- **Muhim qarorlar**:
+  * Vaqtsiz testlar topshirilayotganda 0 soniya taymer avtomatik tarzda testni yakunlab yubormaydi.
+  * Guruh a'zolariga soxta PRO obunasi berilmaydi, faqat o'sha guruhga biriktirilgan darslik testlar bepul bo'ladi.
+  * Rasmiy production deployment faqat manual trigger (`workflow_dispatch`) orqali bo'ladi, avtomatik deploy o'chirilgan.
+
 ### 2.93. Rasmiy Versiya v6.0: Teacher Classroom, Group Invitations & Premium Test Access
 - **Maqsad**:
   * **Yagona Kirish Siyosati (`resolve_test_access`)**: Ustoz o'z guruhiga mavzuli testlar, attestatsiya mashqlari yoki to'liq mock imtihonlarni biriktirganda, vakolatli guruh a'zolari testni alohida PRO/Premium obunasiz topshira olishi (`is_classroom_entitlement=True`, tijorat kvotasi `consumes_quota=False`).

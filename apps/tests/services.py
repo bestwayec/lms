@@ -92,6 +92,7 @@ class AttemptResult:
     rasch_score: Decimal = Decimal("0")
     max_rasch_score: Decimal = Decimal("0")
     rasch_grade: str = ""
+    rasch_mode: str = ""
     rasch_explanation: str = ""
 
 
@@ -254,23 +255,9 @@ class StartAttemptService:
             if trial_used(student, test):
                 raise TestAccessDeniedError("Bu test bo'yicha bepul sinovdan foydalangansiz.")
 
-        # -- Ruxsat turi va kirish huquqini tekshirish (Unified Access Policy 6.0) --
-        from apps.tests.access_policy import resolve_test_access
-        decision = resolve_test_access(student, test, action="start")
-        if not decision.allowed and not trial:
-            raise TestAccessDeniedError(decision.reason)
-
-        # -- Tijoriy test kvotasi (faqat agar klassrum bo'lmasa va kvota talab qilinsa) --
-        if decision.consumes_quota and not trial and not is_admin_or_teacher:
-            from apps.payments.entitlements import enforce_test_quota
-            import uuid
-            enforce_test_quota(
-                student,
-                idempotency_key=f"start-{test.id}-{student.id}-{uuid.uuid4().hex[:8]}",
-                source=decision.access_source,
-            )
-
-        # -- Aktiv attempt mavjudmi? --------------------------------------
+        # -- Resume first: an existing in-progress attempt is returned as-is.
+        #    Resuming never consumes quota and is never blocked by it (the
+        #    attempt was authorised when it started; a refresh must not paywall it).
         active_attempt = TestAttempt.objects.filter(
             test=test,
             student=student,
@@ -293,6 +280,12 @@ class StartAttemptService:
                     student.id,
                 )
                 return active_attempt
+
+        # -- Ruxsat turi va kirish huquqini tekshirish (Unified Access Policy 6.0) --
+        from apps.tests.access_policy import resolve_test_access
+        decision = resolve_test_access(student, test, action="start")
+        if not decision.allowed and not trial:
+            raise TestAccessDeniedError(decision.reason)
 
         # -- Max attempts tekshirish ---------------------------------------
         if test.max_attempts > 0 and not is_admin_or_teacher and not trial_part:
@@ -317,6 +310,20 @@ class StartAttemptService:
                     f"Test uchun maksimal urinishlar soni ({test.max_attempts}) "
                     f"tugadi. Siz {completed_count} marta topshirdingiz."
                 )
+
+        # -- Tijoriy test kvotasi: classroom assignments never consume it; the
+        #    reservation happens last (inside this transaction) so a refused
+        #    start never costs a unit, and the key is deterministic per new
+        #    attempt so a double click cannot charge twice.
+        if decision.consumes_quota and not trial and not is_admin_or_teacher:
+            from apps.payments.entitlements import enforce_test_quota
+
+            started_before = TestAttempt.objects.filter(test=test, student=student).count()
+            enforce_test_quota(
+                student,
+                idempotency_key=f"start-{test.id}-{student.id}-{started_before + 1}",
+                source=decision.access_source,
+            )
 
         # -- Attempt yaratish ----------------------------------------------
         # DB conditional-unique is the authority against concurrent starts;
@@ -1522,9 +1529,9 @@ class SubmitAttemptService:
 
                 # -- Rasch 1PL continuous dynamic evaluation -----------------------
         from apps.tests.rasch_engine import RaschEngine
-        rasch_score, max_rasch_score, rasch_grade, rasch_explanation = (
-            RaschEngine.evaluate_attempt_rasch(attempt, all_questions, answers_by_qid)
-        )
+        rasch_outcome = RaschEngine.evaluate_attempt_rasch(attempt, all_questions, answers_by_qid)
+        rasch_score, max_rasch_score, rasch_grade, rasch_explanation = rasch_outcome
+        rasch_mode = rasch_outcome.mode
 
         extra_fields: dict[str, Any] = {}
         if attempt.trial_part_id:
@@ -1578,6 +1585,7 @@ class SubmitAttemptService:
             cefr_level=cefr_val,
             rasch_score=rasch_score,
             rasch_grade=rasch_grade,
+            rasch_mode=rasch_mode,
         )
 
         # -- Auto-archive on completion -----------------------------------
@@ -1656,6 +1664,7 @@ class SubmitAttemptService:
                 "rasch_score": rasch_score,
                 "max_rasch_score": max_rasch_score,
                 "rasch_grade": rasch_grade,
+                "rasch_mode": rasch_mode,
                 "rasch_explanation": rasch_explanation,
             },
         )
@@ -1847,6 +1856,7 @@ class SubmitAttemptService:
                 rasch_score=result.rasch_score,
                 max_rasch_score=result.max_rasch_score,
                 rasch_grade=result.rasch_grade,
+                rasch_mode=result.rasch_mode,
                 rasch_explanation=result.rasch_explanation,
                 grading_status=result.grading_status,
                 objective_score=result.objective_score,

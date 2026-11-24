@@ -102,10 +102,11 @@ def test_student_auto_pro_on_group_join():
     tier = get_user_plan_tier(student)
     assert tier == "free"
 
-    # Group analytics must report PRO status
+    # Group analytics must not show a PRO the student does not have (classroom
+    # access is not a subscription — no misleading PRO/sponsorship status).
     analytics = get_group_full_analytics(group)
     assert analytics["total_students"] == 1
     student_metric = analytics["students"][0]
     assert student_metric["student_id"] == student.id
-    assert student_metric["has_pro"] is True
-    assert student_metric["pro_status_label"] == "⭐ PRO (Faol)"
+    assert student_metric["has_pro"] is False
+    assert student_metric["pro_status_label"] == "Guruh a'zosi (Classroom)"

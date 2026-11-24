@@ -7,6 +7,7 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import secrets
 from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.db import transaction
@@ -21,6 +22,7 @@ from rest_framework.response import Response
 
 from apps.core.spreadsheet import safe_row
 from apps.accounts.models import Profile
+from apps.accounts.services.csv_import import CSVImportService
 from apps.organizations.models import CenterBranch, LearningCenter
 from apps.results.models import Result
 
@@ -358,9 +360,12 @@ def enterprise_bulk_import_view(request):
     O'quvchilarni ommaviy yuklash (Bulk Import via CSV / Excel / JSON).
     Bir vaqtning o'zida 500 tagacha o'quvchini bazaga kiritish.
     """
-    if getattr(request.user, "role", None) == "student" and not request.user.is_superuser:
+    if not (
+        request.user.is_superuser
+        or request.user.role in (User.Role.ADMIN, User.Role.CENTER_ADMIN)
+    ):
         return Response(
-            {"error": "O'quvchilar uchun ommaviy yuklash ruxsat etilmagan."},
+            {"error": "Faqat markaz rahbari yoki platforma admini o'quvchi import qila oladi."},
             status=status.HTTP_403_FORBIDDEN,
         )
     center = _get_user_center(request.user)
@@ -420,12 +425,14 @@ def enterprise_bulk_import_view(request):
 
     imported_count = 0
     skipped_count = 0
+    manual_setup_count = 0
 
     with transaction.atomic():
         for r in rows_to_import[:500]:
             first_name = str(r.get("first_name", "")).strip() or "O'quvchi"
             last_name = str(r.get("last_name", "")).strip()
             raw_email = str(r.get("email", "")).strip().lower()
+            has_contact_email = bool(raw_email)
             phone = str(r.get("phone", "")).strip()
             branch_name = str(r.get("branch_name", "")).strip()
 
@@ -458,19 +465,36 @@ def enterprise_bulk_import_view(request):
                 },
             )
             if created:
-                user_obj.set_password("Grand2026!")
-                user_obj.save()
+                # Independent, unguessable initial password. Students set their
+                # own password through the existing one-hour email link.
+                # No shared credentials are returned or logged.
+                user_obj.set_password(secrets.token_urlsafe(32))
+                user_obj.save(update_fields=["password"])
                 Profile.objects.get_or_create(user=user_obj, defaults={"phone": phone})
                 imported_count += 1
-            else:
-                # Update center association if unassigned
-                if not user_obj.learning_center:
-                    user_obj.learning_center = center
-                    user_obj.branch = branch
-                    user_obj.save(update_fields=["learning_center", "branch"])
-                    imported_count += 1
+
+                if has_contact_email:
+                    # Do not send mail for a transaction that could roll back.
+                    def _send_setup_link(user_pk=user_obj.pk):
+                        try:
+                            student = User.objects.get(pk=user_pk)
+                            CSVImportService._send_welcome_email(student)
+                        except Exception as exc:
+                            logger.warning(
+                                "Enterprise import setup email failed for user_id=%s: %s",
+                                user_pk,
+                                exc,
+                            )
+
+                    transaction.on_commit(_send_setup_link)
                 else:
-                    skipped_count += 1
+                    # A synthetic placeholder address cannot receive a link.
+                    # The director must add a real email before password reset.
+                    manual_setup_count += 1
+            else:
+                # An email address does not prove consent to transfer a
+                # pre-existing unassigned account to another tenant.
+                skipped_count += 1
 
     return Response(
         {
@@ -478,7 +502,11 @@ def enterprise_bulk_import_view(request):
             "imported": imported_count,
             "skipped": skipped_count,
             "total_students": center.total_students_count,
-            "message": f"{imported_count} ta o'quvchi muvaffaqiyatli markazga qo'shildi! Standart parol: Grand2026!",
+            "message": (
+                f"{imported_count} ta o'quvchi qo'shildi. "
+                "Haqiqiy emaili bor o'quvchilarga parol o'rnatish havolasi yuboriladi."
+            ),
+            "manual_setup_required": manual_setup_count,
         }
     )
 

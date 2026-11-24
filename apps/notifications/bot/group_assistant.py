@@ -558,6 +558,8 @@ def _db_get_attendance_session_info(session_id: int):
     return {
         "session_id": session.id,
         "group_id": session.group.id,
+        "group_chat_id": getattr(session.group, "telegram_chat_id", None),
+        "teacher_tg_id": getattr(session.group.teacher, "telegram_chat_id", None),
         "group_name": session.group.name,
         "teacher_name": session.group.teacher.get_full_name() or session.group.teacher.email,
         "date_str": session.lesson_date.strftime("%d.%m.%Y"),
@@ -566,6 +568,19 @@ def _db_get_attendance_session_info(session_id: int):
         "present_names": present_names,
         "status": session.status,
     }
+
+
+def _attendance_view_allowed(info: dict, update) -> bool:
+    """Session details only in that group's own chat, or to its teacher.
+
+    Callback data can be forged by non-official clients, so the id in it is
+    never trusted on its own.
+    """
+    chat = getattr(update, "effective_chat", None)
+    user = getattr(update, "effective_user", None)
+    if chat is not None and info.get("group_chat_id") and chat.id == info["group_chat_id"]:
+        return True
+    return bool(user is not None and info.get("teacher_tg_id") and user.id == info["teacher_tg_id"])
 
 
 def _db_finalize_session(session_id: int, actor_tg_id: int):
@@ -1005,21 +1020,22 @@ def _build_teacher_workspace_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("👥 Guruhlarim", callback_data="tch_groups"),
+            InlineKeyboardButton("📥 So'rovlar", callback_data="tch_requests"),
+        ],
+        [
             InlineKeyboardButton("📝 Test yaratish", callback_data="tch_create"),
-        ],
-        [
             InlineKeyboardButton("📤 Test yuborish", callback_data="tassign_quick"),
+        ],
+        [
             InlineKeyboardButton("✅ Davomat", callback_data="tch_att"),
-        ],
-        [
             InlineKeyboardButton("📊 Natijalar", callback_data="tch_results"),
+        ],
+        [
             InlineKeyboardButton("📈 Live monitoring", callback_data="tch_live"),
-        ],
-        [
             InlineKeyboardButton("🔔 Eslatmalar", callback_data="tch_reminders"),
-            InlineKeyboardButton("⚙️ Sozlamalar", callback_data="tch_settings"),
         ],
         [
+            InlineKeyboardButton("⚙️ Sozlamalar", callback_data="tch_settings"),
             InlineKeyboardButton("📱 Teacher Studio (Web)", web_app=WebAppInfo(url=f"{site_url}/teacher/studio")),
         ],
     ])
@@ -1177,7 +1193,7 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
         return
 
     data = query.data
-    tg_user = update.effective_user
+    tg_user = getattr(update, "effective_user", None)
 
     # 1. Attendance callbacks
     if data.startswith("grp_att_here_"):
@@ -1188,6 +1204,9 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
         info = await _run_db(_db_get_attendance_session_info, sid)
         if not info:
             await query.answer("Sessiya topilmadi.", show_alert=True)
+            return
+        if not _attendance_view_allowed(info, update):
+            await query.answer("⛔️ Bu davomat boshqa guruhga tegishli.", show_alert=True)
             return
         text, markup = _format_attendance_review_message(info)
         await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
@@ -1215,6 +1234,9 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
         info = await _run_db(_db_get_attendance_session_info, sid)
         if not info:
             await query.answer("Sessiya topilmadi.", show_alert=True)
+            return
+        if not _attendance_view_allowed(info, update):
+            await query.answer("⛔️ Bu davomat boshqa guruhga tegishli.", show_alert=True)
             return
         text, markup = _format_attendance_message(info)
         await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
@@ -1475,10 +1497,105 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
                 lines.append(f"• <b>{escape(g['name'])}</b> (Kodi: <code>{g['invite_code']}</code>) {status_icon}")
                 btn_rows.append([
                     InlineKeyboardButton(f"📋 {g['name']} vedomosti", callback_data=f"grp_cmd_vedomost_{g['id']}"),
+                    InlineKeyboardButton(f"🔗 Taklif havolasi", callback_data=f"tch_inv_{g['id']}"),
                 ])
             btn_rows.append([InlineKeyboardButton("🔙 Ustoz Menyusi", callback_data="tch_main")])
             await query.edit_message_text("\n".join(lines), parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(btn_rows))
             await query.answer()
+            return
+        elif data.startswith("tch_inv_"):
+            group_id = int(data.removeprefix("tch_inv_"))
+            def _get_grp_inv(tg_id, g_id):
+                from apps.accounts.models import User
+                from apps.courses.models import StudentGroup
+                teacher = User.objects.filter(telegram_chat_id=tg_id, is_active=True).first()
+                if not teacher:
+                    return None
+                return StudentGroup.objects.filter(id=g_id, teacher=teacher).first()
+            group = await _run_db(_get_grp_inv, tg_user.id if tg_user else 0, group_id)
+            if not group:
+                await query.answer("Guruh topilmadi", show_alert=True)
+                return
+            bot_username = getattr(context.bot, "username", "") or "grandec_bot"
+            deep_link = f"https://t.me/{bot_username}?start=join_{group.invite_code}"
+            text = (
+                f"🔗 <b>'{escape(group.name)}' guruhi taklifnomasi:</b>\n\n"
+                f"Taklif kodi: <code>{group.invite_code}</code>\n"
+                f"Telegram havolasi: <code>{deep_link}</code>\n\n"
+                "<i>O'quvchilar ushbu havolani bosish orqali to'g'ridan-to'g'ri guruhga a'zo bo'lishlari mumkin.</i>"
+            )
+            markup = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 Guruhlarim", callback_data="tch_groups")],
+                [InlineKeyboardButton("🔙 Ustoz Menyusi", callback_data="tch_main")],
+            ])
+            await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
+            await query.answer()
+            return
+        elif data == "tch_requests":
+            def _get_pending(tg_id):
+                from apps.accounts.models import User
+                from apps.courses.invitation_service import list_teacher_pending_requests
+                teacher = User.objects.filter(telegram_chat_id=tg_id, is_active=True).first()
+                if not teacher:
+                    return []
+                return list_teacher_pending_requests(teacher)
+            pending = await _run_db(_get_pending, tg_user.id if tg_user else 0)
+            if not pending:
+                text = "📥 <b>Guruhlarga qo'shilish so'rovlari:</b>\n\nHozirda kutilayotgan so'rovlar mavjud emas."
+                markup = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 Ustoz Menyusi", callback_data="tch_main")],
+                ])
+                await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
+                await query.answer()
+                return
+
+            lines = ["📥 <b>Kutilayotgan qo'shilish so'rovlari:</b>\n"]
+            btn_rows = []
+            for r in pending[:8]:
+                lines.append(f"• <b>{escape(r['student_name'])}</b> → <b>{escape(r['group_name'])}</b>\n  <i>({r['created_at']})</i>")
+                btn_rows.append([
+                    InlineKeyboardButton(f"✅ Qabul ({r['student_name'][:12]})", callback_data=f"tch_appr_{r['id']}"),
+                    InlineKeyboardButton(f"❌ Rad", callback_data=f"tch_rej_{r['id']}"),
+                ])
+            btn_rows.append([InlineKeyboardButton("🔙 Ustoz Menyusi", callback_data="tch_main")])
+            await query.edit_message_text("\n".join(lines), parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(btn_rows))
+            await query.answer()
+            return
+        elif data.startswith("tch_appr_"):
+            req_id = int(data.removeprefix("tch_appr_"))
+            def _do_appr(tg_id, r_id):
+                from django.core.exceptions import ValidationError
+                from apps.accounts.models import User
+                from apps.courses.invitation_service import review_join_request
+                teacher = User.objects.filter(telegram_chat_id=tg_id, is_active=True).first()
+                if not teacher:
+                    return {"status": "error", "message": "Ustoz topilmadi"}
+                try:
+                    return review_join_request(teacher, r_id, approved=True)
+                except (ValidationError, ValueError) as e:
+                    msg = e.messages[0] if hasattr(e, "messages") and e.messages else str(e)
+                    return {"status": "error", "message": msg}
+            res = await _run_db(_do_appr, tg_user.id if tg_user else 0, req_id)
+            await query.answer(res.get("message", "Qabul qilindi!"), show_alert=True)
+            await ustoz_menu_command(update, context)
+            return
+        elif data.startswith("tch_rej_"):
+            req_id = int(data.removeprefix("tch_rej_"))
+            def _do_rej(tg_id, r_id):
+                from django.core.exceptions import ValidationError
+                from apps.accounts.models import User
+                from apps.courses.invitation_service import review_join_request
+                teacher = User.objects.filter(telegram_chat_id=tg_id, is_active=True).first()
+                if not teacher:
+                    return {"status": "error", "message": "Ustoz topilmadi"}
+                try:
+                    return review_join_request(teacher, r_id, approved=False, rejection_reason="Ustoz tomonidan rad etildi")
+                except (ValidationError, ValueError) as e:
+                    msg = e.messages[0] if hasattr(e, "messages") and e.messages else str(e)
+                    return {"status": "error", "message": msg}
+            res = await _run_db(_do_rej, tg_user.id if tg_user else 0, req_id)
+            await query.answer(res.get("message", "Rad etildi"), show_alert=True)
+            await ustoz_menu_command(update, context)
             return
         elif data == "tch_create":
             site_url = getattr(settings, "SITE_URL", "https://grandec.uz").rstrip("/")
@@ -1573,11 +1690,18 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
             await query.answer()
             return
         elif data == "tch_reminders":
-            site_url = getattr(settings, "SITE_URL", "https://grandec.uz").rstrip("/")
+            def _trigger_teacher_reminders(tg_id):
+                from apps.accounts.models import User
+                from apps.notifications.outbox import enqueue_deadline_reminders
+                teacher = User.objects.filter(telegram_chat_id=tg_id, is_active=True).first()
+                if not teacher:
+                    return 0
+                return enqueue_deadline_reminders()
+            enqueued = await _run_db(_trigger_teacher_reminders, tg_user.id if tg_user else 0)
             text = (
-                "🔔 <b>Eslatmalar va Bildirishnomalar:</b>\n\n"
-                "O'quvchilarga muddati yaqinlashgan vazifalar va imtihonlar haqida avtomatik "
-                "eslatma yuborish tizimi faol."
+                "🔔 <b>Eslatmalar Yuborildi:</b>\n\n"
+                f"Vazifa muddati yaqinlashgan va topshirmagan o'quvchilarga <b>{enqueued} ta</b> xavfsiz "
+                "eslatma navbatga qo'yildi (outbox)."
             )
             markup = InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔙 Ustoz Menyusi", callback_data="tch_main")],
@@ -1696,6 +1820,15 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
             await query.answer()
             return
 
+    # Retired score-editing buttons (old messages may still carry them):
+    # grades change only through the LMS review flow, never from Telegram.
+    if data.startswith("ustoz_"):
+        await query.answer(
+            "⛔️ Baholarni Telegram orqali o'zgartirib bo'lmaydi. LMS dagi tekshiruv sahifasidan foydalaning.",
+            show_alert=True,
+        )
+        return
+
     # 5. Legacy / Vedomost PDF callbacks
     if data.startswith("grp_cmd_vedomost_"):
         chat, user = update.effective_chat, update.effective_user
@@ -1703,6 +1836,20 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
             await query.answer("⛔️ Bu amal faqat tasdiqlangan ustozning shaxsiy chatida mavjud.", show_alert=True)
             return
         gid = int(data.split("_")[-1])
+
+        def _may_export(tg_id: int, g_id: int) -> bool:
+            # Same scope as the web: the verified LMS teacher/admin of this group.
+            from apps.courses.teacher_workspace_service import get_teacher_groups
+            from django.contrib.auth import get_user_model
+
+            actor = get_user_model().objects.filter(
+                telegram_chat_id=tg_id, telegram_identity_verified_at__isnull=False, is_active=True
+            ).first()
+            return bool(actor) and get_teacher_groups(actor).filter(id=g_id).exists()
+
+        if not await _run_db(_may_export, user.id, gid):
+            await query.answer("⛔️ Bu guruh sizga biriktirilmagan.", show_alert=True)
+            return
         await query.answer("Vedomost tayyorlanmoqda...")
         from apps.results.pdf_generator import generate_group_vedomost_pdf
         from apps.courses.models import StudentGroup

@@ -14,8 +14,8 @@ concurrency:
 on:
   push:
     branches: [main, master]
+  # Every PR, including stacked PRs whose base is another feature branch.
   pull_request:
-    branches: [main, master]
 
 jobs:
   lint:
