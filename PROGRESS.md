@@ -9,6 +9,50 @@
    - Ustoz kabinetida har bir o'quvchining PRO holati (`⭐ PRO (Faol)`), ishlagan testlari va esselari aks etishi.
 3. Attestatsiya 2026 yangi diagnostika testini 50 ta savoli bilan bazaga seed qilish, kategoriyalashtirish va VPS ga deploy qilish.
 
+### 2.97. Rasmiy Versiya v8.0: Smart Classroom, Telegram Super App & Essay Review Center
+- **Maqsad**:
+  * **Xavfsiz Sinfxona va Aniq O'quvchiga Mo'ljallangan Bir Martalik Taklifnomalar (Phase 1)**:
+    - O'qituvchi o'quvchi uchun shaxsiylashtirilgan, bir martalik taklifnoma yarata oladi (`target_student_id`, `max_uses=1`). Boshqa o'quvchi ushbu taklifnomadan foydalana olmaydi.
+    - Guruhlarni xavfsiz arxivlash va qayta tiklash (`archive_group`, `restore_group`): arxivlangan guruhga yangi a'zolar qo'shilishi bloklanadi, barcha faol taklifnomalar bekor qilinadi.
+    - Guruhni xavfsiz o'chirish (`delete_group_safely`): agar guruhda talabalar, vazifalar, topshiriqlar, esse yoki test urinishlari kabi akademik tarix mavjud bo'lsa, o'chirish qat'iy taqiqlanadi va arxivlash talab etiladi.
+    - Guruh mas'uliyatini yangi o'qituvchiga xavfsiz o'tkazish (`transfer_group_teacher`).
+    - Sinfxona a'zolari uchun guruhga biriktirilgan testlar mutlaqo bepul (`is_free_classroom_test`), soxta platforma PRO obunalarini generatsiya qilmasdan kanonik sinfxona huquqi ta'minlandi.
+  * **Telegram Mini App (TMA 8.0) Super App & Gamifikatsiya (Phase 2)**:
+    - 5 ta asosiy tabdan iborat pastki navigatsiya (Bottom Navigation): Bosh sahifa (Home) | Testlar (Tests) | Sinfxona (Classroom) | Reyting (Leaderboard) | Profil (Profile).
+    - Universal testlar katalogi: 5 ta toifa chiplari (Barchasi, Mavzuli, Attestatsiya, Full Mock, Milliy Sertifikat, Esselar) va tezkor qidiruv.
+    - Test topshirish jarayonida savolni qayta ko'rish bayrog'i (🚩 Flag/Belgilash) va rangli palitrada belgini ko'rsatish.
+    - Xususiy va platforma reytingi: O'quv markazi/guruh doirasida to'liq ism, umumiy platforma reytingida esa shaxsiy daxlsizlikni saqlagan holda niqoblangan ko'rinish ("Alisher N.", hech qanday email yoki telefon ko'rinmaydi).
+    - Takrorlanmas ta'limiy XP mexanizmi (`EducationalXPEvent`): bir xil test urinishi yoki harakat uchun takroriy XP berilishi bazaviy unikal indeks bilan cheklangan.
+  * **Esse Sinfxonasi & Ustoz Tekshiruvi Markazi 8.0 (Phase 3)**:
+    - O'quvchi apellatsiya arizasi: "Menimcha, esseyim noto'g'ri baholandi" tugmasi, mezonlar bo'yicha e'tiroz va faol apellatsiya vaqtida takroriy ariza yuborilishining oldini olish.
+    - Ustoz tekshiruv markazi (Web va TMA): 12 ta mezon bo'yicha baholarni to'g'rilash, yakuniy bahoni belgilash va ovozli audio sharh (Voice Feedback) yuklash hamda tinglash.
+    - Ovozli xabarlar `private_media_response` orqali faqat vakolatli o'quvchi va ustozga xavfsiz uzatiladi.
+  * **100% QA Sifat Darvozasi & To'liq Lokalizatsiya**:
+    - `frontend/src/i18n/translations.json` ga o'zbek, rus va ingliz tillarida barcha yangi kalitlar kiritilib, 100% simmetriya ta'minlandi.
+    - Yangi test to'plami `tests/test_grandec_8_smart_classroom.py` 7/7 (100% PASS).
+    - Translation parity va ruxsatlar testlari: 10/10 PASS.
+    - Frontend unit testlari: 28/28 PASS; Oxlint: 0 ta xato, 0 ta ogohlantirish (192 ta fayl); Vite production build: muvaffaqiyatli yig'ildi.
+- **Bajarildi**:
+  * [x] `apps/courses/models.py` & `apps/courses/invitation_service.py`: `target_student`, `status` (`active`, `archived`).
+  * [x] `apps/courses/group_service.py`: `archive_group`, `restore_group`, `delete_group_safely`, `transfer_group_teacher`, `get_group_dependencies`.
+  * [x] `apps/accounts/models.py` & `apps/accounts/gamification.py`: `EducationalXPEvent` unikal indeks, `award_educational_xp` idempotentligi va niqoblangan platforma reytingi.
+  * [x] `apps/essays/models.py` & `apps/essays/services.py`: Apellatsiya jarayoni, 12 mezon baholash, `TeacherReview` ovozli audio fikr (`essays/audio/`).
+  * [x] `apps/core/private_files.py`: `essays/audio/` xavfsiz prefiksi.
+  * [x] `apps/webapi/views_classroom.py` & `apps/webapi/urls_classroom.py`: Sinfxona API lari.
+  * [x] `apps/notifications/bot/handlers.py`: `/sinfxonalarim` komandasi, o'quvchi sinfxona menyusi va bepul kirish tushuntirishlari.
+  * [x] `frontend/src/pages/Tma.tsx` & `frontend/src/pages/tma/*`: 5-tab TMA 8.0, ClassroomTab, LeaderboardTab, ProfileTab, TestsTab chiplari, TestFlow 🚩 flag va audio sharh.
+  * [x] `frontend/src/pages/Groups.tsx`: Guruhni arxivlash, tiklash va xavfsiz o'chirish tekshiruvi modali.
+  * [x] `frontend/src/i18n/translations.json`: UZ, RU, EN tillarida 100% tarjima pariteti.
+  * [x] `tests/test_grandec_8_smart_classroom.py`: 7/7 test 100% PASS.
+  * [x] `tests/test_user_facing_messages.py` & `tests/test_invitation_concurrency.py`: 10/10 PASS.
+  * [x] `npm --prefix frontend test`: 28/28 PASS.
+  * [x] `npm --prefix frontend run lint`: 0 xato, 0 ogohlantirish (192 fayl).
+  * [x] `npm --prefix frontend run build`: Muvaffaqiyatli ishlab chiqarish yig'masi.
+- **Jarayonda**:
+  * Barcha test va tekshiruvlar to'liq yakunlandi, PR #148 topshirilishga tayyor.
+- **Keyingi qadamlar**:
+  * Stacked branch `feat/grandec-next-8-smart-classroom` ni GitHub ga push qilish va `feat/grandec-next-7` ga nisbatan Draft PR #148 ochish.
+
 ### 2.96. Rasmiy Versiya v7.1: Release Recovery, Teacher Studio Autosave & Zero-Stale TMA Cache
 - **Maqsad**:
   * **Reliz Pipeline Tiklanishi & Kesh Barqarorligi (PR #147 -> `main`)**:

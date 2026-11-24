@@ -344,19 +344,23 @@ def _student_main_menu_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
     """Main menu inline keyboard for students."""
     buttons = [
         [
-            InlineKeyboardButton("📚 Mening vazifalarim", callback_data="menu_homework"),
+            InlineKeyboardButton("🏫 Sinfxonalarim", callback_data="menu_classrooms"),
+            InlineKeyboardButton("📚 Vazifalarim", callback_data="menu_homework"),
+        ],
+        [
             InlineKeyboardButton("📝 Testlar", callback_data="menu_tests"),
-        ],
-        [
             InlineKeyboardButton("🧠 Tezkor quiz", callback_data="menu_quiz"),
+        ],
+        [
             InlineKeyboardButton("📊 Natijalarim", callback_data="menu_results"),
-        ],
-        [
             InlineKeyboardButton("✍️ Esse yozish", callback_data="menu_essays"),
-            InlineKeyboardButton("👤 Profilim", callback_data="menu_profile"),
         ],
         [
+            InlineKeyboardButton("👤 Profilim", callback_data="menu_profile"),
             InlineKeyboardButton("💳 Obunam", callback_data="cb_myplan"),
+        ],
+        [
+            InlineKeyboardButton("🔑 Guruhga qo'shilish", callback_data="menu_join_group"),
             InlineKeyboardButton("✨ Qo'shimcha", callback_data="menu_student_more"),
         ],
     ]
@@ -1548,33 +1552,58 @@ async def auth_conversation_handler(
             )
             return
 
-    # Check for #GR-XXX or GR-XXX group invite code input
-    if upper_raw.startswith("#GR-") or (
+    # Check for #GR-XXX, GR-XXX group invite code, token or awaiting_group_invite input
+    is_awaiting_invite = bool(context.user_data.get("awaiting_group_invite"))
+    if is_awaiting_invite or upper_raw.startswith("#GR-") or (
         upper_raw.startswith("GR-") and len(upper_raw) >= 5
-    ):
-        clean_code = upper_raw.removeprefix("#").strip()
-        from apps.courses.group_service import join_group_by_invite_code
+    ) or (upper_raw.startswith("JOIN_") or upper_raw.startswith("GRP_")):
+        context.user_data.pop("awaiting_group_invite", None)
+        clean_code = raw_text.strip().removeprefix("#").strip()
+        for prefix in ("join_", "grp_", "invite_", "group_"):
+            if clean_code.lower().startswith(prefix):
+                clean_code = clean_code[len(prefix):].strip()
+                break
+
+        from apps.courses.invitation_service import join_group_by_code, join_group_by_token
 
         user = await _get_or_create_user_async(update)
-        success, msg, grp = await _run_db(join_group_by_invite_code, user, clean_code)
-        if success and grp:
-            teacher_name = grp.teacher.get_full_name() or grp.teacher.email
+        def _join_action():
+            try:
+                return join_group_by_token(user, clean_code)
+            except Exception:
+                try:
+                    return join_group_by_code(user, clean_code)
+                except Exception as err:
+                    return {"status": "error", "message": str(err)}
+
+        res = await _run_db(_join_action)
+        site_url = getattr(settings, "SITE_URL", "https://grandec.uz").rstrip("/")
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "📱 Sinfxona testlarini ochish (Mini App)",
+                    web_app=WebAppInfo(url=f"{site_url}/tma/#/classroom"),
+                )
+            ]
+        ])
+        if res.get("status") in ("joined", "already_member"):
+            group_name = res.get("group_name", "Guruh")
+            teacher_name = res.get("teacher_name", "O'qituvchi")
             await update.message.reply_text(
-                f"✅ *Guruhga muvaffaqiyatli qo'shildingiz!*\n\n"
-                f"🏫 Guruh nomi: *{grp.name}*\n"
-                f"👨‍🏫 O'qituvchi: *{teacher_name}*\n\n"
-                f"⭐ *Sizga ustozingiz guruhi orqali PRO tarifi faollashtirildi!*\n"
-                f"• Cheksiz BMB mock testlari va diagnostikalar\n"
-                f"• Kunlik 50 ta sun'iy intellekt (AI repetitor) tahlili\n"
-                f"• Barcha test va esse natijalaringiz ustozingiz hisobotida aks etadi.",
-                parse_mode="Markdown",
-                reply_markup=_persistent_menu_keyboard("student"),
+                f"✅ <b>Guruhga muvaffaqiyatli qo'shildingiz!</b>\n\n"
+                f"🏫 Guruh nomi: <b>{group_name}</b>\n"
+                f"👨‍🏫 O'qituvchi: <b>{teacher_name}</b>\n\n"
+                f"📚 <b>Sizga ustozingiz klassrumidagi barcha vazifalar va testlar bepul taqdim etiladi!</b>\n"
+                f"• Sinfxona testlari va dars topshiriqlariga to'liq kirish\n"
+                f"• Barcha natijalaringiz ustozingiz guruh jurnalida aks etadi.",
+                parse_mode="HTML",
+                reply_markup=keyboard,
             )
             return
         else:
             await update.message.reply_text(
-                f"❌ '{raw_text}' kodi bo'yicha guruh topilmadi yoki ulanishda xatolik yuz berdi ({msg}).\n\n"
-                f"Iltimos, ustozingiz bergan taklif kodini to'g'ri kiritganingizni tekshiring (masalan: `#GR-101`).",
+                f"❌ '{raw_text}' kodi bo'yicha guruh topilmadi yoki ulanishda xatolik yuz berdi ({res.get('message', 'Noma\'lum xatolik')}).\n\n"
+                f"Iltimos, ustozingiz bergan taklif kodini to'g'ri kiritganingizni tekshiring (masalan: `GR-101`).",
                 parse_mode="Markdown",
                 reply_markup=_persistent_menu_keyboard("student"),
             )
@@ -5261,6 +5290,17 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 "✨ Qo'shimcha imkoniyatlar\n\nKerakli bo'limni tanlang.",
                 reply_markup=_student_more_keyboard(),
             )
+        elif data == "menu_classrooms":
+            await sinfxonalarim_handler(update, context)
+        elif data == "menu_join_group":
+            context.user_data["awaiting_group_invite"] = True
+            await send_reply(
+                update,
+                "🔑 <b>Guruhga qo'shilish</b>\n\n"
+                "Iltimos, ustozingiz bergan taklif kodini (masalan: <code>GR-1234</code>) "
+                "yoki to'liq taklif havolasini ushbu chatga xabar qilib yuboring:",
+                parse_mode="HTML",
+            )
         elif data == "role_select_student":
             await role_select_student_callback(update, context)
         elif data == "role_select_teacher":
@@ -7230,6 +7270,65 @@ async def groups_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         parse_mode="Markdown",
         reply_markup=_group_list_keyboard(groups),
     )
+
+
+async def sinfxonalarim_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/sinfxonalarim or /ustozlarim — the student's enrolled groups and teachers."""
+    user = await _run_db(lambda: _get_or_create_user(update))
+    if not user:
+        await send_reply(update, "Iltimos, avval /start buyrug'i orqali hisobingizni faollashtiring.")
+        return
+
+    from apps.courses.models import StudentGroup
+
+    def _get_student_classrooms():
+        grps = list(
+            StudentGroup.objects.filter(
+                students=user,
+                status="active",
+            ).select_related("teacher", "subject").order_by("name")
+        )
+        data = []
+        for g in grps:
+            t_name = g.teacher.get_full_name() or g.teacher.email
+            data.append({
+                "id": g.id,
+                "name": g.name,
+                "subject": getattr(g.subject, "name", "Fan") if g.subject else "Fan",
+                "teacher": t_name,
+            })
+        return data
+
+    classrooms = await _run_db(_get_student_classrooms)
+    site_url = getattr(settings, "SITE_URL", "https://grandec.uz").rstrip("/")
+    tma_url = f"{site_url}/tma/#/classroom"
+
+    if not classrooms:
+        msg = (
+            "🏫 <b>Mening sinfxonalarim</b>\n\n"
+            "Siz hozircha hech qaysi ustozingizning sinfxonasiga a'zo emassiz.\n\n"
+            "ℹ️ <i>GRAND EDUCATION sinfxonalariga kirish faqat o'qituvchining taklif kodi "
+            "(masalan: <code>GR-1234</code>) yoki shaxsiy taklif havolasi orqali amalga oshiriladi.</i>\n\n"
+            "Agar ustozingizdan taklif kodi olgan bo'lsangiz, quyidagi tugma orqali kodni kiriting yoki Mini App'ga o'ting:"
+        )
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔑 Taklif kodini kiritish", callback_data="menu_join_group")],
+            [InlineKeyboardButton("📱 Mini App (Sinfxonalar)", web_app=WebAppInfo(url=tma_url))],
+        ])
+        await send_reply(update, msg, parse_mode="HTML", reply_markup=kb)
+        return
+
+    lines = [f"🏫 <b>Mening sinfxonalarim ({len(classrooms)} ta)</b>\n"]
+    for i, c in enumerate(classrooms, 1):
+        lines.append(f"{i}. <b>{c['name']}</b> ({c['subject']})")
+        lines.append(f"   👨‍🏫 Ustoz: <b>{c['teacher']}</b>\n")
+
+    lines.append("<i>Ustozingiz bergan vazifalar va testlarni topshirish uchun Mini App'ni oching:</i>")
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📱 Sinfxona testlarini ochish", web_app=WebAppInfo(url=tma_url))],
+        [InlineKeyboardButton("🔑 Yangi guruhga qo'shilish", callback_data="menu_join_group")],
+    ])
+    await send_reply(update, "\n".join(lines), parse_mode="HTML", reply_markup=kb)
 
 
 async def _send_group_card(update: Update, context, user, group) -> None:
@@ -9707,6 +9806,7 @@ def setup_handlers(app) -> None:
 
     app.add_handler(CommandHandler("vazifalarim", my_homework_handler))
     app.add_handler(CommandHandler("homework", my_homework_handler))
+    app.add_handler(CommandHandler(["sinfxonalarim", "ustozlarim", "classrooms"], sinfxonalarim_handler))
     app.add_handler(CommandHandler("essays", essays_handler))
     app.add_handler(CommandHandler("essay_submit", essay_submit_handler))
     app.add_handler(CommandHandler("cancel_essay", cancel_essay_handler))
@@ -9874,6 +9974,7 @@ async def post_init(app) -> None:
             BotCommand("quiz", "🧠 Telegram Quiz — test topshirish"),
             BotCommand("results", "Barcha natijalar"),
             BotCommand("vazifalarim", "📚 Mening vazifalarim"),
+            BotCommand("sinfxonalarim", "🏫 Mening sinfxonalarim va ustozlarim"),
             BotCommand("profile", "Shaxsiy profil"),
             BotCommand("tests", "Mavjud testlar"),
             BotCommand("essays", "Esse mavzulari"),

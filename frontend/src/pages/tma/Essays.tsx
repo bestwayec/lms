@@ -30,6 +30,9 @@ export default function Essays({
   const [remaining, setRemaining] = useState(0);
   const [result, setResult] = useState<TmaEssayResult | null>(null);
   const [grading, setGrading] = useState(false);
+  const [showAppealModal, setShowAppealModal] = useState(false);
+  const [appealReason, setAppealReason] = useState('');
+  const [appealLoading, setAppealLoading] = useState(false);
   const timerRef = useRef<number | null>(null);
   const pollRef = useRef<number | null>(null);
   const textRef = useRef('');
@@ -78,6 +81,35 @@ export default function Essays({
     setPasswordFor(null);
     setView('topics');
     void loadTopics();
+  };
+
+  const handleSubmitAppeal = async () => {
+    if (!result?.id || !appealReason.trim()) return;
+    setAppealLoading(true);
+    try {
+      await TmaApi.requestEssayAppeal(result.id, appealReason.trim());
+      setShowAppealModal(false);
+      setResult((prev) => (prev ? { ...prev, appeal_status: 'submitted', appeal_reason: appealReason.trim() } : prev));
+      hapticNotify('success');
+    } catch (e) {
+      alert(tmaErrorMessage(e, 'Apellatsiya yuborishda xatolik'));
+    } finally {
+      setAppealLoading(false);
+    }
+  };
+
+  const handleWithdrawAppeal = async () => {
+    if (!result?.id || !window.confirm('Apellatsiyani qaytarib olmoqchimisiz?')) return;
+    setAppealLoading(true);
+    try {
+      await TmaApi.withdrawEssayAppeal(result.id);
+      setResult((prev) => (prev ? { ...prev, appeal_status: 'withdrawn' } : prev));
+      hapticNotify('success');
+    } catch (e) {
+      alert(tmaErrorMessage(e, 'Apellatsiyani bekor qilishda xatolik'));
+    } finally {
+      setAppealLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -256,6 +288,109 @@ export default function Essays({
               </div>
             )}
           </div>}
+
+          {/* Teacher Review & Voice Feedback */}
+          {result.teacher_final_score !== null && result.teacher_final_score !== undefined && (
+            <div className="tma-card" style={{ marginBottom: 16, background: '#F0FDF4', borderColor: '#BBF7D0' }}>
+              <p style={{ margin: 0, fontWeight: 700, color: '#166534', fontSize: 14 }}>
+                👨‍🏫 Ustoz yakuniy bahosi: {result.teacher_final_score} / {result.max_score ?? 24}
+              </p>
+              {result.teacher_comments && (
+                <p style={{ margin: '8px 0 0', color: '#14532D', fontSize: 13, lineHeight: 1.5 }}>
+                  <b>Ustoz izohi:</b> {result.teacher_comments}
+                </p>
+              )}
+            </div>
+          )}
+
+          {result.has_voice_feedback && (
+            <div className="tma-voice-player">
+              <p style={{ margin: '0 0 6px', fontWeight: 700, fontSize: 13, color: 'var(--tma-ink)' }}>
+                🎙️ Ustoz ovozli taqrizi (Audio sharh):
+              </p>
+              <audio controls preload="none" src={TmaApi.voiceFeedbackUrl(result.id)}>
+                Brauzeringiz audio pleerni qo‘llab-quvvatlamaydi.
+              </audio>
+            </div>
+          )}
+
+          {/* Reassessment / Appeal Workflow */}
+          {result.status !== 'error' && (
+            <div className="tma-card" style={{ marginBottom: 16 }}>
+              {result.appeal_status === 'submitted' || result.appeal_status === 'under_review' ? (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#D97706', fontWeight: 700, fontSize: 13 }}>
+                      ⏳ Apellatsiya ko‘rib chiqilmoqda
+                    </span>
+                    <button
+                      className="tma-btn tma-btn-card"
+                      style={{ padding: '6px 10px', fontSize: 11, width: 'auto' }}
+                      onClick={handleWithdrawAppeal}
+                      disabled={appealLoading}
+                    >
+                      Qaytarib olish
+                    </button>
+                  </div>
+                  {result.appeal_reason && (
+                    <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--tma-muted)' }}>
+                      <b>Sabab:</b> {result.appeal_reason}
+                    </p>
+                  )}
+                </div>
+              ) : result.appeal_status === 'resolved' ? (
+                <div>
+                  <span style={{ color: '#16A34A', fontWeight: 700, fontSize: 13 }}>
+                    ✅ Apellatsiya ko‘rib chiqildi va yakunlandi
+                  </span>
+                </div>
+              ) : (
+                <div>
+                  <button
+                    className="tma-btn tma-btn-card"
+                    style={{ width: '100%', borderColor: '#F59E0B', color: '#B45309', fontWeight: 700 }}
+                    onClick={() => setShowAppealModal(true)}
+                  >
+                    ⚖️ Menimcha, esseyim noto‘g‘ri baholandi (Apellatsiya berish)
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Appeal Request Modal */}
+          {showAppealModal && (
+            <div className="tma-card" style={{ marginBottom: 16, borderColor: '#F59E0B', background: '#FFFBEB' }}>
+              <h4 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 700, color: '#92400E' }}>
+                ⚖️ Qayta baholash talabi (Apellatsiya)
+              </h4>
+              <p style={{ margin: '0 0 12px', fontSize: 12, color: '#B45309' }}>
+                Qaysi mezonlar bo‘yicha ball noto‘g‘ri qo‘yilgan deb hisoblaysiz va nima uchun? Ustozingiz ushbu arizani ko‘rib chiqadi.
+              </p>
+              <textarea
+                className="tma-textarea"
+                rows={3}
+                placeholder="Nima uchun ball noto‘g‘ri deb hisoblaysiz?..."
+                value={appealReason}
+                onChange={(e) => setAppealReason(e.target.value)}
+              />
+              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                <button
+                  className="tma-btn tma-btn-card"
+                  onClick={() => setShowAppealModal(false)}
+                >
+                  {t('tma_cancel') || 'Bekor qilish'}
+                </button>
+                <button
+                  className="tma-btn tma-btn-hl"
+                  disabled={appealLoading || !appealReason.trim()}
+                  onClick={handleSubmitAppeal}
+                >
+                  {appealLoading ? '…' : 'Arizani yuborish'}
+                </button>
+              </div>
+            </div>
+          )}
           </>
         )}
         <button className="tma-btn tma-btn-card" onClick={exitToTopics}>

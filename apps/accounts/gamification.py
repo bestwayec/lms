@@ -265,3 +265,101 @@ def get_weekly_league_leaderboard(user) -> Dict[str, Any]:
         "participants": participants,
         "resets_in_hours": max(1, int((sunday_end - now).total_seconds() // 3600)),
     }
+
+
+def award_educational_xp(
+    user: Any,
+    event_type: str,
+    reference_id: str,
+    xp_amount: int = 20,
+    metadata: dict[str, Any] | None = None,
+) -> tuple[Any, bool]:
+    """
+    Idempotently awards XP for verified educational events.
+    Guarantees that repeated callbacks, retries, or refreshes will NEVER award duplicate XP.
+    Returns (event, is_created).
+    """
+    if not user or not getattr(user, "is_authenticated", False):
+        return None, False
+
+    from apps.accounts.models import EducationalXPEvent
+
+    event, created = EducationalXPEvent.objects.get_or_create(
+        user=user,
+        event_type=event_type,
+        reference_id=str(reference_id),
+        defaults={
+            "xp_amount": xp_amount,
+            "metadata": metadata or {},
+        },
+    )
+
+    if not created:
+        return event, False
+
+    # First time! Apply streak and add XP
+    record_user_activity(user, xp_amount=xp_amount, activity_type=event_type)
+    return event, True
+
+
+def get_platform_leaderboard(
+    user: Any | None = None,
+    period: str = "weekly",
+    limit: int = 20,
+) -> dict[str, Any]:
+    """
+    Privacy-preserving pseudonymous platform leaderboard.
+    Ranks by verified learning XP without exposing emails, phones, private groups or grades.
+    """
+    from django.core.cache import cache
+    from apps.accounts.models import Profile
+
+    period = period if period in ("weekly", "all_time") else "weekly"
+    cache_key = f"grandec:platform_lb_v2:{period}:{limit}"
+
+    def _fetch():
+        order_col = "-weekly_xp" if period == "weekly" else "-xp_points"
+        top_profiles = (
+            Profile.objects.filter(user__is_active=True)
+            .select_related("user")
+            .order_by(order_col, "-current_streak")[:limit]
+        )
+        rows = []
+        for idx, p in enumerate(top_profiles, start=1):
+            raw_first = (p.user.first_name or "").strip()
+            raw_last = (p.user.last_name or "").strip()
+            if raw_first and raw_last:
+                display_name = f"{raw_first} {raw_last[0]}."
+            elif raw_first:
+                display_name = f"{raw_first} #{p.user_id % 1000:03d}"
+            else:
+                display_name = f"O'quvchi #{p.user_id % 1000:03d}"
+
+            xp_val = p.weekly_xp if period == "weekly" else p.xp_points
+            rows.append({
+                "rank": idx,
+                "user_id": p.user_id,
+                "display_name": display_name,
+                "avatar_url": p.avatar.url if p.avatar else None,
+                "xp": xp_val,
+                "streak": p.current_streak,
+                "league": p.weekly_league,
+                "badge": "🥇" if idx == 1 else "🥈" if idx == 2 else "🥉" if idx == 3 else f"#{idx}",
+            })
+        return rows
+
+    base_rows = cache.get_or_set(cache_key, _fetch, timeout=60)
+    user_rank = None
+    items = []
+    for r in base_rows:
+        is_me = bool(user and getattr(user, "is_authenticated", False) and r["user_id"] == user.id)
+        if is_me:
+            user_rank = r["rank"]
+        items.append({**r, "is_current_user": is_me})
+
+    return {
+        "period": period,
+        "items": items,
+        "user_rank": user_rank,
+    }
+

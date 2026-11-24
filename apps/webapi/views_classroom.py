@@ -364,3 +364,536 @@ def test_access_check_view(request: HttpRequest, test_id: int) -> JsonResponse:
 
     decision = resolve_test_access(request.user if request.user.is_authenticated else None, test, action="start")
     return JsonResponse(decision.to_dict())
+
+
+# ---------------------------------------------------------------------------
+# Group Lifecycle & Management (GRANDEC NEXT 8.0)
+# ---------------------------------------------------------------------------
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def teacher_group_dependencies_view(request: HttpRequest, group_id: int) -> JsonResponse:
+    """Preview group dependencies before archiving or safe deletion."""
+    from apps.courses.group_service import get_group_dependencies
+
+    group = StudentGroup.objects.filter(id=group_id).first()
+    if not group:
+        return JsonResponse({"error": "Guruh topilmadi."}, status=404)
+
+    is_admin = is_platform_admin(request.user) or getattr(request.user, "is_superuser", False)
+    if not is_admin and group.teacher_id != request.user.id:
+        return JsonResponse({"error": "Ruxsat etilmagan."}, status=403)
+
+    deps = get_group_dependencies(group)
+    return JsonResponse(deps)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def teacher_archive_group_view(request: HttpRequest, group_id: int) -> JsonResponse:
+    """Safely archives a group, preserving all history and revoking invitations."""
+    from apps.courses.group_service import archive_group
+
+    group = StudentGroup.objects.filter(id=group_id).first()
+    if not group:
+        return JsonResponse({"error": "Guruh topilmadi."}, status=404)
+
+    try:
+        archived = archive_group(group, request.user)
+        return JsonResponse({
+            "status": "success",
+            "group_id": archived.id,
+            "group_status": archived.status,
+            "message": f"'{archived.name}' guruhi muvaffaqiyatli arxivlandi.",
+        })
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def teacher_restore_group_view(request: HttpRequest, group_id: int) -> JsonResponse:
+    """Restores an archived group back to ACTIVE."""
+    from apps.courses.group_service import restore_group
+
+    group = StudentGroup.objects.filter(id=group_id).first()
+    if not group:
+        return JsonResponse({"error": "Guruh topilmadi."}, status=404)
+
+    try:
+        restored = restore_group(group, request.user)
+        return JsonResponse({
+            "status": "success",
+            "group_id": restored.id,
+            "group_status": restored.status,
+            "message": f"'{restored.name}' guruhi qayta faollashtirildi.",
+        })
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def teacher_delete_group_view(request: HttpRequest, group_id: int) -> JsonResponse:
+    """Deletes an empty group with NO academic history. Rejects if history exists."""
+    from apps.courses.group_service import delete_group_safely
+
+    group = StudentGroup.objects.filter(id=group_id).first()
+    if not group:
+        return JsonResponse({"error": "Guruh topilmadi."}, status=404)
+
+    try:
+        delete_group_safely(group, request.user)
+        return JsonResponse({
+            "status": "success",
+            "message": "Guruh muvaffaqiyatli o'chirildi.",
+        })
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def teacher_transfer_group_view(request: HttpRequest, group_id: int) -> JsonResponse:
+    """Transfers group responsibility to another verified teacher."""
+    from apps.accounts.models import User
+    from apps.courses.group_service import transfer_group_teacher
+
+    group = StudentGroup.objects.filter(id=group_id).first()
+    if not group:
+        return JsonResponse({"error": "Guruh topilmadi."}, status=404)
+
+    payload = _parse_body(request)
+    new_teacher_id = payload.get("new_teacher_id")
+    if not new_teacher_id:
+        return JsonResponse({"error": "new_teacher_id kiritilmadi."}, status=400)
+
+    new_teacher = User.objects.filter(id=new_teacher_id).first()
+    if not new_teacher:
+        return JsonResponse({"error": "Yangi o'qituvchi topilmadi."}, status=404)
+
+    try:
+        updated = transfer_group_teacher(group, new_teacher, request.user)
+        return JsonResponse({
+            "status": "success",
+            "teacher_id": updated.teacher_id,
+            "teacher_name": updated.teacher.get_full_name() or updated.teacher.email,
+            "message": f"Guruh mas'uliyati {updated.teacher.get_full_name()} ga muvaffaqiyatli o'tkazildi.",
+        })
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def teacher_remove_student_view(request: HttpRequest, group_id: int) -> JsonResponse:
+    """Removes a student from a group, preserving all historical results and attendance."""
+    from apps.accounts.models import User
+    from apps.courses.group_service import remove_student_from_group
+
+    group = StudentGroup.objects.filter(id=group_id).first()
+    if not group:
+        return JsonResponse({"error": "Guruh topilmadi."}, status=404)
+
+    is_admin = is_platform_admin(request.user) or getattr(request.user, "is_superuser", False)
+    if not is_admin and group.teacher_id != request.user.id:
+        return JsonResponse({"error": "Ruxsat etilmagan."}, status=403)
+
+    payload = _parse_body(request)
+    student_id = payload.get("student_id")
+    reason = payload.get("reason", "teacher_removal")
+    if not student_id:
+        return JsonResponse({"error": "student_id kiritilmadi."}, status=400)
+
+    student = User.objects.filter(id=student_id).first()
+    if not student:
+        return JsonResponse({"error": "O'quvchi topilmadi."}, status=404)
+
+    try:
+        removed = remove_student_from_group(group, student, actor=request.user, reason=reason)
+        return JsonResponse({
+            "status": "success",
+            "removed": removed,
+            "message": f"O'quvchi guruhdan chiqarildi (natijalari to'liq saqlab qolindi).",
+        })
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+
+# ---------------------------------------------------------------------------
+# Leaderboards: Group Classroom vs Platform
+# ---------------------------------------------------------------------------
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def classroom_group_leaderboard_view(request: HttpRequest, group_id: int) -> JsonResponse:
+    """Group leaderboard restricted to enrolled classroom members."""
+    from apps.results.models import Result
+    from apps.essays.models import EssaySubmission
+
+    group = StudentGroup.objects.filter(id=group_id).first()
+    if not group:
+        return JsonResponse({"error": "Guruh topilmadi."}, status=404)
+
+    user = request.user
+    is_admin = is_platform_admin(user) or getattr(user, "is_superuser", False)
+    is_member = group.students.filter(id=user.id).exists()
+    is_teacher = group.teacher_id == user.id
+
+    if not (is_admin or is_teacher or is_member):
+        return JsonResponse({"error": "Faqat ushbu guruh a'zolari reytingni ko'ra oladi."}, status=403)
+
+    students = list(group.students.filter(is_active=True).order_by("first_name", "last_name"))
+    student_ids = [s.id for s in students]
+
+    results_map: dict[int, dict[str, Any]] = {}
+    from django.db.models import Avg, Count
+    for row in Result.objects.filter(student_id__in=student_ids).values("student_id").annotate(
+        count=Count("id"),
+        avg_pct=Avg("percentage"),
+    ):
+        results_map[row["student_id"]] = row
+
+    essays_map: dict[int, int] = {}
+    for row in EssaySubmission.objects.filter(student_id__in=student_ids).exclude(status=EssaySubmission.Status.DRAFT).values("student_id").annotate(
+        count=Count("id")
+    ):
+        essays_map[row["student_id"]] = row["count"]
+
+    rows = []
+    for s in students:
+        r_info = results_map.get(s.id, {})
+        avg_pct = round(float(r_info.get("avg_pct") or 0), 1)
+        tests_count = r_info.get("count", 0)
+        essays_count = essays_map.get(s.id, 0)
+        # Learning score calculation
+        score_metric = (avg_pct * 10) + (tests_count * 5) + (essays_count * 15)
+
+        rows.append({
+            "student_id": s.id,
+            "full_name": s.get_full_name() or s.email.split("@")[0],
+            "tests_count": tests_count,
+            "avg_percentage": avg_pct,
+            "essays_count": essays_count,
+            "score_metric": round(score_metric, 1),
+            "is_me": s.id == user.id,
+        })
+
+    rows.sort(key=lambda x: x["score_metric"], reverse=True)
+    for idx, r in enumerate(rows, start=1):
+        r["rank"] = idx
+        r["badge"] = "🥇" if idx == 1 else "🥈" if idx == 2 else "🥉" if idx == 3 else f"#{idx}"
+
+    return JsonResponse({
+        "group_id": group.id,
+        "group_name": group.name,
+        "leaderboard": rows,
+        "total_students": len(rows),
+    })
+
+
+@api_view(["GET"])
+def platform_leaderboard_view(request: HttpRequest) -> JsonResponse:
+    """Privacy-preserving platform-wide leaderboard ranked by verified learning XP."""
+    from apps.accounts.gamification import get_platform_leaderboard
+
+    period = request.GET.get("period", "weekly")
+    limit = min(50, max(5, int(request.GET.get("limit", 20))))
+    user = request.user if getattr(request, "user", None) and request.user.is_authenticated else None
+    data = get_platform_leaderboard(user=user, period=period, limit=limit)
+    return JsonResponse(data)
+
+
+# ---------------------------------------------------------------------------
+# Essay Classroom & Human Review Center (GRANDEC NEXT 8.0)
+# ---------------------------------------------------------------------------
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def student_request_essay_appeal_view(request: HttpRequest, submission_id: int) -> JsonResponse:
+    """Student requests reassessment/appeal on an AI-graded essay."""
+    from apps.essays.models import EssaySubmission
+    from apps.essays.services import TeacherReviewService
+
+    submission = EssaySubmission.objects.filter(id=submission_id, student=request.user).first()
+    if not submission:
+        return JsonResponse({"error": "Esse topilmadi."}, status=404)
+
+    payload = _parse_body(request)
+    reason = str(payload.get("reason", "")).strip()
+    criteria = payload.get("criteria", [])
+    if not reason:
+        reason = "Menimcha, esseyim noto'g'ri baholandi."
+
+    try:
+        updated = TeacherReviewService.request_teacher_review(
+            submission,
+            request.user,
+            reason=reason,
+            criteria=criteria if isinstance(criteria, list) else [],
+        )
+        return JsonResponse({
+            "status": "success",
+            "submission_id": updated.id,
+            "appeal_status": updated.appeal_status,
+            "reviewer_name": updated.assigned_reviewer.get_full_name() if updated.assigned_reviewer else None,
+            "message": "Apellatsiya so'rovingiz qabul qilindi va ustozga yuborildi.",
+        })
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def student_withdraw_essay_appeal_view(request: HttpRequest, submission_id: int) -> JsonResponse:
+    """Student withdraws an active essay reassessment request."""
+    from apps.essays.models import EssaySubmission
+    from apps.essays.services import TeacherReviewService
+
+    submission = EssaySubmission.objects.filter(id=submission_id, student=request.user).first()
+    if not submission:
+        return JsonResponse({"error": "Esse topilmadi."}, status=404)
+
+    try:
+        updated = TeacherReviewService.withdraw_appeal(submission, request.user)
+        return JsonResponse({
+            "status": "success",
+            "appeal_status": updated.appeal_status,
+            "message": "Apellatsiya qaytarib olindi.",
+        })
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def teacher_list_essay_reviews_view(request: HttpRequest) -> JsonResponse:
+    """List pending essay reviews and student appeals for the teacher."""
+    from apps.essays.models import EssaySubmission
+
+    user = request.user
+    is_admin = is_platform_admin(user) or getattr(user, "is_superuser", False)
+    is_teacher = getattr(user, "role", "") in ("teacher", "admin", "center_admin") or is_admin
+
+    if not is_teacher:
+        return JsonResponse({"error": "Faqat o'qituvchilar uchun."}, status=403)
+
+    if is_admin:
+        qs = EssaySubmission.objects.filter(
+            Q(status=EssaySubmission.Status.PENDING_TEACHER) | Q(teacher_review_requested=True)
+        )
+    else:
+        qs = EssaySubmission.objects.filter(
+            Q(assigned_reviewer=user)
+            | Q(assignment__assigned_by=user)
+            | Q(assignment__group__teacher=user)
+            | Q(student__student_groups__teacher=user)
+        ).filter(
+            Q(status=EssaySubmission.Status.PENDING_TEACHER) | Q(teacher_review_requested=True)
+        ).distinct()
+
+    reviews_data = []
+    for sub in qs.select_related("student", "topic", "assignment", "assignment__group").order_by("-teacher_review_requested_at")[:50]:
+        reviews_data.append({
+            "id": sub.id,
+            "student_id": sub.student_id,
+            "student_name": sub.student.get_full_name() or sub.student.email,
+            "topic_title": sub.topic.title if sub.topic else sub.custom_title,
+            "group_name": sub.assignment.group.name if sub.assignment and sub.assignment.group else None,
+            "ai_score": str(sub.total_score) if sub.total_score is not None else None,
+            "word_count": sub.word_count,
+            "appeal_status": getattr(sub, "appeal_status", "none"),
+            "appeal_reason": getattr(sub, "appeal_reason", "") or getattr(sub, "teacher_review_reason", ""),
+            "appeal_criteria": getattr(sub, "appeal_criteria", []),
+            "requested_at": sub.teacher_review_requested_at.strftime("%d.%m.%Y %H:%M") if sub.teacher_review_requested_at else None,
+        })
+
+    return JsonResponse({
+        "pending_reviews": reviews_data,
+        "count": len(reviews_data),
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def teacher_submit_essay_review_view(request: HttpRequest, submission_id: int) -> JsonResponse:
+    """Teacher finalizes human grading, adjusts criteria scores, adds comments and optional voice feedback."""
+    from decimal import Decimal
+    from apps.essays.models import EssaySubmission
+    from apps.essays.services import TeacherReviewService
+
+    submission = EssaySubmission.objects.filter(id=submission_id).first()
+    if not submission:
+        return JsonResponse({"error": "Esse topilmadi."}, status=404)
+
+    # Support JSON or multipart form data
+    if request.content_type and "multipart/form-data" in request.content_type:
+        criteria_raw = request.POST.get("criteria_scores", "{}")
+        try:
+            criteria_scores = json.loads(criteria_raw)
+        except Exception:
+            criteria_scores = {}
+        teacher_comments = request.POST.get("teacher_comments", "")
+        voice_duration = int(request.POST.get("voice_duration_seconds", 0) or 0)
+        voice_file = request.FILES.get("voice_feedback")
+    else:
+        payload = _parse_body(request)
+        criteria_scores = payload.get("criteria_scores", {})
+        teacher_comments = payload.get("teacher_comments", "")
+        voice_duration = int(payload.get("voice_duration_seconds", 0) or 0)
+        voice_file = None
+
+    try:
+        review = TeacherReviewService.submit_review(
+            submission=submission,
+            teacher=request.user,
+            criteria_scores=criteria_scores,
+            teacher_comments=teacher_comments,
+            voice_file=voice_file,
+            voice_duration_seconds=voice_duration,
+        )
+        return JsonResponse({
+            "status": "success",
+            "review_id": review.id,
+            "final_score": str(review.final_score),
+            "has_voice_feedback": bool(review.voice_feedback),
+            "message": "Ustoz baholashi va xulosasi muvaffaqiyatli saqlandi.",
+        })
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def essay_voice_playback_view(request: HttpRequest, submission_id: int):
+    """Secure private audio streaming for teacher voice feedback."""
+    from apps.core.private_files import private_media_response
+    from apps.essays.models import EssaySubmission, TeacherReview
+
+    submission = EssaySubmission.objects.filter(id=submission_id).select_related("student", "assignment__group").first()
+    if not submission:
+        return JsonResponse({"error": "Esse topilmadi."}, status=404)
+
+    user = request.user
+    is_admin = is_platform_admin(user) or getattr(user, "is_superuser", False)
+    is_student = submission.student_id == user.id
+    is_teacher = (
+        (submission.assignment and submission.assignment.group and submission.assignment.group.teacher_id == user.id)
+        or (submission.assigned_reviewer_id == user.id)
+    )
+
+    if not (is_admin or is_student or is_teacher):
+        return JsonResponse({"error": "Ushbu audio fikrni tinglash huquqiga ega emassiz."}, status=403)
+
+    review = TeacherReview.objects.filter(submission=submission).first()
+    if not review or not review.voice_feedback:
+        return JsonResponse({"error": "Ushbu esse uchun audio fikr mavjud emas."}, status=404)
+
+    return private_media_response(request, review.voice_feedback.name)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def classroom_group_essay_gradebook_view(
+    request: HttpRequest, group_id: int, assignment_id: int
+) -> JsonResponse:
+    """Comprehensive group essay gradebook with all students, submission states, and rubric scale."""
+    from apps.essays.models import EssayAssignment, EssaySubmission
+
+    group = StudentGroup.objects.filter(id=group_id).first()
+    if not group:
+        return JsonResponse({"error": "Guruh topilmadi."}, status=404)
+
+    is_admin = is_platform_admin(request.user) or getattr(request.user, "is_superuser", False)
+    if not is_admin and group.teacher_id != request.user.id:
+        return JsonResponse({"error": "Ruxsat etilmagan."}, status=403)
+
+    assignment = EssayAssignment.objects.filter(id=assignment_id, group=group).select_related("topic").first()
+    if not assignment:
+        return JsonResponse({"error": "Esse topshirig'i topilmadi."}, status=404)
+
+    students = list(group.students.filter(is_active=True).order_by("first_name", "last_name"))
+    student_ids = [s.id for s in students]
+
+    submissions = {
+        sub.student_id: sub
+        for sub in EssaySubmission.objects.filter(
+            assignment=assignment,
+            student_id__in=student_ids,
+        ).select_related("student", "teacher_review")
+    }
+
+    rows = []
+    submitted_count = 0
+    graded_count = 0
+    pending_review_count = 0
+    total_score_sum = 0.0
+
+    for s in students:
+        sub = submissions.get(s.id)
+        if sub:
+            submitted_count += 1
+            has_review = hasattr(sub, "teacher_review") and sub.teacher_review is not None
+            has_voice = bool(has_review and sub.teacher_review.voice_feedback)
+            final_val = float(sub.final_score) if sub.final_score is not None else None
+            ai_val = float(sub.total_score) if sub.total_score is not None else None
+
+            if sub.status == EssaySubmission.Status.TEACHER_REVIEWED or final_val is not None:
+                graded_count += 1
+                total_score_sum += final_val if final_val is not None else (ai_val or 0.0)
+            elif sub.status == EssaySubmission.Status.PENDING_TEACHER or sub.teacher_review_requested:
+                pending_review_count += 1
+
+            rows.append({
+                "student_id": s.id,
+                "student_name": s.get_full_name() or s.email.split("@")[0],
+                "submission_id": sub.id,
+                "status": "submitted",
+                "grading_status": sub.status,
+                "submitted_at": sub.created_at.strftime("%d.%m.%Y %H:%M"),
+                "ai_score": ai_val,
+                "final_score": final_val,
+                "appeal_status": getattr(sub, "appeal_status", "none"),
+                "has_voice_feedback": has_voice,
+                "teacher_comments": sub.teacher_review.teacher_comments if has_review else "",
+            })
+        else:
+            rows.append({
+                "student_id": s.id,
+                "student_name": s.get_full_name() or s.email.split("@")[0],
+                "submission_id": None,
+                "status": "not_submitted",
+                "grading_status": "unsubmitted",
+                "submitted_at": None,
+                "ai_score": None,
+                "final_score": None,
+                "appeal_status": "none",
+                "has_voice_feedback": False,
+                "teacher_comments": "",
+            })
+
+    total_assigned = len(students)
+    not_submitted_count = total_assigned - submitted_count
+    avg_score = round(total_score_sum / graded_count, 1) if graded_count > 0 else 0.0
+
+    return JsonResponse({
+        "group_id": group.id,
+        "group_name": group.name,
+        "assignment_id": assignment.id,
+        "topic_title": assignment.topic.title,
+        "due_at": assignment.due_at.strftime("%d.%m.%Y %H:%M") if assignment.due_at else None,
+        "metrics": {
+            "total_assigned": total_assigned,
+            "submitted_count": submitted_count,
+            "not_submitted_count": not_submitted_count,
+            "pending_review_count": pending_review_count,
+            "graded_count": graded_count,
+            "avg_valid_score": avg_score,
+            "max_score": 24,
+        },
+        "roster": rows,
+    })
+

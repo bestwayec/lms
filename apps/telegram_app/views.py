@@ -242,12 +242,21 @@ def tma_profile_view(request: Request) -> Response:
             UserGameScore.objects.filter(user=user).aggregate(total=Sum("total_xp"))["total"]
             or 0
         )
+        profile = getattr(user, "profile", None)
+        profile_xp = getattr(profile, "xp_points", 0)
+        streak = getattr(profile, "current_streak", 0)
+        w_xp = getattr(profile, "weekly_xp", 0)
+        w_league = getattr(profile, "weekly_league", "bronze")
+
         cached_stats = {
             "tests_taken": results.count(),
             "tests_passed": results.filter(is_passed=True).count(),
             "certificates": Certificate.objects.filter(student=user).count(),
-            "total_xp": total_xp,
+            "total_xp": max(total_xp, profile_xp),
             "essays_written": EssaySubmission.objects.filter(student=user).count(),
+            "current_streak": streak,
+            "weekly_xp": w_xp,
+            "weekly_league": w_league,
         }
         cache.set(cache_key, cached_stats, timeout=60)
 
@@ -1061,6 +1070,27 @@ def tma_essay_result_view(request: Request, submission_id: int) -> Response:
         "final_score": float(submission.final_score)
         if submission.final_score is not None
         else None,
+        "appeal_status": getattr(submission, "appeal_status", "none"),
+        "appeal_reason": getattr(submission, "appeal_reason", "") or getattr(submission, "teacher_review_reason", ""),
+        "teacher_comments": (
+            submission.teacher_review.teacher_comments
+            if hasattr(submission, "teacher_review") and submission.teacher_review
+            else ""
+        ),
+        "has_voice_feedback": bool(
+            hasattr(submission, "teacher_review")
+            and submission.teacher_review
+            and submission.teacher_review.voice_feedback
+        ),
+        "voice_feedback_url": (
+            f"/api/classroom/essays/{submission.id}/voice/"
+            if (
+                hasattr(submission, "teacher_review")
+                and submission.teacher_review
+                and submission.teacher_review.voice_feedback
+            )
+            else None
+        ),
         "criteria": [
             {
                 "id": c.criterion_id,

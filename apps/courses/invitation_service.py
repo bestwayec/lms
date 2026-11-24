@@ -49,10 +49,17 @@ def create_group_invitation(
     max_uses: int | None = None,
     requires_approval: bool = False,
     code: str | None = None,
+    target_student: Any | None = None,
 ) -> GroupInvitation:
-    """Creates a new secure group invitation."""
+    """Creates a new secure group invitation (optionally student-targeted)."""
     group = StudentGroup.objects.select_related("teacher").get(pk=group_id)
     _assert_can_manage_group(teacher, group)
+
+    if group.status == StudentGroup.Status.ARCHIVED:
+        raise ValidationError("Arxivlangan guruhga yangi taklifnoma yaratib bo'lmaydi.")
+
+    if target_student is not None:
+        max_uses = 1
 
     token = secrets.token_urlsafe(32)
     inv_code = (code or f"{group.invite_code or 'GR'}-{secrets.token_hex(2).upper()}").strip()
@@ -61,6 +68,7 @@ def create_group_invitation(
     invitation = GroupInvitation.objects.create(
         group=group,
         created_by=teacher,
+        target_student=target_student,
         token=token,
         code=inv_code,
         expires_at=expires_at,
@@ -68,11 +76,12 @@ def create_group_invitation(
         requires_approval=requires_approval,
     )
     logger.info(
-        "Group invitation created: id=%d group=%s teacher=%s code=%s",
+        "Group invitation created: id=%d group=%s teacher=%s code=%s target=%s",
         invitation.id,
         group.name,
         teacher.email,
         inv_code,
+        getattr(target_student, "id", None),
     )
     return invitation
 
@@ -123,6 +132,8 @@ def join_group_by_token(student: Any, token: str) -> dict[str, Any]:
             raise ValidationError("Taklifnoma havolasi noto'g'ri yoki topilmadi.")
 
         if not invitation.is_usable:
+            if invitation.group and getattr(invitation.group, "status", None) == StudentGroup.Status.ARCHIVED:
+                raise ValidationError("Ushbu guruh arxivlangan. Unga qo'shilish mumkin emas.")
             if invitation.is_revoked:
                 raise ValidationError("Ushbu taklifnoma bekor qilingan.")
             if invitation.is_expired:
@@ -133,6 +144,12 @@ def join_group_by_token(student: Any, token: str) -> dict[str, Any]:
 
         group = invitation.group
 
+        if group.status == StudentGroup.Status.ARCHIVED:
+            raise ValidationError("Ushbu guruh arxivlangan. Unga qo'shilish mumkin emas.")
+
+        if invitation.target_student_id is not None and invitation.target_student_id != getattr(student, "id", None):
+            raise ValidationError("Ushbu taklifnoma boshqa o'quvchi uchun mo'ljallangan.")
+
         # Check if already a member
         if group.students.filter(id=student.id).exists():
             return {
@@ -141,6 +158,10 @@ def join_group_by_token(student: Any, token: str) -> dict[str, Any]:
                 "group_id": group.id,
                 "group_name": group.name,
             }
+
+        # Check group capacity
+        if group.students.count() >= group.max_students:
+            raise ValidationError(f"Guruh to'lgan. Maksimal sig'im: {group.max_students} nafar o'quvchi.")
 
         # Check approval requirement
         if invitation.requires_approval:
@@ -227,6 +248,9 @@ def join_group_by_code(student: Any, code: str) -> dict[str, Any]:
         except StudentGroup.DoesNotExist:
             raise ValidationError("Kiritilgan taklif kodi bo'yicha guruh topilmadi.")
 
+        if group.status == StudentGroup.Status.ARCHIVED:
+            raise ValidationError("Ushbu guruh arxivlangan. Unga qo'shilish mumkin emas.")
+
         if group.students.filter(id=student.id).exists():
             return {
                 "status": "already_member",
@@ -234,6 +258,9 @@ def join_group_by_code(student: Any, code: str) -> dict[str, Any]:
                 "group_id": group.id,
                 "group_name": group.name,
             }
+
+        if group.students.count() >= group.max_students:
+            raise ValidationError(f"Guruh to'lgan. Maksimal sig'im: {group.max_students} nafar o'quvchi.")
 
         added, _ = add_student_to_group(
             group,
@@ -282,6 +309,12 @@ def review_join_request(
 
         now = timezone.now()
         if approved:
+            if join_req.group.status == StudentGroup.Status.ARCHIVED:
+                raise ValidationError("Guruh arxivlangan, so'rovni tasdiqlab bo'lmaydi.")
+
+            if join_req.group.students.count() >= join_req.group.max_students:
+                raise ValidationError(f"Guruh to'lgan. Maksimal sig'im: {join_req.group.max_students} nafar o'quvchi.")
+
             # Check if associated invitation was revoked or expired while request was pending
             if join_req.invitation_id:
                 inv = GroupInvitation.objects.select_for_update().get(pk=join_req.invitation_id)

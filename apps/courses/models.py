@@ -256,11 +256,22 @@ class StudentGroup(models.Model):
     Masalan: "9-A sinf", "10-B sinf", "Adabiyot guruhi".
     """
 
+    class Status(models.TextChoices):
+        ACTIVE = "active", _("Faol")
+        ARCHIVED = "archived", _("Arxivlangan")
+
     teacher = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="managed_groups",
         verbose_name=_("o'qituvchi"),
+    )
+    status = models.CharField(
+        _("holat"),
+        max_length=20,
+        choices=Status.choices,
+        default=Status.ACTIVE,
+        db_index=True,
     )
     branch = models.ForeignKey(
         "organizations.CenterBranch",
@@ -369,6 +380,10 @@ class StudentGroup(models.Model):
     @property
     def student_count(self) -> int:
         return self.students.count()
+
+    @property
+    def is_active(self) -> bool:
+        return self.status == self.Status.ACTIVE
 
 
 # ---------------------------------------------------------------------------
@@ -916,6 +931,15 @@ class GroupInvitation(models.Model):
         related_name="created_group_invitations",
         verbose_name=_("yaratuvchi"),
     )
+    target_student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="targeted_group_invitations",
+        verbose_name=_("aniq talaba uchun (ixtiyoriy)"),
+        help_text=_("Agar ko'rsatilsa, ushbu taklifnoma faqat shu talaba uchun bir martalik bo'ladi."),
+    )
     token = models.CharField(
         _("taklif tokeni"),
         max_length=64,
@@ -974,7 +998,17 @@ class GroupInvitation(models.Model):
             return False
         if self.is_expired:
             return False
+        if self.group and getattr(self.group, "status", None) == StudentGroup.Status.ARCHIVED:
+            return False
         if self.max_uses is not None and self.uses_count >= self.max_uses:
+            return False
+        return True
+
+    def is_student_authorized(self, user) -> bool:
+        """Foydalanuvchi ushbu taklifnomadan foydalanish huquqiga egaligini tekshiradi."""
+        if not self.is_usable:
+            return False
+        if self.target_student_id is not None and self.target_student_id != getattr(user, "id", None):
             return False
         return True
 

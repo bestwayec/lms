@@ -521,6 +521,31 @@ class EssaySubmission(models.Model):
     )
 
     # -- Teacher Review Request (student-initiated) -------------------------
+    class AppealStatus(models.TextChoices):
+        NONE = "none", _("Yo'q")
+        SUBMITTED = "submitted", _("Apellatsiya topshirildi")
+        AWAITING_REVIEWER = "awaiting_reviewer", _("Tekshiruvchi kutilmoqda")
+        UNDER_REVIEW = "under_review", _("Ko'rib chiqilmoqda")
+        RESOLVED = "resolved", _("Hal qilindi")
+        WITHDRAWN = "withdrawn", _("Qaytarib olindi")
+
+    appeal_status = models.CharField(
+        _("apellatsiya holati"),
+        max_length=30,
+        choices=AppealStatus.choices,
+        default=AppealStatus.NONE,
+        db_index=True,
+    )
+    appeal_criteria = models.JSONField(
+        _("e'tiroz bildirilgan mezonlar"),
+        default=list,
+        blank=True,
+    )
+    appeal_resolved_at = models.DateTimeField(
+        _("apellatsiya hal qilingan vaqt"),
+        null=True,
+        blank=True,
+    )
     teacher_review_requested = models.BooleanField(
         _("ustoz tekshiruvi so'ralgan"),
         default=False,
@@ -762,6 +787,11 @@ class EssaySubmission(models.Model):
             return "over"
         return "ok"
 
+    @property
+    def appeal_reason(self) -> str:
+        """Alias for teacher_review_reason for consistent appeal reporting."""
+        return self.teacher_review_reason or ""
+
 
 # ---------------------------------------------------------------------------
 # AIEvaluation  (AI pre-grading results)
@@ -883,6 +913,17 @@ class TeacherReview(models.Model):
         _("ustoz izohi"),
         blank=True,
         default="",
+    )
+    voice_feedback = models.FileField(
+        _("ustoz audio mulohazasi"),
+        upload_to="essays/audio/%Y/%m/",
+        blank=True,
+        null=True,
+    )
+    voice_duration_seconds = models.PositiveIntegerField(
+        _("audio davomiyligi (soniya)"),
+        default=0,
+        blank=True,
     )
     reviewed_at = models.DateTimeField(_("tekshirilgan"), auto_now_add=True)
 

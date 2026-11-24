@@ -802,3 +802,186 @@ def export_group_to_pdf(group: StudentGroup) -> bytes:
     story.append(t)
     doc.build(story)
     return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Group Lifecycle, Archiving & Safe Deletion Audit (GRANDEC NEXT 8.0)
+# ---------------------------------------------------------------------------
+
+
+def get_group_dependencies(group: StudentGroup) -> dict[str, Any]:
+    """
+    Audits all dependencies of a StudentGroup across academic history,
+    attendance, homeworks, essays, test attempts, and memberships.
+    """
+    from apps.courses.models import HomeworkSubmission
+    from apps.tests.models import TestAttempt
+
+    students_count = group.students.count()
+    homeworks_count = group.homeworks.count()
+    submissions_count = HomeworkSubmission.objects.filter(homework__group=group).count()
+    attendance_sessions_count = group.attendance_sessions.count()
+    essay_assignments_count = group.essay_assignments.count()
+    test_attempts_count = TestAttempt.objects.filter(classroom_group=group).count()
+    invitations_count = group.invitations.count()
+    join_requests_count = group.join_requests.count()
+
+    has_academic_history = bool(
+        homeworks_count > 0
+        or submissions_count > 0
+        or attendance_sessions_count > 0
+        or essay_assignments_count > 0
+        or test_attempts_count > 0
+    )
+    can_safely_delete = not has_academic_history and students_count == 0
+
+    dependencies_dict = {
+        "students_count": students_count,
+        "homeworks_count": homeworks_count,
+        "submissions_count": submissions_count,
+        "homework_submissions_count": submissions_count,
+        "attendance_sessions_count": attendance_sessions_count,
+        "essay_assignments_count": essay_assignments_count,
+        "test_attempts_count": test_attempts_count,
+        "invitations_count": invitations_count,
+        "join_requests_count": join_requests_count,
+    }
+
+    return {
+        "group_id": group.id,
+        "group_name": group.name,
+        "status": group.status,
+        "is_active": group.is_active,
+        "can_safely_delete": can_safely_delete,
+        "can_delete": can_safely_delete,
+        "has_academic_history": has_academic_history,
+        "recommendation": "delete" if can_safely_delete else "archive",
+        "dependencies": dependencies_dict,
+        **dependencies_dict,
+    }
+
+
+def archive_group(group: StudentGroup, actor: Any) -> StudentGroup:
+    """
+    Safely archives a StudentGroup.
+    Revokes all active invitations, marks status as ARCHIVED, preserving
+    all academic records, attendance, submissions, essays, and attempts.
+    """
+    from django.core.exceptions import PermissionDenied
+    from apps.accounts.access import is_platform_admin
+
+    if actor is None or not getattr(actor, "is_authenticated", False):
+        raise PermissionDenied("Foydalanuvchi tizimga kirmagan.")
+    if not (is_platform_admin(actor) or getattr(actor, "is_superuser", False) or group.teacher_id == actor.id):
+        raise PermissionDenied("Guruhni arxivlash huquqiga ega emassiz.")
+
+    with transaction.atomic():
+        locked_group = StudentGroup.objects.select_for_update().get(id=group.id)
+        locked_group.status = StudentGroup.Status.ARCHIVED
+        locked_group.save(update_fields=["status", "updated_at"])
+
+        # Revoke all active invitations for this group
+        locked_group.invitations.filter(is_revoked=False).update(is_revoked=True)
+
+    logger.info("Group %d (%s) archived by user %s", group.id, group.name, getattr(actor, "id", None))
+    return locked_group
+
+
+def restore_group(group: StudentGroup, actor: Any) -> StudentGroup:
+    """Restores an archived StudentGroup back to ACTIVE status."""
+    from django.core.exceptions import PermissionDenied
+    from apps.accounts.access import is_platform_admin
+
+    if actor is None or not getattr(actor, "is_authenticated", False):
+        raise PermissionDenied("Foydalanuvchi tizimga kirmagan.")
+    if not (is_platform_admin(actor) or getattr(actor, "is_superuser", False) or group.teacher_id == actor.id):
+        raise PermissionDenied("Guruhni qayta faollashtirish huquqiga ega emassiz.")
+
+    with transaction.atomic():
+        locked_group = StudentGroup.objects.select_for_update().get(id=group.id)
+        locked_group.status = StudentGroup.Status.ACTIVE
+        locked_group.save(update_fields=["status", "updated_at"])
+
+    logger.info("Group %d (%s) restored by user %s", group.id, group.name, getattr(actor, "id", None))
+    return locked_group
+
+
+def delete_group_safely(group: StudentGroup, actor: Any) -> bool:
+    """
+    Attempts to permanently delete an empty StudentGroup without academic history.
+    Raises ValidationError if the group has students, homeworks, submissions,
+    attendance, or essay assignments.
+    """
+    from django.core.exceptions import PermissionDenied, ValidationError
+    from apps.accounts.access import is_platform_admin
+
+    if actor is None or not getattr(actor, "is_authenticated", False):
+        raise PermissionDenied("Foydalanuvchi tizimga kirmagan.")
+    if not (is_platform_admin(actor) or getattr(actor, "is_superuser", False) or group.teacher_id == actor.id):
+        raise PermissionDenied("Guruhni o'chirish huquqiga ega emassiz.")
+
+    deps = get_group_dependencies(group)
+    if not deps["can_safely_delete"]:
+        history_details = []
+        if deps["students_count"]:
+            history_details.append(f"{deps['students_count']} nafar o'quvchi")
+        if deps["homeworks_count"]:
+            history_details.append(f"{deps['homeworks_count']} ta vazifa")
+        if deps["attendance_sessions_count"]:
+            history_details.append(f"{deps['attendance_sessions_count']} ta davomat darsi")
+        if deps["essay_assignments_count"]:
+            history_details.append(f"{deps['essay_assignments_count']} ta esse topshirig'i")
+        if deps["test_attempts_count"]:
+            history_details.append(f"{deps['test_attempts_count']} ta test urinishi")
+
+        details_str = ", ".join(history_details)
+        raise ValidationError(
+            f"Guruhda mavjud ma'lumotlar bor ({details_str}). "
+            f"Akademik tarix daxlsizligi uchun ushbu guruhni o'chirish taqiqlanadi. "
+            f"O'rniga guruhni arxivlang."
+        )
+
+    with transaction.atomic():
+        group_name = group.name
+        group_id = group.id
+        group.delete()
+
+    logger.info("Empty group %d (%s) deleted by user %s", group_id, group_name, getattr(actor, "id", None))
+    return True
+
+
+def transfer_group_teacher(group: StudentGroup, new_teacher: User, actor: Any) -> StudentGroup:
+    """
+    Transfers responsibility of an authorized group to a new teacher.
+    Validates permissions, active status and teacher role.
+    """
+    from django.core.exceptions import PermissionDenied, ValidationError
+    from apps.accounts.access import is_platform_admin
+
+    if actor is None or not getattr(actor, "is_authenticated", False):
+        raise PermissionDenied("Foydalanuvchi tizimga kirmagan.")
+    if not (is_platform_admin(actor) or getattr(actor, "is_superuser", False) or group.teacher_id == actor.id):
+        raise PermissionDenied("Guruh o'qituvchisini o'zgartirish huquqiga ega emassiz.")
+
+    if not new_teacher or not new_teacher.is_active:
+        raise ValidationError("Yangi tayinlanayotgan o'qituvchi topilmadi yoki hisob faol emas.")
+
+    if getattr(new_teacher, "role", "") != "teacher" and not getattr(new_teacher, "is_teacher", False) and not getattr(new_teacher, "is_staff", False):
+        raise ValidationError("Faqat tasdiqlangan o'qituvchiga guruh mas'uliyatini o'tkazish mumkin.")
+
+    with transaction.atomic():
+        locked_group = StudentGroup.objects.select_for_update().get(id=group.id)
+        old_teacher_id = locked_group.teacher_id
+        locked_group.teacher = new_teacher
+        locked_group.save(update_fields=["teacher", "updated_at"])
+
+    logger.info(
+        "Group %d (%s) teacher transferred from %s to %s by user %s",
+        group.id,
+        group.name,
+        old_teacher_id,
+        new_teacher.id,
+        getattr(actor, "id", None),
+    )
+    return locked_group
+
