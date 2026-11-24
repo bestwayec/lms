@@ -496,7 +496,7 @@ export default function StudentGroupDetail() {
                       <Link
                         to={
                           isCompleted
-                            ? `/results/${testItem.result?.score ? testItem.id : testItem.id}`
+                            ? '/results'
                             : isInProgress
                             ? `/take/${testItem.attempt_id}`
                             : `/tests/${testItem.id}`

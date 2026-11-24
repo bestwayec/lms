@@ -3370,7 +3370,9 @@
     "filter_by_category": "Kategoriya bo‘yicha filter",
     "panel_visibility_audit": "Auditoriya Auditi",
     "panel_visibility_audit_title": "Ochiq Studio Testlari Auditi",
-    "panel_visibility_audit_desc": "Tizimdagi ochiq (PUBLIC) Studio testlarini tekshirish va ularni xavfsiz tarzda faqat guruhlar (GROUP_ONLY) uchun o'tkazish."
+    "panel_visibility_audit_desc": "Tizimdagi ochiq (PUBLIC) Studio testlarini tekshirish va ularni xavfsiz tarzda faqat guruhlar (GROUP_ONLY) uchun o'tkazish.",
+    "join_request_submitted": "Qo‘shilish so‘rovi yuborildi",
+    "join_request_pending_desc": "Guruhga qo‘shilish so‘rovi ustozga yuborildi. Ustoz tasdiqlagach, ushbu guruh testlari sizga ochiladi."
   },
   "ru": {
     "spk_practise_again": "Повторить эту тему",
@@ -6743,7 +6745,9 @@
     "filter_by_category": "Фильтр по категориям",
     "panel_visibility_audit": "Аудит видимости",
     "panel_visibility_audit_title": "Аудит публичных тестов Studio",
-    "panel_visibility_audit_desc": "Проверка публичных (PUBLIC) тестов Studio в системе и безопасный перевод их в режим только для групп (GROUP_ONLY)."
+    "panel_visibility_audit_desc": "Проверка публичных (PUBLIC) тестов Studio в системе и безопасный перевод их в режим только для групп (GROUP_ONLY).",
+    "join_request_submitted": "Запрос на вступление отправлен",
+    "join_request_pending_desc": "Запрос на вступление в группу отправлен учителю. После подтверждения учителем тесты группы станут доступны."
   },
   "en": {
     "spk_practise_again": "Practise this topic again",
@@ -10116,6 +10120,8 @@
     "filter_by_category": "Filter by category",
     "panel_visibility_audit": "Visibility Audit",
     "panel_visibility_audit_title": "Public Studio Tests Audit",
-    "panel_visibility_audit_desc": "Review public (PUBLIC) Studio tests across the platform and safely migrate them to group-only (GROUP_ONLY) access."
+    "panel_visibility_audit_desc": "Review public (PUBLIC) Studio tests across the platform and safely migrate them to group-only (GROUP_ONLY) access.",
+    "join_request_submitted": "Join request submitted",
+    "join_request_pending_desc": "Your request to join the group has been sent to the teacher. Once approved, the group tests will be available."
   }
 }

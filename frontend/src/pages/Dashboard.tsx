@@ -347,7 +347,7 @@ export default function Dashboard() {
     practiceUrl: weakPracticeUrl(w),
   })), [data?.weak_parts, partLabel]);
 
-  const now = new Date();
+  const [now] = useState(() => new Date());
   const monthNamesByLang: Record<string, string[]> = {
     uz: ['YANVAR', 'FEVRAL', 'MART', 'APREL', 'MAY', 'IYUN', 'IYUL', 'AVGUST', 'SENTYABR', 'OKTYABR', 'NOYABR', 'DEKABR'],
     en: ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'],

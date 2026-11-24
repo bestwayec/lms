@@ -3037,6 +3037,90 @@ export const GroupInviteApi = {
     }),
 };
 
+// -- Classroom 6.0 API (Teacher Approval & Student Enrollment) -------------
+export interface TeacherPendingJoinRequest {
+  id: number;
+  student_id: number;
+  student_name: string;
+  student_email: string;
+  group_id: number;
+  group_name: string;
+  created_at: string;
+  token?: string;
+}
+
+export interface TeacherClassroomOverview {
+  groups: {
+    id: number;
+    name: string;
+    subject: string;
+    teacher_name: string;
+    students_count: number;
+    max_students: number;
+    invite_code: string;
+    active_homework_count: number;
+  }[];
+  total_groups: number;
+  pending_join_requests_count: number;
+  pending_join_requests: TeacherPendingJoinRequest[];
+}
+
+export interface StudentJoinResponse {
+  status: 'JOINED' | 'REQUESTED' | 'ALREADY_MEMBER' | 'joined' | 'pending_approval' | 'already_member';
+  group_id?: number;
+  group_name?: string;
+  request_id?: number;
+  message: string;
+}
+
+export interface TestAccessResponse {
+  test_id: number;
+  can_take: boolean;
+  audience_mode: string;
+  is_classroom_entitlement: boolean;
+  requires_subscription: boolean;
+  reason: string;
+}
+
+export const ClassroomApi = {
+  teacherOverview: () =>
+    api<TeacherClassroomOverview>('/api/classroom/teacher/overview/'),
+  listJoinRequests: () =>
+    api<{ pending_requests: TeacherPendingJoinRequest[]; total: number }>('/api/classroom/teacher/join-requests/'),
+  reviewJoinRequest: (requestId: number, approved: boolean) =>
+    api<{ status: string; message: string; group_id: number; student_id: number }>(
+      `/api/classroom/teacher/join-requests/${requestId}/review/`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ approved }),
+      },
+    ),
+  createInvitation: (payload: { group_id: number; expires_in_hours?: number; max_uses?: number; requires_approval?: boolean }) =>
+    api<{
+      status: string;
+      invitation_id: number;
+      token: string;
+      code: string;
+      deep_link: string;
+      web_link: string;
+      expires_at: string;
+      max_uses: number;
+      requires_approval: boolean;
+    }>('/api/classroom/teacher/invitations/create/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  studentJoin: (payload: { code?: string; token?: string }) =>
+    api<StudentJoinResponse>('/api/classroom/student/join/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  studentMyGroups: () =>
+    api<{ groups: Array<Record<string, unknown>>; total_groups: number }>('/api/classroom/student/my-groups/'),
+  checkTestAccess: (testId: number) =>
+    api<TestAccessResponse>(`/api/classroom/tests/${testId}/access/`),
+};
+
 // -- Referral & Viral Bonus Engine -----------------------------------------
 export interface ReferralStats {
   referral_code: string;

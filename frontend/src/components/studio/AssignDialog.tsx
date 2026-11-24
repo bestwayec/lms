@@ -68,6 +68,7 @@ export default function AssignDialog({ testId, testTitle, links, assignments, on
   const [current, setCurrent] = useState<StudioLinks>(links);
   const [qrOpen, setQrOpen] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const [minDate] = useState(() => localInput(new Date()));
 
   useEffect(() => {
     api
@@ -146,7 +147,7 @@ export default function AssignDialog({ testId, testTitle, links, assignments, on
             </label>
             <label className="studio-field">
               <span>{t('studio_deadline')}</span>
-              <input type="datetime-local" value={due} min={localInput(new Date())} onChange={(e) => setDue(e.target.value)} />
+              <input type="datetime-local" value={due} min={minDate} onChange={(e) => setDue(e.target.value)} />
             </label>
             <button type="button" className="btn primary" onClick={() => void assign()} disabled={busy || groupId === '' || !due}>
               <Send size={16} aria-hidden="true" /> {busy ? t('studio_assigning') : t('studio_assign_btn')}

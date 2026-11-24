@@ -9,6 +9,39 @@
    - Ustoz kabinetida har bir o'quvchining PRO holati (`⭐ PRO (Faol)`), ishlagan testlari va esselari aks etishi.
 3. Attestatsiya 2026 yangi diagnostika testini 50 ta savoli bilan bazaga seed qilish, kategoriyalashtirish va VPS ga deploy qilish.
 
+### 2.95. Rasmiy Versiya v6.3: Autonomous Improvement & UI/UX Polish (Ustoz va O'quvchi Tajribasi Mukammalligi)
+- **Maqsad**:
+  * **Ustoz Tajribasi va Boshqaruv Qulayligi**:
+    - `TeacherDashboard.tsx` boshqaruv paneliga yangi o'quvchilarning kutayotgan so'rovlari (`pending_join_requests`) bo'limi kiritildi — ustoz 1 ta bosishda o'quvchini tasdiqlashi (`Tasdiqlash ✓`) yoki rad etishi mumkin.
+    - Asosiy amallar paneliga (Action Hub) 5-amal sifatida to'g'ridan-to'g'ri **Test Studiyasi va Smart Builder** (`/teacher/studio`) kiritildi.
+    - Desktop yon menyusi (`Layout.tsx`) va mobil menyuda (`MobileNavDrawer.tsx`) dublikat `/teacher` va `/dashboard` havolalari tozalanib, to'g'ridan-to'g'ri kurs to'lovlari (`/teacher/finance`) ulandi.
+  * **O'quvchi Tajribasi va Sinfxona Kirish Huquqi**:
+    - Guruhga taklif kodi yoki havola orqali qo'shilishda (`JoinGroup.tsx`) ham to'g'ridan-to'g'ri a'zolik, ham ustoz tasdig'i talab etiladigan holat (`REQUESTED` / `pending_approval`) uchun tushunarli holat kartasi va yo'naltirish qo'shildi.
+    - Test tafsilotlari (`TestDetail.tsx`) sahifasida auditoriya rejimi belgilari (`GROUP_ONLY`, `GROUP_AND_SUBSCRIBERS`, `SUBSCRIBERS_ONLY`, `PUBLIC_FREE`) aniq ko'rsatilib, sinfxona a'zolari bepul kirish huquqiga ega ekanligi yorlig'i bilan boyitildi.
+    - Guruh sahifasida (`StudentGroupDetail.tsx`) yakunlangan test natijalariga o'tish linki tozalandi.
+  * **Frontend API va Kompilyator Tozaligi**:
+    - `frontend/src/lib/api.ts` ga to'liq `ClassroomApi` mijozi qo'shildi (overview, join requests, review, invitations, student join, check test access).
+    - Oxlint React Compiler qoidalari bo'yicha barcha 8 ta ogohlantirish (purity, ref access during render, cascading render effect) 100% bartaraf etildi (0 warnings, 0 errors).
+    - `uz`, `ru`, `en` tillarida tarjimalar to'liq paritetga keltirildi (`join_request_submitted`, `join_request_pending_desc`).
+- **Bajarildi**:
+  * [x] `frontend/src/lib/api.ts`: `ClassroomApi` qo'shildi.
+  * [x] `TeacherDashboard.tsx`: Kutilayotgan so'rovlar kartasi va Test Studiyasi 5-amali qo'shildi.
+  * [x] `Layout.tsx` va `MobileNavDrawer.tsx`: Navigatsiya optimallashdi, to'lovlar ulandi.
+  * [x] `JoinGroup.tsx`: So'rov yuborilgan holat va tasdiqlash yo'riqnomasi qo'yildi.
+  * [x] `TestDetail.tsx`: Auditoriya rejimi belgilari va sinfxona kirish yorliqlari boyitildi.
+  * [x] `AssignDialog.tsx`, `ScoreCardModal.tsx`, `ScanOMR.tsx`, `Landing.tsx`, `Dashboard.tsx`: Oxlint tozaligi (0 warning, 0 error).
+  * [x] `npm --prefix frontend run lint`: 0 warnings, 0 errors (188 fayl).
+  * [x] `npm --prefix frontend test`: 28 passed, 0 failed (100% PASS).
+  * [x] `npm --prefix frontend run build`: 0 xato, toza ishlab chiqarish yig'masi (built in 2.34s).
+  * [x] `pytest tests/test_user_facing_messages.py`: 6 passed, 0 failed.
+  * [x] `pytest tests/test_stage6_classroom_and_access_policy.py tests/test_stage2_stage3_invitations_and_telegram_e2e.py`: 16 passed, 0 failed.
+  * [x] `python manage.py check`: 0 issues.
+  * [x] `ruff check apps/ tests/`: All checks passed.
+- **Jarayonda**:
+  * Barcha vazifalar to'liq yakunlandi.
+- **Keyingi qadamlar**:
+  * O'zgarishlarni git ga commit qilib, mavjud PR #145 ga push qilish.
+
 ### 2.94. Rasmiy Versiya v6.2: Universal Test Types, Group Approval Workflow & Multi-Center Isolation (PR #145 Yakuniy Qism)
 - **Maqsad**:
   * **Universal Test Kategoriyalari va Vaqt Boshqaruvi (Stage 1)**:

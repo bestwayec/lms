@@ -7,6 +7,7 @@ import { canReviewEssays, canTeach, isPlatformAdmin } from '../lib/api';
 import {
   BarChartIcon,
   CameraIcon,
+  CreditCardIcon,
   CrownIcon,
   FileTextIcon,
   FolderOpenIcon,
@@ -235,9 +236,9 @@ export default function MobileNavDrawer({ isOpen, onClose }: MobileNavDrawerProp
                   >
                     {t('nav_sec_teacher')}
                   </p>
-                  <NavLink to="/teacher" end style={linkStyle} onClick={onClose}>
-                    <UsersIcon size={18} />
-                    <span>{t('nav_students')}</span>
+                  <NavLink to="/teacher/finance" style={linkStyle} onClick={onClose}>
+                    <CreditCardIcon size={18} />
+                    <span>{t('tuition_title')}</span>
                   </NavLink>
                   <NavLink to="/groups" style={linkStyle} onClick={onClose}>
                     <FolderOpenIcon size={18} />

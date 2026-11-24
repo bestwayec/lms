@@ -15,6 +15,7 @@ import { useAuth } from '../auth/authState';
 import { useToast } from '../context/toastState';
 import { useLang } from '../i18n/LangContext';
 import {
+  ClassroomApi,
   GroupInviteApi,
   type GroupJoinPreview,
 } from '../lib/api';
@@ -37,6 +38,8 @@ function JoinGroupContent({ token }: { token?: string }) {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [joined, setJoined] = useState(false);
+  const [requested, setRequested] = useState(false);
+  const [requestMsg, setRequestMsg] = useState('');
   const previewRequest = useRef(0);
 
   const fetchPreview = useCallback(async (codeOrToken: string) => {
@@ -87,7 +90,20 @@ function JoinGroupContent({ token }: { token?: string }) {
     if (!code) return;
     setSubmitting(true);
     try {
-      const res = await GroupInviteApi.join(code);
+      const isToken = code.length > 8 && !code.startsWith('#');
+      const res = await ClassroomApi.studentJoin({
+        token: isToken ? code : undefined,
+        code: !isToken ? code : undefined,
+      });
+
+      const isPending = res.status === 'REQUESTED' || res.status === 'pending_approval';
+      if (isPending) {
+        setRequested(true);
+        setRequestMsg(res.message);
+        toast.success(res.message);
+        return;
+      }
+
       toast.success(res.message || t('jg_joined'));
       setJoined(true);
       const gid = res.group_id;
@@ -99,8 +115,19 @@ function JoinGroupContent({ token }: { token?: string }) {
         }
       }, 1000);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : t('jg_join_failed');
-      toast.error(msg);
+      try {
+        const legacyRes = await GroupInviteApi.join(code);
+        toast.success(legacyRes.message || t('jg_joined'));
+        setJoined(true);
+        const gid = legacyRes.group_id;
+        setTimeout(() => {
+          if (gid) navigate(`/groups/${gid}`);
+          else navigate('/dashboard');
+        }, 1000);
+      } catch (err2: unknown) {
+        const msg = err instanceof Error ? err.message : (err2 instanceof Error ? err2.message : t('jg_join_failed'));
+        toast.error(msg);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -231,7 +258,34 @@ function JoinGroupContent({ token }: { token?: string }) {
             )}
 
             {/* Action Buttons */}
-            {joined ? (
+            {requested ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ color: '#F59E0B', fontWeight: 700, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 18 }}>⏳</span>
+                  <span>{requestMsg || "Guruhga qo'shilish so'rovi ustozga yuborildi. Ustoz tasdiqlashi kutilmoqda."}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate('/dashboard')}
+                  style={{
+                    padding: '12px 20px',
+                    borderRadius: 12,
+                    background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
+                    color: '#fff',
+                    fontWeight: 700,
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: 14,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                  }}
+                >
+                  Boshqaruv paneliga qaytish →
+                </button>
+              </div>
+            ) : joined ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div style={{ color: '#10B981', fontWeight: 600, fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <CheckCircle2 size={18} /> {t('jg_already')}

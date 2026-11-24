@@ -572,3 +572,34 @@ Executed 2026-11-23 on branch `fix/grandec-ci-recovery-and-smart-builder-v6`:
    - All tests passing with 0 failures.
    - Pure human authorship under `Komiljon Roziyev <kruziyev0@gmail.com>` with zero AI attribution.
    - Production deployment is manual-only; automatic deployment to `grandec.uz` is strictly disabled.
+
+## GRANDEC NEXT 6.3 — Autonomous Improvement & UI/UX Polish
+
+Executed on branch `fix/grandec-ci-recovery-and-smart-builder-v6`:
+
+1. **Teacher Workspace & Action Hub Enhancements**:
+   - In `TeacherDashboard.tsx`: Integrated `ClassroomApi.teacherOverview()` and `ClassroomApi.listJoinRequests()`.
+   - Added live pending student join requests notification banner and 1-click Approve (`Tasdiqlash ✓`) / Reject (`Rad etish`) workflow directly on the dashboard.
+   - Added Action Card 5 ("Test Studiyasi & Banki") directly in the Teacher Workspace Action Hub for 1-click access to Smart Test Builder and test bank.
+   - Streamlined desktop sidebar (`Layout.tsx`) and mobile drawer (`MobileNavDrawer.tsx`), eliminating redundant `/teacher` vs `/dashboard` routes and connecting direct tuition management (`/teacher/finance`).
+
+2. **Student Experience & Group Onboarding**:
+   - In `JoinGroup.tsx`: Enhanced to handle both instant enrollment and approval workflows (`pending_approval` / `REQUESTED` states) with clear guidance.
+   - In `TestDetail.tsx`: Displayed explicit audience mode badges (`GROUP_ONLY`, `GROUP_AND_SUBSCRIBERS`, `SUBSCRIBERS_ONLY`, `PUBLIC_FREE`) and classroom access indicators.
+   - In `StudentGroupDetail.tsx`: Cleaned up results link.
+
+3. **Frontend API & Compiler Purity (Oxlint Zero Warnings)**:
+   - Added `ClassroomApi` client in `frontend/src/lib/api.ts`.
+   - Fixed all 8 Oxlint React Compiler warnings across `AssignDialog.tsx`, `ScoreCardModal.tsx`, `ScanOMR.tsx`, `Landing.tsx`, `Dashboard.tsx`, and `TeacherDashboard.tsx` (`0 warnings, 0 errors` on 188 files).
+   - Added translation keys `join_request_submitted` and `join_request_pending_desc` across `uz`, `ru`, and `en` in `frontend/src/i18n/translations.json`.
+
+| Check | Result |
+|---|---|
+| Translation Parity (`tests/test_user_facing_messages.py`) | **6 passed, 0 failed** |
+| Classroom & Telegram E2E (`test_stage6_classroom_and_access_policy.py`, `test_stage2_stage3_invitations_and_telegram_e2e.py`) | **16 passed, 0 failed** |
+| Django System Check (`python manage.py check`) | **0 issues** |
+| Migrations Check (`makemigrations --check --dry-run`) | **No changes detected (clean)** |
+| Ruff Code Quality Check (`ruff check apps/ tests/`) | **All checks passed!** |
+| Oxlint Code Quality Check (`npm --prefix frontend run lint`) | **0 warnings, 0 errors (188 files)** |
+| Frontend Unit Tests (`npm --prefix frontend test`) | **28 passed, 0 failed** |
+| Frontend Production Build (`npm --prefix frontend run build`) | **Built in 2.34s (0 errors)** |

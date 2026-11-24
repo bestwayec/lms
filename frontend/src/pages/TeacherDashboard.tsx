@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useLang } from '../i18n/LangContext';
 import {
+  ClassroomApi,
   MockTests,
   type MockLeaderboardResponse,
   type MockTestCreateResponse,
   School,
+  type TeacherPendingJoinRequest,
   type WeeklyReportRow,
 } from '../lib/api';
 import AnalyticsChart from '../components/AnalyticsChart';
@@ -140,6 +142,16 @@ export default function TeacherDashboard() {
   const [hwModalOpen, setHwModalOpen] = useState(false);
   const [hwGroupId, setHwGroupId] = useState<number | null>(null);
 
+  // Classroom 6.0: Pending Join Requests state
+  const [pendingRequests, setPendingRequests] = useState<TeacherPendingJoinRequest[]>([]);
+  const [reviewingId, setReviewingId] = useState<number | null>(null);
+
+  const loadJoinRequests = useCallback(() => {
+    ClassroomApi.listJoinRequests()
+      .then((res) => setPendingRequests(res.pending_requests || []))
+      .catch(() => {});
+  }, []);
+
   const refreshOverview = useCallback(() => {
     School.teacher()
       .then((r) => {
@@ -148,7 +160,24 @@ export default function TeacherDashboard() {
       .catch((e: unknown) => {
         setErr(errMessage(e));
       });
-  }, []);
+    loadJoinRequests();
+  }, [loadJoinRequests]);
+
+  const handleReviewJoin = async (requestId: number, approved: boolean) => {
+    setReviewingId(requestId);
+    try {
+      const res = await ClassroomApi.reviewJoinRequest(requestId, approved);
+      setPendingRequests((prev) => prev.filter((r) => r.id !== requestId));
+      if (approved) {
+        refreshOverview();
+      }
+      alert(res.message || (approved ? "So'rov muvaffaqiyatli tasdiqlandi" : "So'rov rad etildi"));
+    } catch (e2) {
+      alert(e2 instanceof Error ? e2.message : 'Xatolik yuz berdi');
+    } finally {
+      setReviewingId(null);
+    }
+  };
 
   const handleDeleteHomework = async (homeworkId: number) => {
     if (!window.confirm(t('td_delete_hw_confirm'))) return;
@@ -162,6 +191,7 @@ export default function TeacherDashboard() {
 
   useEffect(() => {
     let alive = true;
+    loadJoinRequests();
     School.weeklyReports().then(({ results }) => {
       if (alive) setWeeklyReports(results);
     }).catch(() => { /* report archive is supplementary */ });
@@ -193,12 +223,12 @@ export default function TeacherDashboard() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [loadJoinRequests]);
 
   const groups = data?.groups ?? EMPTY_GROUPS;
   const recent = data?.recent_results ?? EMPTY_RECENT_RESULTS;
 
-  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const [todayStr] = useState(() => new Date().toISOString().slice(0, 10));
   const todaySubmissions = useMemo(
     () => recent.filter((r) => r.date && r.date.startsWith(todayStr)),
     [recent, todayStr],
@@ -330,7 +360,112 @@ export default function TeacherDashboard() {
         </button>
       </div>
 
-      {/* 🌟 4 ASOSIY AMAL (Teacher Workspace 3.0 Action Hub) */}
+      {/* 🔔 Kutilayotgan O'quvchilar So'rovlari (Pending Join Requests) */}
+      {pendingRequests.length > 0 && (
+        <div
+          className="card"
+          style={{
+            margin: '0 0 24px',
+            background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(217, 119, 6, 0.08) 100%)',
+            border: '1.5px solid rgba(245, 158, 11, 0.45)',
+            borderRadius: 18,
+            padding: '20px 24px',
+            boxShadow: '0 8px 24px rgba(245, 158, 11, 0.12)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 22, background: 'rgba(245, 158, 11, 0.2)', padding: '6px 10px', borderRadius: 12 }}>
+                🔔
+              </span>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900, color: '#F59E0B' }}>
+                  {pendingRequests.length} ta o&apos;quvchi guruhga qo&apos;shilish so&apos;rovini yuborgan
+                </h3>
+                <p className="muted small" style={{ margin: '2px 0 0' }}>
+                  O&apos;quvchi sinfxonaga qo&apos;shilishi uchun so&apos;rovni tasdiqlang.
+                </p>
+              </div>
+            </div>
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 800,
+                padding: '4px 10px',
+                borderRadius: 8,
+                background: 'rgba(245, 158, 11, 0.2)',
+                color: '#F59E0B',
+              }}
+            >
+              Kutilmoqda
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {pendingRequests.map((req) => (
+              <div
+                key={req.id}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  background: 'var(--bg-surface, rgba(15, 23, 42, 0.6))',
+                  border: '1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))',
+                  borderRadius: 14,
+                  padding: '12px 18px',
+                  flexWrap: 'wrap',
+                  gap: 12,
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: '0.98rem' }}>
+                    {req.student_name} <span className="muted small font-normal">({req.student_email})</span>
+                  </div>
+                  <div className="muted small" style={{ marginTop: 2 }}>
+                    Guruh: <strong style={{ color: '#818cf8' }}>{req.group_name}</strong> · Sana: {req.created_at ? new Date(req.created_at).toLocaleDateString() : 'Yaqinda'}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    className="btn primary sm"
+                    disabled={reviewingId === req.id}
+                    onClick={() => void handleReviewJoin(req.id, true)}
+                    style={{
+                      background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                      borderColor: '#10B981',
+                      fontWeight: 800,
+                      padding: '6px 16px',
+                      borderRadius: 10,
+                    }}
+                  >
+                    {reviewingId === req.id ? '...' : 'Tasdiqlash ✓'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn sm"
+                    disabled={reviewingId === req.id}
+                    onClick={() => void handleReviewJoin(req.id, false)}
+                    style={{
+                      background: 'rgba(239, 68, 68, 0.15)',
+                      color: '#EF4444',
+                      borderColor: 'rgba(239, 68, 68, 0.3)',
+                      fontWeight: 800,
+                      padding: '6px 14px',
+                      borderRadius: 10,
+                    }}
+                  >
+                    Rad etish
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 🌟 ASOSIY AMALLAR (Teacher Workspace 3.0 Action Hub) */}
       <div
         style={{
           display: 'grid',
@@ -560,6 +695,57 @@ export default function TeacherDashboard() {
             <span style={{ fontSize: 13, fontWeight: 800, color: '#0ea5e9' }}>Ko&apos;rish →</span>
           </div>
         </div>
+
+        {/* AMAL 5: TEST STUDIYASI VA BANKI */}
+        <Link
+          to="/teacher/studio"
+          className="card"
+          style={{
+            margin: 0,
+            textDecoration: 'none',
+            cursor: 'pointer',
+            background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.12) 0%, rgba(147, 51, 234, 0.22) 100%)',
+            border: '1.5px solid rgba(168, 85, 247, 0.45)',
+            borderRadius: 18,
+            padding: '20px',
+            boxShadow: '0 8px 24px rgba(168, 85, 247, 0.12)',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 24, background: 'rgba(168, 85, 247, 0.2)', padding: '6px 10px', borderRadius: 12 }}>
+                  ✨
+                </span>
+                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, color: '#C084FC' }}>
+                  5. {t('studio_title', 'Test Studiyasi')}
+                </h3>
+              </div>
+              <ChevronRight size={18} color="#C084FC" />
+            </div>
+            <p className="muted small" style={{ margin: '0 0 12px', lineHeight: 1.5 }}>
+              Smart Builder (Word, PPTX, PDF, Excel), toifali testlar, vaqt va guruhga biriktirish.
+            </p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 800,
+                padding: '4px 10px',
+                borderRadius: 8,
+                background: 'rgba(168, 85, 247, 0.2)',
+                color: '#C084FC',
+              }}
+            >
+              {data?.published_tests != null ? `${data.published_tests} ta test` : 'Smart Test Builder'}
+            </span>
+            <span style={{ fontSize: 13, fontWeight: 800, color: '#C084FC' }}>Studiyani ochish →</span>
+          </div>
+        </Link>
       </div>
 
       {/* 📅 BUGUNGI DARSLAR (Today's Lessons Schedule) */}

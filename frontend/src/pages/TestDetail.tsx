@@ -30,6 +30,7 @@ interface Detail {
   /** Section → part → group layout (CD exam engine), e.g. Teacher Studio tests. */
   has_cd_structure?: boolean;
   access_type?: 'PUBLIC' | 'PRO_ONLY' | 'STUDENTS_ONLY';
+  audience_mode?: 'GROUP_ONLY' | 'GROUP_AND_SUBSCRIBERS' | 'SUBSCRIBERS_ONLY' | 'PUBLIC_FREE';
   has_pin?: boolean;
   requires_pin?: boolean;
   strict_anti_cheat?: boolean;
@@ -186,14 +187,24 @@ export default function TestDetail() {
                     .replace('{max}', String(detail.cefr_scale.scale_max))
                 : `${t('pass_suffix')}: ${detail.pass_percentage}%`}
             </span>
-            {detail.access_type === 'PRO_ONLY' && (
+            {(detail.audience_mode === 'GROUP_ONLY' || detail.access_type === 'STUDENTS_ONLY') && (
+              <span className="badge" style={{ background: '#EDE9FE', color: '#5B21B6', fontWeight: 800 }}>
+                👥 Faqat Sinfxona guruhi
+              </span>
+            )}
+            {detail.audience_mode === 'GROUP_AND_SUBSCRIBERS' && (
+              <span className="badge" style={{ background: '#E0F2FE', color: '#0369A1', fontWeight: 800 }}>
+                👥 Guruh + PRO
+              </span>
+            )}
+            {(detail.audience_mode === 'SUBSCRIBERS_ONLY' || detail.access_type === 'PRO_ONLY') && (
               <span className="badge" style={{ background: '#FEF3C7', color: '#92400E', fontWeight: 800 }}>
                 ⚡️ Faqat PRO
               </span>
             )}
-            {detail.access_type === 'STUDENTS_ONLY' && (
-              <span className="badge" style={{ background: '#EDE9FE', color: '#5B21B6', fontWeight: 800 }}>
-                👥 Faqat o&apos;quvchilarim
+            {detail.audience_mode === 'PUBLIC_FREE' && (
+              <span className="badge green" style={{ fontWeight: 800 }}>
+                ✨ Ochiq test
               </span>
             )}
             {Boolean(detail.has_pin || detail.requires_pin) && (
