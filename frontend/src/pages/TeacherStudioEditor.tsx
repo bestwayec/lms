@@ -61,41 +61,25 @@ const errText = (e: unknown, t: (k: string, fallback?: string) => string) => {
   return code ? t(`studio_err_${code}`, fallback) : fallback;
 };
 
-const TEMPLATE_MCQ_10 = `Q1. Dunyodagi eng katta okean qaysi?
-A) Atlantika okeani
-B) Tinch okeani
-C) Hind okeani
-D) Shimoliy muz okeani
-ANSWER: B
+function generateMcqTemplate(count: number): string {
+  const sampleQuestions = [
+    { q: "Dunyodagi eng katta okean qaysi?", a: "Atlantika okeani", b: "Tinch okeani", c: "Hind okeani", d: "Shimoliy muz okeani", ans: "B" },
+    { q: "O'zbekiston Respublikasi poytaxti qaysi shahar?", a: "Samarqand", b: "Buxoro", c: "Toshkent", d: "Xiva", ans: "C" },
+    { q: "H2O nimaning kimyoviy formulasi?", a: "Oksigen", b: "Suv", c: "Vodorod", d: "Osh tuzi", ans: "B" },
+    { q: "Quyosh qaysi tomondan chiqadi?", a: "Sharqdan", b: "G'arbdan", c: "Shimoldan", d: "Janubdan", ans: "A" },
+    { q: "1 metr necha santimetrga teng?", a: "10 sm", b: "100 sm", c: "1000 sm", d: "50 sm", ans: "B" },
+  ];
+  let res = '';
+  for (let i = 1; i <= count; i++) {
+    const s = sampleQuestions[(i - 1) % sampleQuestions.length];
+    res += `Q${i}. ${s.q}\nA) ${s.a}\nB) ${s.b}\nC) ${s.c}\nD) ${s.d}\nANSWER: ${s.ans}\n\n`;
+  }
+  return res.trim();
+}
 
-Q2. O'zbekiston Respublikasi poytaxti qaysi shahar?
-A) Samarqand
-B) Buxoro
-C) Toshkent
-D) Xiva
-ANSWER: C
-
-Q3. H2O nimaning kimyoviy formulasi?
-A) Oksigen
-B) Suv
-C) Vodorod
-D) Osh tuzi
-ANSWER: B
-
-Q4. Quyosh qaysi tomondan chiqadi?
-A) Sharqdan
-B) G'arbdan
-C) Shimoldan
-D) Janubdan
-ANSWER: A
-
-Q5. 1 metr necha santimetrga teng?
-A) 10 sm
-B) 100 sm
-C) 1000 sm
-D) 50 sm
-ANSWER: B
-`;
+const TEMPLATE_MCQ_10 = generateMcqTemplate(10);
+const TEMPLATE_MCQ_20 = generateMcqTemplate(20);
+const TEMPLATE_MCQ_30 = generateMcqTemplate(30);
 
 /**
  * Teacher Test Builder 3.0: 3-step wizard workflow:
@@ -763,13 +747,30 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
                   {blocks.length === 0 ? (
                     <div className="studio-empty">
                       <p>{t('studio_no_blocks', 'Hozircha savollar qo‘shilmagan')}</p>
-                      <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 12 }}>
+                      <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 12, flexWrap: 'wrap' }}>
                         <button type="button" className="btn primary" onClick={() => addBlock('mcq')}>
                           + {t('studio_type_mcq', 'Variantli savol qo‘shish')}
                         </button>
                         <button type="button" className="btn secondary" onClick={() => setTab('paste')}>
                           <ClipboardPaste size={14} aria-hidden="true" /> {t('studio_tab_paste', 'Matndan import')}
                         </button>
+                      </div>
+                      <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px dashed var(--border)' }}>
+                        <span className="muted small" style={{ display: 'block', marginBottom: 8 }}>
+                          ⚡ {t('studio_quick_starters', 'Tezkor to‘plam')}:
+                        </span>
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+                          {[10, 20, 30, 40].map((n) => (
+                            <button
+                              key={n}
+                              type="button"
+                              className="btn sm ghost"
+                              onClick={() => editBlocks([...blocks, withKeys([blankMcqBlock(n, nextNumber(blocks))])[0]])}
+                            >
+                              + {t(`studio_starter_${n}`, `${n} ta savol`)}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   ) : (
@@ -810,13 +811,27 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
                     <p className="studio-hint" style={{ margin: 0 }}>
                       {t('studio_paste_help', 'Savollar, variantlar va javoblarni matn shaklida qo‘ying. Q1. ... A) ... ANSWER: B formatini taniydi.')}
                     </p>
-                    <div style={{ display: 'flex', gap: 6 }}>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       <button
                         type="button"
                         className="btn sm ghost"
                         onClick={() => setPaste(TEMPLATE_MCQ_10)}
                       >
-                        <Sparkles size={13} aria-hidden="true" /> {t('studio_template_10', 'Namuna shablon')}
+                        <Sparkles size={13} aria-hidden="true" /> {t('studio_starter_10', '10 ta savol')}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn sm ghost"
+                        onClick={() => setPaste(TEMPLATE_MCQ_20)}
+                      >
+                        <Sparkles size={13} aria-hidden="true" /> {t('studio_starter_20', '20 ta savol')}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn sm ghost"
+                        onClick={() => setPaste(TEMPLATE_MCQ_30)}
+                      >
+                        <Sparkles size={13} aria-hidden="true" /> {t('studio_starter_30', '30 ta savol')}
                       </button>
                     </div>
                   </div>

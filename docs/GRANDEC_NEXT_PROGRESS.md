@@ -606,3 +606,37 @@ Executed on branch `fix/grandec-ci-recovery-and-smart-builder-v6`:
 | GitHub Actions CI (`Run 45394763775`, commit `2f5616d`) | **ALL 5 JOBS GREEN (PostgreSQL, Pytest/Django, Lint, Build, Browser)** |
 | GitHub Actions Security (`Run 453947637700`) | **PASS (40s)** |
 | GitHub Actions Automerge (`Run 45394756826`) | **PASS (3s)** |
+
+---
+
+## GRANDEC NEXT 7.0 — Integration & Product Evolution
+
+Executed on branch `feat/grandec-next-7` (derived from merged green `main` at `48c404b`):
+
+1. **Phase 1: PR #145 Controlled Integration**:
+   - Authorized by owner.
+   - Merged cleanly via `gh pr merge 145 --merge` into `main`.
+   - GitHub Actions `CI` (run `45430062104`) and `Security` (run `45430062048`) verified.
+   - Superseded PR #134 closed with all security fixes verified in `main`.
+   - Production deployment is strictly manual (`workflow_dispatch`); merging PR #145 triggered 0 production updates.
+
+2. **Phase 2: Teacher Workspace 7.0**:
+   - In `TeacherStudioEditor.tsx`: Added 10/20/30/40 question starter generator buttons (`blankMcqBlock`).
+   - Expanded Smart Paste with `TEMPLATE_MCQ_20` and `TEMPLATE_MCQ_30` starter templates.
+   - In `AnswerMatrix.tsx`: Added instant Answer Key clearing (`handleClearAll`) and keyboard navigation.
+
+3. **Phase 3: Student Workspace 7.0**:
+   - In `Tests.tsx`: Added universal category chips for `topic_test` (Mavzuli testlar), `full_mock`, and `classroom_quiz`.
+   - Displayed category badges, `Cheklovsiz` (Untimed) time indicator, and `Guruh testi (Bepul)` classroom badges on test cards.
+
+4. **Phase 4: Telegram Mini App & Bot 7.0 Access Policy**:
+   - In `apps/telegram_app/views.py` (`tma_tests_view`): Enforced `visible_tests(Test.objects.all(), request.user)`.
+   - Scoped caching per-user (`cache_key = f"tma_tests_u_{user.id}_v3"`).
+   - In `frontend/src/pages/tma/Home.tsx` and `api.ts`: Added category badge and untimed exam display.
+   - Verified that group tests are never exposed to outside users and free students can take their classroom assignments without fee.
+
+5. **Phase 5: i18n & QA Gate**:
+   - Added 13 new translation keys across Uzbek, Russian, and English (3,384 keys total).
+   - All tests passing with 0 errors (`tests/test_tma_tests_access_policy_7.py`, `tests/test_user_facing_messages.py`, `npm test`, `oxlint`, `tsc -b`).
+   - Pure human authorship under `Komiljon Roziyev <kruziyev0@gmail.com>` with zero AI attribution.
+

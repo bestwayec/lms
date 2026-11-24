@@ -14,7 +14,7 @@ import { useVisualViewport } from '../lib/useVisualViewport';
 
 const PAGE_SIZE = 20;
 
-type Category = 'all' | 'milliy' | 'adabiyot' | 'attestatsiya' | 'ielts' | 'multilevel';
+type Category = 'all' | 'topic_test' | 'attestatsiya' | 'milliy' | 'full_mock' | 'classroom_quiz' | 'adabiyot' | 'ielts' | 'multilevel';
 
 interface MyStatus {
   state: 'none' | 'in_progress' | 'done';
@@ -44,6 +44,13 @@ const isMilliy = (i: Item) =>
   i.assessment_category === 'full_mock' ||
   i.category_slug === 'milliy-sertifikat' ||
   /milliy|bmb/.test(lower(i.title) + lower(i.course_title));
+const isTopicTest = (i: Item) =>
+  i.assessment_category === 'topic_test' || /mavzu|topic/.test(lower(i.title) + lower(i.course_title));
+const isFullMock = (i: Item) =>
+  i.assessment_category === 'full_mock' || /full mock|full-mock/.test(lower(i.title) + lower(i.course_title));
+const isClassroomQuiz = (i: Item) =>
+  i.assessment_category === 'classroom_quiz' || Boolean((i as Record<string, unknown>).is_classroom_assigned);
+
 // Paywall rule kept exactly as before this redesign (BMB mock #4 / attestation / "#mock" titles need a plan).
 const isMock4 = (i: Item) => lower(i.mock_code) === '#mock-bmb04' || /mock #4|mock 4/.test(lower(i.title));
 const isDiagnostic = (i: Item) =>
@@ -51,11 +58,11 @@ const isDiagnostic = (i: Item) =>
   /shukurov|bmb rasmiy mock|diagnostic/.test(lower(i.title));
 
 const CATEGORIES: Record<string, Category[]> = {
-  uzbek: ['all', 'milliy', 'adabiyot', 'attestatsiya'],
-  english: ['all', 'ielts', 'multilevel'],
-  biology: ['all', 'milliy'],
-  chemistry: ['all', 'milliy'],
-  law: ['all', 'milliy'],
+  uzbek: ['all', 'topic_test', 'attestatsiya', 'milliy', 'full_mock', 'classroom_quiz', 'adabiyot'],
+  english: ['all', 'ielts', 'multilevel', 'topic_test', 'full_mock'],
+  biology: ['all', 'topic_test', 'attestatsiya', 'milliy', 'full_mock'],
+  chemistry: ['all', 'topic_test', 'attestatsiya', 'milliy', 'full_mock'],
+  law: ['all', 'topic_test', 'attestatsiya', 'milliy', 'full_mock'],
 };
 
 function cleanTitle(raw: string | undefined): string {
@@ -173,6 +180,12 @@ export default function Tests() {
         if (isEnglishTest(i) || ['biology', 'chemistry', 'law'].includes(lower(i.subject))) return false;
       }
       switch (category) {
+        case 'topic_test':
+          return isTopicTest(i);
+        case 'full_mock':
+          return isFullMock(i);
+        case 'classroom_quiz':
+          return isClassroomQuiz(i);
         case 'ielts':
           return isIelts(i);
         case 'multilevel':
@@ -463,13 +476,29 @@ export default function Tests() {
                 </Link>
                 {statusChip(i.my_status)}
               </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '4px 0 8px' }}>
+                {i.assessment_category && (
+                  <span className="ui-chip is-on" style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: 6 }}>
+                    {t(`studio_category_${i.assessment_category}`, i.assessment_category)}
+                  </span>
+                )}
+                {Boolean((i as Record<string, unknown>).is_classroom_assigned) && (
+                  <span className="ui-chip" style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: 6, background: '#10B981', color: '#fff' }}>
+                    {t('classroom_assigned_badge', 'Guruh testi (Bepul)')}
+                  </span>
+                )}
+              </div>
               <p className="tl-card__meta">
                 {meta(i) && <span className="clamp-1">{meta(i)}</span>}
                 {i.time_limit_minutes ? (
                   <span className="tl-card__time">
                     <Clock size={14} aria-hidden="true" /> {t('tl_minutes').replace('{n}', String(i.time_limit_minutes))}
                   </span>
-                ) : null}
+                ) : (
+                  <span className="tl-card__time tl-card__time--untimed">
+                    <Clock size={14} aria-hidden="true" /> {t('studio_time_untimed', 'Cheklovsiz')}
+                  </span>
+                )}
               </p>
               <div className="tl-card__actions">
                 {action(i)}

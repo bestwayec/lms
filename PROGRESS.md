@@ -2455,11 +2455,36 @@ uff check apps/ 0 xato, pytest tests/test_spa_contract.py 20/20 test 100% PASS.
   * Frontend: 24/24 ta test 100% PASS, `npm run build` (`tsc -b && vite build`) toza yakunlandi.
   * Zero AI Attribution: Barcha o'zgarishlar `Komiljon Roziyev <kruziyev0@gmail.com>` nomidan rasmiylashtirildi.
 
-## 3. Jarayonda
-- Barcha Stage 4 va Test Builder 3.0 / Mobile UX talablari to'liq yakunlandi va branchga birlashtirishga tayyor holga keltirildi.
+## 3. GRANDEC NEXT 7.0 — Integration & Product Evolution
+- [x] **PR #145 To'liq Integratsiyasi (6.3 Release)**:
+  * PR #145 muvaffaqiyatli `main` ga birlashtirildi (Merge commit: `48c404bc2fff3a29833bcb3d7c3fb4c55cab824b`).
+  * GitHub CI, Security va Build barcha 7 ta tekshiruv 100% yashil o'tdi.
+  * PR #134 dagi bir martalik havola xavfsizlik tuzatishlari to'liq kiritilgan holda avtomatik merged maqomida yopildi.
+  * Yangi toza rivojlanish tarmog'i ochildi: `feat/grandec-next-7`.
+- [x] **Teacher Workspace 7.0**:
+  * Tezkor savol yaratish (Starter Generator): `blankMcqBlock` orqali 10, 20, 30 va 40 savollik bo'sh bloklarni bir zumda qo'shish tugmalari.
+  * Smart Paste kengaytmasi: 10, 20 va 30 savollik namunaviy shablonlar (Darslik testi, Milliy sertifikat/Attestatsiya).
+  * AnswerMatrix takomillashtirildi: Barcha kalitlarni 1-klikda tozalash (Clear All) va tezkor boshqaruv.
+- [x] **Student Workspace 7.0**:
+  * Universal toifa filtrlari: `topic_test` (Mavzuli testlar), `attestation`, `milliy`, `full_mock`, `classroom_quiz` (Darslik testlari), `adabiyot`, `ielts`, `multilevel`.
+  * Kartalar vizualizatsiyasi: Mavzuli, Full Mock, Attestatsiya, Milliy sertifikat nishonlari; `Cheklovsiz` (Untimed) ko'rsatkichi; darslik a'zolari uchun `Guruh testi (Bepul)` ko'rinishi.
+- [x] **Telegram Mini App & Group Bot 7.0**:
+  * TMA Testlar ro'yxatida xavfsizlik: `visible_tests` orqali faqat ruxsat etilgan testlar ko'rsatilishi kafolatlandi, guruh testlari boshqalarga ko'rinmaydi.
+  * TMA Test kartalarida `is_timed`, toifa nishoni va `Cheklovsiz` vaqt ko'rsatkichi qo'shildi.
+- [x] **Xalqaro Tarjima (i18n) Pariteti**:
+  * `frontend/src/i18n/translations.json` ga barcha 3 ta til (`uz`, `ru`, `en`) bo'yicha 13 ta yangi kalit qo'shildi (har bir tilda 3384 tadan kalit).
+- [x] **QA & Xavfsizlik Darvozasi**:
+  * `tests/test_tma_tests_access_policy_7.py`: 3 ta yangi regressiya testi 100% PASS.
+  * Frontend: `oxlint` 0 ta xato, 0 ta ogohlantirish (188 ta fayl); `tsc -b && vite build` toza yig'ildi (0 xato).
+  * Regressiya: 28 ta frontend unit testi, 26 ta classroom/telegram backend testi to'liq PASS.
+  * Mualliflik: `Komiljon Roziyev <kruziyev0@gmail.com>` (Zero AI attribution).
+
+## 4. Jarayonda
+- `feat/grandec-next-7` bo'yicha o'zgarishlarni commit qilish va Draft PR ochish.
 
 ---
 
-## 4. Keyingi qadamlar
-- O'qituvchilar tomonidan testlarni mobil qurilmalarda yaratish va o'quvchilar tomonidan topshirish jarayonini amalda sinovdan o'tkazish.
-- Keyingi rejalashtirilgan takomillashtirishlarni davom ettirish.
+## 5. Keyingi qadamlar
+- GitHub Actions CI ishga tushishi va tekshiruvlarini kuzatish.
+- Foydalanuvchiga GRANDEC 7.0 integratsiya hisobotini taqdim etish.
+

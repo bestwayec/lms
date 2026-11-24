@@ -109,12 +109,25 @@ export default function Home({
               <div className="tma-ico" style={{ background: 'rgba(59,130,246,0.2)' }}>📝</div>
               <div className="tma-grow">
                 <p className="tma-title">{item.title}</p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
                   <span className={`tma-badge ${DIFF_CLASS[item.difficulty] ?? ''}`}>
                     {DIFF_LABEL[item.difficulty] ?? item.difficulty}
                   </span>
+                  {item.assessment_category && (
+                    <span className="tma-badge" style={{ background: 'rgba(200, 146, 42, 0.18)', color: 'var(--tma-gold, #d97706)' }}>
+                      {item.assessment_category === 'topic_test'
+                        ? 'Mavzuli'
+                        : item.assessment_category === 'full_mock'
+                        ? 'Full Mock'
+                        : item.assessment_category === 'attestation'
+                        ? 'Attestatsiya'
+                        : item.assessment_category === 'national_cert'
+                        ? 'Milliy'
+                        : 'Quiz'}
+                    </span>
+                  )}
                   <span className="tma-sub">
-                    {item.total_questions} savol · {item.time_limit_minutes} daqiqa
+                    {item.total_questions} savol · {item.time_limit_minutes ? `${item.time_limit_minutes} daqiqa` : 'Cheklovsiz'}
                   </span>
                 </div>
               </div>

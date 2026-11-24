@@ -360,20 +360,21 @@ def tma_arena_view(request: Request) -> Response:
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def tma_tests_view(request: Request) -> Response:
-    """GET /api/telegram/tests/ — Available tests for TMA."""
+    """GET /api/telegram/tests/ — Available tests for TMA with access policy enforcement."""
     from django.core.cache import cache
+    from apps.tests.models import Test
+    from apps.tests.views import visible_tests
 
-    cache_key = "tma_tests_active_v1"
+    user = request.user
+    cache_key = f"tma_tests_u_{user.id}_v3"
     tests_payload = cache.get(cache_key)
 
     if tests_payload is None:
-        from apps.tests.models import Test
+        qs = visible_tests(
+            Test.objects.filter(is_active=True).select_related("course"),
+            user,
+        ).order_by("-created_at")[:30]
 
-        tests = (
-            Test.objects.filter(is_active=True)
-            .select_related("course")
-            .order_by("-created_at")[:20]
-        )
         tests_payload = [
             {
                 "id": t.id,
@@ -381,12 +382,16 @@ def tma_tests_view(request: Request) -> Response:
                 "description": t.description,
                 "course": t.course.title if t.course else "",
                 "time_limit_minutes": t.time_limit_minutes,
+                "is_timed": bool(t.time_limit_minutes and t.time_limit_minutes > 0),
+                "assessment_category": t.assessment_category or "classroom_quiz",
+                "subject": t.subject,
                 "total_questions": t.total_questions,
                 "difficulty": t.difficulty,
+                "audience_mode": t.audience_mode,
             }
-            for t in tests
+            for t in qs
         ]
-        cache.set(cache_key, tests_payload, timeout=60)
+        cache.set(cache_key, tests_payload, timeout=30)
 
     return Response({"tests": tests_payload})
 
