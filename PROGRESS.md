@@ -9,6 +9,50 @@
    - Ustoz kabinetida har bir o'quvchining PRO holati (`⭐ PRO (Faol)`), ishlagan testlari va esselari aks etishi.
 3. Attestatsiya 2026 yangi diagnostika testini 50 ta savoli bilan bazaga seed qilish, kategoriyalashtirish va VPS ga deploy qilish.
 
+### 2.96. Rasmiy Versiya v7.1: Release Recovery, Teacher Studio Autosave & Zero-Stale TMA Cache
+- **Maqsad**:
+  * **Reliz Pipeline Tiklanishi & Kesh Barqarorligi (PR #147 -> `main`)**:
+    - GitHub Actions Docker kesh eksportida yuzaga kelgan 504 Gateway Timeout xatosi to'liq tuzatildi. `.github/workflows/build.yml` da `mode=min` rejimiga o'tildi, kesh eksporti `continue-on-error: true` bilan xavfsizlandi va keshsiz zaxira yig'ish (fallback build) ta'minlandi.
+    - Qo'lda ishga tushirishda (manual dispatch) CI yashilligini tekshiruvchi himoya va GHCR dagi tasvir butunligini tekshiruvchi `docker buildx imagetools inspect` bosqichi qo'shildi. PR #147 barcha 7 ta CI tekshiruvidan muvaffaqiyatli o'tib, `main` ga birlashtirildi.
+  * **Teacher Studio 7.0 & Qoralamalarni Avto-saqlash (Autosave & Draft Recovery)**:
+    - Ustoz test yaratish jarayonida (`TeacherStudioEditor.tsx`) brauzer yopilib qolsa yoki sahifa yangilansa, mehnat yo'qolmasligi uchun `localStorage` asosida avto-saqlash va tiklash banneri joriy etildi.
+    - Banner orqali qoralama bir bosishda tiklanishi (`Qoralamani tiklash`) yoki rad etilishi (`Rad etish`) mumkin; muvaffaqiyatli serverga saqlanganda yoki chop etilganda kesh avtomatik tozalanadi.
+    - Test strukturasini tezkor shakllantirish uchun `[+10]`, `[+20]`, `[+30]`, `[+40]` starter savol generatorlari va Smart Paste da `TEMPLATE_MCQ_20`, `TEMPLATE_MCQ_30` shablonlari qo'shildi.
+    - `AnswerMatrix.tsx` da javob kalitlarini tozalash (`Hammasini tozalash`) amali tasdiqlash dialogi bilan kiritildi.
+  * **O'quvchi Ish Maydoni 7.0 (Student Workspace)**:
+    - Testlar katalogida (`Tests.tsx`) `topic_test` (Mavzuli testlar), `full_mock` (To'liq mock), va `classroom_quiz` (Darslik testlari) universal toifa filtrlari qo'shildi.
+    - Kartalarda toifa nishonlari, vaqtsiz testlar uchun `Cheklovsiz` ko'rsatkichi va bepul sinfxona testlari uchun `Guruh testi (Bepul)` ajratuvchi yorlig'i o'rnatildi.
+  * **Telegram Mini App 7.0 & Dinamik Holat Imzoli Kesh (Zero-Stale Cache)**:
+    - `apps/telegram_app/views.py` dagi statik foydalanuvchi keshi dinamik holat imzosi (`_tma_user_cache_key`) bilan almashtirildi: foydalanuvchining faol guruhlari, uy vazifalari ID lari, PRO holati, roli va global test versiyasi birlashtirildi.
+    - O'quvchi guruhdan chiqarilganda yoki `Test.save()` orqali test arxivlanganda/o'zgartirilganda 0ms ichida barcha keshlar o'z-o'zidan bekor bo'lishi kafolatlandi.
+  * **To'liq Lokalizatsiya & 100% QA Sifat Darvozasi**:
+    - `frontend/src/i18n/translations.json` ga o'zbek, rus va ingliz tillarida 17 ta yangi kalit kiritilib, 100% simmetriya (3 388 ta kalit) saqlab qolindi.
+    - `tests/test_tma_tests_access_policy_7.py` orqali TMA kirish siyosati va kesh bekor bo'lishi to'liq qamrab olindi (100% PASS).
+    - Frontend unit testlari: 28/28 PASS; Oxlint: 0 ta xato, 0 ta ogohlantirish (188 ta fayl); Vite production build: muvaffaqiyatli yig'ildi.
+- **Bajarildi**:
+  * [x] PR #147 (`fix(ci): make docker cache export nonfatal and enforce verified commit builds`) `main` ga birlashtirildi.
+  * [x] `TeacherStudioEditor.tsx`: Starter bloklar, Smart Paste 20/30, va qoralama tiklash banneri.
+  * [x] `AnswerMatrix.tsx`: "Hammasini tozalash" amali.
+  * [x] `Tests.tsx`: Universal toifa chiplari, vaqtsiz test va sinfxona nishonlari.
+  * [x] `apps/telegram_app/views.py`: Dinamik holat imzoli kesh (`_tma_user_cache_key`).
+  * [x] `apps/tests/models.py`: `Test.save()` da global test keshini bekor qilish.
+  * [x] `frontend/src/i18n/translations.json`: 3 388 ta kalit bo'yicha 100% tarjima pariteti.
+  * [x] `tests/test_tma_tests_access_policy_7.py`: 5 ta test 100% PASS.
+  * [x] `tests/test_user_facing_messages.py`: 6 ta test 100% PASS.
+  * [x] `npm --prefix frontend test`: 28 ta test 100% PASS.
+  * [x] `npm --prefix frontend run lint`: 0 xato, 0 ogohlantirish (188 fayl).
+  * [x] `npm --prefix frontend run build`: Muammosiz toza yig'ma.
+  * [x] **GitHub Actions CI (PR #146, commit `c8a2152`)**: ALL 7 CHECKS GREEN (PostgreSQL 5m38s, Pytest/Django 8m21s, Browser regressions 1m50s, Build 25s, Lint 22s, security 30s, automerge 6s).
+- **Jarayonda**:
+  * PR #146 loyiha egasi ko'rib chiqishi va qabul qilishi uchun to'liq tayyor.
+- **Keyingi qadamlar**:
+  * PR #146 ni `main` ga birlashtirish va keyingi rejalashtirilgan takomillashtirishlarni davom ettirish.
+- **Muhim qarorlar**:
+  * GitHub Actions kesh eksporti xatosi butun relizni to'xtatib qo'ymasligi uchun fallback build mexanizmi saqlanadi.
+  * O'quvchi guruhdan chiqarilganda keshning eski holatda qolishi mutlaqo taqiqlandi (dinamik holat imzosi orqali nol kechikish).
+  * Qoralamalar brauzerda faqat avtorizatsiyalangan ustoz sessiyasi doirasida xavfsiz saqlanadi va serverga muvaffaqiyatli yuklangach tozalanadi.
+
+
 ### 2.95. Rasmiy Versiya v6.3: Autonomous Improvement & UI/UX Polish (Ustoz va O'quvchi Tajribasi Mukammalligi)
 - **Maqsad**:
   * **Ustoz Tajribasi va Boshqaruv Qulayligi**:
