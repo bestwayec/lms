@@ -897,6 +897,7 @@ def can_review_submission(user, submission: EssaySubmission) -> bool:
       group_visibility allows it (or if the teacher requested escalation).
     """
     from apps.accounts.access import is_platform_admin
+    from apps.courses.models import StudentGroup
 
     if not user or not user.is_authenticated or not user.is_active:
         return False
