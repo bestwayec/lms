@@ -73,7 +73,7 @@ export default function TestsTab({
         <h2 style={{ fontSize: 18, fontWeight: 800, margin: 0 }}>📝 {t('tma_tests')}</h2>
         {mode !== 'essays' && (
           <span className="tma-badge" style={{ background: 'rgba(217,119,6,0.15)', color: '#d97706' }}>
-            {filtered.length} ta test
+            {filtered.length} {t('tma_tests_count')}
           </span>
         )}
       </div>
@@ -90,31 +90,31 @@ export default function TestsTab({
           className={`tma-chip ${mode === 'topic_test' ? 'on' : ''}`}
           onClick={() => setMode('topic_test')}
         >
-          📚 Mavzuli
+          📚 {t('cat_topic_test')}
         </button>
         <button
           className={`tma-chip ${mode === 'attestation' ? 'on' : ''}`}
           onClick={() => setMode('attestation')}
         >
-          🎓 Attestatsiya
+          🎓 {t('cat_attestation')}
         </button>
         <button
           className={`tma-chip ${mode === 'full_mock' ? 'on' : ''}`}
           onClick={() => setMode('full_mock')}
         >
-          ⏱ Full Mock
+          ⏱ {t('cat_full_mock')}
         </button>
         <button
           className={`tma-chip ${mode === 'national_cert' ? 'on' : ''}`}
           onClick={() => setMode('national_cert')}
         >
-          🏅 Milliy sertifikat
+          🏅 {t('cat_national_cert')}
         </button>
         <button
           className={`tma-chip ${mode === 'essays' ? 'on' : ''}`}
           onClick={() => setMode('essays')}
         >
-          ✍️ Insholar
+          ✍️ {t('cat_essays')}
         </button>
       </div>
 
@@ -126,7 +126,7 @@ export default function TestsTab({
           <div style={{ marginBottom: 12 }}>
             <input
               className="tma-input"
-              placeholder="Test nomini qidiring..."
+              placeholder={t('tma_search_tests')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -145,7 +145,7 @@ export default function TestsTab({
             <div className="tma-list">
               {filtered.length === 0 && (
                 <div className="tma-empty">
-                  {search ? 'Qidiruv bo‘yicha hech narsa topilmadi' : t('tma_no_tests')}
+                  {search ? t('tma_search_empty') : t('tma_no_tests')}
                 </div>
               )}
               {filtered.map((item) => (
@@ -164,18 +164,18 @@ export default function TestsTab({
                             style={{ background: 'rgba(200, 146, 42, 0.18)', color: 'var(--tma-gold, #d97706)' }}
                           >
                             {item.assessment_category === 'topic_test'
-                              ? 'Mavzuli'
+                              ? t('cat_topic_test')
                               : item.assessment_category === 'full_mock'
-                              ? 'Full Mock'
+                              ? t('cat_full_mock')
                               : item.assessment_category === 'attestation'
-                              ? 'Attestatsiya'
+                              ? t('cat_attestation')
                               : item.assessment_category === 'national_cert'
-                              ? 'Milliy'
-                              : 'Quiz'}
+                              ? t('cat_national_cert')
+                              : t('cat_quiz')}
                           </span>
                         )}
                         <span className="tma-sub">
-                          {item.total_questions} savol · {item.time_limit_minutes ? `${item.time_limit_minutes} daqiqa` : 'Cheklovsiz'}
+                          {item.total_questions} {t('tma_questions_count')} · {item.time_limit_minutes ? `${item.time_limit_minutes} ${t('tma_minutes_short')}` : t('tma_unlimited')}
                         </span>
                       </div>
                     </div>

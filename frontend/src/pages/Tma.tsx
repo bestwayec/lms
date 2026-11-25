@@ -297,7 +297,7 @@ export default function Tma() {
     <div className="tma-root">
       <div className="tma-wrap">
         <header className="tma-header">
-          <h1>{firstName ? `Salom, ${firstName}!` : t('dashboard')}</h1>
+          <h1>{firstName ? `${t('tma_greeting', 'Salom')}, ${firstName}!` : t('dashboard')}</h1>
           <span className="tma-xp">⚡ {profile?.stats.total_xp ?? 0} XP</span>
         </header>
 

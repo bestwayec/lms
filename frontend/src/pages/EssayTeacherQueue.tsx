@@ -78,6 +78,7 @@ export default function EssayTeacherQueue() {
   const [queue, setQueue] = useState<Queue | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [reviewId, setReviewId] = useState<number | null>(null);
+  const [filter, setFilter] = useState<'all' | 'appeals' | 'pending'>('all');
 
   const load = useCallback(() => {
     TeacherEssays.queue()
@@ -97,17 +98,53 @@ export default function EssayTeacherQueue() {
   if (err) return <p className="error">{err}</p>;
   if (!queue) return <p className="muted">{t('loading')}</p>;
 
-  const empty =
-    queue.student_requested.length === 0 && queue.pending.length === 0;
+  const appealsCount = queue.student_requested.length;
+  const pendingCount = queue.pending.length;
+  const empty = appealsCount === 0 && pendingCount === 0;
+  const showAppeals = filter === 'all' || filter === 'appeals';
+  const showPending = filter === 'all' || filter === 'pending';
+  const filteredEmpty =
+    (filter === 'appeals' && appealsCount === 0) ||
+    (filter === 'pending' && pendingCount === 0);
 
   return (
     <div>
       <h1>{t('teacher_queue')}</h1>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+        <button
+          type="button"
+          className={`btn sm ${filter === 'all' ? 'primary' : ''}`}
+          onClick={() => setFilter('all')}
+        >
+          {t('tr_filter_all')} ({appealsCount + pendingCount})
+        </button>
+        <button
+          type="button"
+          className={`btn sm ${filter === 'appeals' ? 'primary' : ''}`}
+          onClick={() => setFilter('appeals')}
+        >
+          {t('tr_filter_appeals')} ({appealsCount})
+        </button>
+        <button
+          type="button"
+          className={`btn sm ${filter === 'pending' ? 'primary' : ''}`}
+          onClick={() => setFilter('pending')}
+        >
+          {t('tr_filter_pending')} ({pendingCount})
+        </button>
+      </div>
       {empty && queue.reviewed.length === 0 && (
         <p className="muted">{t('tr_no_items')}</p>
       )}
-      <Section title={t('tr_requested')} items={queue.student_requested} onQuick={setReviewId} />
-      <Section title={t('tr_pending')} items={queue.pending} onQuick={setReviewId} />
+      {!empty && filteredEmpty && (
+        <p className="muted">{t('tr_no_filtered_items')}</p>
+      )}
+      {showAppeals && (
+        <Section title={t('tr_requested')} items={queue.student_requested} onQuick={setReviewId} />
+      )}
+      {showPending && (
+        <Section title={t('tr_pending')} items={queue.pending} onQuick={setReviewId} />
+      )}
       {reviewId !== null && (
         <EssayReviewDrawer submissionId={reviewId} onClose={() => setReviewId(null)} onSaved={load} />
       )}

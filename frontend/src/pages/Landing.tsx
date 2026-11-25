@@ -1228,31 +1228,31 @@ export default function Landing() {
                           <FileTextIcon size={26} />
                         </div>
                         <span style={{ padding: '4px 10px', borderRadius: 999, fontSize: 11, fontWeight: 800, background: 'rgba(245, 158, 11, 0.15)', color: '#F59E0B', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
-                          50 talik Format
+                          {t('att_card1_badge')}
                         </span>
                       </div>
                       <h3 style={{ fontSize: 20, fontWeight: 900, color: 'var(--ink)', margin: '0 0 10px' }}>
-                        Attestatsiya Simulyatori
+                        {t('att_card1_title')}
                       </h3>
                       <p style={{ fontSize: 14, color: 'var(--muted)', lineHeight: 1.65, margin: '0 0 20px', flex: 1 }}>
-                        Mutaxassislik fani (35), Kasbiy standart (5) va Pedagogik mahorat (10) savollarini oʻz ichiga olgan sinov formati.
+                        {t('att_card1_desc')}
                       </p>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24, fontSize: 13, color: 'var(--ink)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <CheckIcon size={16} style={{ color: '#F59E0B' }} />
-                          <span>Haqiqiy davlat test tizimiga 100% mos vaqt taymeri</span>
+                          <span>{t('att_card1_f1')}</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <CheckIcon size={16} style={{ color: '#F59E0B' }} />
-                          <span>Grammatika va adabiyot boʻyicha chuqur tahlillar</span>
+                          <span>{t('att_card1_f2')}</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <CheckIcon size={16} style={{ color: '#F59E0B' }} />
-                          <span>Barcha xatolarni boʻlimlar boʻyicha koʻrsatish</span>
+                          <span>{t('att_card1_f3')}</span>
                         </div>
                       </div>
                       <button type="button" onClick={() => handleAction('/tests')} style={{ width: '100%', padding: '12px', borderRadius: 12, background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.35)', color: '#F59E0B', fontWeight: 800, fontSize: 14, cursor: 'pointer' }}>
-                        50 talik testni boshlash →
+                        {t('att_card1_cta')}
                       </button>
                     </div>
 
@@ -1262,31 +1262,31 @@ export default function Landing() {
                           <LightbulbIcon size={26} />
                         </div>
                         <span style={{ padding: '4px 10px', borderRadius: 999, fontSize: 11, fontWeight: 800, background: 'rgba(16, 185, 129, 0.15)', color: '#10B981', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
-                          Metodika & Keyslar
+                          {t('att_card2_badge')}
                         </span>
                       </div>
                       <h3 style={{ fontSize: 20, fontWeight: 900, color: 'var(--ink)', margin: '0 0 10px' }}>
-                        Pedagogik Mahorat Trenajyori
+                        {t('att_card2_title')}
                       </h3>
                       <p style={{ fontSize: 14, color: 'var(--muted)', lineHeight: 1.65, margin: '0 0 20px', flex: 1 }}>
-                        Yangi milliy oʻquv dasturi, 4K koʻnikmalari va formativ baholash metodikasi boʻyicha amaliy keys savollari.
+                        {t('att_card2_desc')}
                       </p>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24, fontSize: 13, color: 'var(--ink)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <CheckIcon size={16} style={{ color: '#10B981' }} />
-                          <span>Dars tahlili va interaktiv metodlar boʻyicha amaliyot</span>
+                          <span>{t('att_card2_f1')}</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <CheckIcon size={16} style={{ color: '#10B981' }} />
-                          <span>Inklyuziv taʻlim va oʻquvchi psixologiyasi savollari</span>
+                          <span>{t('att_card2_f2')}</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <CheckIcon size={16} style={{ color: '#10B981' }} />
-                          <span>Davlat taʻlim standarti qonunchiligi asosidagi keyslar</span>
+                          <span>{t('att_card2_f3')}</span>
                         </div>
                       </div>
                       <button type="button" onClick={() => handleAction('/tests')} style={{ width: '100%', padding: '12px', borderRadius: 12, background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.35)', color: '#34D399', fontWeight: 800, fontSize: 14, cursor: 'pointer' }}>
-                        Metodik keyslarni yechish →
+                        {t('att_card2_cta')}
                       </button>
                     </div>
 
@@ -1296,31 +1296,31 @@ export default function Landing() {
                           <TrophyIcon size={26} />
                         </div>
                         <span style={{ padding: '4px 10px', borderRadius: 999, fontSize: 11, fontWeight: 800, background: 'rgba(59, 130, 246, 0.15)', color: '#3B82F6', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
-                          70% Ustama
+                          {t('att_card3_badge')}
                         </span>
                       </div>
                       <h3 style={{ fontSize: 20, fontWeight: 900, color: 'var(--ink)', margin: '0 0 10px' }}>
-                        Toifa va Ustama Prognozi
+                        {t('att_card3_title')}
                       </h3>
                       <p style={{ fontSize: 14, color: 'var(--muted)', lineHeight: 1.65, margin: '0 0 20px', flex: 1 }}>
-                        1-toifa va Oliy toifaga erishish ehtimolligi hamda oylik maoshga qoʻshiladigan 70% ustama kalkulyatori.
+                        {t('att_card3_desc')}
                       </p>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24, fontSize: 13, color: 'var(--ink)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <CheckIcon size={16} style={{ color: '#3B82F6' }} />
-                          <span>86+ ball bilan Oliy toifa uchun individual reja</span>
+                          <span>{t('att_card3_f1')}</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <CheckIcon size={16} style={{ color: '#3B82F6' }} />
-                          <span>Kuchsiz boʻlimlarni avtomatik aniqlash va kuchaytirish</span>
+                          <span>{t('att_card3_f2')}</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <CheckIcon size={16} style={{ color: '#3B82F6' }} />
-                          <span>Attestatsiyagacha qolgan vaqt boʻyicha tayyorgarlik</span>
+                          <span>{t('att_card3_f3')}</span>
                         </div>
                       </div>
                       <button type="button" onClick={() => handleAction('/profile')} style={{ width: '100%', padding: '12px', borderRadius: 12, background: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.35)', color: '#60A5FA', fontWeight: 800, fontSize: 14, cursor: 'pointer' }}>
-                        Toifa rejasini tuzish →
+                        {t('att_card3_cta')}
                       </button>
                     </div>
                   </>
@@ -1584,10 +1584,10 @@ export default function Landing() {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 26, flex: 1, fontSize: 12.5 }}>
                   {[
-                    "5 ta to'liq test",
-                    'Haftasiga 3 ta esse tekshirish',
-                    'Xatolar tahlili',
-                    'Kuniga 10 ta AI repetitor izohi',
+                    t('plan_starter_f1'),
+                    t('plan_starter_f2'),
+                    t('plan_starter_f3'),
+                    t('plan_starter_f4'),
                   ].map((f, i) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <CheckIcon size={15} style={{ color: '#10B981', flexShrink: 0 }} />
@@ -1665,11 +1665,11 @@ export default function Landing() {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 26, flex: 1, fontSize: 12.5 }}>
                   {[
-                    'Haftasiga 15 ta esse',
-                    'Kunlik Mock testlar',
-                    'Barcha CBT testlar va tahlil',
-                    'AI repetitor izohlari',
-                    'Xatolar ustida chuqur ishlash',
+                    t('plan_pro_f1'),
+                    t('plan_pro_f2'),
+                    t('plan_pro_f3'),
+                    t('plan_pro_f4'),
+                    t('plan_pro_f5'),
                   ].map((f, i) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <CheckIcon size={15} style={{ color: '#10B981', flexShrink: 0 }} />
@@ -1745,10 +1745,10 @@ export default function Landing() {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 26, flex: 1, fontSize: 12.5 }}>
                   {[
-                    'Cheksiz rasmli va matnli esse',
-                    'Barcha CBT testlar',
-                    '1v1 Arena',
-                    'Ustoz tekshiruvi',
+                    t('plan_master_f1'),
+                    t('plan_master_f2'),
+                    t('plan_master_f3'),
+                    t('plan_master_f4'),
                   ].map((f, i) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <CheckIcon size={15} style={{ color: '#10B981', flexShrink: 0 }} />

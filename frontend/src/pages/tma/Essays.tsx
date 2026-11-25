@@ -35,6 +35,7 @@ export default function Essays({
   const [showAppealModal, setShowAppealModal] = useState(false);
   const [appealReason, setAppealReason] = useState('');
   const [appealLoading, setAppealLoading] = useState(false);
+  const [appealError, setAppealError] = useState<string | null>(null);
   const timerRef = useRef<number | null>(null);
   const pollRef = useRef<number | null>(null);
   const textRef = useRef('');
@@ -89,27 +90,29 @@ export default function Essays({
   const handleSubmitAppeal = async () => {
     if (!result?.id || !appealReason.trim()) return;
     setAppealLoading(true);
+    setAppealError(null);
     try {
       await TmaApi.requestEssayAppeal(result.id, appealReason.trim());
       setShowAppealModal(false);
       setResult((prev) => (prev ? { ...prev, appeal_status: 'submitted', appeal_reason: appealReason.trim() } : prev));
       hapticNotify('success');
     } catch (e) {
-      alert(tmaErrorMessage(e, 'Apellatsiya yuborishda xatolik'));
+      setAppealError(tmaErrorMessage(e, t('tma_appeal_submit_error')));
     } finally {
       setAppealLoading(false);
     }
   };
 
   const handleWithdrawAppeal = async () => {
-    if (!result?.id || !window.confirm('Apellatsiyani qaytarib olmoqchimisiz?')) return;
+    if (!result?.id || !window.confirm(t('tma_appeal_withdraw_confirm'))) return;
     setAppealLoading(true);
+    setAppealError(null);
     try {
       await TmaApi.withdrawEssayAppeal(result.id);
       setResult((prev) => (prev ? { ...prev, appeal_status: 'withdrawn' } : prev));
       hapticNotify('success');
     } catch (e) {
-      alert(tmaErrorMessage(e, 'Apellatsiyani bekor qilishda xatolik'));
+      setAppealError(tmaErrorMessage(e, t('tma_appeal_withdraw_error')));
     } finally {
       setAppealLoading(false);
     }
@@ -296,11 +299,11 @@ export default function Essays({
           {result.teacher_final_score !== null && result.teacher_final_score !== undefined && (
             <div className="tma-card" style={{ marginBottom: 16, background: '#F0FDF4', borderColor: '#BBF7D0' }}>
               <p style={{ margin: 0, fontWeight: 700, color: '#166534', fontSize: 14 }}>
-                👨‍🏫 Ustoz yakuniy bahosi: {result.teacher_final_score} / {result.max_score ?? 20}
+                👨‍🏫 {t('tma_teacher_final_score')}: {result.teacher_final_score} / {result.max_score ?? 20}
               </p>
               {result.teacher_comments && (
                 <p style={{ margin: '8px 0 0', color: '#14532D', fontSize: 13, lineHeight: 1.5 }}>
-                  <b>Ustoz izohi:</b> {result.teacher_comments}
+                  <b>{t('tma_teacher_comment_label')}:</b> {result.teacher_comments}
                 </p>
               )}
             </div>
@@ -309,7 +312,7 @@ export default function Essays({
           {result.has_voice_feedback && (
             <div className="tma-voice-player">
               <p style={{ margin: '0 0 6px', fontWeight: 700, fontSize: 13, color: 'var(--tma-ink)' }}>
-                🎙️ Ustoz ovozli taqrizi (Audio sharh):
+                🎙️ {t('tma_teacher_voice_label')}:
               </p>
               <ProtectedAudio path={TmaApi.voiceFeedbackUrl(result.id)} />
             </div>
@@ -318,31 +321,32 @@ export default function Essays({
           {/* Reassessment / Appeal Workflow */}
           {result.status !== 'error' && (
             <div className="tma-card" style={{ marginBottom: 16 }}>
+              {appealError && <div className="tma-err" style={{ marginBottom: 10 }}>{appealError}</div>}
               {result.appeal_status === 'submitted' || result.appeal_status === 'under_review' ? (
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                     <span style={{ color: '#D97706', fontWeight: 700, fontSize: 13 }}>
-                      ⏳ Apellatsiya ko‘rib chiqilmoqda
+                      ⏳ {t('tma_appeal_pending')}
                     </span>
                     <button
                       className="tma-btn tma-btn-card"
-                      style={{ padding: '6px 10px', fontSize: 11, width: 'auto' }}
+                      style={{ padding: '6px 12px', fontSize: 12, width: 'auto', minHeight: 36 }}
                       onClick={handleWithdrawAppeal}
                       disabled={appealLoading}
                     >
-                      Qaytarib olish
+                      {t('tma_appeal_withdraw')}
                     </button>
                   </div>
                   {result.appeal_reason && (
                     <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--tma-muted)' }}>
-                      <b>Sabab:</b> {result.appeal_reason}
+                      <b>{t('tma_appeal_reason_label')}:</b> {result.appeal_reason}
                     </p>
                   )}
                 </div>
               ) : result.appeal_status === 'resolved' ? (
                 <div>
                   <span style={{ color: '#16A34A', fontWeight: 700, fontSize: 13 }}>
-                    ✅ Apellatsiya ko‘rib chiqildi va yakunlandi
+                    ✅ {t('tma_appeal_resolved')}
                   </span>
                 </div>
               ) : (
@@ -350,9 +354,12 @@ export default function Essays({
                   <button
                     className="tma-btn tma-btn-card"
                     style={{ width: '100%', borderColor: '#F59E0B', color: '#B45309', fontWeight: 700 }}
-                    onClick={() => setShowAppealModal(true)}
+                    onClick={() => {
+                      setAppealError(null);
+                      setShowAppealModal(true);
+                    }}
                   >
-                    ⚖️ Menimcha, esseyim noto‘g‘ri baholandi (Apellatsiya berish)
+                    ⚖️ {t('tma_appeal_button')}
                   </button>
                 </div>
               )}
@@ -363,15 +370,16 @@ export default function Essays({
           {showAppealModal && (
             <div className="tma-card" style={{ marginBottom: 16, borderColor: '#F59E0B', background: '#FFFBEB' }}>
               <h4 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 700, color: '#92400E' }}>
-                ⚖️ Qayta baholash talabi (Apellatsiya)
+                ⚖️ {t('tma_appeal_modal_title')}
               </h4>
               <p style={{ margin: '0 0 12px', fontSize: 12, color: '#B45309' }}>
-                Qaysi mezonlar bo‘yicha ball noto‘g‘ri qo‘yilgan deb hisoblaysiz va nima uchun? Ustozingiz ushbu arizani ko‘rib chiqadi.
+                {t('tma_appeal_modal_desc')}
               </p>
+              {appealError && <div className="tma-err" style={{ marginBottom: 10 }}>{appealError}</div>}
               <textarea
                 className="tma-textarea"
                 rows={3}
-                placeholder="Nima uchun ball noto‘g‘ri deb hisoblaysiz?..."
+                placeholder={t('tma_appeal_placeholder')}
                 value={appealReason}
                 onChange={(e) => setAppealReason(e.target.value)}
               />
@@ -387,7 +395,7 @@ export default function Essays({
                   disabled={appealLoading || !appealReason.trim()}
                   onClick={handleSubmitAppeal}
                 >
-                  {appealLoading ? '…' : 'Arizani yuborish'}
+                  {appealLoading ? '…' : t('tma_appeal_submit_btn')}
                 </button>
               </div>
             </div>
