@@ -103,9 +103,16 @@ for f in deploy/secrets/origin.pem deploy/secrets/origin.key; do
   fi
 done
 
-say "8/8 disk + ports"
+say "8/8 disk + ports + backup dir"
 df -h / | tail -1
 (ss -tlnp 2>/dev/null | grep -E ':80|:443' || echo "(no 80/443 listener yet — ok pre-install)")
+backup_probe="${PREDEPLOY_BACKUP_DIR:-/opt/backups/lms/pre-deploy}"
+while [ ! -e "$backup_probe" ] && [ "$backup_probe" != "/" ]; do
+  backup_probe="$(dirname "$backup_probe")"
+done
+if [ ! -w "$backup_probe" ]; then
+  err "backup path ${PREDEPLOY_BACKUP_DIR:-/opt/backups/lms/pre-deploy} not writable by $(id -un) (nearest existing: $backup_probe) — run: sudo install -d -m 0700 -o $(id -un) -g $(id -gn) /opt/backups/lms /opt/backups/lms/pre-deploy"
+fi
 
 if test "$fail" -ne 0; then
   echo "PRE-FLIGHT FAILED" >&2

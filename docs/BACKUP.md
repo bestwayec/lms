@@ -27,6 +27,15 @@ If any check fails the new file is deleted, **older backups are not rotated away
   weekly/  lms_YYYYmmdd_HHMMSS.sql.gz (+ .sha256)   newest 4
 ```
 
+## Host Directory Provisioning (Run Once Per Host)
+
+`backup_db.sh` creates `daily/` and `weekly/` with `chmod 700`. On hosts where `/opt` is `root:root`, provision ownership for the unprivileged `deploy` user before the first backup or deploy:
+
+```bash
+sudo install -d -m 0750 -o deploy -g deploy /opt/backups
+sudo install -d -m 0700 -o deploy -g deploy /opt/backups/lms /opt/backups/lms/pre-deploy
+```
+
 ## Run it by hand (read-only for the application)
 
 ```bash

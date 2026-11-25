@@ -356,3 +356,18 @@ class ReleaseConsistencyAndWorkflowTests(TestCase):
         )
         ci = (wf_dir / "ci.yml").read_text(encoding="utf-8")
         self.assertIn("verify_private_media_nginx.sh", ci)
+
+    def test_celery_kombu_redis_transport_compatibility(self):
+        from packaging.version import Version
+        import kombu
+        import redis
+        from config.celery import app
+
+        # Kombu 5.7+ requires redis>=6.1.0 while base.txt keeps redis<6.0;
+        # guard against runtime mismatch by instantiating the Redis transport
+        # without requiring a live Redis socket and verifying version bounds.
+        conn = app.connection("redis://127.0.0.1:6379/0")
+        transport = conn.transport
+        self.assertIsNotNone(transport)
+        if Version(kombu.__version__) >= Version("5.7.0"):
+            self.assertGreaterEqual(Version(redis.__version__), Version("6.1.0"))
