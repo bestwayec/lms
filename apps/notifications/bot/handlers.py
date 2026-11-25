@@ -524,13 +524,23 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 return
 
             def _handle_bot_join():
-                try:
-                    return join_group_by_token(user, inv_payload)
-                except Exception:
+                from django.core.exceptions import ValidationError
+                from apps.courses.models import GroupInvitation
+
+                def _clean_err(err: Exception) -> str:
+                    if isinstance(err, ValidationError) and getattr(err, "messages", None):
+                        return err.messages[0]
+                    return str(err)
+
+                if GroupInvitation.objects.filter(token=inv_payload).exists():
                     try:
-                        return join_group_by_code(user, inv_payload)
+                        return join_group_by_token(user, inv_payload)
                     except Exception as err:
-                        return {"status": "error", "message": str(err)}
+                        return {"status": "error", "message": _clean_err(err)}
+                try:
+                    return join_group_by_code(user, inv_payload)
+                except Exception as err:
+                    return {"status": "error", "message": _clean_err(err)}
 
             res = await _run_db(_handle_bot_join)
             msg = res.get("message", "Guruhga qo'shilish amalga oshirildi.")
@@ -1568,13 +1578,23 @@ async def auth_conversation_handler(
 
         user = await _get_or_create_user_async(update)
         def _join_action():
-            try:
-                return join_group_by_token(user, clean_code)
-            except Exception:
+            from django.core.exceptions import ValidationError
+            from apps.courses.models import GroupInvitation
+
+            def _clean_err(err: Exception) -> str:
+                if isinstance(err, ValidationError) and getattr(err, "messages", None):
+                    return err.messages[0]
+                return str(err)
+
+            if GroupInvitation.objects.filter(token=clean_code).exists():
                 try:
-                    return join_group_by_code(user, clean_code)
+                    return join_group_by_token(user, clean_code)
                 except Exception as err:
-                    return {"status": "error", "message": str(err)}
+                    return {"status": "error", "message": _clean_err(err)}
+            try:
+                return join_group_by_code(user, clean_code)
+            except Exception as err:
+                return {"status": "error", "message": _clean_err(err)}
 
         res = await _run_db(_join_action)
         site_url = getattr(settings, "SITE_URL", "https://grandec.uz").rstrip("/")

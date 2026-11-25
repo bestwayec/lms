@@ -22,6 +22,7 @@ import logging
 from datetime import timedelta
 from typing import Any
 
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db.models import Q
 from django.http import HttpRequest, JsonResponse
 from django.utils import timezone
@@ -57,6 +58,16 @@ def _parse_body(request: HttpRequest) -> dict[str, Any]:
         return {}
 
 
+def _error_response(exc: Exception) -> JsonResponse:
+    if isinstance(exc, PermissionDenied):
+        msg = exc.args[0] if exc.args else "Ruxsat etilmagan."
+        return JsonResponse({"error": str(msg)}, status=403)
+    if isinstance(exc, ValidationError) and getattr(exc, "messages", None):
+        msg = ", ".join(exc.messages)
+        return JsonResponse({"error": msg}, status=400)
+    return JsonResponse({"error": str(exc)}, status=400)
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def teacher_classroom_overview_view(request: HttpRequest) -> JsonResponse:
@@ -84,6 +95,8 @@ def teacher_classroom_overview_view(request: HttpRequest) -> JsonResponse:
             "students_count": g.students.filter(is_active=True).count(),
             "max_students": getattr(g, "max_students", 50),
             "invite_code": g.invite_code or "",
+            "status": g.status,
+            "is_active": g.is_active,
             "active_homework_count": active_hw,
         })
 
@@ -195,7 +208,7 @@ def teacher_create_invitation_view(request: HttpRequest) -> JsonResponse:
             },
         })
     except Exception as exc:
-        return JsonResponse({"error": str(exc)}, status=400)
+        return _error_response(exc)
 
 
 @api_view(["POST"])
@@ -205,7 +218,7 @@ def teacher_revoke_invitation_view(request: HttpRequest, inv_id: int) -> JsonRes
         inv = revoke_group_invitation(request.user, inv_id)
         return JsonResponse({"status": "success", "id": inv.id, "is_revoked": inv.is_revoked})
     except Exception as exc:
-        return JsonResponse({"error": str(exc)}, status=400)
+        return _error_response(exc)
 
 
 @api_view(["POST"])
@@ -215,7 +228,7 @@ def teacher_rotate_invitation_view(request: HttpRequest, inv_id: int) -> JsonRes
         inv = rotate_group_invitation(request.user, inv_id)
         return JsonResponse({"status": "success", "id": inv.id, "token": inv.token})
     except Exception as exc:
-        return JsonResponse({"error": str(exc)}, status=400)
+        return _error_response(exc)
 
 
 @api_view(["GET"])
@@ -235,7 +248,7 @@ def teacher_review_join_request_view(request: HttpRequest, req_id: int) -> JsonR
         res = review_join_request(request.user, req_id, approved=approved, rejection_reason=reason)
         return JsonResponse(res)
     except Exception as exc:
-        return JsonResponse({"error": str(exc)}, status=400)
+        return _error_response(exc)
 
 
 @api_view(["POST"])
@@ -260,6 +273,15 @@ def teacher_assign_test_wizard_view(request: HttpRequest) -> JsonResponse:
     is_admin = is_platform_admin(request.user) or getattr(request.user, "is_superuser", False)
     if not is_admin and test.created_by_id != request.user.id and getattr(getattr(test, "course", None), "teacher_id", None) != request.user.id:
         return JsonResponse({"error": "Ushbu testni biriktirish huquqiga ega emassiz."}, status=403)
+
+    if group_id:
+        target_group = StudentGroup.objects.filter(id=int(group_id)).first()
+        if not target_group:
+            return JsonResponse({"error": "Guruh topilmadi."}, status=404)
+        if not is_admin and target_group.teacher_id != request.user.id:
+            return JsonResponse({"error": "Ushbu guruhga vazifa biriktirish huquqiga ega emassiz."}, status=403)
+        if target_group.status == StudentGroup.Status.ARCHIVED:
+            return JsonResponse({"error": "Arxivlangan guruhga yangi test biriktirib bo'lmaydi."}, status=400)
 
     # Update audience mode if specified
     if audience_mode in ("GROUP_ONLY", "GROUP_AND_SUBSCRIBERS", "SUBSCRIBERS_ONLY", "PUBLIC_FREE"):
@@ -290,7 +312,7 @@ def teacher_assign_test_wizard_view(request: HttpRequest) -> JsonResponse:
             "message": "Vazifa muvaffaqiyatli biriktirildi. Guruh o'quvchilari alohida PRO obunasiz topshira oladi.",
         })
     except Exception as exc:
-        return JsonResponse({"error": str(exc)}, status=400)
+        return _error_response(exc)
 
 
 @api_view(["POST"])
@@ -310,7 +332,7 @@ def student_join_group_view(request: HttpRequest) -> JsonResponse:
             return JsonResponse({"error": "Kod yoki havola tokeni kiritilmadi."}, status=400)
         return JsonResponse(res)
     except Exception as exc:
-        return JsonResponse({"error": str(exc)}, status=400)
+        return _error_response(exc)
 
 
 @api_view(["GET"])
@@ -318,7 +340,7 @@ def student_join_group_view(request: HttpRequest) -> JsonResponse:
 def student_my_groups_view(request: HttpRequest) -> JsonResponse:
     """Student Classroom Portal: Groups, assigned tests, upcoming homework, results."""
     user = request.user
-    my_groups = StudentGroup.objects.filter(students=user).select_related("teacher", "branch")
+    my_groups = StudentGroup.objects.filter(students=user, status=StudentGroup.Status.ACTIVE).select_related("teacher", "branch")
 
     groups_data = []
     for g in my_groups:
@@ -408,7 +430,7 @@ def teacher_archive_group_view(request: HttpRequest, group_id: int) -> JsonRespo
             "message": f"'{archived.name}' guruhi muvaffaqiyatli arxivlandi.",
         })
     except Exception as exc:
-        return JsonResponse({"error": str(exc)}, status=400)
+        return _error_response(exc)
 
 
 @api_view(["POST"])
@@ -430,7 +452,7 @@ def teacher_restore_group_view(request: HttpRequest, group_id: int) -> JsonRespo
             "message": f"'{restored.name}' guruhi qayta faollashtirildi.",
         })
     except Exception as exc:
-        return JsonResponse({"error": str(exc)}, status=400)
+        return _error_response(exc)
 
 
 @api_view(["POST"])
@@ -450,7 +472,7 @@ def teacher_delete_group_view(request: HttpRequest, group_id: int) -> JsonRespon
             "message": "Guruh muvaffaqiyatli o'chirildi.",
         })
     except Exception as exc:
-        return JsonResponse({"error": str(exc)}, status=400)
+        return _error_response(exc)
 
 
 @api_view(["POST"])
@@ -482,7 +504,7 @@ def teacher_transfer_group_view(request: HttpRequest, group_id: int) -> JsonResp
             "message": f"Guruh mas'uliyati {updated.teacher.get_full_name()} ga muvaffaqiyatli o'tkazildi.",
         })
     except Exception as exc:
-        return JsonResponse({"error": str(exc)}, status=400)
+        return _error_response(exc)
 
 
 @api_view(["POST"])
@@ -518,7 +540,7 @@ def teacher_remove_student_view(request: HttpRequest, group_id: int) -> JsonResp
             "message": f"O'quvchi guruhdan chiqarildi (natijalari to'liq saqlab qolindi).",
         })
     except Exception as exc:
-        return JsonResponse({"error": str(exc)}, status=400)
+        return _error_response(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -643,7 +665,7 @@ def student_request_essay_appeal_view(request: HttpRequest, submission_id: int) 
             "message": "Apellatsiya so'rovingiz qabul qilindi va ustozga yuborildi.",
         })
     except Exception as exc:
-        return JsonResponse({"error": str(exc)}, status=400)
+        return _error_response(exc)
 
 
 @api_view(["POST"])
@@ -665,7 +687,7 @@ def student_withdraw_essay_appeal_view(request: HttpRequest, submission_id: int)
             "message": "Apellatsiya qaytarib olindi.",
         })
     except Exception as exc:
-        return JsonResponse({"error": str(exc)}, status=400)
+        return _error_response(exc)
 
 
 @api_view(["GET"])
@@ -763,7 +785,7 @@ def teacher_submit_essay_review_view(request: HttpRequest, submission_id: int) -
             "message": "Ustoz baholashi va xulosasi muvaffaqiyatli saqlandi.",
         })
     except Exception as exc:
-        return JsonResponse({"error": str(exc)}, status=400)
+        return _error_response(exc)
 
 
 @api_view(["GET"])

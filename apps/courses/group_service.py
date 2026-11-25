@@ -273,6 +273,9 @@ def add_student_to_group(
         # Lock group row to prevent race conditions during concurrent enrollments
         locked_group = StudentGroup.objects.select_for_update().get(id=group.id)
 
+        if locked_group.status == StudentGroup.Status.ARCHIVED:
+            raise ValueError("Ushbu guruh arxivlangan. Unga o'quvchi qo'shib bo'lmaydi.")
+
         # Cross-center tenant validation
         if locked_group.branch_id:
             target_center_id = locked_group.branch.center_id
@@ -969,11 +972,30 @@ def transfer_group_teacher(group: StudentGroup, new_teacher: User, actor: Any) -
     if getattr(new_teacher, "role", "") != "teacher" and not getattr(new_teacher, "is_teacher", False) and not getattr(new_teacher, "is_staff", False):
         raise ValidationError("Faqat tasdiqlangan o'qituvchiga guruh mas'uliyatini o'tkazish mumkin.")
 
+    # Cross-center tenant check
+    if group.branch_id and getattr(group.branch, "center_id", None):
+        target_center_id = group.branch.center_id
+        if new_teacher.learning_center_id and new_teacher.learning_center_id != target_center_id:
+            raise ValidationError("Yangi o'qituvchi boshqa o'quv markaziga biriktirilgan.")
+        if new_teacher.branch_id and getattr(new_teacher.branch, "center_id", None) != target_center_id:
+            raise ValidationError("Yangi o'qituvchi boshqa o'quv markaziga biriktirilgan.")
+
     with transaction.atomic():
         locked_group = StudentGroup.objects.select_for_update().get(id=group.id)
         old_teacher_id = locked_group.teacher_id
         locked_group.teacher = new_teacher
         locked_group.save(update_fields=["teacher", "updated_at"])
+
+        # Re-route pending essay reviews for this group's assignments from old teacher to new teacher
+        try:
+            from apps.essays.models import EssaySubmission
+            EssaySubmission.objects.filter(
+                assignment__group=locked_group,
+                status=EssaySubmission.Status.PENDING_TEACHER,
+                assigned_reviewer_id=old_teacher_id,
+            ).update(assigned_reviewer=new_teacher)
+        except Exception:
+            pass
 
     logger.info(
         "Group %d (%s) teacher transferred from %s to %s by user %s",

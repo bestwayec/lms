@@ -107,6 +107,8 @@ def create_unified_homework(
         group = get_teacher_groups(user).filter(id=group_id).first()
         if not group:
             raise PermissionError("Guruh topilmadi yoki sizga biriktirilmagan.")
+        if getattr(group, "status", None) == StudentGroup.Status.ARCHIVED:
+            raise ValueError("Arxivlangan guruhga yangi vazifa biriktirib bo'lmaydi.")
 
     if student_id:
         from apps.accounts.models import User

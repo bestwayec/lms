@@ -91,6 +91,9 @@ def rotate_group_invitation(teacher: Any, invitation_id: int) -> GroupInvitation
     invitation = GroupInvitation.objects.select_related("group").get(pk=invitation_id)
     _assert_can_manage_group(teacher, invitation.group)
 
+    if invitation.group.status == StudentGroup.Status.ARCHIVED:
+        raise ValidationError("Arxivlangan guruh taklifnomasini yangilab bo'lmaydi.")
+
     invitation.token = secrets.token_urlsafe(32)
     invitation.uses_count = 0
     invitation.is_revoked = False
@@ -142,13 +145,25 @@ def join_group_by_token(student: Any, token: str) -> dict[str, Any]:
                 raise ValidationError("Ushbu taklifnomadan foydalanish chegarasiga yetildi.")
             raise ValidationError("Ushbu taklifnomadan foydalanib bo'lmaydi.")
 
-        group = invitation.group
+        group = (
+            StudentGroup.objects.select_for_update()
+            .select_related("branch", "teacher")
+            .get(pk=invitation.group_id)
+        )
 
         if group.status == StudentGroup.Status.ARCHIVED:
             raise ValidationError("Ushbu guruh arxivlangan. Unga qo'shilish mumkin emas.")
 
         if invitation.target_student_id is not None and invitation.target_student_id != getattr(student, "id", None):
             raise ValidationError("Ushbu taklifnoma boshqa o'quvchi uchun mo'ljallangan.")
+
+        # Cross-center tenant validation before pending request or enrollment
+        if group.branch_id:
+            target_center_id = group.branch.center_id
+            if getattr(student, "learning_center_id", None) and student.learning_center_id != target_center_id:
+                raise ValueError("Talaba boshqa o'quv markaziga biriktirilgan.")
+            if getattr(student, "branch_id", None) and getattr(student.branch, "center_id", None) != target_center_id:
+                raise ValueError("Talaba boshqa o'quv markaziga biriktirilgan.")
 
         # Check if already a member
         if group.students.filter(id=student.id).exists():
@@ -159,9 +174,10 @@ def join_group_by_token(student: Any, token: str) -> dict[str, Any]:
                 "group_name": group.name,
             }
 
-        # Check group capacity
-        if group.students.count() >= group.max_students:
-            raise ValidationError(f"Guruh to'lgan. Maksimal sig'im: {group.max_students} nafar o'quvchi.")
+        # Check group capacity (consistent ValueError contract across group & invitation services)
+        max_cap = getattr(group, "max_students", 50) or 50
+        if group.students.count() >= max_cap:
+            raise ValueError(f"Guruh to'lgan. Maksimal sig'im: {max_cap} nafar o'quvchi.")
 
         # Check approval requirement
         if invitation.requires_approval:
@@ -217,6 +233,7 @@ def join_group_by_token(student: Any, token: str) -> dict[str, Any]:
             "message": f"'{group.name}' guruhiga muvaffaqiyatli qo'shildingiz!",
             "group_id": group.id,
             "group_name": group.name,
+            "teacher_name": group.teacher.get_full_name() or group.teacher.email,
         }
 
 
@@ -259,8 +276,9 @@ def join_group_by_code(student: Any, code: str) -> dict[str, Any]:
                 "group_name": group.name,
             }
 
-        if group.students.count() >= group.max_students:
-            raise ValidationError(f"Guruh to'lgan. Maksimal sig'im: {group.max_students} nafar o'quvchi.")
+        max_cap = getattr(group, "max_students", 50) or 50
+        if group.students.count() >= max_cap:
+            raise ValueError(f"Guruh to'lgan. Maksimal sig'im: {max_cap} nafar o'quvchi.")
 
         added, _ = add_student_to_group(
             group,
@@ -278,6 +296,7 @@ def join_group_by_code(student: Any, code: str) -> dict[str, Any]:
             "message": f"'{group.name}' guruhiga muvaffaqiyatli qo'shildingiz!",
             "group_id": group.id,
             "group_name": group.name,
+            "teacher_name": group.teacher.get_full_name() or group.teacher.email,
         }
 
 
@@ -312,8 +331,9 @@ def review_join_request(
             if join_req.group.status == StudentGroup.Status.ARCHIVED:
                 raise ValidationError("Guruh arxivlangan, so'rovni tasdiqlab bo'lmaydi.")
 
-            if join_req.group.students.count() >= join_req.group.max_students:
-                raise ValidationError(f"Guruh to'lgan. Maksimal sig'im: {join_req.group.max_students} nafar o'quvchi.")
+            max_cap = getattr(join_req.group, "max_students", 50) or 50
+            if join_req.group.students.count() >= max_cap:
+                raise ValueError(f"Guruh to'lgan. Maksimal sig'im: {max_cap} nafar o'quvchi.")
 
             # Check if associated invitation was revoked or expired while request was pending
             if join_req.invitation_id:
