@@ -122,7 +122,12 @@ fi
 # --- rotation (only reached after a verified backup) -------------------------------
 rotate() {
   local dir="$1" keep="$2"
-  ls -1t "$dir"/${PREFIX}_*.sql.gz 2>/dev/null | tail -n +"$((keep + 1))" | while read -r old; do
+  local files=()
+  shopt -s nullglob
+  files=("$dir"/${PREFIX}_*.sql.gz)
+  shopt -u nullglob
+  [ "${#files[@]}" -gt "$keep" ] || return 0
+  ls -1t "${files[@]}" | tail -n +"$((keep + 1))" | while read -r old; do
     rm -f -- "$old" "$old.sha256"
     log "rotated out $(basename "$old")"
   done
@@ -130,4 +135,6 @@ rotate() {
 rotate "$BACKUP_DIR/daily" "$KEEP_DAILY"
 rotate "$BACKUP_DIR/weekly" "$KEEP_WEEKLY"
 
-log "Backup complete. daily=$(ls -1 "$BACKUP_DIR"/daily/${PREFIX}_*.sql.gz | wc -l) weekly=$(ls -1 "$BACKUP_DIR"/weekly/${PREFIX}_*.sql.gz 2>/dev/null | wc -l)"
+daily_count=$(find "$BACKUP_DIR/daily" -maxdepth 1 -type f -name "${PREFIX}_*.sql.gz" | wc -l)
+weekly_count=$(find "$BACKUP_DIR/weekly" -maxdepth 1 -type f -name "${PREFIX}_*.sql.gz" | wc -l)
+log "Backup complete. daily=${daily_count} weekly=${weekly_count}"

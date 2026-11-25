@@ -75,6 +75,22 @@ echo "$GHCR_READ_TOKEN" | docker login "$REGISTRY" -u "$GHCR_USER" --password-st
 # `sed ... > file` truncates in place (same inode — see warning above). ---
 sed -e "s/__DOMAIN__/${DEPLOY_DOMAIN}/g" deploy/nginx/nginx-ssl.conf > deploy/nginx/nginx.conf
 
+PREDEPLOY_DIR="${PREDEPLOY_BACKUP_DIR:-/opt/backups/lms/pre-deploy}"
+if ! mkdir -p "$PREDEPLOY_DIR/daily" "$PREDEPLOY_DIR/weekly" 2>/dev/null; then
+  deploy_user="$(id -un)"
+  deploy_group="$(id -gn)"
+  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    sudo -n install -d -m 0750 -o "$deploy_user" -g "$deploy_group" /opt/backups /opt/backups/lms
+    sudo -n install -d -m 0700 -o "$deploy_user" -g "$deploy_group" "$PREDEPLOY_DIR" "$PREDEPLOY_DIR/daily" "$PREDEPLOY_DIR/weekly"
+  else
+    echo "ERROR: Cannot write to pre-deploy backup directory ($PREDEPLOY_DIR)." >&2
+    echo "Ask a host administrator to run:" >&2
+    echo "  sudo install -d -m 0750 -o ${deploy_user} -g ${deploy_group} /opt/backups" >&2
+    echo "  sudo install -d -m 0700 -o ${deploy_user} -g ${deploy_group} /opt/backups/lms ${PREDEPLOY_DIR}" >&2
+    exit 1
+  fi
+fi
+
 ./deploy/preflight.sh
 # NOTE: every `docker compose` call ends with `< /dev/null`. This script arrives
 # via `ssh ... 'bash -s'` (stdin = the script itself) and `up`/`exec` would
@@ -85,7 +101,6 @@ sed -e "s/__DOMAIN__/${DEPLOY_DOMAIN}/g" deploy/nginx/nginx-ssl.conf > deploy/ng
 # entrypoint runs `migrate` on start, so this is the rollback point for data.
 # Fail closed: no verified backup, no deploy. ---
 echo ">>> pre-deploy backup"
-PREDEPLOY_DIR="${PREDEPLOY_BACKUP_DIR:-/opt/backups/lms/pre-deploy}"
 bash deploy/scripts/backup_db.sh "$PREDEPLOY_DIR" < /dev/null
 echo ">>> pre-deploy backup OK: $(ls -1t "$PREDEPLOY_DIR"/daily/*.sql.gz 2>/dev/null | head -1)"
 # Migrations about to run (read-only listing with the NEW image).
