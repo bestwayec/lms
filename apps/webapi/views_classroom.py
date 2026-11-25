@@ -186,6 +186,13 @@ def teacher_create_invitation_view(request: HttpRequest) -> JsonResponse:
         max_uses = int(max_uses)
     requires_approval = bool(payload.get("requires_approval", False))
     code = payload.get("code")
+    target_student = None
+    target_student_id = payload.get("target_student_id")
+    if target_student_id:
+        from apps.accounts.models import User
+        target_student = User.objects.filter(id=int(target_student_id), is_active=True, role="student").first()
+        if not target_student:
+            return JsonResponse({"error": "Tanlangan o'quvchi topilmadi."}, status=404)
 
     try:
         inv = create_group_invitation(
@@ -195,6 +202,7 @@ def teacher_create_invitation_view(request: HttpRequest) -> JsonResponse:
             max_uses=max_uses,
             requires_approval=requires_approval,
             code=code,
+            target_student=target_student,
         )
         return JsonResponse({
             "status": "success",
@@ -617,14 +625,18 @@ def classroom_group_leaderboard_view(request: HttpRequest, group_id: int) -> Jso
 
 
 @api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def platform_leaderboard_view(request: HttpRequest) -> JsonResponse:
     """Privacy-preserving platform-wide leaderboard ranked by verified learning XP."""
     from apps.accounts.gamification import get_platform_leaderboard
 
     period = request.GET.get("period", "weekly")
     limit = min(50, max(5, int(request.GET.get("limit", 20))))
-    user = request.user if getattr(request, "user", None) and request.user.is_authenticated else None
-    data = get_platform_leaderboard(user=user, period=period, limit=limit)
+    data = get_platform_leaderboard(user=request.user, period=period, limit=limit)
+    # Never expose other participants' internal database user IDs over the public API
+    for item in data.get("items", []):
+        if not item.get("is_current_user"):
+            item.pop("user_id", None)
     return JsonResponse(data)
 
 
@@ -831,29 +843,30 @@ def teacher_submit_essay_review_view(request: HttpRequest, submission_id: int) -
 @permission_classes([IsAuthenticated])
 def essay_voice_playback_view(request: HttpRequest, submission_id: int):
     """Secure private audio streaming for teacher voice feedback."""
-    from apps.core.private_files import private_media_response
+    from apps.core.private_files import private_file_response
     from apps.essays.models import EssaySubmission, TeacherReview
 
     submission = EssaySubmission.objects.filter(id=submission_id).select_related("student", "assignment__group").first()
     if not submission:
         return JsonResponse({"error": "Esse topilmadi."}, status=404)
 
+    review = TeacherReview.objects.filter(submission=submission).first()
     user = request.user
     is_admin = is_platform_admin(user) or getattr(user, "is_superuser", False)
     is_student = submission.student_id == user.id
     is_teacher = (
         (submission.assignment and submission.assignment.group and submission.assignment.group.teacher_id == user.id)
         or (submission.assigned_reviewer_id == user.id)
+        or (review is not None and review.teacher_id == user.id)
     )
 
     if not (is_admin or is_student or is_teacher):
         return JsonResponse({"error": "Ushbu audio fikrni tinglash huquqiga ega emassiz."}, status=403)
 
-    review = TeacherReview.objects.filter(submission=submission).first()
     if not review or not review.voice_feedback:
         return JsonResponse({"error": "Ushbu esse uchun audio fikr mavjud emas."}, status=404)
 
-    return private_media_response(request, review.voice_feedback.name)
+    return private_file_response(review.voice_feedback)
 
 
 @api_view(["GET"])

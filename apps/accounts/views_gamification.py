@@ -28,8 +28,12 @@ class UserStreakView(APIView):
 class WeeklyLeagueView(APIView):
     """GET /api/v1/gamification/league/"""
 
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request: Request) -> Response:
         data = get_weekly_league_leaderboard(request.user)
+        # Never leak raw DB user IDs of other participants in public API payloads
+        for p in data.get("participants", []):
+            if not p.get("is_current_user"):
+                p.pop("user_id", None)
         return Response(data, status=status.HTTP_200_OK)

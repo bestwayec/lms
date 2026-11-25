@@ -26,7 +26,8 @@ export default function Home({
   const { t } = useLang();
   const [tests, setTests] = useState<TmaTestSummary[] | null>(() => {
     try {
-      const raw = localStorage.getItem('tma_cached_tests');
+      const uid = localStorage.getItem('tma_cached_uid');
+      const raw = uid ? localStorage.getItem(`tma_cached_tests_${uid}`) : null;
       return raw ? JSON.parse(raw) : null;
     } catch {
       return null;
@@ -34,7 +35,8 @@ export default function Home({
   });
   const [results, setResults] = useState<TmaResultItem[] | null>(() => {
     try {
-      const raw = localStorage.getItem('tma_cached_results');
+      const uid = localStorage.getItem('tma_cached_uid');
+      const raw = uid ? localStorage.getItem(`tma_cached_results_${uid}`) : null;
       return raw ? JSON.parse(raw) : null;
     } catch {
       return null;
@@ -59,8 +61,12 @@ export default function Home({
         setTests(newTests);
         setResults(newResults);
         try {
-          localStorage.setItem('tma_cached_tests', JSON.stringify(newTests));
-          localStorage.setItem('tma_cached_results', JSON.stringify(newResults));
+          const uid = String(p?.user?.id || localStorage.getItem('tma_cached_uid') || '');
+          if (uid) {
+            localStorage.setItem('tma_cached_uid', uid);
+            localStorage.setItem(`tma_cached_tests_${uid}`, JSON.stringify(newTests));
+            localStorage.setItem(`tma_cached_results_${uid}`, JSON.stringify(newResults));
+          }
         } catch {
           /* ignore storage quota */
         }

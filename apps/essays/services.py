@@ -1073,8 +1073,29 @@ class TeacherReviewService:
             "teacher_comments": teacher_comments,
         }
         if voice_file:
+            import os
+            import uuid
+            from django.utils.text import get_valid_filename
+
+            allowed_audio_exts = {".mp3", ".wav", ".ogg", ".webm", ".m4a", ".aac", ".mp4"}
+            max_audio_bytes = 10 * 1024 * 1024  # 10 MB
+            raw_name = os.path.basename(str(getattr(voice_file, "name", "") or "voice.webm"))
+            _, ext = os.path.splitext(raw_name.lower())
+            if ext not in allowed_audio_exts:
+                raise ValueError("Faqat audio fayllar (.mp3, .wav, .ogg, .webm, .m4a, .aac) yuklanishi mumkin.")
+            file_size = getattr(voice_file, "size", None)
+            if file_size is not None and file_size > max_audio_bytes:
+                raise ValueError("Audio mulohaza hajmi 10 MB dan oshmasligi kerak.")
+            content_type = (getattr(voice_file, "content_type", "") or "").lower().split(";")[0].strip()
+            if content_type and not (
+                content_type.startswith("audio/")
+                or content_type in ("video/webm", "video/mp4", "application/ogg", "application/octet-stream")
+            ):
+                raise ValueError("Noto'g'ri audio fayl formati.")
+            safe_base = get_valid_filename(raw_name)
+            voice_file.name = f"{uuid.uuid4().hex[:12]}_{safe_base}"
             defaults["voice_feedback"] = voice_file
-            defaults["voice_duration_seconds"] = int(voice_duration_seconds or 0)
+            defaults["voice_duration_seconds"] = max(0, int(voice_duration_seconds or 0))
 
         # Create or update review
         review, created = TeacherReview.objects.update_or_create(

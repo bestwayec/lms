@@ -15,7 +15,8 @@ export default function Essays({
   const [view, setView] = useState<View>('topics');
   const [topics, setTopics] = useState<TmaEssayTopic[] | null>(() => {
     try {
-      const raw = localStorage.getItem('tma_cached_topics');
+      const uid = localStorage.getItem('tma_cached_uid');
+      const raw = uid ? localStorage.getItem(`tma_cached_topics_${uid}`) : null;
       return raw ? JSON.parse(raw) : null;
     } catch {
       return null;
@@ -58,7 +59,8 @@ export default function Essays({
       const newTopics = data.topics ?? [];
       setTopics(newTopics);
       try {
-        localStorage.setItem('tma_cached_topics', JSON.stringify(newTopics));
+        const uid = localStorage.getItem('tma_cached_uid');
+        if (uid) localStorage.setItem(`tma_cached_topics_${uid}`, JSON.stringify(newTopics));
       } catch {
         /* ignore storage quota */
       }

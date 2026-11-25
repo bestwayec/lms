@@ -24,7 +24,8 @@ export default function TestsTab({
   const [mode, setMode] = useState<Mode>('all');
   const [tests, setTests] = useState<TmaTestSummary[] | null>(() => {
     try {
-      const raw = localStorage.getItem('tma_cached_tests');
+      const uid = localStorage.getItem('tma_cached_uid');
+      const raw = uid ? localStorage.getItem(`tma_cached_tests_${uid}`) : null;
       return raw ? JSON.parse(raw) : null;
     } catch {
       return null;
@@ -43,7 +44,8 @@ export default function TestsTab({
         const list = ts.tests ?? [];
         setTests(list);
         try {
-          localStorage.setItem('tma_cached_tests', JSON.stringify(list));
+          const uid = localStorage.getItem('tma_cached_uid');
+          if (uid) localStorage.setItem(`tma_cached_tests_${uid}`, JSON.stringify(list));
         } catch {
           /* ignore */
         }

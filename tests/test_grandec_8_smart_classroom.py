@@ -421,3 +421,81 @@ class TestEssayReviewAndAppealWorkflow:
         assert data["metrics"]["graded_count"] == 1
         assert data["metrics"]["avg_valid_score"] == 0.0
         assert data["metrics"]["max_score"] == 20
+
+
+@pytest.mark.django_db
+class TestGrandec8DefensiveSecurity:
+    def test_voice_feedback_upload_rejects_html_and_playback_enforces_object_acl(self):
+        from rest_framework.test import APIClient
+
+        teacher = User.objects.create_user(email="sec-t@example.com", password="pass", role="teacher", is_active=True)
+        other_teacher = User.objects.create_user(email="sec-t2@example.com", password="pass", role="teacher", is_active=True)
+        student = User.objects.create_user(email="sec-s@example.com", password="pass", role="student", is_active=True)
+        other_student = User.objects.create_user(email="sec-s2@example.com", password="pass", role="student", is_active=True)
+
+        group = StudentGroup.objects.create(name="Sec Group", teacher=teacher, status="active")
+        group.students.add(student)
+        topic = EssayTopic.objects.create(title="Sec Topic", word_limit_min=50, word_limit_max=200)
+        sub = EssaySubmission.objects.create(
+            student=student,
+            topic=topic,
+            essay_text="Test essay text.",
+            word_count=55,
+            status=EssaySubmission.Status.GRADED,
+            total_score=15,
+            assigned_reviewer=teacher,
+        )
+
+        # 1. Malicious HTML upload as voice feedback is rejected
+        html_payload = SimpleUploadedFile("evil.html", b"<script>alert(1)</script>", content_type="text/html")
+        scores = {i: 1.5 for i in range(1, 13)}
+        with pytest.raises(ValueError, match="audio"):
+            TeacherReviewService.submit_review(sub, teacher, scores, voice_file=html_payload)
+
+        # 2. Valid WAV upload succeeds and streams ONLY to owner student or assigned teacher
+        wav_file = SimpleUploadedFile("note.wav", b"RIFF....WAVEfmt ", content_type="audio/wav")
+        TeacherReviewService.submit_review(sub, teacher, scores, voice_file=wav_file, voice_duration_seconds=12)
+
+        client = APIClient()
+        # Unauthenticated blocked
+        assert client.get(f"/api/classroom/essays/{sub.id}/voice/").status_code == 401
+        # Other student blocked
+        client.force_authenticate(other_student)
+        assert client.get(f"/api/classroom/essays/{sub.id}/voice/").status_code == 403
+        # Unrelated teacher blocked
+        client.force_authenticate(other_teacher)
+        assert client.get(f"/api/classroom/essays/{sub.id}/voice/").status_code == 403
+        # Owner student succeeds with hardened private response headers
+        client.force_authenticate(student)
+        res = client.get(f"/api/classroom/essays/{sub.id}/voice/")
+        assert res.status_code == 200
+        assert res["X-Content-Type-Options"] == "nosniff"
+        assert "no-store" in res["Cache-Control"]
+        # Assigned teacher also succeeds
+        client.force_authenticate(teacher)
+        assert client.get(f"/api/classroom/essays/{sub.id}/voice/").status_code == 200
+
+    def test_public_leaderboard_endpoints_require_auth_and_redact_user_ids(self):
+        from rest_framework.test import APIClient
+
+        u1 = User.objects.create_user(first_name="Ali", last_name="Vali", email="u1lb@example.com", password="pass")
+        u1.profile.xp_points = 200
+        u1.profile.leaderboard_opt_in = True
+        u1.profile.leaderboard_pseudonym = "Qalqon01"
+        u1.profile.save()
+
+        viewer = User.objects.create_user(email="viewer@example.com", password="pass")
+        client = APIClient()
+
+        # Anonymous access blocked
+        assert client.get("/api/classroom/leaderboard/platform/").status_code == 401
+        assert client.get("/api/v1/gamification/league/").status_code == 401
+
+        # Authenticated viewer gets pseudonymized leaderboard with other user_id redacted
+        client.force_authenticate(viewer)
+        resp = client.get("/api/classroom/leaderboard/platform/?period=all_time")
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert len(items) == 1
+        assert items[0]["display_name"] == "Qalqon01"
+        assert "user_id" not in items[0]

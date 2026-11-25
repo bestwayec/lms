@@ -30,14 +30,7 @@ export default function Tma() {
   const { t, setLang } = useLang();
   const [boot, setBoot] = useState<Boot>('boot');
   const [error, setError] = useState<string | null>(null);
-  const [profile, setProfile] = useState<TmaProfile | null>(() => {
-    try {
-      const raw = localStorage.getItem('tma_cached_profile');
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [profile, setProfile] = useState<TmaProfile | null>(null);
   const [tab, setTab] = useState<Tab>('home');
   const [activeTestId, setActiveTestId] = useState<number | null>(null);
   const backHandlerRef = useRef<(() => void) | null>(null);
@@ -125,6 +118,21 @@ export default function Tma() {
           },
         });
         setBoot('ready');
+
+        // Clear stale un-scoped or previous-account caches on Telegram session bind
+        try {
+          const prevUid = localStorage.getItem('tma_cached_uid');
+          const nextUid = String(u.id || '');
+          if (prevUid && prevUid !== nextUid) {
+            localStorage.removeItem('tma_cached_tests');
+            localStorage.removeItem('tma_cached_results');
+            localStorage.removeItem('tma_cached_topics');
+            localStorage.removeItem('tma_cached_profile');
+          }
+          if (nextUid) localStorage.setItem('tma_cached_uid', nextUid);
+        } catch {
+          /* ignore storage quota */
+        }
 
         // Refresh stats concurrently in background without blocking screen render
         TmaApi.profile().then((prof) => {

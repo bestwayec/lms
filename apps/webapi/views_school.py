@@ -327,6 +327,11 @@ def group_join_by_token_view(request, token: str):
             {"error": "Taklif havolasi bo'yicha guruh topilmadi.", "status": "NOT_FOUND"},
             status=404,
         )
+    if getattr(group, "status", "active") == "archived":
+        return Response(
+            {"error": "Ushbu guruh arxivlangan. Taklif havolasi faol emas.", "status": "ARCHIVED"},
+            status=410,
+        )
 
     if request.method == "GET":
         subject_display = (
