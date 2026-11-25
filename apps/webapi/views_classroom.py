@@ -594,22 +594,34 @@ def classroom_group_leaderboard_view(request: HttpRequest, group_id: int) -> Jso
     if not (is_admin or is_teacher or is_member):
         return JsonResponse({"error": "Faqat ushbu guruh a'zolari reytingni ko'ra oladi."}, status=403)
 
-    students = list(group.students.filter(is_active=True).order_by("first_name", "last_name"))
+    students = list(
+        group.students.filter(is_active=True)
+        .only("id", "first_name", "last_name", "email")
+        .order_by("first_name", "last_name")
+    )
     student_ids = [s.id for s in students]
 
     results_map: dict[int, dict[str, Any]] = {}
-    from django.db.models import Avg, Count
-    for row in Result.objects.filter(student_id__in=student_ids).values("student_id").annotate(
-        count=Count("id"),
-        avg_pct=Avg("percentage"),
-    ):
-        results_map[row["student_id"]] = row
-
     essays_map: dict[int, int] = {}
-    for row in EssaySubmission.objects.filter(student_id__in=student_ids).exclude(status=EssaySubmission.Status.DRAFT).values("student_id").annotate(
-        count=Count("id")
-    ):
-        essays_map[row["student_id"]] = row["count"]
+    if student_ids:
+        from django.db.models import Avg, Count
+
+        for row in (
+            Result.objects.filter(student_id__in=student_ids)
+            .order_by()
+            .values("student_id")
+            .annotate(count=Count("id"), avg_pct=Avg("percentage"))
+        ):
+            results_map[row["student_id"]] = row
+
+        for row in (
+            EssaySubmission.objects.filter(student_id__in=student_ids)
+            .exclude(status=EssaySubmission.Status.DRAFT)
+            .order_by()
+            .values("student_id")
+            .annotate(count=Count("id"))
+        ):
+            essays_map[row["student_id"]] = row["count"]
 
     rows = []
     for s in students:
@@ -787,8 +799,27 @@ def teacher_list_essay_reviews_view(request: HttpRequest) -> JsonResponse:
             Q(status=EssaySubmission.Status.PENDING_TEACHER) | Q(teacher_review_requested=True)
         ).distinct()
 
+    from django.db.models.functions import Coalesce
+
+    queue_filter = (request.GET.get("filter") or "all").strip().lower()
+    if queue_filter == "appeals":
+        qs = qs.filter(teacher_review_requested=True)
+    elif queue_filter == "pending":
+        qs = qs.filter(status=EssaySubmission.Status.PENDING_TEACHER, teacher_review_requested=False)
+
+    try:
+        limit = min(100, max(1, int(request.GET.get("limit", 50))))
+        offset = max(0, int(request.GET.get("offset", 0)))
+    except (TypeError, ValueError):
+        limit, offset = 50, 0
+
+    ordered_qs = qs.annotate(
+        queue_ts=Coalesce("teacher_review_requested_at", "submitted_at", "updated_at")
+    ).order_by("-queue_ts", "-id")
+    total_count = ordered_qs.count()
+
     reviews_data = []
-    for sub in qs.select_related("student", "topic", "assignment", "assignment__group").order_by("-teacher_review_requested_at")[:50]:
+    for sub in ordered_qs.select_related("student", "topic", "assignment", "assignment__group")[offset : offset + limit]:
         reviews_data.append({
             "id": sub.id,
             "student_id": sub.student_id,
@@ -806,6 +837,9 @@ def teacher_list_essay_reviews_view(request: HttpRequest) -> JsonResponse:
     return JsonResponse({
         "pending_reviews": reviews_data,
         "count": len(reviews_data),
+        "total_count": total_count,
+        "limit": limit,
+        "offset": offset,
     })
 
 

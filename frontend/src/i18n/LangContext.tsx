@@ -1,16 +1,28 @@
 import { createContext, useContext } from 'react';
-import data from './translations.json';
+import uzDict from 'virtual:i18n-uz';
 
 export type AppLang = 'uz' | 'ru' | 'en';
 export const APP_LANGS: AppLang[] = ['uz', 'ru', 'en'];
 const LANG_KEY = 'lms_lang';
 
-// All three dictionaries from translations.json
-const dicts: Record<AppLang, Record<string, string>> = {
-  uz: (data as { uz: Record<string, string> }).uz,
-  ru: (data as { ru: Record<string, string> }).ru,
-  en: (data as { en: Record<string, string> }).en,
+// Load only the default Uzbek dictionary in the initial bundle; Russian and English load lazily on demand.
+const dicts: Partial<Record<AppLang, Record<string, string>>> = {
+  uz: uzDict,
 };
+
+const localeLoaders: Partial<Record<AppLang, () => Promise<{ default: Record<string, string> }>>> = {
+  ru: () => import('virtual:i18n-ru'),
+  en: () => import('virtual:i18n-en'),
+};
+
+export async function ensureLocaleLoaded(lang: AppLang): Promise<boolean> {
+  if (dicts[lang]) return false;
+  const load = localeLoaders[lang];
+  if (!load) return false;
+  const mod = await load();
+  dicts[lang] = mod.default;
+  return true;
+}
 
 // Frontend-only supplement for keys the backend dictionary lacks.
 const extraUz: Record<string, string> = {
@@ -144,7 +156,7 @@ function formatRawKeyFallback(key: string): string {
 }
 
 export function translate(key: string, lang: AppLang, fallback?: string): string {
-  const val = dicts[lang]?.[key] ?? extraUz[key] ?? dicts.uz[key];
+  const val = dicts[lang]?.[key] ?? extraUz[key] ?? dicts.uz?.[key];
   if (val && typeof val === 'string' && val.trim().length > 0) {
     return val;
   }

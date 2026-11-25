@@ -26,8 +26,7 @@ def _invalidate_gamification_caches(user_id: int | None = None, league: str | No
     try:
         if user_id:
             cache.delete(f"tma_prof_stats:{user_id}")
-        if league:
-            cache.delete(f"grandec:weekly_league_v1:{league}")
+        # Bumping platform_lb_ver invalidates both weekly_league_v2:* and platform_lb_v3:* keys atomically.
         try:
             cache.incr("grandec:platform_lb_ver")
         except Exception:
@@ -241,7 +240,12 @@ def get_weekly_league_leaderboard(user) -> Dict[str, Any]:
                 weekly_league=target_league,
                 leaderboard_opt_in=True,
             )
-            .select_related("user")
+            .only(
+                "user_id",
+                "weekly_xp",
+                "leaderboard_pseudonym",
+                "leaderboard_opt_in",
+            )
             .order_by("-weekly_xp", "-xp_points")[:20]
         )
         rows = []
@@ -363,7 +367,16 @@ def get_platform_leaderboard(
                 user__is_active=True,
                 leaderboard_opt_in=True,
             )
-            .select_related("user")
+            .only(
+                "user_id",
+                "weekly_xp",
+                "xp_points",
+                "current_streak",
+                "weekly_league",
+                "leaderboard_pseudonym",
+                "leaderboard_opt_in",
+                "streak_opt_in",
+            )
             .order_by(order_col, "-current_streak", "user_id")[:limit]
         )
         rows = []

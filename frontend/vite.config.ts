@@ -1,6 +1,35 @@
+import { readFileSync, statSync } from 'node:fs'
+import { resolve } from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
+
+function splitI18nLocales() {
+  const dictPath = resolve(import.meta.dirname, 'src/i18n/translations.json')
+  let cachedMtime = -1
+  let cachedDicts: Record<string, Record<string, string>> = {}
+  const loadDicts = () => {
+    const mtime = statSync(dictPath).mtimeMs
+    if (mtime !== cachedMtime) {
+      cachedDicts = JSON.parse(readFileSync(dictPath, 'utf8')) as Record<string, Record<string, string>>
+      cachedMtime = mtime
+    }
+    return cachedDicts
+  }
+  return {
+    name: 'split-i18n-locales',
+    resolveId(id: string) {
+      if (id.startsWith('virtual:i18n-')) return `\0${id}`
+    },
+    load(id: string) {
+      if (id.startsWith('\0virtual:i18n-')) {
+        const lang = id.slice('\0virtual:i18n-'.length)
+        const dict = loadDicts()[lang] ?? {}
+        return `export default ${JSON.stringify(dict)};`
+      }
+    },
+  }
+}
 
 // Use an explicit IPv4 loopback address so the proxy works when Node resolves
 // `localhost` to ::1 but Django is listening on 127.0.0.1 only.
@@ -8,7 +37,7 @@ const DJANGO = 'http://127.0.0.1:8000'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [splitI18nLocales(), react(), tailwindcss()],
   build: {
     chunkSizeWarningLimit: 1000,
     rollupOptions: {

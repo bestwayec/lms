@@ -1,13 +1,25 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { api, getTokens } from '../lib/api';
-import { Ctx, readStoredLang, storeLang, translate, type AppLang } from './LangContext';
+import { Ctx, ensureLocaleLoaded, readStoredLang, storeLang, translate, type AppLang } from './LangContext';
 
 export function LangProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<AppLang>(readStoredLang);
+  const [localeTick, setLocaleTick] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    void ensureLocaleLoaded(lang).then((loaded) => {
+      if (alive && loaded) setLocaleTick((v) => v + 1);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [lang]);
 
   const t = useCallback(
     (key: string, fallback?: string) => translate(key, lang, fallback),
-    [lang],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [lang, localeTick],
   );
 
   // Update document.documentElement.lang when language changes

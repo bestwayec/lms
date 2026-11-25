@@ -49,14 +49,18 @@ def staff_q(user) -> Q:
 
 
 def member_q(user) -> Q:
-    """Classroom tests the user belongs to via explicit assignment (Homework or assigned_group)."""
+    """Classroom tests the user belongs to via active explicit assignment (Homework or assigned_group)."""
     if not _authenticated(user):
         return Q(pk__in=[])
-    my_groups = StudentGroup.objects.filter(students=user)
+    my_groups = StudentGroup.objects.filter(students=user, status=StudentGroup.Status.ACTIVE)
     return (
         Q(assigned_group_id__in=my_groups.values("pk"))
         | Q(
-            pk__in=Homework.objects.filter(Q(group__students=user) | Q(student=user), test__isnull=False)
+            pk__in=Homework.objects.filter(
+                (Q(group__students=user) & Q(group__status=StudentGroup.Status.ACTIVE))
+                | Q(student=user),
+                test__isnull=False,
+            )
             .exclude(status=Homework.Status.CANCELLED)
             .values("test_id")
         )

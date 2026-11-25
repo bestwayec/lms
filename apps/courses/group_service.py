@@ -69,6 +69,27 @@ def get_group_full_analytics(group: StudentGroup) -> dict[str, Any]:
         .order_by("first_name", "last_name")
     )
     student_ids = [s.id for s in students]
+    if not student_ids:
+        empty_bmb = {"A+": 0, "A": 0, "B+": 0, "B": 0, "C+": 0, "C": 0, "Fail": 0}
+        return {
+            "group_id": group.id,
+            "group_name": group.name,
+            "invite_code": group.invite_code or f"GR-{group.id}",
+            "teacher_name": group.teacher.get_full_name() or group.teacher.email,
+            "total_students": 0,
+            "group_avg_percentage": 0.0,
+            "group_bmb_grade": "—",
+            "bmb_distribution": empty_bmb,
+            "summary": {
+                "total_tests_taken": 0,
+                "total_essays_submitted": 0,
+                "average_test_score": 0.0,
+                "average_test_percentage": 0.0,
+                "average_essay_score": 0.0,
+                "bmb_distribution": empty_bmb,
+            },
+            "students": [],
+        }
 
     # Test natijalari: o'quvchi bo'yicha son, o'rtacha foiz, oxirgi sana
     result_stats: dict[int, dict[str, Any]] = {
@@ -235,6 +256,15 @@ def get_group_full_analytics(group: StudentGroup) -> dict[str, Any]:
 get_group_analytics = get_group_full_analytics
 
 
+def _invalidate_tma_cache_on_commit() -> None:
+    try:
+        from apps.telegram_app.views import invalidate_tma_tests_cache
+
+        transaction.on_commit(invalidate_tma_tests_cache)
+    except Exception:
+        pass
+
+
 def find_group_by_token_or_code(token_or_code: str) -> StudentGroup | None:
     """Finds a StudentGroup by invite_token or invite_code."""
     if not token_or_code:
@@ -354,6 +384,7 @@ def add_student_to_group(
             metadata=metadata or {},
         )
 
+        _invalidate_tma_cache_on_commit()
         return True, history
 
 
@@ -416,6 +447,7 @@ def remove_student_from_group(
             metadata=metadata or {},
         )
 
+        _invalidate_tma_cache_on_commit()
         return True
 
 
@@ -885,6 +917,7 @@ def archive_group(group: StudentGroup, actor: Any) -> StudentGroup:
 
         # Revoke all active invitations for this group
         locked_group.invitations.filter(is_revoked=False).update(is_revoked=True)
+        _invalidate_tma_cache_on_commit()
 
     logger.info("Group %d (%s) archived by user %s", group.id, group.name, getattr(actor, "id", None))
     return locked_group
@@ -904,6 +937,7 @@ def restore_group(group: StudentGroup, actor: Any) -> StudentGroup:
         locked_group = StudentGroup.objects.select_for_update().get(id=group.id)
         locked_group.status = StudentGroup.Status.ACTIVE
         locked_group.save(update_fields=["status", "updated_at"])
+        _invalidate_tma_cache_on_commit()
 
     logger.info("Group %d (%s) restored by user %s", group.id, group.name, getattr(actor, "id", None))
     return locked_group
