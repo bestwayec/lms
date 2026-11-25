@@ -471,6 +471,16 @@ class TestGrandec8DefensiveSecurity:
         assert res.status_code == 200
         assert res["X-Content-Type-Options"] == "nosniff"
         assert "no-store" in res["Cache-Control"]
+        assert "sandbox" in res["Content-Security-Policy"]
+        # X-Accel-Redirect mode hands off internal /_private_media/essays/audio/... path with empty body
+        from django.test import override_settings
+
+        with override_settings(PRIVATE_MEDIA_ACCEL_PREFIX="/_private_media/"):
+            accel_res = client.get(f"/api/classroom/essays/{sub.id}/voice/")
+        assert accel_res.status_code == 200
+        assert accel_res["X-Accel-Redirect"].startswith("/_private_media/essays/audio/")
+        assert accel_res.content == b""
+        assert "no-store" in accel_res["Cache-Control"]
         # Assigned teacher also succeeds
         client.force_authenticate(teacher)
         assert client.get(f"/api/classroom/essays/{sub.id}/voice/").status_code == 200

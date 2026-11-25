@@ -11,9 +11,10 @@ command -v nginx >/dev/null || { echo "nginx is required"; exit 2; }
 W="$(mktemp -d /var/tmp/lms-nginx-verify.XXXXXX)"; chmod 755 "$W"
 cleanup() { [ -f "$W/nginx.pid" ] && nginx -c "$W/nginx.conf" -s stop 2>/dev/null || true; [ -f "$W/stub.pid" ] && kill "$(cat "$W/stub.pid")" 2>/dev/null || true; rm -rf "$W"; }
 trap cleanup EXIT
-mkdir -p "$W/media/receipts/2026/11" "$W/media/speaking/audio" "$W/media/tuition/proofs" "$W/media/avatars" "$W/logs"
+mkdir -p "$W/media/receipts/2026/11" "$W/media/speaking/audio" "$W/media/tuition/proofs" "$W/media/essays/audio/2026/11" "$W/media/avatars" "$W/logs"
 echo -n SECRET-RECEIPT > "$W/media/receipts/2026/11/a.png"; echo -n SECRET-AUDIO > "$W/media/speaking/audio/v.wav"
-echo -n SECRET-PROOF > "$W/media/tuition/proofs/p.pdf";     echo -n PUBLIC-AVATAR > "$W/media/avatars/me.png"
+echo -n SECRET-PROOF > "$W/media/tuition/proofs/p.pdf";     echo -n SECRET-ESSAY-AUDIO > "$W/media/essays/audio/2026/11/f.wav"
+echo -n PUBLIC-AVATAR > "$W/media/avatars/me.png"
 chmod -R a+rX "$W"
 python3 - "$CONF" "$W" <<'PY'
 import sys
@@ -26,7 +27,7 @@ def block(start):
             depth-=1
             if depth==0: return src[i:k+1]
         k+=1
-parts=[block("location ~ ^/media/(receipts|tuition/proofs|speaking/audio)/"),block("location /media/ {"),block("location /_private_media/")]
+parts=[block("location ~ ^/media/(receipts|tuition/proofs|speaking/audio|essays/audio)/"),block("location /media/ {"),block("location /_private_media/")]
 body="\n".join(parts).replace("/app/media/",W+"/media/")
 open(W+"/nginx.conf","w").write(f"""worker_processes 1; pid {W}/nginx.pid; error_log {W}/logs/error.log;
 events {{ worker_connections 32; }}
@@ -39,8 +40,14 @@ open(W+"/stub.py","w").write('''
 from http.server import BaseHTTPRequestHandler, HTTPServer
 class H(BaseHTTPRequestHandler):
     def do_GET(self):
-        self.send_response(200); self.send_header("X-Accel-Redirect","/_private_media/receipts/2026/11/a.png")
-        self.send_header("Cache-Control","private, no-store, max-age=0"); self.send_header("Content-Type","image/png"); self.end_headers()
+        if "/essays/" in self.path:
+            target = "/_private_media/essays/audio/2026/11/f.wav"
+            ctype = "audio/wav"
+        else:
+            target = "/_private_media/receipts/2026/11/a.png"
+            ctype = "image/png"
+        self.send_response(200); self.send_header("X-Accel-Redirect", target)
+        self.send_header("Cache-Control","private, no-store, max-age=0"); self.send_header("Content-Type", ctype); self.end_headers()
     def log_message(self,*a): pass
 HTTPServer(("127.0.0.1",18081),H).serve_forever()
 ''')
@@ -54,11 +61,17 @@ check() { # path expected_status expected_body_substring
 check /media/receipts/2026/11/a.png 404
 check /media/speaking/audio/v.wav 404
 check /media/tuition/proofs/p.pdf 404
+check /media/essays/audio/2026/11/f.wav 404
 check //media//receipts//2026/11/a.png 404
+check //media//essays/audio/2026/11/f.wav 404
 check /media/receipts/../receipts/2026/11/a.png 404
+check /media/essays/../essays/audio/2026/11/f.wav 404
 check '/media/%72eceipts/2026/11/a.png' 404
+check '/media/%65ssays/audio/2026/11/f.wav' 404
 check /media/avatars/me.png 200 PUBLIC-AVATAR
 check /_private_media/receipts/2026/11/a.png 404
+check /_private_media/essays/audio/2026/11/f.wav 404
 check /api/v1/files/payment-receipts/1/ 200 SECRET-RECEIPT
+check /api/classroom/essays/1/voice/ 200 SECRET-ESSAY-AUDIO
 h=$(curl -s -D - -o /dev/null http://127.0.0.1:18080/api/v1/files/payment-receipts/1/ | tr -d '\r'); echo "$h" | grep -qi '^cache-control: private, no-store' && echo "ok   authorized response keeps Cache-Control: private, no-store" || { echo "FAIL private cache header lost"; fail=1; }
 [ "$fail" = 0 ] && echo "PRIVATE MEDIA NGINX CHECKS PASSED" || { echo "PRIVATE MEDIA NGINX CHECKS FAILED"; exit 1; }
