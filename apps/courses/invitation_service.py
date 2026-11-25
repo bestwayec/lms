@@ -146,7 +146,7 @@ def join_group_by_token(student: Any, token: str) -> dict[str, Any]:
             raise ValidationError("Ushbu taklifnomadan foydalanib bo'lmaydi.")
 
         group = (
-            StudentGroup.objects.select_for_update()
+            StudentGroup.objects.select_for_update(of=("self",))
             .select_related("branch", "teacher")
             .get(pk=invitation.group_id)
         )
