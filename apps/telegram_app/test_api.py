@@ -391,6 +391,31 @@ def tma_test_submit_view(request, test_id: int) -> JsonResponse:
         logger.exception("TMA submit failed: attempt=%s", attempt.id)
         return JsonResponse({"error": "Topshirishda ichki xatolik."}, status=500)
 
+    # Award idempotent educational XP only for verified, non-preview, graded attempts
+    try:
+        attempt_row = TestAttempt.objects.filter(pk=outcome.attempt_id).first()
+        if (
+            attempt_row is not None
+            and not attempt_row.is_preview
+            and not getattr(attempt_row, "trial_part_id", None)
+            and attempt_row.status in (TestAttempt.Status.COMPLETED, TestAttempt.Status.TIMEOUT)
+            and getattr(outcome, "grading_status", "graded") == "graded"
+        ):
+            from apps.accounts.gamification import award_educational_xp
+            from apps.tests.xp_rules import award_test_xp
+
+            xp = award_test_xp(user, outcome, attempt_row)
+            if xp > 0:
+                award_educational_xp(
+                    user,
+                    event_type="test_completed",
+                    reference_id=f"attempt_{attempt_row.id}",
+                    xp_amount=xp,
+                    metadata={"test_id": attempt_row.test_id, "score": str(getattr(outcome, "score", 0))},
+                )
+    except Exception as xp_err:
+        logger.warning("TMA educational XP notice: %s", xp_err)
+
     return JsonResponse(
         {
             "success": True,

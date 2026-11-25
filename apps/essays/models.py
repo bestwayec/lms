@@ -276,6 +276,8 @@ class EssaySubmission(models.Model):
         Status.PENDING_TEACHER: frozenset(
             {
                 Status.DRAFT,
+                Status.GRADED,
+                Status.AI_EVALUATED,
                 Status.TEACHER_REVIEWED,
             }
         ),

@@ -257,6 +257,9 @@ def tma_profile_view(request: Request) -> Response:
             "current_streak": streak,
             "weekly_xp": w_xp,
             "weekly_league": w_league,
+            "leaderboard_opt_in": bool(getattr(profile, "leaderboard_opt_in", False)),
+            "leaderboard_pseudonym": getattr(profile, "leaderboard_pseudonym", ""),
+            "streak_opt_in": bool(getattr(profile, "streak_opt_in", True)),
         }
         cache.set(cache_key, cached_stats, timeout=60)
 
@@ -419,7 +422,7 @@ def tma_tests_view(request: Request) -> Response:
         qs = visible_tests(
             Test.objects.filter(is_active=True).select_related("course"),
             user,
-        ).order_by("-created_at")[:30]
+        ).order_by("-created_at")[:100]
 
         tests_payload = [
             {

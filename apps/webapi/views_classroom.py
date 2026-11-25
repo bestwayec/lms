@@ -628,6 +628,39 @@ def platform_leaderboard_view(request: HttpRequest) -> JsonResponse:
     return JsonResponse(data)
 
 
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def gamification_privacy_settings_view(request: HttpRequest) -> JsonResponse:
+    """Allows students to opt in/out of public leaderboards, choose a pseudonym, or toggle streak reminders."""
+    import re
+    from apps.accounts.gamification import _invalidate_gamification_caches
+    from apps.accounts.models import Profile
+
+    profile, _ = Profile.objects.get_or_create(user=request.user)
+    if request.method == "POST":
+        payload = _parse_body(request)
+        update_fields = []
+        if "leaderboard_opt_in" in payload:
+            profile.leaderboard_opt_in = bool(payload["leaderboard_opt_in"])
+            update_fields.append("leaderboard_opt_in")
+        if "streak_opt_in" in payload:
+            profile.streak_opt_in = bool(payload["streak_opt_in"])
+            update_fields.append("streak_opt_in")
+        if "leaderboard_pseudonym" in payload:
+            raw_pseudo = re.sub(r"[<>\"'&@]", "", str(payload["leaderboard_pseudonym"] or "")).strip()[:40]
+            profile.leaderboard_pseudonym = raw_pseudo
+            update_fields.append("leaderboard_pseudonym")
+        if update_fields:
+            profile.save(update_fields=update_fields)
+            _invalidate_gamification_caches(user_id=request.user.id, league=profile.weekly_league)
+
+    return JsonResponse({
+        "leaderboard_opt_in": bool(profile.leaderboard_opt_in),
+        "leaderboard_pseudonym": profile.leaderboard_pseudonym,
+        "streak_opt_in": bool(profile.streak_opt_in),
+    })
+
+
 # ---------------------------------------------------------------------------
 # Essay Classroom & Human Review Center (GRANDEC NEXT 8.0)
 # ---------------------------------------------------------------------------
@@ -710,9 +743,15 @@ def teacher_list_essay_reviews_view(request: HttpRequest) -> JsonResponse:
     else:
         qs = EssaySubmission.objects.filter(
             Q(assigned_reviewer=user)
-            | Q(assignment__assigned_by=user)
             | Q(assignment__group__teacher=user)
-            | Q(student__student_groups__teacher=user)
+            | Q(assignment__isnull=False, assignment__group__isnull=True, assignment__assigned_by=user)
+            | Q(
+                assignment__isnull=True,
+                assigned_reviewer__isnull=True,
+                group_visibility=EssaySubmission.GroupVisibility.GROUP_VISIBLE,
+                student__student_groups__teacher=user,
+                student__student_groups__status=StudentGroup.Status.ACTIVE,
+            )
         ).filter(
             Q(status=EssaySubmission.Status.PENDING_TEACHER) | Q(teacher_review_requested=True)
         ).distinct()
@@ -863,19 +902,26 @@ def classroom_group_essay_gradebook_view(
             final_val = float(sub.final_score) if sub.final_score is not None else None
             ai_val = float(sub.total_score) if sub.total_score is not None else None
 
-            if sub.status == EssaySubmission.Status.TEACHER_REVIEWED or final_val is not None:
-                graded_count += 1
-                total_score_sum += final_val if final_val is not None else (ai_val or 0.0)
+            if sub.status in (
+                EssaySubmission.Status.TEACHER_REVIEWED,
+                EssaySubmission.Status.GRADED,
+                EssaySubmission.Status.AI_EVALUATED,
+            ):
+                eff_score = final_val if final_val is not None else ai_val
+                if eff_score is not None:
+                    graded_count += 1
+                    total_score_sum += eff_score
             elif sub.status == EssaySubmission.Status.PENDING_TEACHER or sub.teacher_review_requested:
                 pending_review_count += 1
 
+            sub_dt = sub.submitted_at or sub.updated_at
             rows.append({
                 "student_id": s.id,
                 "student_name": s.get_full_name() or s.email.split("@")[0],
                 "submission_id": sub.id,
                 "status": "submitted",
                 "grading_status": sub.status,
-                "submitted_at": sub.created_at.strftime("%d.%m.%Y %H:%M"),
+                "submitted_at": sub_dt.strftime("%d.%m.%Y %H:%M") if sub_dt else None,
                 "ai_score": ai_val,
                 "final_score": final_val,
                 "appeal_status": getattr(sub, "appeal_status", "none"),
@@ -901,6 +947,11 @@ def classroom_group_essay_gradebook_view(
     not_submitted_count = total_assigned - submitted_count
     avg_score = round(total_score_sum / graded_count, 1) if graded_count > 0 else 0.0
 
+    from apps.essays.services import ESSAY_RUBRIC_MAX_SCORE
+
+    topic_rubric = getattr(assignment.topic, "rubric_type", "") if assignment.topic else ""
+    max_scale = 9 if str(topic_rubric).startswith("ielts") else ESSAY_RUBRIC_MAX_SCORE
+
     return JsonResponse({
         "group_id": group.id,
         "group_name": group.name,
@@ -914,7 +965,7 @@ def classroom_group_essay_gradebook_view(
             "pending_review_count": pending_review_count,
             "graded_count": graded_count,
             "avg_valid_score": avg_score,
-            "max_score": 24,
+            "max_score": max_scale,
         },
         "roster": rows,
     })

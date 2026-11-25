@@ -221,6 +221,16 @@ class TestGamificationEducationalXP:
         assert profile.xp_points == initial_xp + 50
 
     def test_platform_leaderboard_privacy_masking(self):
+        student_opt_out = User.objects.create_user(
+            first_name="Maxfiy",
+            last_name="Talaba",
+            email="hidden@example.com",
+            password="pass",
+        )
+        student_opt_out.profile.xp_points = 999
+        student_opt_out.profile.leaderboard_opt_in = False
+        student_opt_out.profile.save()
+
         student1 = User.objects.create_user(
             first_name="Alisher",
             last_name="Navoiy",
@@ -228,16 +238,53 @@ class TestGamificationEducationalXP:
             password="pass",
         )
         student1.profile.xp_points = 500
+        student1.profile.leaderboard_opt_in = True
+        student1.profile.leaderboard_pseudonym = "Lochin2026"
         student1.profile.save()
 
+        student2 = User.objects.create_user(
+            first_name="Bobur",
+            last_name="Mirzo",
+            email="bobur@example.com",
+            password="pass",
+        )
+        student2.profile.xp_points = 300
+        student2.profile.leaderboard_opt_in = True
+        student2.profile.save()
+
         lb = get_platform_leaderboard(student1, period="all_time", limit=10)
+        # Non-participating user (999 XP) is strictly excluded!
         assert lb["user_rank"] == 1
-        assert len(lb["items"]) >= 1
+        user_ids = [item["user_id"] for item in lb["items"]]
+        assert student_opt_out.id not in user_ids
+        assert len(lb["items"]) == 2
 
         top_entry = lb["items"][0]
-        # Privacy masking: "Alisher N." format, no raw email exposed!
-        assert "Alisher N." in top_entry["display_name"]
+        second_entry = lb["items"][1]
+        # User-selected pseudonym is shown; real first/last names and emails are never exposed!
+        assert top_entry["display_name"] == "Lochin2026"
+        assert "Alisher" not in top_entry["display_name"]
         assert "@" not in top_entry["display_name"]
+        # Without pseudonym, opaque anonymous participant ID is used (not FirstName L.)
+        assert second_entry["display_name"].startswith("Ishtirokchi #")
+        assert "Bobur" not in second_entry["display_name"]
+
+    def test_interrupted_xp_transaction_rolls_back_event_atomically(self):
+        student = User.objects.create_user(email="atomicxp@example.com", password="pass", role="student")
+        with patch("apps.accounts.gamification.record_user_activity", side_effect=RuntimeError("DB interrupted")):
+            with pytest.raises(RuntimeError, match="DB interrupted"):
+                award_educational_xp(student, "test_attempt", "attempt_atomic_1", 40)
+
+        # Event must NOT persist if XP balance update failed!
+        assert not EducationalXPEvent.objects.filter(user=student, reference_id="attempt_atomic_1").exists()
+        student.profile.refresh_from_db()
+        assert student.profile.xp_points == 0
+
+        # Retry succeeds cleanly and awards full XP
+        event, created = award_educational_xp(student, "test_attempt", "attempt_atomic_1", 40)
+        assert created is True
+        student.profile.refresh_from_db()
+        assert student.profile.xp_points == 40
 
 
 @pytest.mark.django_db
@@ -317,3 +364,60 @@ class TestEssayReviewAndAppealWorkflow:
         assert t_review.voice_duration_seconds == 45
         assert bool(t_review.voice_feedback) is True
         assert t_review.voice_feedback.name.startswith("essays/audio/")
+
+    def test_multi_group_essay_routing_and_gradebook_zero_score_integrity(self):
+        from apps.essays.models import EssayAssignment
+        from apps.essays.services import _find_reviewer_for_student, can_review_submission
+        from rest_framework.test import APIClient
+
+        t_uzbek = User.objects.create_user(email="tuz@example.com", password="pass", role="teacher", is_active=True)
+        t_math = User.objects.create_user(email="tmath@example.com", password="pass", role="teacher", is_active=True)
+        s_active = User.objects.create_user(email="sgrade@example.com", password="pass", role="student", is_active=True)
+        s_missing = User.objects.create_user(email="smissing@example.com", password="pass", role="student", is_active=True)
+
+        g_math = StudentGroup.objects.create(name="Matematika", teacher=t_math, subject="math", status="active")
+        g_uzbek = StudentGroup.objects.create(name="Ona Tili", teacher=t_uzbek, subject="uzbek", status="active")
+        g_math.students.add(s_active)
+        g_uzbek.students.add(s_active, s_missing)
+
+        topic_uz = EssayTopic.objects.create(
+            title="Alisher Navoiy merosi",
+            subject="uzbek",
+            word_limit_min=50,
+            word_limit_max=200,
+        )
+        assignment = EssayAssignment.objects.create(
+            topic=topic_uz,
+            group=g_uzbek,
+            assigned_by=t_uzbek,
+            due_at=timezone.now() + timezone.timedelta(days=3),
+        )
+        sub_zero = EssaySubmission.objects.create(
+            student=s_active,
+            topic=topic_uz,
+            assignment=assignment,
+            essay_text="Butunlay boshqa mavzu.",
+            word_count=55,
+            status=EssaySubmission.Status.GRADED,
+            total_score=0,
+            max_score=20,
+            is_completely_off_topic=True,
+        )
+
+        # Reviewer routing picks t_uzbek, NEVER t_math
+        assert _find_reviewer_for_student(s_active, submission=sub_zero) == t_uzbek
+        assert can_review_submission(t_uzbek, sub_zero) is True
+        assert can_review_submission(t_math, sub_zero) is False
+
+        # Group gradebook includes both submitted (genuine 0) and missing student, and max_score=20
+        client = APIClient()
+        client.force_authenticate(t_uzbek)
+        resp = client.get(f"/api/classroom/groups/{g_uzbek.id}/essays/{assignment.id}/gradebook/")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["metrics"]["total_assigned"] == 2
+        assert data["metrics"]["submitted_count"] == 1
+        assert data["metrics"]["not_submitted_count"] == 1
+        assert data["metrics"]["graded_count"] == 1
+        assert data["metrics"]["avg_valid_score"] == 0.0
+        assert data["metrics"]["max_score"] == 20

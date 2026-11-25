@@ -32,6 +32,7 @@ urlpatterns = [
     # -- Leaderboards: Group vs Platform --------------------------
     path("groups/<int:group_id>/leaderboard/", views_classroom.classroom_group_leaderboard_view, name="group-leaderboard"),
     path("leaderboard/platform/", views_classroom.platform_leaderboard_view, name="platform-leaderboard"),
+    path("profile/gamification-settings/", views_classroom.gamification_privacy_settings_view, name="gamification-settings"),
 
     # -- Essay Classroom & Review Center 8.0 -----------------------
     path("essays/<int:submission_id>/appeal/", views_classroom.student_request_essay_appeal_view, name="student-essay-appeal"),

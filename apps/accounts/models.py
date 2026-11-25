@@ -498,6 +498,24 @@ class Profile(models.Model):
         default=LeagueChoice.BRONZE,
         db_index=True,
     )
+    leaderboard_opt_in = models.BooleanField(
+        _("umumiy reytingda qatnashish"),
+        default=False,
+        db_index=True,
+        help_text=_("Faqat foydalanuvchi roziligi bilan ommaviy reytingda ko'rinadi."),
+    )
+    leaderboard_pseudonym = models.CharField(
+        _("reyting taxallusi"),
+        max_length=40,
+        blank=True,
+        default="",
+        help_text=_("Ommaviy reytingda ko'rinadigan shaxsiy taxallus (ixtiyoriy)."),
+    )
+    streak_opt_in = models.BooleanField(
+        _("kunlik streak bildirishnomalari"),
+        default=True,
+        help_text=_("O'quvchi xohishiga ko'ra kunlik streak bosimisiz foydalanishi mumkin."),
+    )
 
     # -- Teacher / Center White-Label Branding (B2B) ---------------------------
     center_name = models.CharField(
