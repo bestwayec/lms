@@ -22,6 +22,7 @@ export default function TestFlow({
   const [answers, setAnswers] = useState<Record<number, TmaAnswerValue>>({});
   const [index, setIndex] = useState(0);
   const [remaining, setRemaining] = useState(0);
+  const [flagged, setFlagged] = useState<Set<number>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<TmaSubmitResult | null>(null);
   const [resultTitle, setResultTitle] = useState('');
@@ -283,6 +284,16 @@ export default function TestFlow({
     setAnswers((prev) => ({ ...prev, [q.id]: { choice_ids: [], text_answer: value } }));
   };
 
+  const toggleFlag = (qid: number) => {
+    hapticImpact('light');
+    setFlagged((prev) => {
+      const next = new Set(prev);
+      if (next.has(qid)) next.delete(qid);
+      else next.add(qid);
+      return next;
+    });
+  };
+
   const unanswered = questions.filter((item) => {
     const v = answers[item.id];
     return !v || (Array.isArray(v) ? v.length === 0 : !v.text_answer.trim());
@@ -306,8 +317,18 @@ export default function TestFlow({
         <div className={`tma-timer ${isTimed ? timerClass : ''}`}>
           ⏱ {isTimed ? formatClock(remaining) : (t('tma_untimed') || "Chegarasiz")}
         </div>
-        <div className="tma-timer">
-          {index + 1}/{total}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            type="button"
+            className={`tma-flag-btn ${flagged.has(q.id) ? 'flagged' : ''}`}
+            onClick={() => toggleFlag(q.id)}
+            title={flagged.has(q.id) ? "Belgilangan savol" : "Savolni belgilash"}
+          >
+            {flagged.has(q.id) ? '🚩 Belgilangan' : '🏳️ Belgilash'}
+          </button>
+          <div className="tma-timer">
+            {index + 1}/{total}
+          </div>
         </div>
       </div>
       <div className="tma-bar">
@@ -367,11 +388,12 @@ export default function TestFlow({
         {questions.map((item, i) => {
           const v = answers[item.id];
           const done = Array.isArray(v) ? v.length > 0 : !!(v && v.text_answer.trim());
+          const isFl = flagged.has(item.id);
           return (
             <button
               key={item.id}
               aria-label={`q${i + 1}`}
-              className={i === index ? 'on' : done ? 'done' : ''}
+              className={`${i === index ? 'on' : done ? 'done' : ''} ${isFl ? 'flagged' : ''}`}
               onClick={() => setIndex(i)}
             />
           );

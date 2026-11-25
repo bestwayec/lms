@@ -26,7 +26,12 @@ from django.http import FileResponse, Http404, HttpResponse
 
 #: Storage prefixes that hold private files. Public media (avatars, topic images, exam
 #: assets, logos) deliberately stays outside this list.
-PRIVATE_MEDIA_PREFIXES = ("receipts/", "tuition/proofs/", "speaking/audio/")
+PRIVATE_MEDIA_PREFIXES = (
+    "receipts/",
+    "tuition/proofs/",
+    "speaking/audio/",
+    "essays/audio/",
+)
 
 _INLINE_TYPES = frozenset(
     {

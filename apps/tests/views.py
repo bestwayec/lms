@@ -781,14 +781,31 @@ class SubmitAttemptView(APIView):
             )
         streak_result = None
         try:
-            from apps.accounts.gamification import record_user_activity
+            from apps.accounts.gamification import award_educational_xp
 
             attempt_row = TestAttempt.objects.filter(pk=attempt_id).first()
-            if attempt_row is not None and not attempt_row.is_preview:
+            if (
+                attempt_row is not None
+                and not attempt_row.is_preview
+                and not getattr(attempt_row, "trial_part_id", None)
+                and attempt_row.status in (TestAttempt.Status.COMPLETED, TestAttempt.Status.TIMEOUT)
+                and getattr(result, "grading_status", "graded") == "graded"
+            ):
                 from apps.tests.xp_rules import award_test_xp
 
-                xp = award_test_xp(request.user, result, attempt_row) or 25
-                streak_result = record_user_activity(request.user, xp_amount=xp, activity_type="test")
+                xp = award_test_xp(request.user, result, attempt_row)
+                if xp > 0:
+                    event, is_new = award_educational_xp(
+                        request.user,
+                        event_type="test_completed",
+                        reference_id=f"attempt_{attempt_id}",
+                        xp_amount=xp,
+                        metadata={"test_id": attempt_row.test_id, "score": str(getattr(result, "score", 0))},
+                    )
+                    from apps.accounts.gamification import get_user_streak_info
+                    streak_result = get_user_streak_info(request.user)
+                    streak_result["already_awarded"] = not is_new
+                    streak_result["xp_earned"] = xp if is_new else 0
         except Exception as e:
             logger.warning("Streak activity record notice: %s", e)
 

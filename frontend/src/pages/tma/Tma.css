@@ -261,12 +261,20 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 6px 16px;
+  gap: 3px;
+  padding: 4px 6px;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   transition: color 0.15s ease;
+  flex: 1;
+  min-width: 0;
+}
+.tma-nav button span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 .tma-nav button.on {
   color: var(--tma-accent);
@@ -408,6 +416,67 @@
 }
 .tma-dots button.done {
   background: var(--tma-green);
+}
+.tma-dots button.flagged {
+  border: 2px solid #DC2626 !important;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.3);
+}
+.tma-flag-btn {
+  background: var(--tma-card);
+  border: 1px solid var(--tma-border);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--tma-muted);
+  transition: all 0.15s ease;
+}
+.tma-flag-btn.flagged {
+  background: var(--tma-red-light);
+  border-color: rgba(220, 38, 38, 0.4);
+  color: #DC2626;
+}
+.tma-chips-row {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  margin-bottom: 16px;
+  -webkit-overflow-scrolling: touch;
+}
+.tma-chip {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--tma-border);
+  background: var(--tma-card);
+  color: var(--tma-muted);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.tma-chip.on {
+  background: var(--tma-accent-light);
+  border-color: var(--tma-accent);
+  color: var(--tma-accent);
+  font-weight: 700;
+}
+.tma-voice-player {
+  background: #F1F5F9;
+  border: 1px solid var(--tma-border);
+  border-radius: 12px;
+  padding: 12px;
+  margin: 12px 0;
+}
+.tma-voice-player audio {
+  width: 100%;
+  height: 36px;
+  outline: none;
 }
 .tma-q {
   font-size: 16px;

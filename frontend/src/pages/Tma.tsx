@@ -8,14 +8,17 @@ import type { TmaProfile } from './tma/api';
 import { loadTelegramScript, tg } from './tma/telegram';
 import Home from './tma/Home';
 import TestFlow from './tma/TestFlow';
-import Essays from './tma/Essays';
+import TestsTab from './tma/TestsTab';
+import ClassroomTab from './tma/ClassroomTab';
+import LeaderboardTab from './tma/LeaderboardTab';
+import ProfileTab from './tma/ProfileTab';
 import './tma/Tma.css';
 
 /** Bot username fallback for the "open in Telegram" link (mirrors settings.TELEGRAM_BOT_NAME default). */
 const BOT_USERNAME = 'uz_essaygrader_bot';
 
 type Boot = 'boot' | 'outside' | 'authing' | 'ready' | 'error';
-type Tab = 'home' | 'essays';
+type Tab = 'home' | 'tests' | 'classroom' | 'leaderboard' | 'profile';
 
 /**
  * Dedicated Telegram Mini App (routes /tma + /tma/, public).
@@ -27,14 +30,7 @@ export default function Tma() {
   const { t, setLang } = useLang();
   const [boot, setBoot] = useState<Boot>('boot');
   const [error, setError] = useState<string | null>(null);
-  const [profile, setProfile] = useState<TmaProfile | null>(() => {
-    try {
-      const raw = localStorage.getItem('tma_cached_profile');
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [profile, setProfile] = useState<TmaProfile | null>(null);
   const [tab, setTab] = useState<Tab>('home');
   const [activeTestId, setActiveTestId] = useState<number | null>(null);
   const backHandlerRef = useRef<(() => void) | null>(null);
@@ -123,6 +119,21 @@ export default function Tma() {
         });
         setBoot('ready');
 
+        // Clear stale un-scoped or previous-account caches on Telegram session bind
+        try {
+          const prevUid = localStorage.getItem('tma_cached_uid');
+          const nextUid = String(u.id || '');
+          if (prevUid && prevUid !== nextUid) {
+            localStorage.removeItem('tma_cached_tests');
+            localStorage.removeItem('tma_cached_results');
+            localStorage.removeItem('tma_cached_topics');
+            localStorage.removeItem('tma_cached_profile');
+          }
+          if (nextUid) localStorage.setItem('tma_cached_uid', nextUid);
+        } catch {
+          /* ignore storage quota */
+        }
+
         // Refresh stats concurrently in background without blocking screen render
         TmaApi.profile().then((prof) => {
           if (!cancelled && prof) {
@@ -189,8 +200,12 @@ export default function Tma() {
       <div className="tma-root">
         <div className="tma-auth">
           <div className="tma-auth-card" style={{ maxWidth: 360, textAlign: 'center', padding: '24px 20px' }}>
-            <div className="tma-auth-logo" style={{ fontSize: 36, marginBottom: 8 }}>📚</div>
-            <h1 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 8px' }}>Ona Tili &amp; Adabiyot</h1>
+            <img
+              src="/logo-mark.png"
+              alt="GRANDEC LMS"
+              style={{ width: 48, height: 48, objectFit: 'contain', margin: '0 auto 10px', display: 'block' }}
+            />
+            <h1 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 8px' }}>GRANDEC LMS</h1>
             <p className="tma-muted" style={{ marginBottom: 20 }}>{t('tma_open_in_telegram')}</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <a
@@ -198,7 +213,14 @@ export default function Tma() {
                 href={`https://t.me/${BOT_USERNAME}`}
                 target="_blank"
                 rel="noreferrer"
-                style={{ display: 'block', textDecoration: 'none' }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minHeight: 48,
+                  textDecoration: 'none',
+                  boxSizing: 'border-box',
+                }}
               >
                 Telegram botda ochish
               </a>
@@ -277,9 +299,20 @@ export default function Tma() {
           {inFlow ? (
             <TestFlow testId={activeTestId} onExit={exitFlow} setBackHandler={setBackHandler} />
           ) : tab === 'home' ? (
-            <Home profile={profile} onProfileLoaded={setProfile} onOpenTest={openTest} />
+            <Home
+              profile={profile}
+              onProfileLoaded={setProfile}
+              onOpenTest={openTest}
+              onNavigateClassroom={() => switchTab('classroom')}
+            />
+          ) : tab === 'tests' ? (
+            <TestsTab onOpenTest={openTest} setBackHandler={setBackHandler} />
+          ) : tab === 'classroom' ? (
+            <ClassroomTab onOpenTest={openTest} />
+          ) : tab === 'leaderboard' ? (
+            <LeaderboardTab />
           ) : (
-            <Essays setBackHandler={setBackHandler} />
+            <ProfileTab profile={profile} />
           )}
         </main>
 
@@ -290,19 +323,21 @@ export default function Tma() {
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
                 <span>{t('tma_home')}</span>
               </button>
-              <button
-                className={tab === 'home' ? 'on' : ''}
-                onClick={() => {
-                  switchTab('home');
-                  window.scrollTo({ top: 0 });
-                }}
-              >
+              <button className={tab === 'tests' ? 'on' : ''} onClick={() => switchTab('tests')}>
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                 <span>{t('tma_tests')}</span>
               </button>
-              <button className={tab === 'essays' ? 'on' : ''} onClick={() => switchTab('essays')}>
-                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                <span>{t('tma_essays_tab')}</span>
+              <button className={tab === 'classroom' ? 'on' : ''} onClick={() => switchTab('classroom')}>
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+                <span>{t('classroom') || 'Sinfxona'}</span>
+              </button>
+              <button className={tab === 'leaderboard' ? 'on' : ''} onClick={() => switchTab('leaderboard')}>
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
+                <span>{t('leaderboard') || 'Reyting'}</span>
+              </button>
+              <button className={tab === 'profile' ? 'on' : ''} onClick={() => switchTab('profile')}>
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                <span>{t('profile') || 'Profil'}</span>
               </button>
             </div>
           </nav>

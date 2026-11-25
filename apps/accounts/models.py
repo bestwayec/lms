@@ -498,6 +498,24 @@ class Profile(models.Model):
         default=LeagueChoice.BRONZE,
         db_index=True,
     )
+    leaderboard_opt_in = models.BooleanField(
+        _("umumiy reytingda qatnashish"),
+        default=False,
+        db_index=True,
+        help_text=_("Faqat foydalanuvchi roziligi bilan ommaviy reytingda ko'rinadi."),
+    )
+    leaderboard_pseudonym = models.CharField(
+        _("reyting taxallusi"),
+        max_length=40,
+        blank=True,
+        default="",
+        help_text=_("Ommaviy reytingda ko'rinadigan shaxsiy taxallus (ixtiyoriy)."),
+    )
+    streak_opt_in = models.BooleanField(
+        _("kunlik streak bildirishnomalari"),
+        default=True,
+        help_text=_("O'quvchi xohishiga ko'ra kunlik streak bosimisiz foydalanishi mumkin."),
+    )
 
     # -- Teacher / Center White-Label Branding (B2B) ---------------------------
     center_name = models.CharField(
@@ -740,3 +758,63 @@ class ReferralHistory(models.Model):
 
     def __str__(self) -> str:
         return f"{self.referrer} -> {self.referred_user} ({self.referral_code})"
+
+
+class EducationalXPEvent(models.Model):
+    """
+    Idempotent educational XP event record.
+    Prevents duplicate XP awards from refreshes, retries, repeated callbacks or submissions.
+    """
+    class EventType(models.TextChoices):
+        TEST_COMPLETED = "test_completed", _("Test topshirildi")
+        ESSAY_COMPLETED = "essay_completed", _("Esse topshirildi")
+        HOMEWORK_COMPLETED = "homework_completed", _("Vazifa bajarildi")
+        PRACTICE_COMPLETED = "practice_completed", _("Mavzuli mashq bajarildi")
+        ATTENDANCE_PRESENT = "attendance_present", _("Darsda qatnashildi")
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="xp_events",
+        verbose_name=_("foydalanuvchi"),
+    )
+    event_type = models.CharField(
+        _("hodisa turi"),
+        max_length=40,
+        choices=EventType.choices,
+        db_index=True,
+    )
+    reference_id = models.CharField(
+        _("bog'langan obyekt ID"),
+        max_length=100,
+        db_index=True,
+        help_text=_("Takrorlanishning oldini oluvchi unikal havola (masalan: test_attempt_123, essay_sub_456)."),
+    )
+    xp_amount = models.PositiveIntegerField(
+        _("berilgan XP"),
+        default=0,
+    )
+    metadata = models.JSONField(
+        _("qo'shimcha ma'lumotlar"),
+        default=dict,
+        blank=True,
+    )
+    created_at = models.DateTimeField(
+        _("berilgan vaqti"),
+        auto_now_add=True,
+    )
+
+    class Meta:
+        verbose_name = _("Ta'limiy XP hodisasi")
+        verbose_name_plural = _("Ta'limiy XP hodisalari")
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "event_type", "reference_id"],
+                name="uniq_user_xp_event_reference",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user} — {self.event_type} (+{self.xp_amount} XP)"
+

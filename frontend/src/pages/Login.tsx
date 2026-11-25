@@ -13,7 +13,7 @@ type TgPhase = 'idle' | 'waiting' | 'code' | 'done';
 
 export default function Login() {
   const { login, loginWithTelegram, loginWithGoogle, error } = useAuth();
-  const { t, setLang } = useLang();
+  const { lang, t, setLang } = useLang();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const urlError = searchParams.get('error');
@@ -318,9 +318,32 @@ export default function Login() {
         />
       </div>
       <div className="auth-card" style={{ position: 'relative', zIndex: 1 }}>
-        <Link to="/" className="muted small" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 44, textDecoration: 'none', marginBottom: 4 }}>
-          <ArrowLeftIcon size={14} className="ico" /> {t('back_home')}
-        </Link>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+          <Link to="/" className="muted small" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 40, textDecoration: 'none' }}>
+            <ArrowLeftIcon size={14} className="ico" /> {t('back_home')}
+          </Link>
+          <div role="group" aria-label="Language" style={{ display: 'inline-flex', gap: 4, background: 'rgba(15, 23, 42, 0.06)', padding: 3, borderRadius: 8, border: '1px solid var(--border)' }}>
+            {(['uz', 'ru', 'en'] as const).map((code) => (
+              <button
+                key={code}
+                type="button"
+                onClick={() => setLang(code)}
+                style={{
+                  padding: '4px 8px',
+                  borderRadius: 6,
+                  border: 'none',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  background: lang === code ? '#0284c7' : 'transparent',
+                  color: lang === code ? '#ffffff' : 'var(--muted)',
+                }}
+              >
+                {code.toUpperCase()}
+              </button>
+            ))}
+          </div>
+        </div>
         <img src="/logo-mark.png" alt="GRANDEC" className="auth-logo" />
         <h1>{t('login')}</h1>
         <p className="muted">{t('login_subtitle')}</p>
@@ -330,12 +353,12 @@ export default function Login() {
           role="tablist"
           style={{
             display: 'flex',
-            background: 'rgba(255, 255, 255, 0.05)',
+            background: 'rgba(15, 23, 42, 0.06)',
             borderRadius: 12,
             padding: 4,
             marginTop: 16,
             marginBottom: 20,
-            border: '1px solid rgba(255, 255, 255, 0.1)',
+            border: '1px solid var(--border)',
             gap: 4,
           }}
         >
@@ -350,7 +373,7 @@ export default function Login() {
               borderRadius: 8,
               border: 'none',
               background: authTab === 'student' ? '#0284c7' : 'transparent',
-              color: authTab === 'student' ? '#ffffff' : 'var(--muted)',
+              color: authTab === 'student' ? '#ffffff' : 'var(--ink)',
               fontWeight: 700,
               fontSize: 13,
               cursor: 'pointer',
@@ -361,7 +384,7 @@ export default function Login() {
               gap: 6,
             }}
           >
-            ⚡ O‘quvchilar (Telegram 1-klik)
+            {lang === 'en' ? '⚡ Students (Telegram 1-click)' : lang === 'ru' ? '⚡ Ученики (Telegram 1-клик)' : "⚡ O‘quvchilar (Telegram 1-klik)"}
           </button>
           <button
             type="button"
@@ -373,8 +396,8 @@ export default function Login() {
               padding: '10px 12px',
               borderRadius: 8,
               border: 'none',
-              background: authTab === 'staff' ? 'rgba(255, 255, 255, 0.15)' : 'transparent',
-              color: authTab === 'staff' ? '#ffffff' : 'var(--muted)',
+              background: authTab === 'staff' ? '#0284c7' : 'transparent',
+              color: authTab === 'staff' ? '#ffffff' : 'var(--ink)',
               fontWeight: 700,
               fontSize: 13,
               cursor: 'pointer',
@@ -385,7 +408,7 @@ export default function Login() {
               gap: 6,
             }}
           >
-            🔑 O‘qituvchilar va Admin
+            {lang === 'en' ? '🔑 Teachers & Admin' : lang === 'ru' ? '🔑 Учителя и Админ' : "🔑 O‘qituvchilar va Admin"}
           </button>
         </div>
 
@@ -401,11 +424,15 @@ export default function Login() {
                 textAlign: 'center',
               }}
             >
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#38bdf8', marginBottom: 4 }}>
-                ⚡ Parol eslab qolish shart emas!
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#0284c7', marginBottom: 4 }}>
+                {lang === 'en' ? '⚡ No password needed!' : lang === 'ru' ? '⚡ Пароль запоминать не нужно!' : '⚡ Parol eslab qolish shart emas!'}
               </div>
               <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.4 }}>
-                Telegram hisobingiz orqali bir marta bosishda xavfsiz kiring.
+                {lang === 'en'
+                  ? 'Sign in securely in one click using your Telegram account.'
+                  : lang === 'ru'
+                  ? 'Безопасный вход в один клик через ваш аккаунт Telegram.'
+                  : 'Telegram hisobingiz orqali bir marta bosishda xavfsiz kiring.'}
               </div>
             </div>
 
@@ -441,7 +468,9 @@ export default function Login() {
                     fill="#ffffff"
                   />
                 </svg>
-                {tgBusy ? 'Telegram ochilmoqda...' : '📱 Telegram orqali 1-klikda kirish'}
+                {tgBusy
+                  ? (lang === 'en' ? 'Opening Telegram...' : lang === 'ru' ? 'Открывается Telegram...' : 'Telegram ochilmoqda...')
+                  : t('login_with_telegram')}
               </button>
             )}
 
@@ -636,7 +665,11 @@ export default function Login() {
         ) : (
           <div>
             <p className="muted small" style={{ marginBottom: 16 }}>
-              Ustozlar va adminlar uchun xizmat pochtasi hamda maxfiy parol orqali kirish.
+              {lang === 'en'
+                ? 'Sign in with your staff email and password for teachers and administrators.'
+                : lang === 'ru'
+                ? 'Вход по служебной электронной почте и паролю для учителей и администраторов.'
+                : 'Ustozlar va adminlar uchun xizmat pochtasi hamda maxfiy parol orqali kirish.'}
             </p>
             <form onSubmit={onSubmit} className="form">
               <div className="floating">

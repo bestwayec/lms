@@ -56,6 +56,7 @@ export interface SchoolGroup {
   id: number;
   name: string;
   description: string;
+  status?: 'active' | 'archived';
   invite_code?: string;
   invite_token?: string;
   group_code?: string;

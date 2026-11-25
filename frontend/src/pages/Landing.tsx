@@ -1636,18 +1636,19 @@ export default function Landing() {
                 <div
                   style={{
                     position: 'absolute',
-                    top: -12,
+                    top: -13,
                     left: '50%',
                     transform: 'translateX(-50%)',
-                    padding: '3px 12px',
+                    padding: '4px 12px',
                     borderRadius: 999,
-                    background: 'rgba(245, 158, 11, 0.2)',
-                    border: '1px solid rgba(245, 158, 11, 0.3)',
-                    color: '#FBBF24',
+                    background: '#B45309',
+                    border: '1px solid #F59E0B',
+                    color: '#FFFFFF',
                     fontSize: 11,
-                    fontWeight: 700,
+                    fontWeight: 800,
                     letterSpacing: '0.06em',
                     textTransform: 'uppercase',
+                    boxShadow: '0 4px 12px rgba(180, 83, 9, 0.35)',
                   }}
                 >
                   🔥 {t('plan_pro_badge', 'Eng Ommabop')}

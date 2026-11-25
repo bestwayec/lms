@@ -210,15 +210,43 @@ class PrivateFileAccessTests(LMSBaseTestCase):
     def test_only_private_prefixes_are_servable(self):
         self.assertTrue(is_private_media_name("receipts/2026/11/a.png"))
         self.assertTrue(is_private_media_name("speaking/audio/2026/11/a.wav"))
+        self.assertTrue(is_private_media_name("essays/audio/2026/11/a.wav"))
         self.assertFalse(is_private_media_name("exams/audio/a.mp3"))
         self.assertFalse(is_private_media_name("receipts/../secrets/x"))
         self.assertFalse(is_private_media_name("../receipts/x"))
+        self.assertFalse(is_private_media_name("essays/audio/../secrets/x"))
         field = type("FF", (), {"name": "avatars/me.png"})()
         with self.assertRaises(Http404):
             private_file_response(field)
         traversal = type("FF", (), {"name": "receipts/../../etc/passwd"})()
         with self.assertRaises(Http404):
             private_file_response(traversal)
+
+    def test_nginx_configs_deny_all_private_media_prefixes(self):
+        from pathlib import Path
+        from apps.core.private_files import PRIVATE_MEDIA_PREFIXES
+
+        expected_alts = "|".join(p.rstrip("/") for p in PRIVATE_MEDIA_PREFIXES)
+        expected_block = f"location ~ ^/media/({expected_alts})/ {{"
+        root = Path(__file__).resolve().parents[1]
+        for rel, expected_count in (
+            ("nginx.conf", 1),
+            ("deploy/nginx/nginx-http.conf", 1),
+            ("deploy/nginx/nginx-ssl.conf", 2),
+            ("deploy/nginx/nginx.conf", 2),
+        ):
+            text = (root / rel).read_text(encoding="utf-8")
+            self.assertEqual(
+                text.count(expected_block),
+                expected_count,
+                f"{rel} must contain {expected_count} private-media deny blocks matching PRIVATE_MEDIA_PREFIXES",
+            )
+            self.assertGreaterEqual(text.count("location /_private_media/ {"), expected_count)
+
+        verify_script = (root / "deploy/scripts/verify_private_media_nginx.sh").read_text(encoding="utf-8")
+        self.assertIn(f"^/media/({expected_alts})/", verify_script)
+        self.assertIn("/media/essays/audio/2026/11/f.wav", verify_script)
+        self.assertIn("/api/classroom/essays/1/voice/", verify_script)
 
     # -- API output never carries a public /media/ URL ------------------------
 

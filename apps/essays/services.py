@@ -824,45 +824,80 @@ def _mock_12_criteria_response(
 # ---------------------------------------------------------------------------
 
 
-def _find_reviewer_for_student(student):
+def _find_reviewer_for_student(student, submission: EssaySubmission | None = None):
     """
     Find the appropriate reviewer for a student's essay.
 
     Logic:
-      1. If student is in a group → return the group's teacher
-      2. If student is not in any group → return the first admin user
-      3. If no admin found → return None (fallback)
+      1. If submission belongs to an explicit EssayAssignment:
+         - Prefer the active teacher of assignment.group (respects teacher transfers)
+         - Fall back to assignment.assigned_by
+      2. If student is in one or more active groups:
+         - When student belongs to multiple groups, match the group's subject to
+           the essay topic's subject first so e.g. Ona tili essays route to the
+           Ona tili teacher rather than a Math teacher.
+         - Fall back to any active group's active teacher.
+      3. If student is not in any group -> return the first admin user.
+      4. Fallback -> return first active teacher.
     """
     from django.contrib.auth import get_user_model
     from apps.courses.models import StudentGroup
 
     User = get_user_model()
 
-    # Check if student is in any group
-    group = (
-        StudentGroup.objects.filter(students=student).select_related("teacher").first()
+    if submission and getattr(submission, "assignment_id", None):
+        assignment = submission.assignment
+        group_teacher = getattr(getattr(assignment, "group", None), "teacher", None)
+        if group_teacher and group_teacher.is_active:
+            return group_teacher
+        assigner = getattr(assignment, "assigned_by", None)
+        if assigner and assigner.is_active:
+            return assigner
+
+    active_groups = StudentGroup.objects.filter(
+        students=student,
+        status=StudentGroup.Status.ACTIVE,
+        teacher__isnull=False,
+        teacher__is_active=True,
+    ).select_related("teacher")
+
+    topic_subject = (getattr(getattr(submission, "topic", None), "subject", "") or "").strip().lower() if submission else ""
+    if topic_subject:
+        matched_group = active_groups.filter(subject__iexact=topic_subject).first()
+        if matched_group and matched_group.teacher:
+            return matched_group.teacher
+
+    # Fallback to first active group (or any group if archived)
+    group = active_groups.first() or (
+        StudentGroup.objects.filter(students=student, teacher__isnull=False, teacher__is_active=True)
+        .select_related("teacher")
+        .first()
     )
     if group and group.teacher:
         return group.teacher
 
-    # No group → find admin
-    admin_user = User.objects.filter(role="admin").first()
+    # No group -> find admin
+    admin_user = User.objects.filter(role="admin", is_active=True).first()
     if admin_user:
         return admin_user
 
     # Fallback: find any teacher
-    return User.objects.filter(role="teacher").first()
+    return User.objects.filter(role="teacher", is_active=True).first()
 
 
 def can_review_submission(user, submission: EssaySubmission) -> bool:
     """Object-level authorization for reading or grading an essay.
 
-    Strict group isolation: teacher may review only if they teach at least
-    one group containing the student (or are the assigned reviewer).
-    Topic creator does NOT grant review rights alone — admin can grant
-    explicit can_create_* flags for creation, not review.
+    Strict group & assignment isolation:
+    - Platform admins may review any submission.
+    - For assignment-linked submissions, only the assignment's group teacher,
+      assigner (when individual assignment), or explicit assigned_reviewer may review.
+    - For unassigned essays, an explicit assigned_reviewer restricts access to that
+      reviewer; otherwise an active group teacher for that student may review if
+      group_visibility allows it (or if the teacher requested escalation).
     """
     from apps.accounts.access import is_platform_admin
+    from apps.courses.models import StudentGroup
 
     if not user or not user.is_authenticated or not user.is_active:
         return False
@@ -870,9 +905,21 @@ def can_review_submission(user, submission: EssaySubmission) -> bool:
         return True
     if getattr(user, "role", None) != "teacher":
         return False
+    if submission.assigned_reviewer_id == user.id:
+        return True
+    if getattr(submission, "assignment_id", None):
+        assignment = submission.assignment
+        if getattr(assignment, "group_id", None):
+            return assignment.group.teacher_id == user.id
+        return assignment.assigned_by_id == user.id
     if submission.assigned_reviewer_id:
-        return submission.assigned_reviewer_id == user.id
-    return submission.student.student_groups.filter(teacher=user).exists()
+        return False
+    if getattr(submission, "group_visibility", None) == EssaySubmission.GroupVisibility.PRIVATE:
+        return False
+    return submission.student.student_groups.filter(
+        teacher=user,
+        status=StudentGroup.Status.ACTIVE,
+    ).exists()
 
 
 def _escape_markdown(text: str) -> str:
@@ -889,13 +936,22 @@ def _escape_markdown(text: str) -> str:
 
 
 def _notify_reviewer(submission, reviewer):
-    """Notify reviewer about new essay review request via Telegram."""
+    """Notify reviewer about new essay review request via Telegram (deduplicated)."""
     if (
         not reviewer
         or not getattr(reviewer, "telegram_chat_id", None)
         or not getattr(reviewer, "telegram_identity_verified_at", None)
     ):
         return
+
+    try:
+        from django.core.cache import cache
+
+        dedup_key = f"essay_rev_notify:{submission.id}:{reviewer.id}"
+        if not cache.add(dedup_key, 1, timeout=60):
+            return
+    except Exception:
+        pass
 
     try:
         from apps.notifications.services.telegram_service import TelegramService
@@ -967,25 +1023,15 @@ class TeacherReviewService:
         teacher,
         criteria_scores: dict[int, float],
         teacher_comments: str = "",
+        voice_file: Any | None = None,
+        voice_duration_seconds: int = 0,
     ) -> TeacherReview:
         """
-        Ustoz bahosini saqlash (12-mezon, 24 ball).
-
-        Args:
-            submission: EssaySubmission instance.
-            teacher: User instance (role=teacher).
-            criteria_scores: {1: 1.5, 2: 2.0, ..., 12: 1.0} (int key -> float value)
-            teacher_comments: Ustoz izohi.
-
-        Returns:
-            TeacherReview instance.
-
-        Raises:
-            ValueError: Ballar yaroqsiz bo'lsa.
+        Ustoz bahosini saqlash (12-mezon, 24 ball) va audio mulohaza biriktirish.
         """
         submission = (
             EssaySubmission.objects.select_for_update(of=("self",))
-            .select_related("student", "topic", "assigned_reviewer")
+            .select_related("student", "topic", "assigned_reviewer", "assignment")
             .get(pk=submission.pk)
         )
         if not can_review_submission(teacher, submission):
@@ -1021,15 +1067,41 @@ class TeacherReviewService:
 
         total_score = min(total_score, Decimal(str(ESSAY_RUBRIC_MAX_SCORE)))
 
+        defaults = {
+            "teacher": teacher,
+            "criteria_scores": validated_scores,
+            "final_score": total_score,
+            "teacher_comments": teacher_comments,
+        }
+        if voice_file:
+            import os
+            import uuid
+            from django.utils.text import get_valid_filename
+
+            allowed_audio_exts = {".mp3", ".wav", ".ogg", ".webm", ".m4a", ".aac", ".mp4"}
+            max_audio_bytes = 10 * 1024 * 1024  # 10 MB
+            raw_name = os.path.basename(str(getattr(voice_file, "name", "") or "voice.webm"))
+            _, ext = os.path.splitext(raw_name.lower())
+            if ext not in allowed_audio_exts:
+                raise ValueError("Faqat audio fayllar (.mp3, .wav, .ogg, .webm, .m4a, .aac) yuklanishi mumkin.")
+            file_size = getattr(voice_file, "size", None)
+            if file_size is not None and file_size > max_audio_bytes:
+                raise ValueError("Audio mulohaza hajmi 10 MB dan oshmasligi kerak.")
+            content_type = (getattr(voice_file, "content_type", "") or "").lower().split(";")[0].strip()
+            if content_type and not (
+                content_type.startswith("audio/")
+                or content_type in ("video/webm", "video/mp4", "application/ogg", "application/octet-stream")
+            ):
+                raise ValueError("Noto'g'ri audio fayl formati.")
+            safe_base = get_valid_filename(raw_name)
+            voice_file.name = f"{uuid.uuid4().hex[:12]}_{safe_base}"
+            defaults["voice_feedback"] = voice_file
+            defaults["voice_duration_seconds"] = max(0, int(voice_duration_seconds or 0))
+
         # Create or update review
         review, created = TeacherReview.objects.update_or_create(
             submission=submission,
-            defaults={
-                "teacher": teacher,
-                "criteria_scores": validated_scores,
-                "final_score": total_score,
-                "teacher_comments": teacher_comments,
-            },
+            defaults=defaults,
         )
 
         # Update submission status — use transition guard so illegal jumps fail.
@@ -1039,14 +1111,54 @@ class TeacherReviewService:
             raise ValueError(str(e)) from e
         submission.final_score = total_score
         submission.teacher_review_requested = False
+        submission.appeal_status = EssaySubmission.AppealStatus.RESOLVED
+        submission.appeal_resolved_at = _timezone.now()
         submission.save(
             update_fields=[
                 "status",
                 "final_score",
                 "teacher_review_requested",
+                "appeal_status",
+                "appeal_resolved_at",
                 "updated_at",
             ]
         )
+
+        # Propagate to homework if linked (exact submission link first, fallback only for unlinked)
+        try:
+            from apps.courses.models import HomeworkSubmission
+            linked_qs = HomeworkSubmission.objects.filter(essay_submission=submission)
+            if linked_qs.exists():
+                linked_qs.update(status=HomeworkSubmission.Status.GRADED, score=total_score)
+            elif submission.topic_id:
+                hw_filter = {
+                    "student": submission.student,
+                    "homework__content_type": "essay",
+                    "homework__essay_topic": submission.topic,
+                    "essay_submission__isnull": True,
+                }
+                if getattr(submission, "assignment_id", None) and getattr(submission.assignment, "group_id", None):
+                    hw_filter["homework__group_id"] = submission.assignment.group_id
+                HomeworkSubmission.objects.filter(**hw_filter).update(
+                    status=HomeworkSubmission.Status.GRADED,
+                    score=total_score,
+                    essay_submission=submission,
+                )
+        except Exception as hw_err:
+            logger.warning("Homework score propagation notice: %s", hw_err)
+
+        # Award idempotent educational XP
+        try:
+            from apps.accounts.gamification import award_educational_xp
+            award_educational_xp(
+                submission.student,
+                event_type="essay_completed",
+                reference_id=f"essay_sub_{submission.id}",
+                xp_amount=50,
+                metadata={"topic_id": submission.topic_id, "score": str(total_score)},
+            )
+        except Exception as xp_err:
+            logger.warning("Educational XP award notice: %s", xp_err)
 
         logger.info(
             "Teacher review submitted: submission=%d, teacher=%d, score=%s/24, created=%s",
@@ -1064,15 +1176,10 @@ class TeacherReviewService:
         submission: EssaySubmission,
         student,
         reason: str = "",
+        criteria: list[str] | None = None,
     ) -> EssaySubmission:
         """
-        O'quvchi ustoz tekshiruvini so'raydi.
-
-        Escalation logic:
-          1. Agar o'quvchi guruhda bo'lsa → guruh o'qituvchisiga yuboriladi
-          2. Agar guruhda bo'lmasa → sayt adminiga yuboriladi
-
-        Updates submission status to PENDING_TEACHER.
+        O'quvchi ustoz tekshiruvini so'raydi (apellatsiya jarayoni).
         """
         submission = EssaySubmission.objects.select_for_update().get(pk=submission.pk)
         if (
@@ -1081,18 +1188,33 @@ class TeacherReviewService:
             or submission.student_id != student.pk
         ):
             raise PermissionDenied("Bu esseni qayta ko'rishni so'rashga ruxsat yo'q.")
+        if (
+            submission.appeal_status in (
+                EssaySubmission.AppealStatus.SUBMITTED,
+                EssaySubmission.AppealStatus.AWAITING_REVIEWER,
+                EssaySubmission.AppealStatus.UNDER_REVIEW,
+            )
+            or submission.status == EssaySubmission.Status.PENDING_TEACHER
+        ):
+            raise ValueError("Ushbu esse bo'yicha apellatsiya ko'rib chiqilmoqda. Qayta yuborish shart emas.")
+
         if submission.status not in (
             EssaySubmission.Status.AI_EVALUATED,
             EssaySubmission.Status.GRADED,
         ):
             raise ValueError("Faqat AI baholangan esselarni ustozga yuborish mumkin.")
 
-        reviewer = _find_reviewer_for_student(submission.student)
+        reviewer = _find_reviewer_for_student(submission.student, submission=submission)
+        now = _timezone.now()
         submission.status = EssaySubmission.Status.PENDING_TEACHER
         submission.assigned_reviewer = reviewer
         submission.teacher_review_requested = True
-        submission.teacher_review_requested_at = _timezone.now()
+        submission.teacher_review_requested_at = now
         submission.teacher_review_reason = reason
+        submission.appeal_status = (
+            EssaySubmission.AppealStatus.SUBMITTED if reviewer else EssaySubmission.AppealStatus.AWAITING_REVIEWER
+        )
+        submission.appeal_criteria = criteria or []
         submission.save(
             update_fields=[
                 "status",
@@ -1100,6 +1222,8 @@ class TeacherReviewService:
                 "teacher_review_requested",
                 "teacher_review_requested_at",
                 "teacher_review_reason",
+                "appeal_status",
+                "appeal_criteria",
                 "updated_at",
             ]
         )
@@ -1114,6 +1238,38 @@ class TeacherReviewService:
             reviewer.email if reviewer else "admin",
         )
 
+        return submission
+
+    @staticmethod
+    @_db_txn.atomic
+    def withdraw_appeal(submission: EssaySubmission, student) -> EssaySubmission:
+        """O'quvchi tomonidan yuborilgan apellatsiyani qaytarib olish."""
+        submission = EssaySubmission.objects.select_for_update().get(pk=submission.pk)
+        if (
+            not student.is_authenticated
+            or not student.is_active
+            or submission.student_id != student.pk
+        ):
+            raise PermissionDenied("Ruxsat etilmagan.")
+
+        if submission.appeal_status not in (
+            EssaySubmission.AppealStatus.SUBMITTED,
+            EssaySubmission.AppealStatus.AWAITING_REVIEWER,
+            EssaySubmission.AppealStatus.UNDER_REVIEW,
+        ):
+            raise ValueError("Faol apellatsiya mavjud emas.")
+
+        submission.appeal_status = EssaySubmission.AppealStatus.WITHDRAWN
+        submission.teacher_review_requested = False
+        submission.transition_to(EssaySubmission.Status.GRADED)
+        submission.save(
+            update_fields=[
+                "appeal_status",
+                "teacher_review_requested",
+                "status",
+                "updated_at",
+            ]
+        )
         return submission
 
 

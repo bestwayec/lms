@@ -20,6 +20,7 @@ check "health"                 "$BASE/healthz/"                         200
 check "SPA shell"              "$BASE/"                                 200
 check "login page"             "$BASE/login"                            200
 check "API requires auth"      "$BASE/api/auth/me/"                     401 403
-check "private receipt refused" "$BASE/media/receipts/smoke-probe.jpg"  404
-check "private audio refused"  "$BASE/media/speaking/audio/smoke.webm"  404
+check "private receipt refused"      "$BASE/media/receipts/smoke-probe.jpg"     404
+check "private audio refused"        "$BASE/media/speaking/audio/smoke.webm"    404
+check "private essay audio refused"  "$BASE/media/essays/audio/smoke.wav"       404
 exit "$fail"

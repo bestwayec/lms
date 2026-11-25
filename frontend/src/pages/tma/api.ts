@@ -85,7 +85,16 @@ export interface TmaProfile {
     certificates: number;
     total_xp: number;
     essays_written: number;
+    current_streak?: number;
+    weekly_xp?: number;
+    weekly_league?: string;
+    leaderboard_opt_in?: boolean;
+    leaderboard_pseudonym?: string;
+    streak_opt_in?: boolean;
   };
+  current_streak?: number;
+  weekly_xp?: number;
+  weekly_league?: string;
 }
 
 export interface TmaEssayTopic {
@@ -138,6 +147,11 @@ export interface TmaEssayResult {
   is_off_topic?: boolean;
   graded_at?: string | null;
   final_score?: number | null;
+  teacher_final_score?: number | null;
+  appeal_status?: string;
+  appeal_reason?: string;
+  teacher_comments?: string;
+  has_voice_feedback?: boolean;
   criteria: TmaEssayCriterion[];
   poll_after?: number;
 }
@@ -187,4 +201,50 @@ export const TmaApi = {
     ),
   essayResult: (submissionId: number) =>
     api<TmaEssayResult>(`/tma/api/essays/${submissionId}/result/`),
+
+  // -- Smart Classroom & Review Center 8.0 ----------------------------------
+  myGroups: () => api<{ groups: any[]; total_groups: number }>('/api/classroom/student/my-groups/'),
+  joinGroup: (code?: string, token?: string) =>
+    api<{ status: string; message: string; group_id?: number; group_name?: string }>(
+      '/api/classroom/student/join/',
+      { method: 'POST', body: JSON.stringify({ code, token }) },
+    ),
+  groupLeaderboard: (groupId: number) =>
+    api<{ group_id: number; group_name: string; leaderboard: any[]; total_students: number }>(
+      `/api/classroom/groups/${groupId}/leaderboard/`,
+    ),
+  platformLeaderboard: (period: 'weekly' | 'all_time' = 'weekly') =>
+    api<{
+      period: string;
+      items: any[];
+      user_rank: number | null;
+      opted_in?: boolean;
+      pseudonym?: string;
+    }>(
+      `/api/classroom/leaderboard/platform/?period=${period}`,
+    ),
+  gamificationSettings: () =>
+    api<{ leaderboard_opt_in: boolean; leaderboard_pseudonym: string; streak_opt_in: boolean }>(
+      '/api/classroom/profile/gamification-settings/',
+    ),
+  updateGamificationSettings: (payload: {
+    leaderboard_opt_in?: boolean;
+    leaderboard_pseudonym?: string;
+    streak_opt_in?: boolean;
+  }) =>
+    api<{ leaderboard_opt_in: boolean; leaderboard_pseudonym: string; streak_opt_in: boolean }>(
+      '/api/classroom/profile/gamification-settings/',
+      { method: 'POST', body: JSON.stringify(payload) },
+    ),
+  requestEssayAppeal: (submissionId: number, reason: string, criteria: string[] = []) =>
+    api<{ status: string; submission_id: number; appeal_status: string; message: string }>(
+      `/api/classroom/essays/${submissionId}/appeal/`,
+      { method: 'POST', body: JSON.stringify({ reason, criteria }) },
+    ),
+  withdrawEssayAppeal: (submissionId: number) =>
+    api<{ status: string; appeal_status: string; message: string }>(
+      `/api/classroom/essays/${submissionId}/withdraw-appeal/`,
+      { method: 'POST' },
+    ),
+  voiceFeedbackUrl: (submissionId: number) => `/api/classroom/essays/${submissionId}/voice/`,
 };

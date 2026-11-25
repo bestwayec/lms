@@ -300,8 +300,18 @@ def test_group_capacity_limit_enforcement(teacher_a, group_a):
     assert group_a.students.count() == 2
 
     # Third student must be rejected due to capacity limit
+    OutboxMessage.objects.all().delete()
+    inv.refresh_from_db()
+    uses_before = inv.uses_count
+
     with pytest.raises(ValueError, match="Guruh to'lgan"):
         join_group_by_token(s3, inv.token)
+
+    # Rejected enrollment must create no membership, consume no invitation use, and send no welcome notification
+    assert not group_a.students.filter(id=s3.id).exists()
+    inv.refresh_from_db()
+    assert inv.uses_count == uses_before
+    assert not OutboxMessage.objects.filter(recipient=s3).exists()
 
 
 @pytest.mark.django_db

@@ -267,16 +267,78 @@ export default function Groups() {
     }
   };
 
-  // DELETE /api/v1/school/groups/<id>/ — parity with group_confirm_delete.
-  const remove = async (id: number) => {
-    if (!window.confirm(t('panel_confirm_delete'))) return;
+  const [depGroup, setDepGroup] = useState<SchoolGroup | null>(null);
+  const [depData, setDepData] = useState<{
+    can_delete: boolean;
+    reasons: string[];
+    dependencies: {
+      students_count: number;
+      homeworks_count: number;
+      homework_submissions_count: number;
+      attendance_sessions_count: number;
+      essay_assignments_count: number;
+      academic_records_count: number;
+    };
+  } | null>(null);
+  const [depLoading, setDepLoading] = useState(false);
+
+  const checkDependencies = async (g: SchoolGroup) => {
+    setDepGroup(g);
+    setDepLoading(true);
+    setDepData(null);
     try {
-      await School.deleteGroup(id);
-      if (openGroup === id) setOpenGroup(null);
-      flash(t('grp_deleted'));
+      const res = await api<{
+        can_delete: boolean;
+        reasons: string[];
+        dependencies: {
+          students_count: number;
+          homeworks_count: number;
+          homework_submissions_count: number;
+          attendance_sessions_count: number;
+          essay_assignments_count: number;
+          academic_records_count: number;
+        };
+      }>(`/api/classroom/groups/${g.id}/dependencies/`);
+      setDepData(res);
+    } catch (e: unknown) {
+      setErr(errMessage(e));
+      setDepGroup(null);
+    } finally {
+      setDepLoading(false);
+    }
+  };
+
+  const handleArchive = async (id: number) => {
+    try {
+      await api(`/api/classroom/groups/${id}/archive/`, { method: 'POST' });
+      flash('Guruh muvaffaqiyatli arxivlandi!');
+      setDepGroup(null);
       await load();
-    } catch (e2: unknown) {
-      setErr(errMessage(e2));
+    } catch (e: unknown) {
+      setErr(errMessage(e));
+    }
+  };
+
+  const handleRestore = async (id: number) => {
+    try {
+      await api(`/api/classroom/groups/${id}/restore/`, { method: 'POST' });
+      flash('Guruh qayta faollashtirildi!');
+      await load();
+    } catch (e: unknown) {
+      setErr(errMessage(e));
+    }
+  };
+
+  const handleSafeDelete = async (id: number) => {
+    if (!window.confirm("Haqiqatan ham ushbu guruhni butunlay o'chirmoqchimisiz?")) return;
+    try {
+      await api(`/api/classroom/groups/${id}/safe-delete/`, { method: 'POST' });
+      flash("Guruh muvaffaqiyatli o'chirildi.");
+      setDepGroup(null);
+      if (openGroup === id) setOpenGroup(null);
+      await load();
+    } catch (e: unknown) {
+      setErr(errMessage(e));
     }
   };
 
@@ -729,7 +791,16 @@ export default function Groups() {
                       <button className="btn sm ghost" onClick={() => startEdit(g)}>
                         {t('edit')}
                       </button>
-                      <button className="btn sm danger" onClick={() => remove(g.id)}>
+                      {g.status === 'archived' ? (
+                        <button className="btn sm ghost" onClick={() => void handleRestore(g.id)}>
+                          Faollashtirish
+                        </button>
+                      ) : (
+                        <button className="btn sm ghost" onClick={() => void handleArchive(g.id)}>
+                          Arxivlash
+                        </button>
+                      )}
+                      <button className="btn sm danger" onClick={() => void checkDependencies(g)}>
                         {t('delete')}
                       </button>
                     </div>
@@ -1354,6 +1425,120 @@ export default function Groups() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Dependencies & Academic History Modal */}
+      {depGroup && (
+        <div
+          className="modal-backdrop"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.65)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: 16,
+          }}
+        >
+          <div
+            className="card"
+            style={{
+              maxWidth: 520,
+              width: '100%',
+              background: '#1e293b',
+              border: '1px solid #334155',
+              borderRadius: 16,
+              padding: 24,
+              color: '#f8fafc',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)',
+            }}
+          >
+            <h3 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 700, color: '#f8fafc' }}>
+              🛡️ Guruh xavfsizligi va akademik audit
+            </h3>
+            <p style={{ margin: '0 0 16px', color: '#94a3b8', fontSize: 14 }}>
+              Guruh: <strong>{depGroup.name}</strong>
+            </p>
+
+            {depLoading && (
+              <div style={{ textAlign: 'center', padding: '24px 0' }}>
+                <p style={{ color: '#94a3b8' }}>Akademik tarix tekshirilmoqda…</p>
+              </div>
+            )}
+
+            {!depLoading && depData && (
+              <div>
+                <div style={{ background: '#0f172a', borderRadius: 12, padding: 14, marginBottom: 16 }}>
+                  <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700, color: '#cbd5e1' }}>
+                    Bog‘liq ma‘lumotlar:
+                  </p>
+                  <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: '#94a3b8', lineHeight: 1.6 }}>
+                    <li>O‘quvchilar: <b>{depData.dependencies.students_count}</b> nafar</li>
+                    <li>Uy vazifalari: <b>{depData.dependencies.homeworks_count}</b> ta</li>
+                    <li>Topshirilgan vazifalar: <b>{depData.dependencies.homework_submissions_count}</b> ta</li>
+                    <li>Davomat mashg‘ulotlari: <b>{depData.dependencies.attendance_sessions_count}</b> ta</li>
+                    <li>Esse topshiriqlari: <b>{depData.dependencies.essay_assignments_count}</b> ta</li>
+                  </ul>
+                </div>
+
+                {!depData.can_delete ? (
+                  <div
+                    style={{
+                      background: '#451a03',
+                      border: '1px solid #78350f',
+                      borderRadius: 12,
+                      padding: 12,
+                      marginBottom: 16,
+                    }}
+                  >
+                    <p style={{ margin: 0, color: '#fde68a', fontSize: 13, lineHeight: 1.5 }}>
+                      ⚠️ <b>Guruhni o‘chirish taqiqlangan!</b><br />
+                      Ushbu guruhda o‘quvchilar va akademik tarix mavjud. O‘quvchilar natijalari va baholari yo‘qolib
+                      ketmasligi uchun guruhni butunlay o‘chirish o‘rniga <b>arxivlash</b> tavsiya etiladi.
+                    </p>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      background: '#064e3b',
+                      border: '1px solid #065f46',
+                      borderRadius: 12,
+                      padding: 12,
+                      marginBottom: 16,
+                    }}
+                  >
+                    <p style={{ margin: 0, color: '#a7f3d0', fontSize: 13 }}>
+                      ✅ Ushbu guruhda hech qanday akademik tarix yoki o‘quvchilar yo‘q. Uni xavfsiz o‘chirishingiz mumkin.
+                    </p>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                  <button className="btn ghost sm" onClick={() => setDepGroup(null)}>
+                    Bekor qilish
+                  </button>
+                  <button
+                    className="btn sm"
+                    style={{ background: '#d97706', color: '#fff', border: 'none' }}
+                    onClick={() => void handleArchive(depGroup.id)}
+                  >
+                    📦 Guruhni arxivlash
+                  </button>
+                  {depData.can_delete && (
+                    <button
+                      className="btn danger sm"
+                      onClick={() => void handleSafeDelete(depGroup.id)}
+                    >
+                      🗑 Butunlay o‘chirish
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
