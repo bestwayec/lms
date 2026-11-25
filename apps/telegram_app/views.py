@@ -555,7 +555,14 @@ def tma_essay_topics_view(request: Request) -> Response:
     for submission in EssaySubmission.objects.filter(
         student=request.user,
     ).select_related("topic").only(
-        "id", "topic_id", "status", "total_score", "updated_at", "expires_at", "topic__id"
+        "id",
+        "topic_id",
+        "status",
+        "total_score",
+        "updated_at",
+        "password_verified_at",
+        "topic__id",
+        "topic__time_limit_minutes",
     ):
         current = user_subs.get(submission.topic_id)
         if current is None:
