@@ -1,5 +1,5 @@
 # ============================================================================
-# LMS Platform — GitHub Actions CI (Lint, Test, Build)
+# LMS Platform — GitHub Actions CI (Lint, Test, Build, Nginx Verification)
 # ============================================================================
 
 name: CI
@@ -23,10 +23,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
@@ -37,7 +37,7 @@ jobs:
         run: ruff check .
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 20
 
@@ -49,7 +49,7 @@ jobs:
 
       # UI logic tests use Node's built-in runner on .ts files (type stripping needs Node >= 22.18).
       - name: Set up Node.js for UI tests
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
 
@@ -83,15 +83,15 @@ jobs:
           - 6379:6379
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
       - name: Cache pip
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('requirements/*.txt') }}
@@ -136,11 +136,6 @@ jobs:
           pytest tests --cov=apps --cov-report=term --cov-report=xml --cov-fail-under=50 -q
 
   test-postgres:
-    # CI's main test job runs on SQLite: config/settings/development.py hard-codes
-    # SQLite, so DATABASE_URL is ignored there. This job selects PostgreSQL
-    # explicitly (config.settings.postgres_test) so row locks, outer-join locking
-    # and other PostgreSQL-only behaviour are exercised. The test runner creates
-    # and drops its own test_lms_pg_ci database; nothing else is touched.
     name: Test (PostgreSQL)
     needs: [lint]
     runs-on: ubuntu-latest
@@ -162,12 +157,20 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
+
+      - name: Cache pip
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-dev-${{ hashFiles('requirements/*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-dev-
 
       - name: Install dependencies
         run: |
@@ -195,10 +198,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 20
 
@@ -208,13 +211,33 @@ jobs:
       - name: Build frontend bundle
         run: npm --prefix frontend run build
 
+  nginx:
+    name: Nginx Private-Media Verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Nginx
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends nginx curl
+
+      - name: Verify private-media rules against real Nginx
+        run: |
+          export PATH="/usr/sbin:/sbin:$PATH"
+          for conf in deploy/nginx/nginx-ssl.conf deploy/nginx/nginx-http.conf deploy/nginx/nginx.conf nginx.conf; do
+            echo "=== Verifying $conf ==="
+            bash deploy/scripts/verify_private_media_nginx.sh "$conf"
+          done
+
   browser:
     name: Browser regressions
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
       - run: npm ci
@@ -223,7 +246,7 @@ jobs:
         working-directory: frontend
       - run: npm run test:e2e
         working-directory: frontend
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: browser-regression-results

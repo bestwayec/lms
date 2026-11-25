@@ -49,14 +49,39 @@ jobs:
       cancel-in-progress: false
     permissions:
       contents: read
+      actions: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v8
+        continue-on-error: true
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          name: build-meta
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: /tmp/build-meta
 
-      - name: Resolve image tag (the commit CI verified and Build built)
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Resolve verified release image and commit
         id: tag
-        run: echo "value=sha-$(echo '${{ github.event.workflow_run.head_sha }}' | cut -c1-7)" >> "$GITHUB_OUTPUT"
+        run: |
+          set -euo pipefail
+          DEPLOY_SHA="${{ github.event.workflow_run.head_sha }}"
+          IMG_TAG="sha-$(echo "${DEPLOY_SHA}" | cut -c1-7)"
+          REL_VER="$(tr -d ' \r\n' < VERSION)"
+          if [ -f /tmp/build-meta/build-meta.env ]; then
+            # shellcheck disable=SC1091
+            . /tmp/build-meta/build-meta.env
+            DEPLOY_SHA="${RELEASE_SHA:-$DEPLOY_SHA}"
+            IMG_TAG="${IMAGE_TAG:-$IMG_TAG}"
+            REL_VER="${VERSION:-$REL_VER}"
+          fi
+          git checkout "$DEPLOY_SHA"
+          echo "sha=${DEPLOY_SHA}" >> "$GITHUB_OUTPUT"
+          echo "value=${IMG_TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${REL_VER}" >> "$GITHUB_OUTPUT"
 
       - name: Staging configured?
         id: cfg
@@ -132,11 +157,14 @@ jobs:
           TAG: ${{ inputs.tag }}
         run: echo "sha=${TAG#sha-}" >> "$GITHUB_OUTPUT"
 
-      # Config/scripts from the same commit as the image.
-      - uses: actions/checkout@v4
+      # Config/scripts from the exact commit of that immutable image tag.
+      - uses: actions/checkout@v7
         with:
-          fetch-depth: 0  # resolve the short SHA of the image tag
-          ref: ${{ steps.src.outputs.sha }}
+          fetch-depth: 0
+          ref: main
+
+      - name: Checkout immutable image commit
+        run: git checkout "${{ steps.src.outputs.sha }}"
 
       - name: Deploy to production
         env:
