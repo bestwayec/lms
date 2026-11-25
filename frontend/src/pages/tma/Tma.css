@@ -61,7 +61,7 @@
   white-space: nowrap;
 }
 .tma-main {
-  padding: 16px 16px 110px;
+  padding: 16px 16px calc(112px + env(safe-area-inset-bottom, 0px));
   flex: 1;
 }
 .tma-grid2 {
@@ -261,8 +261,10 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 3px;
-  padding: 4px 6px;
+  padding: 6px 8px;
+  min-height: 44px;
   cursor: pointer;
   font-size: 10px;
   font-weight: 600;
@@ -285,7 +287,8 @@
 }
 .tma-btn {
   width: 100%;
-  padding: 14px 20px;
+  min-height: 44px;
+  padding: 12px 18px;
   border-radius: 14px;
   border: none;
   font-size: 15px;
@@ -449,12 +452,16 @@
   -webkit-overflow-scrolling: touch;
 }
 .tma-chip {
-  padding: 6px 12px;
+  min-height: 40px;
+  padding: 8px 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   border-radius: 999px;
   border: 1px solid var(--tma-border);
   background: var(--tma-card);
   color: var(--tma-muted);
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
@@ -494,7 +501,7 @@
   background: var(--tma-card);
   border: 1.5px solid #CBD5E1;
   color: var(--tma-ink);
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.6;
   resize: vertical;
   box-shadow: 0 2px 6px rgba(15, 23, 42, 0.02);
@@ -510,13 +517,14 @@
 }
 .tma-input {
   width: 100%;
+  min-height: 44px;
   box-sizing: border-box;
-  padding: 12px 16px;
+  padding: 10px 14px;
   border-radius: 12px;
   background: var(--tma-card);
   border: 1.5px solid #CBD5E1;
   color: var(--tma-ink);
-  font-size: 14px;
+  font-size: 16px;
   transition: border-color 0.15s ease;
 }
 .tma-input:focus {

@@ -185,6 +185,23 @@ class ResultVedomostPdfView(APIView):
 # ---------------------------------------------------------------------------
 
 
+class StudentInsightsView(APIView):
+    """
+    GET /api/results/insights/
+
+    O'quvchining haqiqiy o'quv ko'rsatkichlari: fanlar kesimida natijalar,
+    o'sish sur'ati (kamida 4 urinish bo'lganda), vazifa bajarilishi va
+    ustozning so'nggi esse izohlari.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request: Request, *args, **kwargs) -> Response:
+        from apps.results.services.insights import build_student_insights
+
+        return Response(build_student_insights(request.user))
+
+
 class ResultStatsView(APIView):
     """
     GET /api/results/stats/
@@ -204,20 +221,20 @@ class ResultStatsView(APIView):
         try:
             qs = result_queryset_for_user(request.user)
 
+            from django.db.models import Max
+
             stats = qs.aggregate(
                 total_tests_taken=Count("id"),
                 total_passed=Count("id", filter=Q(is_passed=True)),
                 total_failed=Count("id", filter=Q(is_passed=False)),
                 average_percentage=Avg("percentage"),
-                best_percentage=Avg("percentage"),  # will use Max below
+                best_percentage=Max("percentage"),
                 total_time_spent_seconds=Sum("time_taken_seconds"),
             )
 
-            # Best percentage (Max)
-            from django.db.models import Max
-
-            best = qs.aggregate(best=Max("percentage"))["best"]
-            stats["best_percentage"] = float(best) if best else 0.0
+            stats["best_percentage"] = (
+                float(stats["best_percentage"]) if stats["best_percentage"] is not None else 0.0
+            )
             stats["average_percentage"] = round(
                 float(stats["average_percentage"] or 0), 2
             )

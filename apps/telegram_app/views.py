@@ -235,9 +235,12 @@ def tma_profile_view(request: Request) -> Response:
         from apps.results.models import Result, Certificate
         from apps.games.models import UserGameScore
         from apps.essays.models import EssaySubmission
-        from django.db.models import Sum
+        from django.db.models import Count, Q, Sum
 
-        results = Result.objects.filter(student=user)
+        result_agg = Result.objects.filter(student=user).aggregate(
+            taken=Count("id"),
+            passed=Count("id", filter=Q(is_passed=True)),
+        )
         total_xp = (
             UserGameScore.objects.filter(user=user).aggregate(total=Sum("total_xp"))["total"]
             or 0
@@ -249,8 +252,8 @@ def tma_profile_view(request: Request) -> Response:
         w_league = getattr(profile, "weekly_league", "bronze")
 
         cached_stats = {
-            "tests_taken": results.count(),
-            "tests_passed": results.filter(is_passed=True).count(),
+            "tests_taken": result_agg["taken"] or 0,
+            "tests_passed": result_agg["passed"] or 0,
             "certificates": Certificate.objects.filter(student=user).count(),
             "total_xp": max(total_xp, profile_xp),
             "essays_written": EssaySubmission.objects.filter(student=user).count(),
@@ -392,10 +395,16 @@ def _tma_user_cache_key(user) -> str:
     has_pro = int(bool(getattr(user, "has_pro_access", False)))
 
     my_group_ids = tuple(
-        StudentGroup.objects.filter(students=user).order_by("id").values_list("id", flat=True)
+        StudentGroup.objects.filter(students=user, status=StudentGroup.Status.ACTIVE)
+        .order_by("id")
+        .values_list("id", flat=True)
     )
     hw_test_ids = tuple(
-        Homework.objects.filter(Q(group__students=user) | Q(student=user), test__isnull=False)
+        Homework.objects.filter(
+            (Q(group__students=user) & Q(group__status=StudentGroup.Status.ACTIVE))
+            | Q(student=user),
+            test__isnull=False,
+        )
         .exclude(status=Homework.Status.CANCELLED)
         .order_by("test_id")
         .values_list("test_id", flat=True)
@@ -411,6 +420,7 @@ def _tma_user_cache_key(user) -> str:
 def tma_tests_view(request: Request) -> Response:
     """GET /api/telegram/tests/ — Available tests for TMA with access policy enforcement."""
     from django.core.cache import cache
+    from django.db.models import Count
     from apps.tests.models import Test
     from apps.tests.views import visible_tests
 
@@ -420,7 +430,9 @@ def tma_tests_view(request: Request) -> Response:
 
     if tests_payload is None:
         qs = visible_tests(
-            Test.objects.filter(is_active=True).select_related("course"),
+            Test.objects.filter(is_active=True)
+            .select_related("course")
+            .annotate(total_questions=Count("questions", filter=Test.counted_questions_q())),
             user,
         ).order_by("-created_at")[:100]
 
@@ -542,7 +554,16 @@ def tma_essay_topics_view(request: Request) -> Response:
     user_subs = {}
     for submission in EssaySubmission.objects.filter(
         student=request.user,
-    ).select_related("topic"):
+    ).select_related("topic").only(
+        "id",
+        "topic_id",
+        "status",
+        "total_score",
+        "updated_at",
+        "password_verified_at",
+        "topic__id",
+        "topic__time_limit_minutes",
+    ):
         current = user_subs.get(submission.topic_id)
         if current is None:
             user_subs[submission.topic_id] = submission
@@ -1223,3 +1244,12 @@ def tma_mytuition_view(request: Request) -> Response:
         rows = []
 
     return Response({"tuition": rows})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def tma_insights_view(request: Request) -> Response:
+    """GET /tma/api/insights/ — Data-grounded student learning insights for TMA."""
+    from apps.results.services.insights import build_student_insights
+
+    return Response(build_student_insights(request.user))

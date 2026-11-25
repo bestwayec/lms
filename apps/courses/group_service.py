@@ -69,6 +69,27 @@ def get_group_full_analytics(group: StudentGroup) -> dict[str, Any]:
         .order_by("first_name", "last_name")
     )
     student_ids = [s.id for s in students]
+    if not student_ids:
+        empty_bmb = {"A+": 0, "A": 0, "B+": 0, "B": 0, "C+": 0, "C": 0, "Fail": 0}
+        return {
+            "group_id": group.id,
+            "group_name": group.name,
+            "invite_code": group.invite_code or f"GR-{group.id}",
+            "teacher_name": group.teacher.get_full_name() or group.teacher.email,
+            "total_students": 0,
+            "group_avg_percentage": 0.0,
+            "group_bmb_grade": "—",
+            "bmb_distribution": empty_bmb,
+            "summary": {
+                "total_tests_taken": 0,
+                "total_essays_submitted": 0,
+                "average_test_score": 0.0,
+                "average_test_percentage": 0.0,
+                "average_essay_score": 0.0,
+                "bmb_distribution": empty_bmb,
+            },
+            "students": [],
+        }
 
     # Test natijalari: o'quvchi bo'yicha son, o'rtacha foiz, oxirgi sana
     result_stats: dict[int, dict[str, Any]] = {
@@ -235,6 +256,15 @@ def get_group_full_analytics(group: StudentGroup) -> dict[str, Any]:
 get_group_analytics = get_group_full_analytics
 
 
+def _invalidate_tma_cache_on_commit() -> None:
+    try:
+        from apps.telegram_app.views import invalidate_tma_tests_cache
+
+        transaction.on_commit(invalidate_tma_tests_cache)
+    except Exception:
+        pass
+
+
 def find_group_by_token_or_code(token_or_code: str) -> StudentGroup | None:
     """Finds a StudentGroup by invite_token or invite_code."""
     if not token_or_code:
@@ -354,6 +384,7 @@ def add_student_to_group(
             metadata=metadata or {},
         )
 
+        _invalidate_tma_cache_on_commit()
         return True, history
 
 
@@ -416,6 +447,7 @@ def remove_student_from_group(
             metadata=metadata or {},
         )
 
+        _invalidate_tma_cache_on_commit()
         return True
 
 
@@ -482,6 +514,142 @@ def join_group_by_invite_code(student: User, invite_code: str) -> StudentGroup:
         logger.info("Student %s joined group %s via code", student.id, group.id)
 
     return group
+
+
+def build_group_extended_analytics(
+    group: StudentGroup, student_ids: list[int] | None = None
+) -> dict[str, Any]:
+    """Compute assignment completion, weak tests, pending queues and 12-criterion essay averages."""
+    from django.utils import timezone
+
+    from apps.courses.models import GroupJoinRequest, Homework, HomeworkSubmission
+    from apps.essays.models import EssayCriterionScore, EssaySubmission
+    from apps.results.models import Result
+
+    if student_ids is None:
+        student_ids = list(group.students.values_list("id", flat=True))
+
+    now = timezone.now()
+    active_hw = list(
+        Homework.objects.filter(group=group, status=Homework.Status.ACTIVE).values(
+            "id", "due_date"
+        )
+    )
+    active_ids = [h["id"] for h in active_hw]
+    total_students = len(student_ids)
+    expected_submissions = len(active_ids) * total_students
+
+    completed_submissions = 0
+    overdue_count = 0
+    if active_ids and student_ids:
+        completed_pairs = set(
+            HomeworkSubmission.objects.filter(
+                homework_id__in=active_ids,
+                student_id__in=student_ids,
+                is_completed=True,
+            ).values_list("homework_id", "student_id")
+        )
+        completed_submissions = len(completed_pairs)
+        for hw in active_hw:
+            if hw["due_date"] and hw["due_date"] < now:
+                done_for_hw = sum(1 for hw_id, _ in completed_pairs if hw_id == hw["id"])
+                overdue_count += max(0, total_students - done_for_hw)
+
+    completion_rate = (
+        round(completed_submissions / expected_submissions * 100, 1)
+        if expected_submissions > 0
+        else None
+    )
+
+    weak_tests: list[dict[str, Any]] = []
+    criterion_averages: list[dict[str, Any]] = []
+    pending_reviews_count = 0
+    pending_appeals_count = 0
+
+    if student_ids:
+        weak_rows = (
+            Result.objects.filter(
+                student_id__in=student_ids,
+                attempt__is_preview=False,
+                attempt__trial_part_id__isnull=True,
+            )
+            .values("test_id", "test__title")
+            .annotate(
+                attempts=Count("id"),
+                passed=Count("id", filter=Q(is_passed=True)),
+                avg_percentage=Avg("percentage"),
+            )
+            .filter(attempts__gte=2)
+            .order_by("avg_percentage", "-attempts")[:5]
+        )
+        weak_tests = [
+            {
+                "test_id": r["test_id"],
+                "test_title": r["test__title"] or "",
+                "attempts": int(r["attempts"] or 0),
+                "passed": int(r["passed"] or 0),
+                "avg_percentage": round(float(r["avg_percentage"] or 0), 1),
+            }
+            for r in weak_rows
+        ]
+
+        essay_qs = EssaySubmission.objects.filter(
+            Q(student_id__in=student_ids) | Q(assignment__group=group)
+        ).distinct()
+        essay_counts = essay_qs.aggregate(
+            pending_reviews=Count(
+                "id", filter=Q(status=EssaySubmission.Status.PENDING_TEACHER)
+            ),
+            pending_appeals=Count(
+                "id",
+                filter=Q(
+                    appeal_status__in=[
+                        EssaySubmission.AppealStatus.SUBMITTED,
+                        EssaySubmission.AppealStatus.AWAITING_REVIEWER,
+                        EssaySubmission.AppealStatus.UNDER_REVIEW,
+                    ]
+                ),
+            ),
+        )
+        pending_reviews_count = int(essay_counts.get("pending_reviews") or 0)
+        pending_appeals_count = int(essay_counts.get("pending_appeals") or 0)
+
+        crit_rows = (
+            EssayCriterionScore.objects.filter(submission__in=essay_qs)
+            .values("criterion_id", "name")
+            .annotate(avg_score=Avg("score"), samples=Count("id"))
+            .order_by("avg_score", "criterion_id")[:12]
+        )
+        criterion_averages = [
+            {
+                "criterion_id": int(r["criterion_id"]),
+                "name": r["name"],
+                "avg_score": round(float(r["avg_score"] or 0), 2),
+                "samples": int(r["samples"] or 0),
+            }
+            for r in crit_rows
+        ]
+
+    pending_join_requests_count = GroupJoinRequest.objects.filter(
+        group=group, status=GroupJoinRequest.Status.PENDING
+    ).count()
+
+    return {
+        "assignments_summary": {
+            "active_assignments": len(active_ids),
+            "completed_submissions": completed_submissions,
+            "expected_submissions": expected_submissions,
+            "completion_rate": completion_rate,
+            "overdue_count": overdue_count,
+        },
+        "weak_tests": weak_tests,
+        "essay_insights": {
+            "pending_reviews_count": pending_reviews_count,
+            "pending_appeals_count": pending_appeals_count,
+            "pending_join_requests_count": pending_join_requests_count,
+            "criterion_averages": criterion_averages,
+        },
+    }
 
 
 def export_group_to_excel(group: StudentGroup) -> bytes:
@@ -885,6 +1053,7 @@ def archive_group(group: StudentGroup, actor: Any) -> StudentGroup:
 
         # Revoke all active invitations for this group
         locked_group.invitations.filter(is_revoked=False).update(is_revoked=True)
+        _invalidate_tma_cache_on_commit()
 
     logger.info("Group %d (%s) archived by user %s", group.id, group.name, getattr(actor, "id", None))
     return locked_group
@@ -904,6 +1073,7 @@ def restore_group(group: StudentGroup, actor: Any) -> StudentGroup:
         locked_group = StudentGroup.objects.select_for_update().get(id=group.id)
         locked_group.status = StudentGroup.Status.ACTIVE
         locked_group.save(update_fields=["status", "updated_at"])
+        _invalidate_tma_cache_on_commit()
 
     logger.info("Group %d (%s) restored by user %s", group.id, group.name, getattr(actor, "id", None))
     return locked_group

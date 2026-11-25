@@ -1,19 +1,27 @@
 # ============================================================================
-# LMS Platform — Build & push image to GHCR
+# LMS Platform — Build & push verified release image to GHCR
 #
-# Triggers: push to main (CI must be green via branch protection) + manual.
-# Produces: ghcr.io/algorithco/lms:sha-<sha> (immutable) + :latest (movable).
-# Auth (push): GITHUB_TOKEN with packages:write — short-lived, no PAT needed.
+# Triggers:
+#   - workflow_run on Release (main, success): builds the exact release commit
+#     whose parent passed CI and whose VERSION equals the GitHub Release.
+#   - workflow_dispatch: manual rebuild for a verified main commit.
+# Produces: ghcr.io/bestwayec/lms:sha-<sha>, :v<VERSION>, and :latest.
+# Auth (push): GITHUB_TOKEN with packages:write — no PAT needed.
 # ============================================================================
 
 name: Build
 
 on:
   workflow_run:
-    workflows: [CI]
+    workflows: [Release]
     types: [completed]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag, or commit SHA to build (default: main)"
+        required: false
+        default: "main"
 
 env:
   REGISTRY: ghcr.io
@@ -27,42 +35,95 @@ jobs:
       contents: read
       packages: write
       actions: read
+      attestations: write
+      id-token: write
 
     steps:
-      # Build exactly the commit CI verified. A bare checkout on a workflow_run
-      # event takes the branch's *latest* commit, which can be newer (and
-      # untested) if something landed between CI and Build.
-      - name: Resolve verified commit
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || 'main' }}
+          fetch-depth: 0
+
+      - name: Download release metadata from Release run
+        if: ${{ github.event_name == 'workflow_run' }}
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: release-meta
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: /tmp/release-meta
+
+      - name: Resolve and verify release commit
         id: vsha
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
+          set -euo pipefail
+          RELEASE_SHA=""
+          SOURCE_CI_SHA=""
+          EXPECTED_VERSION=""
 
-          # Guard: manual dispatch must only build a commit that actually passed CI
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            CONCLUSION=$(gh run list --commit "${SHA}" --workflow CI --json conclusion -q '.[0].conclusion' 2>/dev/null || echo "")
-            if [ "${CONCLUSION}" != "success" ]; then
-              echo "::error::Commit ${SHA} has not passed CI (status: '${CONCLUSION}'). Refusing to build or publish unverified image."
-              exit 1
-            fi
-            echo "Verified commit ${SHA} has passed CI."
+          if [ -f /tmp/release-meta/release-meta.env ]; then
+            # shellcheck disable=SC1091
+            . /tmp/release-meta/release-meta.env
+            RELEASE_SHA="${RELEASE_SHA:-}"
+            SOURCE_CI_SHA="${SOURCE_CI_SHA:-}"
+            EXPECTED_VERSION="${VERSION:-}"
           fi
 
-          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
-          echo "short=$(echo "${SHA}" | cut -c1-7)" >> "$GITHUB_OUTPUT"
+          if [ -z "$RELEASE_SHA" ]; then
+            RELEASE_SHA="$(git rev-parse HEAD)"
+          fi
+          git checkout "$RELEASE_SHA"
 
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ steps.vsha.outputs.sha }}
+          # Verify CI passed on the commit (or immediate parent when HEAD only bumped VERSION)
+          if [ -z "$SOURCE_CI_SHA" ]; then
+            HEAD_MSG="$(git log -1 --pretty=%s "$RELEASE_SHA")"
+            if echo "$HEAD_MSG" | grep -q '^chore(release):'; then
+              SOURCE_CI_SHA="$(git rev-parse "${RELEASE_SHA}^")"
+            else
+              SOURCE_CI_SHA="$RELEASE_SHA"
+            fi
+          fi
 
-      - name: Docker metadata (sha + latest tags)
+          if [ "$RELEASE_SHA" != "$SOURCE_CI_SHA" ]; then
+            CHANGED="$(git diff --name-only "$SOURCE_CI_SHA" "$RELEASE_SHA" | tr '\n' ' ' | xargs)"
+            if [ "$CHANGED" != "VERSION" ]; then
+              echo "::error::Release commit $RELEASE_SHA differs from CI commit $SOURCE_CI_SHA beyond VERSION ($CHANGED)."
+              exit 1
+            fi
+          fi
+
+          CONCLUSION="$(gh run list --commit "$SOURCE_CI_SHA" --workflow CI --json conclusion -q '.[0].conclusion' 2>/dev/null || echo '')"
+          if [ "$CONCLUSION" != "success" ]; then
+            echo "::error::Source commit $SOURCE_CI_SHA has not passed CI (status='$CONCLUSION'). Refusing to build."
+            exit 1
+          fi
+
+          FILE_VERSION="$(tr -d ' \r\n' < VERSION)"
+          if [ -n "$EXPECTED_VERSION" ] && [ "$FILE_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "::error::VERSION mismatch: file has '$FILE_VERSION', release-meta expected '$EXPECTED_VERSION'."
+            exit 1
+          fi
+
+          SHORT="$(echo "$RELEASE_SHA" | cut -c1-7)"
+          echo "Verified release commit $RELEASE_SHA (CI commit $SOURCE_CI_SHA, version $FILE_VERSION)."
+          {
+            echo "sha=$RELEASE_SHA"
+            echo "source_ci_sha=$SOURCE_CI_SHA"
+            echo "short=$SHORT"
+            echo "version=$FILE_VERSION"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Docker metadata (sha + SemVer + latest tags)
         id: meta
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=sha-${{ steps.vsha.outputs.short }}
+            type=raw,value=v${{ steps.vsha.outputs.version }}
             type=raw,value=latest
 
       - name: Log in to GHCR (push scope, GITHUB_TOKEN)
@@ -72,14 +133,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # GHA cache export requires the buildx driver (default docker driver
-      # rejects cache-to). Pinned major version for stability.
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      # Attempt build & push with cache export (using mode=min for resilience).
-      # If GitHub Actions Cache API fails (e.g. 504 Gateway Timeout on layer blob export),
-      # continue-on-error catches it so we can fall back to building & pushing without cache-to.
       - name: Build & push (with cache export)
         id: build_cached
         continue-on-error: true
@@ -87,24 +143,75 @@ jobs:
         with:
           context: .
           push: true
+          provenance: mode=min
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APP_VERSION=${{ steps.vsha.outputs.version }}
+            VCS_REF=${{ steps.vsha.outputs.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=min
 
-      # Fallback: if cache export failed, build & push directly with cache-from only (no cache-to).
-      # This step does NOT have continue-on-error, ensuring genuine build/push failures are fatal.
       - name: Build & push (fallback without cache export)
         if: steps.build_cached.outcome == 'failure'
         uses: docker/build-push-action@v7
         with:
           context: .
           push: true
+          provenance: mode=min
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APP_VERSION=${{ steps.vsha.outputs.version }}
+            VCS_REF=${{ steps.vsha.outputs.sha }}
           cache-from: type=gha
 
-      # Verify the image exists in GHCR and matches the CI-verified commit
       - name: Verify image manifest in GHCR
+        id: verify
         run: |
-          docker buildx imagetools inspect "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.vsha.outputs.short }}"
+          set -euo pipefail
+          IMAGE_BASE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          IMAGE_REF="${IMAGE_BASE}:sha-${{ steps.vsha.outputs.short }}"
+          docker buildx imagetools inspect "$IMAGE_REF" | tee /tmp/inspect.txt
+          DIGEST="$(grep -m1 '^Digest:' /tmp/inspect.txt | awk '{print $2}' || true)"
+          if [ -z "$DIGEST" ]; then
+            echo "::error::Failed to extract GHCR image digest for $IMAGE_REF"
+            exit 1
+          fi
+          BUILT_DIGEST="${{ steps.build_cached.outputs.digest || steps.build_fallback.outputs.digest }}"
+          if [ -n "$BUILT_DIGEST" ] && [ "$BUILT_DIGEST" != "$DIGEST" ]; then
+            echo "::error::Digest mismatch: build output ($BUILT_DIGEST) != inspected manifest ($DIGEST)."
+            exit 1
+          fi
+          for ALIAS in "v${{ steps.vsha.outputs.version }}" "latest"; do
+            ALIAS_DIGEST="$(docker buildx imagetools inspect "${IMAGE_BASE}:${ALIAS}" | grep -m1 '^Digest:' | awk '{print $2}' || true)"
+            if [ "$ALIAS_DIGEST" != "$DIGEST" ]; then
+              echo "::error::Tag ${IMAGE_BASE}:${ALIAS} digest ($ALIAS_DIGEST) != $DIGEST."
+              exit 1
+            fi
+          done
+          {
+            echo "RELEASE_SHA=${{ steps.vsha.outputs.sha }}"
+            echo "SOURCE_CI_SHA=${{ steps.vsha.outputs.source_ci_sha }}"
+            echo "RELEASE_SHORT=${{ steps.vsha.outputs.short }}"
+            echo "IMAGE_TAG=sha-${{ steps.vsha.outputs.short }}"
+            echo "VERSION=${{ steps.vsha.outputs.version }}"
+            echo "TAG=v${{ steps.vsha.outputs.version }}"
+            echo "DIGEST=${DIGEST}"
+          } > build-meta.env
+          {
+            echo "## Verified GHCR Release Build"
+            echo "- Version: \`v${{ steps.vsha.outputs.version }}\`"
+            echo "- Release SHA: \`${{ steps.vsha.outputs.sha }}\`"
+            echo "- Source CI SHA: \`${{ steps.vsha.outputs.source_ci_sha }}\`"
+            echo "- Image: \`${IMAGE_REF}\`"
+            echo "- Digest: \`${DIGEST}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload build metadata artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-meta
+          path: build-meta.env
+          retention-days: 30
+          if-no-files-found: error

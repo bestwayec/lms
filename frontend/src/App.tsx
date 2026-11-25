@@ -82,7 +82,7 @@ const PanelBranches = lazyPage(() => import('./pages/PanelBranches'));
 const PanelTeachers = lazyPage(() => import('./pages/PanelTeachers'));
 const StudentGroupDetail = lazyPage(() => import('./pages/StudentGroupDetail'));
 
-import AuthModal from './components/AuthModal';
+const AuthModal = lazyPage(() => import('./components/AuthModal'));
 import ErrorBoundary from './components/ErrorBoundary';
 import { useLang } from './i18n/LangContext';
 import { ToastProvider } from './context/ToastContext';
@@ -94,7 +94,9 @@ export default function App() {
         <BrowserRouter>
           <ScrollTop />
           <AnimatedRoutes />
-          <AuthModal />
+          <Suspense fallback={null}>
+            <AuthModal />
+          </Suspense>
         </BrowserRouter>
       </ToastProvider>
     </AuthProvider>

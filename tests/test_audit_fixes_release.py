@@ -301,3 +301,58 @@ class AuditModelCollectionTests(TestCase):
     def test_models_have_test_disabled_for_pytest(self):
         self.assertFalse(getattr(QuizTest, "__test__", True))
         self.assertFalse(getattr(TestAttempt, "__test__", True))
+
+
+class ReleaseConsistencyAndWorkflowTests(TestCase):
+    def test_healthz_reports_version_file(self):
+        from pathlib import Path
+        from apps.core.views import healthz_view
+
+        expected_version = (
+            Path(__file__).resolve().parents[1] / "VERSION"
+        ).read_text(encoding="utf-8").strip()
+        request = RequestFactory().get("/healthz/")
+        res = healthz_view(request)
+        self.assertEqual(res.status_code, 200)
+        import json
+
+        data = json.loads(res.content.decode("utf-8"))
+        self.assertEqual(data["status"], "ok")
+        self.assertTrue(data["db"])
+        self.assertEqual(data["version"], expected_version)
+
+    def test_release_build_deploy_ci_workflows_consistency(self):
+        from pathlib import Path
+        import yaml
+
+        wf_dir = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+        for name in ("ci.yml", "release.yml", "build.yml", "deploy.yml", "security.yml"):
+            text = (wf_dir / name).read_text(encoding="utf-8")
+            parsed = yaml.safe_load(text)
+            self.assertIsInstance(parsed, dict, name)
+            for deprecated in (
+                "actions/checkout@v4",
+                "actions/setup-node@v4",
+                "actions/setup-python@v5",
+                "actions/cache@v4",
+                "actions/upload-artifact@v4",
+            ):
+                self.assertNotIn(deprecated, text, f"{name} still uses deprecated {deprecated}")
+
+        rel = (wf_dir / "release.yml").read_text(encoding="utf-8")
+        # Commit VERSION update before creating tag on that exact commit
+        self.assertLess(
+            rel.index('git commit -m "chore(release): v$NEXT [skip ci]"'),
+            rel.index('git tag -a "v$NEXT"'),
+        )
+        bld = (wf_dir / "build.yml").read_text(encoding="utf-8")
+        self.assertIn("workflows: [Release]", bld)
+        self.assertIn("APP_VERSION=${{ steps.vsha.outputs.version }}", bld)
+        self.assertIn("Failed to extract GHCR image digest", bld)
+        dep = yaml.safe_load((wf_dir / "deploy.yml").read_text(encoding="utf-8"))
+        self.assertEqual(
+            dep["jobs"]["production"]["if"],
+            "${{ github.event_name == 'workflow_dispatch' }}",
+        )
+        ci = (wf_dir / "ci.yml").read_text(encoding="utf-8")
+        self.assertIn("verify_private_media_nginx.sh", ci)

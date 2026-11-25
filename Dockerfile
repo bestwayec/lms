@@ -82,6 +82,20 @@ RUN pip install /wheels/dist/*.whl && rm -rf /wheels
 # Project code
 COPY . /app/
 
+ARG APP_VERSION=""
+ARG VCS_REF=""
+LABEL org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.revision="${VCS_REF}"
+
+# Fail build if explicit APP_VERSION disagrees with repository VERSION file
+RUN if [ -n "$APP_VERSION" ]; then \
+      FILE_VERSION="$(tr -d ' \r\n' < /app/VERSION)" && \
+      if [ "$FILE_VERSION" != "$APP_VERSION" ]; then \
+        echo "ERROR: VERSION file ($FILE_VERSION) != APP_VERSION ($APP_VERSION)" >&2; \
+        exit 1; \
+      fi; \
+    fi
+
 # React SPA build (published to the spa_volume at container start so nginx
 # can serve it — see deploy/docker-entrypoint.sh)
 COPY --from=frontend-builder /frontend/dist /app/spa

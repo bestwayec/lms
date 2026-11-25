@@ -103,7 +103,7 @@ def resolve_test_access(
     - assignment: Optional Homework instance (if already resolved)
     - action: 'view' | 'start' | 'resume' | 'submit'
     """
-    from apps.courses.models import Homework
+    from apps.courses.models import Homework, StudentGroup
     from apps.payments.entitlements import can_start_test, get_effective_entitlement
     from apps.tests.models import Test, TestAttempt
 
@@ -240,7 +240,10 @@ def resolve_test_access(
         # not hide a live assignment for the student's current group.
         hw = (
             Homework.objects.filter(test=test)
-            .filter(Q(group__students=user) | Q(student=user))
+            .filter(
+                (Q(group__students=user) & Q(group__status=StudentGroup.Status.ACTIVE))
+                | Q(student=user)
+            )
             .select_related("group")
             .order_by(
                 # ACTIVE first, then newest
@@ -254,9 +257,13 @@ def resolve_test_access(
             .first()
         )
 
-    # Also check legacy direct assigned_group
+    # Also check legacy direct assigned_group (only when group is active)
     assigned_group = getattr(test, "assigned_group", None)
-    has_legacy_group = bool(assigned_group and assigned_group.students.filter(id=user.id).exists())
+    has_legacy_group = bool(
+        assigned_group
+        and getattr(assigned_group, "status", StudentGroup.Status.ACTIVE) == StudentGroup.Status.ACTIVE
+        and assigned_group.students.filter(id=user.id).exists()
+    )
 
     if hw is not None or has_legacy_group:
         target_group = getattr(hw, "group", None) or assigned_group

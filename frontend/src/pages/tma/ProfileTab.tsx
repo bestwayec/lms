@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useLang } from '../../i18n/LangContext';
+import type { StudentInsightsResponse } from '../../lib/api';
 import { TmaApi } from './api';
 import type { TmaProfile } from './api';
 
@@ -10,6 +11,7 @@ export default function ProfileTab({ profile }: { profile: TmaProfile | null }) 
   const [streakOptIn, setStreakOptIn] = useState(profile?.stats?.streak_opt_in !== false);
   const [savingPref, setSavingPref] = useState(false);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
+  const [insights, setInsights] = useState<StudentInsightsResponse | null>(null);
 
   useEffect(() => {
     TmaApi.gamificationSettings()
@@ -18,6 +20,9 @@ export default function ProfileTab({ profile }: { profile: TmaProfile | null }) 
         setPseudonym(s.leaderboard_pseudonym || '');
         setStreakOptIn(s.streak_opt_in);
       })
+      .catch(() => undefined);
+    TmaApi.insights()
+      .then((res) => setInsights(res))
       .catch(() => undefined);
   }, []);
 
@@ -37,9 +42,9 @@ export default function ProfileTab({ profile }: { profile: TmaProfile | null }) 
       setLbOptIn(updated.leaderboard_opt_in);
       setPseudonym(updated.leaderboard_pseudonym || '');
       setStreakOptIn(updated.streak_opt_in);
-      setSavedNotice('✓ Saqlandi');
+      setSavedNotice(`✓ ${t('tma_saved_ok')}`);
     } catch {
-      setSavedNotice('✕ Xatolik yuz berdi');
+      setSavedNotice(`✕ ${t('tma_save_err')}`);
     } finally {
       setSavingPref(false);
     }
@@ -52,12 +57,12 @@ export default function ProfileTab({ profile }: { profile: TmaProfile | null }) 
   const league = stats?.weekly_league || 'bronze';
   const leagueTitle =
     league === 'diamond'
-      ? '💎 Olmos liga'
+      ? `💎 ${t('tma_league_diamond')}`
       : league === 'gold'
-      ? '🥇 Oltin liga'
+      ? `🥇 ${t('tma_league_gold')}`
       : league === 'silver'
-      ? '🥈 Kumush liga'
-      : '🥉 Bronza liga';
+      ? `🥈 ${t('tma_league_silver')}`
+      : `🥉 ${t('tma_league_bronze')}`;
 
   return (
     <div className="tma-slide">
@@ -93,7 +98,7 @@ export default function ProfileTab({ profile }: { profile: TmaProfile | null }) 
             </p>
             <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
               <span className="tma-badge" style={{ background: '#f1f5f9', color: '#475569' }}>
-                {user?.role === 'teacher' ? "👨‍🏫 O'qituvchi" : '🎓 O\'quvchi'}
+                {user?.role === 'teacher' ? `👨‍🏫 ${t('tma_role_teacher')}` : `🎓 ${t('tma_role_student')}`}
               </span>
               <span className="tma-badge" style={{ background: '#fef3c7', color: '#b45309' }}>
                 {leagueTitle}
@@ -106,11 +111,11 @@ export default function ProfileTab({ profile }: { profile: TmaProfile | null }) 
       {/* Streak & XP Highlight */}
       <div className="tma-grid2" style={{ marginBottom: 16 }}>
         <div className="tma-stat" style={{ borderLeft: '4px solid #f97316' }}>
-          <p>🔥 Faollik streaki</p>
-          <b style={{ color: '#ea580c' }}>{streak} kun</b>
+          <p>🔥 {t('tma_streak_label')}</p>
+          <b style={{ color: '#ea580c' }}>{streak} {t('tma_days_suffix')}</b>
         </div>
         <div className="tma-stat" style={{ borderLeft: '4px solid #d97706' }}>
-          <p>⚡ Jami tajriba (XP)</p>
+          <p>⚡ {t('tma_total_xp_label')}</p>
           <b style={{ color: '#d97706' }}>{stats?.total_xp ?? 0}</b>
         </div>
       </div>
@@ -118,39 +123,108 @@ export default function ProfileTab({ profile }: { profile: TmaProfile | null }) 
       {/* Learning stats */}
       <div className="tma-card" style={{ marginBottom: 16 }}>
         <p className="tma-sub" style={{ fontWeight: 700, color: 'var(--tma-ink)', marginBottom: 12 }}>
-          📊 O'quv faoliyati statistikasi
+          📊 {t('tma_stats_heading')}
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div>
-            <span className="tma-muted" style={{ fontSize: 11 }}>Topshirilgan testlar:</span>
-            <p style={{ margin: '2px 0 0', fontWeight: 800, fontSize: 18 }}>{stats?.tests_taken ?? 0} ta</p>
+            <span className="tma-muted" style={{ fontSize: 11 }}>{t('tma_tests_taken')}:</span>
+            <p style={{ margin: '2px 0 0', fontWeight: 800, fontSize: 18 }}>{stats?.tests_taken ?? 0}</p>
           </div>
           <div>
-            <span className="tma-muted" style={{ fontSize: 11 }}>Muvaffaqiyatli:</span>
+            <span className="tma-muted" style={{ fontSize: 11 }}>{t('tma_tests_passed')}:</span>
             <p style={{ margin: '2px 0 0', fontWeight: 800, fontSize: 18, color: '#16a34a' }}>
-              {stats?.tests_passed ?? 0} ta
+              {stats?.tests_passed ?? 0}
             </p>
           </div>
           <div>
-            <span className="tma-muted" style={{ fontSize: 11 }}>Yozilgan esselar:</span>
-            <p style={{ margin: '2px 0 0', fontWeight: 800, fontSize: 18 }}>{stats?.essays_written ?? 0} ta</p>
+            <span className="tma-muted" style={{ fontSize: 11 }}>{t('tma_essays_written')}:</span>
+            <p style={{ margin: '2px 0 0', fontWeight: 800, fontSize: 18 }}>{stats?.essays_written ?? 0}</p>
           </div>
           <div>
-            <span className="tma-muted" style={{ fontSize: 11 }}>Sertifikatlar:</span>
+            <span className="tma-muted" style={{ fontSize: 11 }}>{t('tma_certificates_count')}:</span>
             <p style={{ margin: '2px 0 0', fontWeight: 800, fontSize: 18, color: '#d97706' }}>
-              {stats?.certificates ?? 0} ta
+              {stats?.certificates ?? 0}
             </p>
           </div>
         </div>
       </div>
 
+      {/* Data-grounded Learning Insights */}
+      {insights && (
+        <div className="tma-card" style={{ marginBottom: 16 }}>
+          <p className="tma-sub" style={{ fontWeight: 700, color: 'var(--tma-ink)', marginBottom: 10 }}>
+            📈 {t('ins_title')}
+          </p>
+          {!insights.has_sufficient_data ? (
+            <p className="tma-muted" style={{ margin: '0 0 8px', fontSize: 12 }}>
+              {t('ins_min_samples_hint').replace('{n}', String(insights.min_subject_samples))}
+            </p>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+              {insights.strongest_subject && (
+                <div style={{ background: '#f0fdf4', borderRadius: 10, padding: '8px 10px' }}>
+                  <span className="tma-muted" style={{ fontSize: 11 }}>{t('ins_strongest')}</span>
+                  <p style={{ margin: '2px 0 0', fontWeight: 700, fontSize: 13, color: '#15803d', textTransform: 'capitalize' }}>
+                    {insights.strongest_subject.subject} ({insights.strongest_subject.avg_percentage}%)
+                  </p>
+                </div>
+              )}
+              {insights.weakest_subject && (
+                <div style={{ background: '#fff7ed', borderRadius: 10, padding: '8px 10px' }}>
+                  <span className="tma-muted" style={{ fontSize: 11 }}>{t('ins_weakest')}</span>
+                  <p style={{ margin: '2px 0 0', fontWeight: 700, fontSize: 13, color: '#c2410c', textTransform: 'capitalize' }}>
+                    {insights.weakest_subject.subject} ({insights.weakest_subject.avg_percentage}%)
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {insights.improvement_trend && (
+            <p className="tma-sub" style={{ margin: '0 0 8px', fontSize: 12 }}>
+              {t('ins_trend_label')}:{' '}
+              <strong style={{ color: insights.improvement_trend.delta_percentage >= 0 ? '#16a34a' : '#dc2626' }}>
+                {insights.improvement_trend.delta_percentage >= 0 ? '+' : ''}
+                {insights.improvement_trend.delta_percentage}%
+              </strong>{' '}
+              ({insights.improvement_trend.recent_avg}% / {insights.improvement_trend.prior_avg}%)
+            </p>
+          )}
+
+          <p className="tma-sub" style={{ margin: '0 0 8px', fontSize: 12 }}>
+            ✅ {t('ins_assignments_done')}:{' '}
+            <strong>
+              {insights.assignments.completed}/{insights.assignments.active_total}
+            </strong>
+            {insights.assignments.completion_rate !== null ? ` (${insights.assignments.completion_rate}%)` : ''}
+          </p>
+
+          {insights.essays.recent_teacher_feedback.length > 0 && (
+            <div style={{ borderTop: '1px solid var(--tma-border)', paddingTop: 8 }}>
+              <span className="tma-muted" style={{ fontSize: 11 }}>{t('ins_latest_feedback')}</span>
+              {insights.essays.recent_teacher_feedback.slice(0, 2).map((fb) => (
+                <div key={fb.submission_id} style={{ marginTop: 6, fontSize: 12 }}>
+                  <strong>{fb.topic_title || `#${fb.submission_id}`}</strong> — {fb.final_score}/24
+                  {fb.has_voice_feedback ? ' 🎙️' : ''}
+                  {fb.comments && (
+                    <p className="tma-muted" style={{ margin: '2px 0 0', fontSize: 11 }}>
+                      {fb.comments}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Privacy & Optional Gamification Preferences */}
       <div className="tma-card" style={{ marginBottom: 16 }}>
         <p className="tma-sub" style={{ fontWeight: 700, color: 'var(--tma-ink)', marginBottom: 10 }}>
-          🛡️ Reyting va maxfiylik sozlamalari
+          🛡️ {t('tma_privacy_heading')}
         </p>
         <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, marginBottom: 10, gap: 8 }}>
-          <span>Umumiy reytingda qatnashish (ixtiyoriy)</span>
+          <span>{t('tma_privacy_opt_in')}</span>
           <input
             type="checkbox"
             checked={lbOptIn}
@@ -165,7 +239,7 @@ export default function ProfileTab({ profile }: { profile: TmaProfile | null }) 
         <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
           <input
             className="tma-input"
-            placeholder="Taxallus (masalan: Lochin_01)"
+            placeholder={t('tma_pseudonym_placeholder')}
             maxLength={40}
             value={pseudonym}
             onChange={(e) => setPseudonym(e.target.value)}
@@ -177,11 +251,11 @@ export default function ProfileTab({ profile }: { profile: TmaProfile | null }) 
             disabled={savingPref}
             onClick={() => void savePrivacySettings(lbOptIn, pseudonym, streakOptIn)}
           >
-            Saqlash
+            {t('tma_save')}
           </button>
         </div>
         <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, gap: 8 }}>
-          <span>Kunlik streak hisoblagichini yoqish</span>
+          <span>{t('tma_streak_opt_in')}</span>
           <input
             type="checkbox"
             checked={streakOptIn}

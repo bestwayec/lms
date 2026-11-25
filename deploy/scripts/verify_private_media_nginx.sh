@@ -73,5 +73,8 @@ check /_private_media/receipts/2026/11/a.png 404
 check /_private_media/essays/audio/2026/11/f.wav 404
 check /api/v1/files/payment-receipts/1/ 200 SECRET-RECEIPT
 check /api/classroom/essays/1/voice/ 200 SECRET-ESSAY-AUDIO
-h=$(curl -s -D - -o /dev/null http://127.0.0.1:18080/api/v1/files/payment-receipts/1/ | tr -d '\r'); echo "$h" | grep -qi '^cache-control: private, no-store' && echo "ok   authorized response keeps Cache-Control: private, no-store" || { echo "FAIL private cache header lost"; fail=1; }
+for auth_path in /api/v1/files/payment-receipts/1/ /api/classroom/essays/1/voice/; do
+  h=$(curl -s -D - -o /dev/null "http://127.0.0.1:18080${auth_path}" | tr -d '\r')
+  echo "$h" | grep -qi '^cache-control: private, no-store' && echo "ok   $auth_path keeps Cache-Control: private, no-store" || { echo "FAIL private cache header lost on $auth_path"; fail=1; }
+done
 [ "$fail" = 0 ] && echo "PRIVATE MEDIA NGINX CHECKS PASSED" || { echo "PRIVATE MEDIA NGINX CHECKS FAILED"; exit 1; }

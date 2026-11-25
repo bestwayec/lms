@@ -162,7 +162,7 @@ export default function Home({
                   {t('my_classrooms') || 'Mening sinfxonalarim'}
                 </p>
                 <p style={{ margin: '2px 0 0', fontSize: 12, color: '#3B82F6' }}>
-                  Ustoz vazifalari va guruhdagi o‘rningiz
+                  {t('tma_classroom_subtitle')}
                 </p>
               </div>
             </div>
@@ -195,7 +195,7 @@ export default function Home({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <h3 className="tma-h3" style={{ margin: 0 }}>{t('available_tests')}</h3>
         <span style={{ fontSize: 12, color: 'var(--tma-muted)' }}>
-          {filteredTests.length} ta mavjud
+          {filteredTests.length} {t('tma_available_count')}
         </span>
       </div>
 
@@ -210,32 +210,32 @@ export default function Home({
           className={`tma-chip ${categoryFilter === 'topic_test' ? 'on' : ''}`}
           onClick={() => setCategoryFilter('topic_test')}
         >
-          📚 Mavzuli
+          📚 {t('cat_topic_test')}
         </button>
         <button
           className={`tma-chip ${categoryFilter === 'attestation' ? 'on' : ''}`}
           onClick={() => setCategoryFilter('attestation')}
         >
-          🎓 Attestatsiya
+          🎓 {t('cat_attestation')}
         </button>
         <button
           className={`tma-chip ${categoryFilter === 'full_mock' ? 'on' : ''}`}
           onClick={() => setCategoryFilter('full_mock')}
         >
-          ⏱ Full Mock
+          ⏱ {t('cat_full_mock')}
         </button>
         <button
           className={`tma-chip ${categoryFilter === 'national_cert' ? 'on' : ''}`}
           onClick={() => setCategoryFilter('national_cert')}
         >
-          🏅 Milliy sertifikat
+          🏅 {t('cat_national_cert')}
         </button>
       </div>
 
       <div className="tma-list">
         {filteredTests.length === 0 && (
           <div className="tma-empty">
-            {categoryFilter === 'all' ? t('tma_no_tests') : 'Bu toifada hozircha testlar mavjud emas'}
+            {categoryFilter === 'all' ? t('tma_no_tests') : t('cat_empty')}
           </div>
         )}
         {filteredTests.slice(0, 15).map((item) => (
@@ -254,18 +254,18 @@ export default function Home({
                       style={{ background: 'rgba(200, 146, 42, 0.18)', color: 'var(--tma-gold, #d97706)' }}
                     >
                       {item.assessment_category === 'topic_test'
-                        ? 'Mavzuli'
+                        ? t('cat_topic_test')
                         : item.assessment_category === 'full_mock'
-                        ? 'Full Mock'
+                        ? t('cat_full_mock')
                         : item.assessment_category === 'attestation'
-                        ? 'Attestatsiya'
+                        ? t('cat_attestation')
                         : item.assessment_category === 'national_cert'
-                        ? 'Milliy'
-                        : 'Quiz'}
+                        ? t('cat_national_cert')
+                        : t('cat_quiz')}
                     </span>
                   )}
                   <span className="tma-sub">
-                    {item.total_questions} savol · {item.time_limit_minutes ? `${item.time_limit_minutes} daqiqa` : 'Cheklovsiz'}
+                    {item.total_questions} {t('tma_questions_count')} · {item.time_limit_minutes ? `${item.time_limit_minutes} ${t('tma_minutes_short')}` : t('tma_unlimited')}
                   </span>
                 </div>
               </div>

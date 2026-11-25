@@ -1,15 +1,9 @@
-# Release — automatic SemVer tags from main.
+# Release — deterministic SemVer tags from main (no PAT needed).
 #
 # Rule (see .github/VERSIONING.md):
-#   push to main      -> MINOR bump  (0.1.0 -> 0.2.0 -> 0.3.0 ...)
-#   dispatch + patch  -> PATCH bump  (0.2.0 -> 0.2.1, hotfix)
-#   dispatch + major  -> MAJOR bump  (0.x -> 1.0.0, stable)
-# First ever release tags current VERSION file (starts 0.1.0).
-#
-# Creates: git tag vX.Y.Z + GitHub Release + VERSION bump commit.
-# Loop guard: skips when head commit is chore(release); bump commit uses [skip ci].
-# Requires: permissions contents:write (tags + releases + VERSION push).
-
+#   CI green on main -> bump MINOR (or workflow_dispatch minor/patch/major)
+#   Update VERSION -> commit chore(release): vX.Y.Z [skip ci] -> tag vX.Y.Z ON that commit
+#   -> push commit + tag -> create GitHub Release -> Build workflow packages exact release commit.
 name: Release
 
 on:
@@ -36,16 +30,55 @@ concurrency:
 jobs:
   release:
     if: >-
-      !contains(github.event.head_commit.message, 'chore(release)') &&
+      !startsWith(github.event.workflow_run.head_commit.message || '', 'chore(release)') &&
       (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
+          ref: main
           fetch-depth: 0
 
+      - name: Verify source commit passed CI
+        id: src
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          SOURCE_SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
+          HEAD_MSG="$(git log -1 --pretty=%s)"
+          if echo "$HEAD_MSG" | grep -q '^chore(release):'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "HEAD already is a release commit ($HEAD_MSG) — skipping."
+            exit 0
+          fi
+
+          # Ensure SOURCE_SHA actually passed CI before cutting a release
+          CONCLUSION="$(gh run list --commit "$SOURCE_SHA" --workflow CI --json conclusion -q '.[0].conclusion' 2>/dev/null || echo '')"
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            CONCLUSION="${{ github.event.workflow_run.conclusion }}"
+          fi
+          if [ "$CONCLUSION" != "success" ]; then
+            echo "::error::Commit $SOURCE_SHA has not passed CI (conclusion='$CONCLUSION'). Refusing to release."
+            exit 1
+          fi
+
+          # Ensure HEAD matches SOURCE_SHA (or only chore(release) commits sit between them)
+          if [ "$(git rev-parse HEAD)" != "$SOURCE_SHA" ]; then
+            NON_REL="$(git log --format=%s "${SOURCE_SHA}..HEAD" | grep -vc '^chore(release):' || true)"
+            if [ "$NON_REL" != "0" ]; then
+              echo "::warning::Newer unverified commits landed on main after $SOURCE_SHA; skipping release for stale run."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+
       - name: Compute next version
+        if: steps.src.outputs.skip != 'true'
         id: ver
         run: |
           set -euo pipefail
@@ -61,7 +94,6 @@ jobs:
 
           LATEST="$(git tag -l 'v*.*.*' --sort=-v:refname | head -n1 || true)"
           if [ -z "$LATEST" ]; then
-            # First release ever: tag exactly what VERSION says (0.1.0).
             NEXT="$CURRENT"
           else
             BASE="${LATEST#v}"
@@ -76,7 +108,7 @@ jobs:
             NEXT="$MAJOR.$MINOR.$PATCH"
           fi
           echo "next=$NEXT" >> "$GITHUB_OUTPUT"
-          echo "Bump: $BUMP, current file: $CURRENT, latest tag: ${LATEST:-none}, next: $NEXT"
+          echo "Bump: $BUMP, current VERSION: $CURRENT, latest tag: ${LATEST:-none}, next: $NEXT"
 
           if git rev-parse "v$NEXT" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
@@ -85,42 +117,58 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Tag and create GitHub Release
-        if: steps.ver.outputs.exists == 'false'
+      - name: Commit VERSION, tag release commit, and create GitHub Release
+        if: steps.src.outputs.skip != 'true' && steps.ver.outputs.exists == 'false'
+        id: rel
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           NEXT="${{ steps.ver.outputs.next }}"
+          SOURCE_SHA="${{ steps.src.outputs.source_sha }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "v$NEXT" -m "Release v$NEXT"
-          git push origin "v$NEXT"
-          gh release create "v$NEXT" --title "v$NEXT" --generate-notes
 
-      - name: Bump VERSION file
-        if: steps.ver.outputs.exists == 'false'
-        env:
-          REPO: ${{ github.repository }}
-          RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+          if [ "$(tr -d ' \r\n' < VERSION)" != "$NEXT" ]; then
+            printf '%s\n' "$NEXT" > VERSION
+            git add VERSION
+            git commit -m "chore(release): v$NEXT [skip ci]"
+          fi
+
+          RELEASE_SHA="$(git rev-parse HEAD)"
+          RELEASE_SHORT="$(echo "$RELEASE_SHA" | cut -c1-7)"
+          git tag -a "v$NEXT" -m "Release v$NEXT" "$RELEASE_SHA"
+          git push origin HEAD:main "refs/tags/v$NEXT"
+          gh release create "v$NEXT" --title "v$NEXT" --target "$RELEASE_SHA" --generate-notes
+
+          {
+            echo "RELEASE_SHA=$RELEASE_SHA"
+            echo "RELEASE_SHORT=$RELEASE_SHORT"
+            echo "SOURCE_CI_SHA=$SOURCE_SHA"
+            echo "VERSION=$NEXT"
+            echo "TAG=v$NEXT"
+          } > release-meta.env
+
+      - name: Record existing release metadata (when tag already existed)
+        if: steps.src.outputs.skip != 'true' && steps.ver.outputs.exists == 'true'
         run: |
           set -euo pipefail
           NEXT="${{ steps.ver.outputs.next }}"
-          echo "$NEXT" > VERSION
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add VERSION
-          # NO [skip ci]: the bump commit must go through the full pipeline
-          # (CI -> Build -> Deploy) so the new VERSION is baked into an image
-          # and actually goes live. Infinite loop is impossible: this job
-          # skips when the head commit is chore(release) (see job `if:`).
-          git commit -m "chore(release): v$NEXT" || exit 0
-          if [ -n "${RELEASE_PAT:-}" ]; then
-            # Push with a PAT, NOT GITHUB_TOKEN: GitHub silently suppresses
-            # ALL workflow runs on GITHUB_TOKEN pushes, so the bump commit
-            # would never build or deploy (live version would lag forever).
-            git remote set-url origin "https://x-access-token:${RELEASE_PAT}@github.com/${REPO}.git"
-          else
-            echo "WARNING: RELEASE_PAT secret missing — bump commit will not trigger a pipeline (see VERSIONING.md)."
-          fi
-          git push origin HEAD:main
+          RELEASE_SHA="$(git rev-parse HEAD)"
+          RELEASE_SHORT="$(echo "$RELEASE_SHA" | cut -c1-7)"
+          {
+            echo "RELEASE_SHA=$RELEASE_SHA"
+            echo "RELEASE_SHORT=$RELEASE_SHORT"
+            echo "SOURCE_CI_SHA=${{ steps.src.outputs.source_sha }}"
+            echo "VERSION=$(tr -d ' \r\n' < VERSION)"
+            echo "TAG=v$(tr -d ' \r\n' < VERSION)"
+          } > release-meta.env
+
+      - name: Upload release metadata artifact
+        if: steps.src.outputs.skip != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-meta
+          path: release-meta.env
+          retention-days: 7
+          if-no-files-found: error

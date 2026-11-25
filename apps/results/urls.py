@@ -26,6 +26,11 @@ urlpatterns = [
         name="result-stats",
     ),
     path(
+        "insights/",
+        views.StudentInsightsView.as_view(),
+        name="student-insights",
+    ),
+    path(
         "<int:pk>/detail/",
         views.ResultDetailView.as_view(),
         name="result-detail",

@@ -210,9 +210,14 @@ def group_membership_history_view(request, group_id: int):
 def group_analytics_view(request, group_id: int):
     """Guruh bo'yicha jonli monitoring, test/esse ko'rsatkichlari va BMB taqsimoti."""
     group = get_object_or_404(_teacher_groups(request.user), id=group_id)
-    from apps.courses.group_service import get_group_full_analytics
+    from apps.courses.group_service import (
+        build_group_extended_analytics,
+        get_group_full_analytics,
+    )
 
-    return Response(get_group_full_analytics(group))
+    payload = get_group_full_analytics(group)
+    payload.update(build_group_extended_analytics(group))
+    return Response(payload)
 
 
 @api_view(["GET"])

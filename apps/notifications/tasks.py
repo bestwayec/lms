@@ -124,6 +124,7 @@ def process_test_result_task(
     name="notifications.generate_certificate",
     max_retries=3,
     default_retry_delay=30,
+    acks_late=True,
     retry_backoff=True,
     retry_backoff_max=300,
     retry_jitter=True,
@@ -166,6 +167,7 @@ def generate_certificate_task(
     name="notifications.send_telegram_result",
     max_retries=3,
     default_retry_delay=30,
+    acks_late=True,
     retry_backoff=True,
     retry_backoff_max=300,
     retry_jitter=True,
@@ -699,7 +701,10 @@ def notify_admin_question_needs_review(self: Any, question_id: int) -> dict[str,
     name="notifications.send_feedback_reply",
     max_retries=3,
     default_retry_delay=30,
+    acks_late=True,
     retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
     time_limit=60,
 )
 def send_feedback_reply(self: Any, feedback_id: int) -> dict[str, Any]:
@@ -727,19 +732,48 @@ def send_feedback_reply(self: Any, feedback_id: int) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Transactional outbox worker (disabled unless NOTIFICATION_OUTBOX_ENABLED)
 # ---------------------------------------------------------------------------
-@shared_task(name="notifications.process_outbox")
-def process_outbox_task(limit: int = 50) -> dict[str, Any]:
+@shared_task(
+    bind=True,
+    name="notifications.process_outbox",
+    acks_late=True,
+    max_retries=3,
+    default_retry_delay=30,
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+    time_limit=120,
+    soft_time_limit=90,
+)
+def process_outbox_task(self: Any, limit: int = 50) -> dict[str, Any]:
     from apps.notifications.outbox import outbox_enabled, process_batch
 
     if not outbox_enabled():
         return {"skipped": "disabled"}
-    return process_batch(limit=limit)
+    try:
+        return process_batch(limit=limit)
+    except Exception as exc:
+        logger.warning("Outbox batch processing failed: %s", exc)
+        raise self.retry(exc=exc)
 
 
-@shared_task(name="notifications.enqueue_homework_reminders")
-def enqueue_homework_reminders_task() -> dict[str, Any]:
+@shared_task(
+    bind=True,
+    name="notifications.enqueue_homework_reminders",
+    acks_late=True,
+    max_retries=2,
+    default_retry_delay=60,
+    retry_backoff=True,
+    retry_jitter=True,
+    time_limit=120,
+    soft_time_limit=90,
+)
+def enqueue_homework_reminders_task(self: Any) -> dict[str, Any]:
     from apps.notifications.outbox import enqueue_deadline_reminders, outbox_enabled
 
     if not outbox_enabled():
         return {"skipped": "disabled"}
-    return {"enqueued": enqueue_deadline_reminders()}
+    try:
+        return {"enqueued": enqueue_deadline_reminders()}
+    except Exception as exc:
+        logger.warning("Homework reminder enqueue failed: %s", exc)
+        raise self.retry(exc=exc)

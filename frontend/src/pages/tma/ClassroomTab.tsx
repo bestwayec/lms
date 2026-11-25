@@ -59,11 +59,11 @@ export default function ClassroomTab({ onOpenTest }: { onOpenTest: (testId: numb
         ? await TmaApi.joinGroup(undefined, clean)
         : await TmaApi.joinGroup(clean, undefined);
 
-      setJoinMsg({ type: 'ok', text: res.message || "Muvaffaqiyatli qo'shildingiz!" });
+      setJoinMsg({ type: 'ok', text: res.message || t('tma_join_success') });
       setJoinCode('');
       void fetchGroups();
     } catch (e) {
-      setJoinMsg({ type: 'err', text: tmaErrorMessage(e, "Guruhga qo'shilishda xatolik yuz berdi.") });
+      setJoinMsg({ type: 'err', text: tmaErrorMessage(e, t('tma_join_error')) });
     } finally {
       setJoining(false);
     }
@@ -74,7 +74,7 @@ export default function ClassroomTab({ onOpenTest }: { onOpenTest: (testId: numb
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <h2 style={{ fontSize: 18, fontWeight: 800, margin: 0 }}>🏫 {t('classroom') || 'Mening sinfxonalarim'}</h2>
         <span className="tma-badge" style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#2563eb' }}>
-          {groups?.length ?? 0} ta guruh
+          {groups?.length ?? 0} {t('tma_groups_count')}
         </span>
       </div>
 
@@ -84,12 +84,12 @@ export default function ClassroomTab({ onOpenTest }: { onOpenTest: (testId: numb
           🔑 {t('join_with_code') || "Taklif kodi orqali guruhga qo'shilish"}
         </p>
         <p className="tma-muted" style={{ marginBottom: 12, fontSize: 12 }}>
-          Ustozingiz bergan taklif kodini (masalan: <b>ONA-A1B2</b>) yoki havolani kiriting:
+          {t('tma_join_hint')}
         </p>
         <div style={{ display: 'flex', gap: 8 }}>
           <input
             className="tma-input"
-            placeholder="GR-XXX yoki havola"
+            placeholder={t('tma_join_placeholder')}
             value={joinCode}
             onChange={(e) => setJoinCode(e.target.value)}
             onKeyDown={(e) => {
@@ -136,7 +136,7 @@ export default function ClassroomTab({ onOpenTest }: { onOpenTest: (testId: numb
             {t('no_classroom_yet') || 'Siz hali biron bir guruhga a\'zo emassiz'}
           </h3>
           <p className="tma-muted" style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 0 }}>
-            Ustozingiz bergan taklif kodini yuqoridagi maydonga kiriting yoki Telegram guruhdagi taklif havolasini bosing.
+            {t('tma_join_empty_hint')}
           </p>
         </div>
       )}
@@ -164,7 +164,7 @@ export default function ClassroomTab({ onOpenTest }: { onOpenTest: (testId: numb
                 </p>
                 {g.assignments.length === 0 ? (
                   <p className="tma-muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
-                    Hozircha yangi vazifa tayinlanmagan.
+                    {t('tma_no_hw_yet')}
                   </p>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

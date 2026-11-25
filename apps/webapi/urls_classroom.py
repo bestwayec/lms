@@ -41,4 +41,5 @@ urlpatterns = [
     path("teacher/essays/<int:submission_id>/review/", views_classroom.teacher_submit_essay_review_view, name="teacher-essay-submit-review"),
     path("essays/<int:submission_id>/voice/", views_classroom.essay_voice_playback_view, name="essay-voice-playback"),
     path("groups/<int:group_id>/essays/<int:assignment_id>/gradebook/", views_classroom.classroom_group_essay_gradebook_view, name="group-essay-gradebook"),
+    path("groups/<int:group_id>/report/export/", views_classroom.classroom_group_report_export_view, name="group-report-export"),
 ]

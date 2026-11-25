@@ -1,56 +1,34 @@
-# Versioning rule — SemVer, starting at 0.1
+# Versioning rule — SemVer
 
-Single source of truth: root `VERSION` file (currently `0.1.0`).
-Every version is also a git tag `vX.Y.Z` + GitHub Release.
-`/healthz/` returns the running version (`{"status":"ok","db":true,"version":"0.2.0"}`).
+Single source of truth: root `VERSION` file.
+Every release version is baked into that release's commit, git tag `vX.Y.Z`, GitHub Release, and Docker image (`:sha-<commit>`, `:vX.Y.Z`, `:latest`), so `/healthz/` always matches the GitHub Release.
 
 ## Format: MAJOR.MINOR.PATCH
 
 | Part  | When to bump | Example |
 | ----- | ------------ | ------- |
-| MINOR | **Every update to `main`** (default, automatic) | `0.1.0` → `0.2.0` → `0.3.0` |
-| PATCH | Hotfix without new features (manual) | `0.2.0` → `0.2.1` |
-| MAJOR | Stable / breaking milestone (manual) | `0.9.0` → `1.0.0` |
+| MINOR | **Every code update to `main`** (automatic) | `2.9.0` → `2.10.0` |
+| PATCH | Hotfix without new features (manual dispatch) | `2.10.0` → `2.10.1` |
+| MAJOR | Breaking / major milestone (manual dispatch) | `2.10.0` → `3.0.0` |
 
-Short form `0.1`, `0.2` = `0.1.0`, `0.2.0` (patch zero).
+## Pipeline order (no PAT needed, zero loops)
 
-## How it works
-
-1. Merge PR to `main` (CI `test` + `security` green, owner approval).
-2. `Release` workflow runs automatically → MINOR bump → pushes tag `v0.N.0`,
-   creates GitHub Release with auto notes, commits `chore(release): v0.N.0`.
-3. The bump commit goes through the FULL pipeline (CI → Build → Deploy), so
-   the new version is baked into a fresh image and goes live. Live always
-   converges to the latest tag (~8 min after a push: two pipeline passes —
-   one for your code, one for the bump). No `[skip ci]`, no loop: the Release
-   job ignores `chore(release)` heads by design.
-4. First run tags exactly what `VERSION` says (`v0.1.0`); every next push bumps minor.
-5. Manual: `Actions → Release → Run workflow → bump: patch|major` for hotfix/stable.
-6. Rollback: `Deploy → Run workflow → tag: v0.N-1.0` (previous release tag).
-
-Why the displayed version can lag the latest tag for a few minutes: `/healthz`
-shows the version BAKED INTO THE RUNNING IMAGE (build time), not the tag.
-A tag alone never reaches production — only a built + deployed image does.
-
-## RELEASE_PAT (required for convergence)
-
-GitHub silently suppresses ALL workflow runs on pushes made with `GITHUB_TOKEN`.
-The bot therefore pushes the bump commit with a personal token, otherwise the
-new version would never build or deploy. One-time setup:
-
-1. GitHub → Settings → Developer settings → Personal access tokens →
-   Fine-grained tokens → Generate new token.
-2. Repository access: only `algorithco/lms`. Permissions → Contents: Read+Write.
-3. Expiry 90 days (set a reminder; rotate like any credential).
-4. Repo → Settings → Secrets → Actions → New secret: `RELEASE_PAT` = the token.
-
-Without it the workflow still tags + bumps (with a warning), but live lags
-until the next human push. The loop always terminates: the Release job skips
-`chore(release)` heads, so a PAT push can never re-trigger itself.
+1. Merge PR to `main` → **CI** + **Security** run on source commit `C`.
+2. When **CI** succeeds on `main`, **Release** runs (`workflow_run: [CI]`):
+   - Updates `VERSION` to `NEXT`, commits `chore(release): vX.Y.Z [skip ci]` (`R`),
+   - Creates annotated tag `vX.Y.Z` **on `R`** (so `vX.Y.Z` and `VERSION` match identically),
+   - Creates GitHub Release `vX.Y.Z` targeting `R`, and uploads `release-meta`.
+3. When **Release** succeeds, **Build** runs (`workflow_run: [Release]`):
+   - Verifies `R`'s parent `C` passed **CI** and only `VERSION` changed between `C` and `R`,
+   - Asserts `VERSION == build APP_VERSION`,
+   - Builds & pushes `ghcr.io/bestwayec/lms:sha-<short_R>`, `:vX.Y.Z`, and `:latest` with provenance attestation,
+   - Verifies manifest digest via `docker buildx imagetools inspect` and uploads `build-meta`.
+4. **Deploy** (`workflow_run: [Build]`):
+   - **Staging**: automatic when `STAGING_HOST` and `STAGING_DOMAIN` secrets are configured in the `staging` environment (skips cleanly otherwise).
+   - **Production**: **manual only** (`Actions → Deploy → Run workflow`, enter immutable `sha-<short_R>` tag and confirmation phrase `deploy grandec.uz`).
+5. **Loop prevention**: release commits include `[skip ci]`, `GITHUB_TOKEN` pushes do not trigger `push` workflows, and `Release` skips any `chore(release):` head commit.
 
 ## Rules
 
-- Never edit `VERSION` by hand in feature PRs — the bot owns it.
-- Never create tags by hand — use the workflow (keeps tag + Release + file in sync).
-- The only bot allowed to push to `main` is `github-actions[bot]` for `chore(release)`.
-  Everyone else: PR only (see `CONTRIBUTING.md`, `.githooks/pre-push`).
+- Never edit `VERSION` by hand in feature PRs — `Release` owns it.
+- Never create release tags by hand — use `Release` so git tag, GitHub Release, `VERSION`, and Docker image remain 1:1.

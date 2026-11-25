@@ -171,7 +171,7 @@ def teacher_group_detail_view(request: HttpRequest, group_id: int) -> JsonRespon
             "students_count": analytics.get("total_students", 0),
             "max_students": getattr(group, "max_students", 50),
         },
-        "roster": analytics.get("roster", []),
+        "roster": analytics.get("students", []),
         "invitations": inv_data,
         "assignments": hw_data,
     })
@@ -594,22 +594,34 @@ def classroom_group_leaderboard_view(request: HttpRequest, group_id: int) -> Jso
     if not (is_admin or is_teacher or is_member):
         return JsonResponse({"error": "Faqat ushbu guruh a'zolari reytingni ko'ra oladi."}, status=403)
 
-    students = list(group.students.filter(is_active=True).order_by("first_name", "last_name"))
+    students = list(
+        group.students.filter(is_active=True)
+        .only("id", "first_name", "last_name", "email")
+        .order_by("first_name", "last_name")
+    )
     student_ids = [s.id for s in students]
 
     results_map: dict[int, dict[str, Any]] = {}
-    from django.db.models import Avg, Count
-    for row in Result.objects.filter(student_id__in=student_ids).values("student_id").annotate(
-        count=Count("id"),
-        avg_pct=Avg("percentage"),
-    ):
-        results_map[row["student_id"]] = row
-
     essays_map: dict[int, int] = {}
-    for row in EssaySubmission.objects.filter(student_id__in=student_ids).exclude(status=EssaySubmission.Status.DRAFT).values("student_id").annotate(
-        count=Count("id")
-    ):
-        essays_map[row["student_id"]] = row["count"]
+    if student_ids:
+        from django.db.models import Avg, Count
+
+        for row in (
+            Result.objects.filter(student_id__in=student_ids)
+            .order_by()
+            .values("student_id")
+            .annotate(count=Count("id"), avg_pct=Avg("percentage"))
+        ):
+            results_map[row["student_id"]] = row
+
+        for row in (
+            EssaySubmission.objects.filter(student_id__in=student_ids)
+            .exclude(status=EssaySubmission.Status.DRAFT)
+            .order_by()
+            .values("student_id")
+            .annotate(count=Count("id"))
+        ):
+            essays_map[row["student_id"]] = row["count"]
 
     rows = []
     for s in students:
@@ -787,8 +799,27 @@ def teacher_list_essay_reviews_view(request: HttpRequest) -> JsonResponse:
             Q(status=EssaySubmission.Status.PENDING_TEACHER) | Q(teacher_review_requested=True)
         ).distinct()
 
+    from django.db.models.functions import Coalesce
+
+    queue_filter = (request.GET.get("filter") or "all").strip().lower()
+    if queue_filter == "appeals":
+        qs = qs.filter(teacher_review_requested=True)
+    elif queue_filter == "pending":
+        qs = qs.filter(status=EssaySubmission.Status.PENDING_TEACHER, teacher_review_requested=False)
+
+    try:
+        limit = min(100, max(1, int(request.GET.get("limit", 50))))
+        offset = max(0, int(request.GET.get("offset", 0)))
+    except (TypeError, ValueError):
+        limit, offset = 50, 0
+
+    ordered_qs = qs.annotate(
+        queue_ts=Coalesce("teacher_review_requested_at", "submitted_at", "updated_at")
+    ).order_by("-queue_ts", "-id")
+    total_count = ordered_qs.count()
+
     reviews_data = []
-    for sub in qs.select_related("student", "topic", "assignment", "assignment__group").order_by("-teacher_review_requested_at")[:50]:
+    for sub in ordered_qs.select_related("student", "topic", "assignment", "assignment__group")[offset : offset + limit]:
         reviews_data.append({
             "id": sub.id,
             "student_id": sub.student_id,
@@ -806,6 +837,9 @@ def teacher_list_essay_reviews_view(request: HttpRequest) -> JsonResponse:
     return JsonResponse({
         "pending_reviews": reviews_data,
         "count": len(reviews_data),
+        "total_count": total_count,
+        "limit": limit,
+        "offset": offset,
     })
 
 
@@ -886,6 +920,96 @@ def essay_voice_playback_view(request: HttpRequest, submission_id: int):
         return JsonResponse({"error": "Ushbu esse uchun audio fikr mavjud emas."}, status=404)
 
     return private_file_response(review.voice_feedback)
+
+
+def _csv_safe(value: object) -> str:
+    """Neutralize spreadsheet formula-injection prefixes in CSV exports."""
+    text = str(value if value is not None else "")
+    if text and text[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + text
+    return text
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def classroom_group_report_export_view(request: HttpRequest, group_id: int):
+    """Export group student summary and extended metrics as formula-safe CSV."""
+    import csv
+    import io
+    import re
+
+    from django.http import HttpResponse
+    from django.shortcuts import get_object_or_404
+
+    from apps.courses.group_service import (
+        build_group_extended_analytics,
+        get_group_full_analytics,
+    )
+
+    group = get_object_or_404(StudentGroup, id=group_id)
+    if not is_platform_admin(request.user) and not (
+        getattr(request.user, "role", None) == "teacher"
+        and group.teacher_id == request.user.id
+    ):
+        return JsonResponse(
+            {"error": "Sizda ushbu guruh hisobotini eksport qilish huquqi yo'q."},
+            status=403,
+        )
+
+    analytics = get_group_full_analytics(group)
+    analytics.update(build_group_extended_analytics(group))
+    assign = analytics.get("assignments_summary") or {}
+    teacher_name = group.teacher.get_full_name() if group.teacher_id else ""
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["Group", _csv_safe(group.name), "Teacher", _csv_safe(teacher_name)])
+    writer.writerow(
+        [
+            "Students",
+            analytics.get("total_students", 0),
+            "Avg Test %",
+            (analytics.get("summary") or {}).get("average_test_percentage", 0),
+            "Homework Completion %",
+            assign.get("completion_rate") if assign.get("completion_rate") is not None else "",
+            "Overdue",
+            assign.get("overdue_count", 0),
+        ]
+    )
+    writer.writerow([])
+    writer.writerow(
+        [
+            "Student ID",
+            "Student Name",
+            "Tests Count",
+            "Avg Test %",
+            "Best Test %",
+            "Latest BMB Grade",
+            "Essays Count",
+            "Avg Essay Score",
+            "Tuition Status",
+        ]
+    )
+    for st in analytics.get("students", []):
+        writer.writerow(
+            [
+                st.get("student_id", ""),
+                _csv_safe(st.get("student_name", "")),
+                st.get("tests_count", 0),
+                st.get("avg_test_percentage", 0),
+                st.get("best_test_percentage", 0),
+                _csv_safe(st.get("latest_test_grade", "")),
+                st.get("essays_count", 0),
+                st.get("avg_essay_score", 0),
+                _csv_safe(st.get("tuition_status", "")),
+            ]
+        )
+
+    safe_slug = re.sub(r"[^A-Za-z0-9_-]+", "_", group.name).strip("_") or f"group_{group.id}"
+    resp = HttpResponse("\ufeff" + buf.getvalue(), content_type="text/csv; charset=utf-8")
+    resp["Content-Disposition"] = f'attachment; filename="{safe_slug}_report.csv"'
+    resp["Cache-Control"] = "no-store, private"
+    return resp
 
 
 @api_view(["GET"])

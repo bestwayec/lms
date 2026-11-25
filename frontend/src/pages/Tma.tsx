@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/authState';
 import { useLang } from '../i18n/LangContext';
@@ -7,12 +7,13 @@ import { TmaApi } from './tma/api';
 import type { TmaProfile } from './tma/api';
 import { loadTelegramScript, tg } from './tma/telegram';
 import Home from './tma/Home';
-import TestFlow from './tma/TestFlow';
-import TestsTab from './tma/TestsTab';
-import ClassroomTab from './tma/ClassroomTab';
-import LeaderboardTab from './tma/LeaderboardTab';
-import ProfileTab from './tma/ProfileTab';
 import './tma/Tma.css';
+
+const TestFlow = lazy(() => import('./tma/TestFlow'));
+const TestsTab = lazy(() => import('./tma/TestsTab'));
+const ClassroomTab = lazy(() => import('./tma/ClassroomTab'));
+const LeaderboardTab = lazy(() => import('./tma/LeaderboardTab'));
+const ProfileTab = lazy(() => import('./tma/ProfileTab'));
 
 /** Bot username fallback for the "open in Telegram" link (mirrors settings.TELEGRAM_BOT_NAME default). */
 const BOT_USERNAME = 'uz_essaygrader_bot';
@@ -159,8 +160,13 @@ export default function Tma() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Refresh header stats when returning to tabs.
-  const refreshProfile = useCallback(() => {
+  const lastProfileRefreshRef = useRef<number>(0);
+
+  // Refresh header stats cleanly (forced after exam exit; throttled >= 30s on tab switches).
+  const refreshProfile = useCallback((force = false) => {
+    const now = Date.now();
+    if (!force && now - lastProfileRefreshRef.current < 30_000) return;
+    lastProfileRefreshRef.current = now;
     TmaApi.profile().then(setProfile).catch(() => undefined);
   }, []);
 
@@ -172,14 +178,14 @@ export default function Tma() {
   const exitFlow = () => {
     backHandlerRef.current = null;
     setActiveTestId(null);
-    refreshProfile();
+    refreshProfile(true);
   };
 
   const switchTab = (next: Tab) => {
     backHandlerRef.current = null;
     setActiveTestId(null);
     setTab(next);
-    refreshProfile();
+    refreshProfile(false);
   };
 
   if (boot === 'boot' || boot === 'authing') {
@@ -222,7 +228,7 @@ export default function Tma() {
                   boxSizing: 'border-box',
                 }}
               >
-                Telegram botda ochish
+                {t('tma_open_in_bot')}
               </a>
               <button
                 type="button"
@@ -230,7 +236,7 @@ export default function Tma() {
                 onClick={() => window.open(window.location.origin, '_blank')}
                 style={{ width: '100%' }}
               >
-                🌐 Brauzerda ochish
+                🌐 {t('tma_open_in_browser')}
               </button>
               <button
                 type="button"
@@ -238,7 +244,7 @@ export default function Tma() {
                 onClick={() => window.location.reload()}
                 style={{ width: '100%' }}
               >
-                🔄 Qayta urinish
+                🔄 {t('tma_retry')}
               </button>
             </div>
             <p className="tma-muted" style={{ marginTop: 16 }}>
@@ -256,9 +262,9 @@ export default function Tma() {
         <div className="tma-auth">
           <div className="tma-auth-card" style={{ maxWidth: 360, textAlign: 'center', padding: '24px 20px' }}>
             <div style={{ fontSize: 36, marginBottom: 8 }}>⚠️</div>
-            <h1 style={{ fontSize: 20, fontWeight: 800, margin: '0 0 8px' }}>Xatolik yuz berdi</h1>
+            <h1 style={{ fontSize: 20, fontWeight: 800, margin: '0 0 8px' }}>{t('tma_error_title')}</h1>
             <p style={{ color: '#f87171', fontSize: '0.9rem', marginBottom: 20, lineHeight: 1.5 }}>
-              {error || "Telegram orqali tizimga kirishda nosozlik yuz berdi."}
+              {error || t('tma_auth_error_fallback')}
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <button
@@ -267,7 +273,7 @@ export default function Tma() {
                 onClick={() => window.location.reload()}
                 style={{ width: '100%' }}
               >
-                🔄 Qayta urinish
+                🔄 {t('tma_retry')}
               </button>
               <button
                 type="button"
@@ -275,7 +281,7 @@ export default function Tma() {
                 onClick={() => window.open(window.location.origin, '_blank')}
                 style={{ width: '100%' }}
               >
-                🌐 Brauzerda ochish
+                🌐 {t('tma_open_in_browser')}
               </button>
             </div>
           </div>
@@ -291,29 +297,31 @@ export default function Tma() {
     <div className="tma-root">
       <div className="tma-wrap">
         <header className="tma-header">
-          <h1>{firstName ? `Salom, ${firstName}!` : t('dashboard')}</h1>
+          <h1>{firstName ? `${t('tma_greeting')}, ${firstName}!` : t('dashboard')}</h1>
           <span className="tma-xp">⚡ {profile?.stats.total_xp ?? 0} XP</span>
         </header>
 
         <main className="tma-main">
-          {inFlow ? (
-            <TestFlow testId={activeTestId} onExit={exitFlow} setBackHandler={setBackHandler} />
-          ) : tab === 'home' ? (
-            <Home
-              profile={profile}
-              onProfileLoaded={setProfile}
-              onOpenTest={openTest}
-              onNavigateClassroom={() => switchTab('classroom')}
-            />
-          ) : tab === 'tests' ? (
-            <TestsTab onOpenTest={openTest} setBackHandler={setBackHandler} />
-          ) : tab === 'classroom' ? (
-            <ClassroomTab onOpenTest={openTest} />
-          ) : tab === 'leaderboard' ? (
-            <LeaderboardTab />
-          ) : (
-            <ProfileTab profile={profile} />
-          )}
+          <Suspense fallback={<div className="tma-spin" style={{ margin: '48px auto' }} />}>
+            {inFlow ? (
+              <TestFlow testId={activeTestId} onExit={exitFlow} setBackHandler={setBackHandler} />
+            ) : tab === 'home' ? (
+              <Home
+                profile={profile}
+                onProfileLoaded={setProfile}
+                onOpenTest={openTest}
+                onNavigateClassroom={() => switchTab('classroom')}
+              />
+            ) : tab === 'tests' ? (
+              <TestsTab onOpenTest={openTest} setBackHandler={setBackHandler} />
+            ) : tab === 'classroom' ? (
+              <ClassroomTab onOpenTest={openTest} />
+            ) : tab === 'leaderboard' ? (
+              <LeaderboardTab />
+            ) : (
+              <ProfileTab profile={profile} />
+            )}
+          </Suspense>
         </main>
 
         {!inFlow && (
