@@ -1,8 +1,49 @@
+import { useEffect, useState } from 'react';
 import { useLang } from '../../i18n/LangContext';
+import { TmaApi } from './api';
 import type { TmaProfile } from './api';
 
 export default function ProfileTab({ profile }: { profile: TmaProfile | null }) {
   const { lang, setLang, t } = useLang();
+  const [lbOptIn, setLbOptIn] = useState(Boolean(profile?.stats?.leaderboard_opt_in));
+  const [pseudonym, setPseudonym] = useState(profile?.stats?.leaderboard_pseudonym || '');
+  const [streakOptIn, setStreakOptIn] = useState(profile?.stats?.streak_opt_in !== false);
+  const [savingPref, setSavingPref] = useState(false);
+  const [savedNotice, setSavedNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    TmaApi.gamificationSettings()
+      .then((s) => {
+        setLbOptIn(s.leaderboard_opt_in);
+        setPseudonym(s.leaderboard_pseudonym || '');
+        setStreakOptIn(s.streak_opt_in);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const savePrivacySettings = async (
+    nextLbOptIn = lbOptIn,
+    nextPseudo = pseudonym,
+    nextStreakOptIn = streakOptIn,
+  ) => {
+    setSavingPref(true);
+    setSavedNotice(null);
+    try {
+      const updated = await TmaApi.updateGamificationSettings({
+        leaderboard_opt_in: nextLbOptIn,
+        leaderboard_pseudonym: nextPseudo,
+        streak_opt_in: nextStreakOptIn,
+      });
+      setLbOptIn(updated.leaderboard_opt_in);
+      setPseudonym(updated.leaderboard_pseudonym || '');
+      setStreakOptIn(updated.streak_opt_in);
+      setSavedNotice('✓ Saqlandi');
+    } catch {
+      setSavedNotice('✕ Xatolik yuz berdi');
+    } finally {
+      setSavingPref(false);
+    }
+  };
 
   const user = profile?.user;
   const stats = profile?.stats;
@@ -101,6 +142,58 @@ export default function ProfileTab({ profile }: { profile: TmaProfile | null }) 
             </p>
           </div>
         </div>
+      </div>
+
+      {/* Privacy & Optional Gamification Preferences */}
+      <div className="tma-card" style={{ marginBottom: 16 }}>
+        <p className="tma-sub" style={{ fontWeight: 700, color: 'var(--tma-ink)', marginBottom: 10 }}>
+          🛡️ Reyting va maxfiylik sozlamalari
+        </p>
+        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, marginBottom: 10, gap: 8 }}>
+          <span>Umumiy reytingda qatnashish (ixtiyoriy)</span>
+          <input
+            type="checkbox"
+            checked={lbOptIn}
+            disabled={savingPref}
+            onChange={(e) => {
+              const next = e.target.checked;
+              setLbOptIn(next);
+              void savePrivacySettings(next, pseudonym, streakOptIn);
+            }}
+          />
+        </label>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+          <input
+            className="tma-input"
+            placeholder="Taxallus (masalan: Lochin_01)"
+            maxLength={40}
+            value={pseudonym}
+            onChange={(e) => setPseudonym(e.target.value)}
+          />
+          <button
+            type="button"
+            className="tma-btn tma-btn-hl"
+            style={{ width: 'auto', padding: '0 14px', fontSize: 12 }}
+            disabled={savingPref}
+            onClick={() => void savePrivacySettings(lbOptIn, pseudonym, streakOptIn)}
+          >
+            Saqlash
+          </button>
+        </div>
+        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, gap: 8 }}>
+          <span>Kunlik streak hisoblagichini yoqish</span>
+          <input
+            type="checkbox"
+            checked={streakOptIn}
+            disabled={savingPref}
+            onChange={(e) => {
+              const next = e.target.checked;
+              setStreakOptIn(next);
+              void savePrivacySettings(lbOptIn, pseudonym, next);
+            }}
+          />
+        </label>
+        {savedNotice && <p className="tma-sub" style={{ margin: '8px 0 0', color: '#16a34a' }}>{savedNotice}</p>}
       </div>
 
       {/* Language Switcher */}

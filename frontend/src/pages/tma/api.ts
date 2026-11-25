@@ -88,6 +88,9 @@ export interface TmaProfile {
     current_streak?: number;
     weekly_xp?: number;
     weekly_league?: string;
+    leaderboard_opt_in?: boolean;
+    leaderboard_pseudonym?: string;
+    streak_opt_in?: boolean;
   };
   current_streak?: number;
   weekly_xp?: number;
@@ -211,8 +214,27 @@ export const TmaApi = {
       `/api/classroom/groups/${groupId}/leaderboard/`,
     ),
   platformLeaderboard: (period: 'weekly' | 'all_time' = 'weekly') =>
-    api<{ period: string; items: any[]; user_rank: number | null }>(
+    api<{
+      period: string;
+      items: any[];
+      user_rank: number | null;
+      opted_in?: boolean;
+      pseudonym?: string;
+    }>(
       `/api/classroom/leaderboard/platform/?period=${period}`,
+    ),
+  gamificationSettings: () =>
+    api<{ leaderboard_opt_in: boolean; leaderboard_pseudonym: string; streak_opt_in: boolean }>(
+      '/api/classroom/profile/gamification-settings/',
+    ),
+  updateGamificationSettings: (payload: {
+    leaderboard_opt_in?: boolean;
+    leaderboard_pseudonym?: string;
+    streak_opt_in?: boolean;
+  }) =>
+    api<{ leaderboard_opt_in: boolean; leaderboard_pseudonym: string; streak_opt_in: boolean }>(
+      '/api/classroom/profile/gamification-settings/',
+      { method: 'POST', body: JSON.stringify(payload) },
     ),
   requestEssayAppeal: (submissionId: number, reason: string, criteria: string[] = []) =>
     api<{ status: string; submission_id: number; appeal_status: string; message: string }>(

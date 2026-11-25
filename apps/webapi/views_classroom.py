@@ -79,25 +79,31 @@ def teacher_classroom_overview_view(request: HttpRequest) -> JsonResponse:
     if not is_teacher:
         return JsonResponse({"error": "Faqat o'qituvchilar uchun."}, status=403)
 
+    from django.db.models import Count
+
     if is_admin:
         groups_qs = StudentGroup.objects.all()
     else:
         groups_qs = StudentGroup.objects.filter(teacher=user)
 
+    annotated_groups = groups_qs.select_related("teacher", "branch").annotate(
+        active_students_count=Count("students", filter=Q(students__is_active=True), distinct=True),
+        active_hw_count=Count("homeworks", filter=Q(homeworks__status=Homework.Status.ACTIVE), distinct=True),
+    )
+
     groups_data = []
-    for g in groups_qs.select_related("teacher", "branch"):
-        active_hw = Homework.objects.filter(group=g, status=Homework.Status.ACTIVE).count()
+    for g in annotated_groups:
         groups_data.append({
             "id": g.id,
             "name": g.name,
             "subject": g.subject,
             "teacher_name": g.teacher.get_full_name() or g.teacher.email,
-            "students_count": g.students.filter(is_active=True).count(),
+            "students_count": g.active_students_count,
             "max_students": getattr(g, "max_students", 50),
             "invite_code": g.invite_code or "",
             "status": g.status,
             "is_active": g.is_active,
-            "active_homework_count": active_hw,
+            "active_homework_count": g.active_hw_count,
         })
 
     pending_requests = list_teacher_pending_requests(user)
@@ -348,17 +354,30 @@ def student_join_group_view(request: HttpRequest) -> JsonResponse:
 def student_my_groups_view(request: HttpRequest) -> JsonResponse:
     """Student Classroom Portal: Groups, assigned tests, upcoming homework, results."""
     user = request.user
-    my_groups = StudentGroup.objects.filter(students=user, status=StudentGroup.Status.ACTIVE).select_related("teacher", "branch")
+    my_groups = list(
+        StudentGroup.objects.filter(students=user, status=StudentGroup.Status.ACTIVE).select_related("teacher", "branch")
+    )
+    group_ids = [g.id for g in my_groups]
+
+    # Single batch query for all active group & personal homeworks
+    all_hws = list(
+        Homework.objects.filter(Q(group_id__in=group_ids) | Q(student=user), status=Homework.Status.ACTIVE)
+        .select_related("test", "test__course")
+        .order_by("due_date")
+    )
+
+    hws_by_group: dict[int, list[Homework]] = {gid: [] for gid in group_ids}
+    personal_hws: list[Homework] = []
+    for hw in all_hws:
+        if hw.group_id in hws_by_group:
+            hws_by_group[hw.group_id].append(hw)
+        elif hw.student_id == user.id:
+            personal_hws.append(hw)
 
     groups_data = []
     for g in my_groups:
-        hw_qs = (
-            Homework.objects.filter(Q(group=g) | Q(student=user), status=Homework.Status.ACTIVE)
-            .select_related("test")
-            .order_by("due_date")
-        )
         assignments = []
-        for hw in hw_qs:
+        for hw in hws_by_group.get(g.id, []) + personal_hws:
             access = resolve_test_access(user, hw.test, assignment=hw, action="view") if hw.test else None
             assignments.append({
                 "id": hw.id,

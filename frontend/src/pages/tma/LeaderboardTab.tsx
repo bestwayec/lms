@@ -60,6 +60,8 @@ export default function LeaderboardTab() {
     };
   }, [scope, period, selectedGroupId, t]);
 
+  const showLoading = loading && (scope === 'platform' || Boolean(selectedGroupId));
+
   return (
     <div className="tma-slide">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -138,7 +140,7 @@ export default function LeaderboardTab() {
         </div>
       )}
 
-      {loading && (
+      {showLoading && (
         <div className="tma-list">
           <div className="tma-skel" />
           <div className="tma-skel" />
@@ -149,8 +151,34 @@ export default function LeaderboardTab() {
       {error && <div className="tma-err">{error}</div>}
 
       {/* Platform Leaderboard Render */}
-      {!loading && scope === 'platform' && platformData && (
+      {!showLoading && scope === 'platform' && platformData && (
         <div>
+          {platformData.opted_in === false && (
+            <div className="tma-card" style={{ background: '#f8fafc', borderColor: '#cbd5e1', marginBottom: 16 }}>
+              <p style={{ margin: '0 0 8px', fontWeight: 700, fontSize: 13, color: 'var(--tma-ink)' }}>
+                🔒 Umumiy reytingda qatnashish ixtiyoriy
+              </p>
+              <p className="tma-muted" style={{ margin: '0 0 10px', fontSize: 12 }}>
+                Siz hozir umumiy reytingdan yashirilgansiz. Xohlasangiz taxallus (pseudonim) ostida qo'shilishingiz mumkin.
+              </p>
+              <button
+                type="button"
+                className="tma-btn tma-btn-hl"
+                style={{ padding: '8px 14px', fontSize: 12 }}
+                onClick={async () => {
+                  try {
+                    await TmaApi.updateGamificationSettings({ leaderboard_opt_in: true });
+                    const refreshed = await TmaApi.platformLeaderboard(period);
+                    setPlatformData(refreshed);
+                  } catch {
+                    /* ignore */
+                  }
+                }}
+              >
+                Reytingga qo'shilish (taxallus bilan)
+              </button>
+            </div>
+          )}
           {platformData.user_rank && (
             <div className="tma-card" style={{ background: '#fef3c7', borderColor: '#fcd34d', marginBottom: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -195,9 +223,11 @@ export default function LeaderboardTab() {
                         </span>
                       )}
                     </p>
-                    <p className="tma-sub" style={{ marginTop: 2 }}>
-                      🔥 {item.streak || 0} kun streak
-                    </p>
+                    {typeof item.streak === 'number' && item.streak > 0 && (
+                      <p className="tma-sub" style={{ marginTop: 2 }}>
+                        🔥 {item.streak} kun streak
+                      </p>
+                    )}
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <span style={{ fontWeight: 800, fontSize: 15, color: '#d97706' }}>
@@ -212,7 +242,16 @@ export default function LeaderboardTab() {
       )}
 
       {/* Group Leaderboard Render */}
-      {!loading && scope === 'group' && groupData && (
+      {!showLoading && scope === 'group' && groups.length === 0 && (
+        <div className="tma-card tma-center" style={{ padding: 28 }}>
+          <div style={{ fontSize: 36, marginBottom: 10 }}>🏫</div>
+          <p style={{ margin: '0 0 6px', fontWeight: 700, fontSize: 15 }}>Sinfxona guruhlari topilmadi</p>
+          <p className="tma-muted" style={{ margin: 0, fontSize: 12 }}>
+            Guruh reytingini ko'rish uchun avval Sinfxona bo'limidan guruhga qo'shiling.
+          </p>
+        </div>
+      )}
+      {!showLoading && scope === 'group' && groupData && (
         <div>
           <div className="tma-list">
             {(groupData.leaderboard || []).map((item: any) => (

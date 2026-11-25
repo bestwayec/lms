@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ProtectedAudio } from '../../components/ProtectedMedia';
 import { useLang } from '../../i18n/LangContext';
 import { TmaApi, tmaErrorMessage } from './api';
 import type { TmaEssayResult, TmaEssayStart, TmaEssayTopic } from './api';
@@ -259,7 +260,7 @@ export default function Essays({
             <div className="tma-center" style={{ marginBottom: 12 }}>
               <p style={{ fontSize: 36, fontWeight: 800, margin: 0, color: 'var(--tma-hl)' }}>{score}</p>
               <p className="tma-sub">
-                / {result.max_score ?? 24}
+                / {result.max_score ?? 20}
                 {typeof result.score_percentage === 'number' ? ` · ${Math.round(result.score_percentage)}%` : ''}
               </p>
             </div>
@@ -295,7 +296,7 @@ export default function Essays({
           {result.teacher_final_score !== null && result.teacher_final_score !== undefined && (
             <div className="tma-card" style={{ marginBottom: 16, background: '#F0FDF4', borderColor: '#BBF7D0' }}>
               <p style={{ margin: 0, fontWeight: 700, color: '#166534', fontSize: 14 }}>
-                👨‍🏫 Ustoz yakuniy bahosi: {result.teacher_final_score} / {result.max_score ?? 24}
+                👨‍🏫 Ustoz yakuniy bahosi: {result.teacher_final_score} / {result.max_score ?? 20}
               </p>
               {result.teacher_comments && (
                 <p style={{ margin: '8px 0 0', color: '#14532D', fontSize: 13, lineHeight: 1.5 }}>
@@ -310,9 +311,7 @@ export default function Essays({
               <p style={{ margin: '0 0 6px', fontWeight: 700, fontSize: 13, color: 'var(--tma-ink)' }}>
                 🎙️ Ustoz ovozli taqrizi (Audio sharh):
               </p>
-              <audio controls preload="none" src={TmaApi.voiceFeedbackUrl(result.id)}>
-                Brauzeringiz audio pleerni qo‘llab-quvvatlamaydi.
-              </audio>
+              <ProtectedAudio path={TmaApi.voiceFeedbackUrl(result.id)} />
             </div>
           )}
 
@@ -495,7 +494,7 @@ function StatusBadge({ topic, t }: { topic: TmaEssayTopic; t: (key: string) => s
   const st = topic.user_status;
   if (!st) return <span className="tma-sub">🆕 {t('tma_new')}</span>;
   if (st.status === 'graded') {
-    return <span style={{ fontSize: 10, color: 'var(--tma-green)' }}>✅ {st.total_score ?? 0}/24</span>;
+    return <span style={{ fontSize: 10, color: 'var(--tma-green)' }}>✅ {st.total_score ?? 0}/20</span>;
   }
   return <span style={{ fontSize: 10, color: 'var(--tma-green)' }}>⏳ {st.status}</span>;
 }

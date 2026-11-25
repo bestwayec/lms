@@ -200,8 +200,12 @@ export default function Tma() {
       <div className="tma-root">
         <div className="tma-auth">
           <div className="tma-auth-card" style={{ maxWidth: 360, textAlign: 'center', padding: '24px 20px' }}>
-            <div className="tma-auth-logo" style={{ fontSize: 36, marginBottom: 8 }}>📚</div>
-            <h1 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 8px' }}>Ona Tili &amp; Adabiyot</h1>
+            <img
+              src="/logo-mark.png"
+              alt="GRANDEC LMS"
+              style={{ width: 48, height: 48, objectFit: 'contain', margin: '0 auto 10px', display: 'block' }}
+            />
+            <h1 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 8px' }}>GRANDEC LMS</h1>
             <p className="tma-muted" style={{ marginBottom: 20 }}>{t('tma_open_in_telegram')}</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <a
@@ -209,7 +213,14 @@ export default function Tma() {
                 href={`https://t.me/${BOT_USERNAME}`}
                 target="_blank"
                 rel="noreferrer"
-                style={{ display: 'block', textDecoration: 'none' }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minHeight: 48,
+                  textDecoration: 'none',
+                  boxSizing: 'border-box',
+                }}
               >
                 Telegram botda ochish
               </a>

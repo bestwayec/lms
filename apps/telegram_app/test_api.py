@@ -135,6 +135,14 @@ def tma_test_start_view(request, test_id: int) -> JsonResponse:
     if test.shuffle_questions:
         random.Random(f"q:{attempt.pk}").shuffle(questions)
 
+    # Preload saved answers in bulk (eliminates N+1 queries per question)
+    from apps.tests.models import StudentAnswer
+
+    saved_answers_by_qid = {
+        sa.question_id: sa
+        for sa in StudentAnswer.objects.filter(attempt=attempt).prefetch_related("selected_choices")
+    }
+
     # Build question data (without correct answers)
     questions_data = []
     for q in questions:
@@ -142,21 +150,9 @@ def tma_test_start_view(request, test_id: int) -> JsonResponse:
         if test.shuffle_choices:
             random.Random(f"c:{attempt.pk}:{q.id}").shuffle(choices)
 
-        # Get previously selected answers
-        selected_ids = set()
-        saved_text = ""
-        try:
-            from apps.tests.models import StudentAnswer
-
-            sa = StudentAnswer.objects.filter(
-                attempt=attempt,
-                question=q,
-            ).first()
-            if sa:
-                selected_ids = set(sa.selected_choices.values_list("id", flat=True))
-                saved_text = sa.text_answer
-        except Exception:
-            pass
+        sa = saved_answers_by_qid.get(q.id)
+        selected_ids = {c.id for c in sa.selected_choices.all()} if sa else set()
+        saved_text = sa.text_answer if sa else ""
 
         questions_data.append(
             {

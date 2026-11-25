@@ -9,6 +9,38 @@
    - Ustoz kabinetida har bir o'quvchining PRO holati (`⭐ PRO (Faol)`), ishlagan testlari va esselari aks etishi.
 3. Attestatsiya 2026 yangi diagnostika testini 50 ta savoli bilan bazaga seed qilish, kategoriyalashtirish va VPS ga deploy qilish.
 
+### 2.98. Rasmiy Versiya v8.1: Quad Audit, Hardening & Product Polish (PR #148)
+- **Maqsad**:
+  * **1-Bosqich — Integratsiya va CI Tiklanishi (`c6dff15`)**:
+    - GitHub CI dagi `test_group_capacity_limit_enforcement` xatosi bartaraf etildi: guruh sig'imi (`ValueError`) va taklifnoma tekshiruvi (`ValidationError`) shartnomasi barcha servislar (`invitation_service.py`, `group_service.py`), veb API va botda birxillashtirildi.
+    - Rad etilgan a'zolikda hech qanday a'zolik, taklifnoma sarfi yoki xabarnoma yaratilmasligi tranzaksion tarzda kafolatlandi.
+    - Arxivlangan guruhlarga o'quvchi qo'shish, taklifnoma yaratish/yangilash va uy vazifasi biriktirish barcha kirish nuqtalarida bloklandi; ustoz transferida markaz izolyatsiyasi va kutilayotgan esse tekshiruvlarini yangi ustozga yo'naltirish qo'shildi.
+    - Telegram bot taklifnoma havolasi xato xabarlarini yashirish (fallback error swallowing) bugi tuzatildi.
+  * **2-Bosqich — Funksional Mantiq va Ma'lumotlar Butunligi (`438c8e8`)**:
+    - `award_educational_xp` va `record_user_activity` yagona atomik tranzaksiyaga va `Profile.select_for_update()` qulfiga o'tkazildi — uzilgan tranzaksiyalarda XP yo'qolishi va poyga xatolari yo'q qilindi.
+    - `award_test_xp` `0` qaytarganda jimjit `25 XP` berib yuborish (`or 25`) bugi olib tashlandi; preview va trial urinishlarga XP berilishi bloklandi; TMA test topshirishda ham tekshirilgan XP taqdim etildi.
+    - `Profile` ga ixtiyoriy `leaderboard_opt_in` (`default=False`), `leaderboard_pseudonym`, va `streak_opt_in` qo'shildi — rozilik bermagan o'quvchilar umumiy reytingdan chiqariladi va haqiqiy ism/familiya bosh harfi ham oshkor qilinmaydi.
+    - Ko'p guruhli o'quvchilar esse apellatsiyalarini fan bo'yicha to'g'ri ustozga yo'naltirish va guruh esse jurnalidagi (`created_at` `AttributeError` hamda noto'g'ri `max_score=24`) xatolari tuzatildi (`20` ballik BMB / `9` ballik IELTS shkalasi, haqiqiy `0` ballar inobatga olindi).
+  * **3-Bosqich — Mudofaa Xavfsizligi va Maxfiylik (`3f581c4`)**:
+    - `essay_voice_playback_view` dagi `ImportError` (`private_media_response` -> `private_file_response`) tuzatildi va qat'iy obyekt darajasidagi ruxsat tekshiruvi qo'yildi.
+    - Ustoz ovozli audio sharhlarida fayl kengaytmasi, MIME turi, hajmi (max 10 MB) va fayl nomi sanitizatsiyasi majburiy qilindi (`.html`/`.svg`/`.exe` yuklanishi rad etiladi).
+    - Ommaviy reyting endpointlari (`platform_leaderboard_view`, `WeeklyLeagueView`) autentifikatsiyani talab qiladi va boshqa o'quvchilarning `user_id` maydonini olib tashlaydi.
+    - TMA `localStorage` keshlari foydalanuvchi ID si bilan ajratildi (`tma_cached_*_<uid>`).
+  * **4-Bosqich — Tezkorlik, UI/UX va Jonli Brauzer Tekshiruvi**:
+    - `teacher_classroom_overview_view`, `student_my_groups_view` va `tma_test_start_view` dagi N+1 SQL so'rovlar annotatsiya va `prefetch_related` orqali bartaraf etildi.
+    - TMA ovozli sharh pleyeri `ProtectedAudio` (JWT Blob streaming) ga o'tkazildi; `LeaderboardTab` bo'sh holat loading bugi tuzatildi; `ProfileTab` ga taxallus va maxfiylik sozlamalari qo'shildi.
+    - Brauzer (`Chromium`) auditida aniqlangan `/login` Staff tabidagi ko'rinmas oq matn (`#ffffff` ustida oq matn), `Login` til almashtirgichi, dublikat Telegram ikonkasi, `Landing` EN sarlavhasi, PRO nishoni kontrasti va `/tma` GRANDEC brendi tuzatildi va brauzerda qayta tasdiqlandi.
+- **Bajarildi**:
+  * [x] `pytest tests/test_grandec_8_smart_classroom.py`: 11/11 PASS (SQLite) va PostgreSQL concurrency tekshiruvlari.
+  * [x] `pytest tests/test_stage2_stage3_invitations_and_telegram_e2e.py tests/test_stage6_classroom_and_access_policy.py tests/test_stage4_unified_homework.py`: 100% PASS.
+  * [x] `pytest tests/test_user_facing_messages.py tests/test_omr_speaking_gamification.py tests/test_integrity_abuse_controls.py`: 100% PASS.
+  * [x] `npm --prefix frontend test`: 28/28 PASS.
+  * [x] `npm --prefix frontend run lint`: 0 warnings, 0 errors (192 fayl).
+  * [x] `npm --prefix frontend run build`: Muammosiz toza Vite ishlab chiqarish yig'masi.
+  * [x] Live browser inspection (`/`, `/login`, mobile `/tma`): 0 console errors, 0 failed network requests.
+- **Jarayonda**:
+  * PR #148 (`feat/grandec-next-8-smart-classroom` -> `feat/grandec-next-7`) yakuniy GitHub CI va Security tekshiruvlari uchun topshirildi.
+
 ### 2.97. Rasmiy Versiya v8.0: Smart Classroom, Telegram Super App & Essay Review Center
 - **Maqsad**:
   * **Xavfsiz Sinfxona va Aniq O'quvchiga Mo'ljallangan Bir Martalik Taklifnomalar (Phase 1)**:

@@ -36,6 +36,7 @@ CI=1 PLAYWRIGHT_CHROMIUM_EXECUTABLE=<chromium> npx playwright test --trace off  
 | **5.0 Telegram Group Bot 5.0, Mini App 5.0 & Universal Exam Platform**: Pinned-style group menu, persistent DB attendance, safe unlinking, untimed runner fix, scoring integrity | ✅ verified increments | `feat/grandec-group-bot-miniapp-v5` → base `feat/grandec-next-4-finalization` |
 | **6.0 Teacher Classroom, Group Invitations & Premium Test Access**: Unified access policy (`resolve_test_access`), 4 audience modes, group invitations, truthful billing, classroom endpoints | ✅ verified increments | `feat/grandec-teacher-classroom-access-v6` → base `feat/grandec-next-4-finalization` |
 | **8.0 Smart Classroom, Telegram Super App & Essay Review Center**: Single-use targeted invitations, safe delete & archiving, TMA 8.0 5-tab super app, student essay appeals & teacher voice feedback | ✅ verified increments | `feat/grandec-next-8-smart-classroom` → base `feat/grandec-next-7` |
+| **8.1 Quad Audit, Hardening & Product Polish**: CI capacity contract fix, atomic XP & opt-in pseudonymous leaderboards, voice upload/playback ACL hardening, N+1 removal, login/TMA/landing UI fixes | ✅ verified increments | `feat/grandec-next-8-smart-classroom` → base `feat/grandec-next-7` (PR #148) |
 
 Stacking: #135 ← #136 ← #138 ← #139 ← Opus finalization (with #137 off #136, #134 off main). Merge in that order after review. Detailed Opus handoff: `docs/GRANDEC_OPUS_HANDOFF.md`.
 
@@ -705,6 +706,35 @@ Executed on branch `feat/grandec-next-8-smart-classroom` (stacked on `feat/grand
    - Frontend linter: `npm --prefix frontend run lint` 0 warnings, 0 errors across 192 files.
    - Frontend build: `npm --prefix frontend run build` clean production build with Vite in 2.71s.
    - Pure human authorship under `Komiljon Roziyev <kruziyev0@gmail.com>` with zero AI attribution.
+
+---
+
+## GRANDEC NEXT 8.1 — Quad Audit, Hardening & Product Polish
+
+Executed sequentially across 4 engineering audit phases on `feat/grandec-next-8-smart-classroom` (Draft PR #148):
+
+1. **Phase 1 — Integration & Regression Review (`c6dff15`)**:
+   - Fixed CI failure `test_group_capacity_limit_enforcement`: aligned `ValueError` capacity contract across `invitation_service.py` and `group_service.py`, locked `StudentGroup` before capacity checks so rejected joins consume 0 uses and emit 0 welcome messages.
+   - Enforced archived group restrictions across `add_student_to_group`, `rotate_group_invitation`, `create_unified_homework`, and `teacher_assign_test_wizard_view`; added center isolation and pending review rerouting in `transfer_group_teacher`.
+   - Fixed Telegram bot join error swallowing where valid invitation rejections fell back to code lookup and displayed "not found".
+
+2. **Phase 2 — Functional Logic & Data Integrity (`438c8e8`)**:
+   - Wrapped `award_educational_xp` and `record_user_activity` in `@transaction.atomic` with `Profile.select_for_update()` locking to eliminate lost XP after interrupted transactions or concurrent updates.
+   - Removed silent `or 25` XP fallback when `award_test_xp` returns `0` and blocked preview/trial attempts from earning XP; added verified XP award path to `tma_test_submit_view`.
+   - Added `leaderboard_opt_in` (default `False`), `leaderboard_pseudonym`, and `streak_opt_in` to `Profile` (`0026_profile_leaderboard_opt_in_and_more.py`), excluding non-opted-in students from public rankings and replacing `FirstName L.` with user-chosen pseudonyms or opaque IDs.
+   - Fixed essay multi-group subject routing, assignment isolation, genuine zero scores, `EssaySubmission.created_at` `AttributeError`, and hardcoded `max_score=24` in `classroom_group_essay_gradebook_view`.
+
+3. **Phase 3 — Defensive Security & Privacy (`3f581c4`)**:
+   - Fixed `ImportError` (`private_media_response` -> `private_file_response`) and enforced strict object-level ACLs on `essay_voice_playback_view`.
+   - Added strict extension, MIME, size (10 MB), and filename validation on teacher voice feedback uploads.
+   - Required authentication and redacted other users' `user_id` fields in `platform_leaderboard_view` and `WeeklyLeagueView`.
+   - Blocked archived group metadata leakage (`410`) in legacy `group_join_by_token_view` and isolated TMA browser `localStorage` caches per authenticated user ID.
+
+4. **Phase 4 — Performance, UI/UX & Live Browser Verification**:
+   - Eliminated N+1 queries in `teacher_classroom_overview_view`, `student_my_groups_view`, and `tma_test_start_view`.
+   - Replaced unauthenticated `<audio src>` in `Essays.tsx` with `ProtectedAudio`, fixed infinite loading on empty group leaderboard in `LeaderboardTab.tsx`, and added explicit privacy/pseudonym controls to `ProfileTab.tsx` + `LeaderboardTab.tsx`.
+   - Inspected live `/`, `/login`, and mobile `/tma` in Chromium: fixed invisible white-on-white active Staff tab text on `/login`, removed duplicate Telegram button icon, added `/login` language switcher, fixed EN hero duplicate word, fixed PRO badge contrast, and updated `/tma` fallback screen to GRANDEC branding.
+
 
 
 
