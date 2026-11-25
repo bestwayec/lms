@@ -121,9 +121,17 @@ def enqueue_deadline_reminders(now: datetime | None = None, within: timedelta = 
 
     now = now or timezone.now()
     count = 0
-    due = Homework.objects.filter(
-        status=Homework.Status.ACTIVE, due_date__gt=now, due_date__lte=now + within
-    ).select_related("group", "student")
+    from django.db.models import Q
+
+    due = (
+        Homework.objects.filter(
+            status=Homework.Status.ACTIVE,
+            due_date__gt=now,
+            due_date__lte=now + within,
+        )
+        .filter(Q(group__isnull=True) | ~Q(group__status="archived"))
+        .select_related("group", "student")
+    )
     for hw in due:
         if hw.start_date and hw.start_date > now:
             continue
@@ -250,6 +258,49 @@ def render(msg: OutboxMessage) -> Card | None:
     from apps.courses.homework_service import derive_submission_status, official_exam_summary
     from apps.courses.models import Homework, HomeworkSubmission
 
+    if msg.event == Event.ESSAY_APPEAL:
+        from apps.essays.models import EssaySubmission
+
+        esub = (
+            EssaySubmission.objects.select_related("student", "topic")
+            .filter(id=msg.payload.get("submission_id"))
+            .first()
+        )
+        if esub is None or esub.appeal_status not in (
+            EssaySubmission.AppealStatus.SUBMITTED,
+            EssaySubmission.AppealStatus.AWAITING_REVIEWER,
+            EssaySubmission.AppealStatus.UNDER_REVIEW,
+        ):
+            return None
+        who = html.escape(esub.student.get_full_name() or "O'quvchi")
+        topic_name = html.escape(esub.topic.title if esub.topic_id else f"#{esub.id}")
+        return Card(
+            f"⚖️ <b>Yangi esse apellatsiyasi</b>\n\n{topic_name}\nO'quvchi: {who}",
+            _open_buttons("/teacher/essays"),
+        )
+
+    if msg.event == Event.ESSAY_REVIEWED:
+        from apps.essays.models import EssaySubmission
+
+        esub = (
+            EssaySubmission.objects.select_related("topic", "teacher_review")
+            .filter(id=msg.payload.get("submission_id"))
+            .first()
+        )
+        if esub is None or not hasattr(esub, "teacher_review"):
+            return None
+        rev = esub.teacher_review
+        topic_name = html.escape(esub.topic.title if esub.topic_id else f"#{esub.id}")
+        lines = [
+            "✍️ <b>Ustoz essengizni tekshirdi</b>",
+            "",
+            topic_name,
+            f"Yakuniy ball: {rev.final_score}/24",
+        ]
+        if rev.teacher_comments:
+            lines.append(f"Izoh: {html.escape(rev.teacher_comments[:400])}")
+        return Card("\n".join(lines), _open_buttons(f"/essay-result/{esub.id}"))
+
     if msg.event == Event.JOIN_REQUEST_SUBMITTED:
         from apps.courses.models import GroupJoinRequest
 
@@ -364,6 +415,37 @@ def render(msg: OutboxMessage) -> Card | None:
         return Card(f"{head}\n\n{title}\n{who}", _open_buttons("/teacher"))
 
     return None
+
+
+def enqueue_essay_appeal_submitted(submission, reviewer) -> bool:
+    """Queue teacher notification in the same transaction as the student appeal."""
+    if not reviewer:
+        return False
+    req_at = getattr(submission, "teacher_review_requested_at", None)
+    stamp = int(req_at.timestamp()) if req_at else "initial"
+    return bool(
+        enqueue(
+            reviewer,
+            Event.ESSAY_APPEAL,
+            f"essay_appeal:{submission.id}:{reviewer.id}:{stamp}",
+            {"submission_id": submission.id},
+        )
+    )
+
+
+def enqueue_essay_reviewed(submission, review) -> bool:
+    """Queue student notification in the same transaction as the finalized review."""
+    student = getattr(submission, "student", None)
+    if not student:
+        return False
+    return bool(
+        enqueue(
+            student,
+            Event.ESSAY_REVIEWED,
+            f"essay_reviewed:{submission.id}:{review.id}",
+            {"submission_id": submission.id, "review_id": review.id},
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -494,6 +576,8 @@ __all__ = [
     "deliver",
     "enqueue",
     "enqueue_deadline_reminders",
+    "enqueue_essay_appeal_submitted",
+    "enqueue_essay_reviewed",
     "enqueue_group_welcome",
     "enqueue_homework_assigned",
     "enqueue_homework_outcome",

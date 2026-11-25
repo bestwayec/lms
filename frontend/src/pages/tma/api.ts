@@ -4,6 +4,7 @@
  * raw shapes (JsonResponse / DRF Response without envelope).
  */
 import { api } from '../../lib/api';
+import type { StudentInsightsResponse } from '../../lib/api';
 
 export interface TmaTestSummary {
   id: number;
@@ -247,4 +248,5 @@ export const TmaApi = {
       { method: 'POST' },
     ),
   voiceFeedbackUrl: (submissionId: number) => `/api/classroom/essays/${submissionId}/voice/`,
+  insights: () => api<StudentInsightsResponse>('/tma/api/insights/'),
 };

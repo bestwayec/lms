@@ -762,9 +762,59 @@ export const Tests = {
     api<Record<string, unknown>>(`/api/tests/attempts/${attemptId}/certificate-card/`),
 };
 
+export interface StudentInsightSubject {
+  subject: string;
+  attempts: number;
+  passed: number;
+  pass_rate: number;
+  avg_percentage: number;
+  best_percentage: number;
+  eligible: boolean;
+}
+
+export interface StudentInsightsResponse {
+  has_sufficient_data: boolean;
+  min_subject_samples: number;
+  min_trend_samples: number;
+  total_test_attempts: number;
+  subjects: StudentInsightSubject[];
+  strongest_subject: StudentInsightSubject | null;
+  weakest_subject: StudentInsightSubject | null;
+  improvement_trend: {
+    recent_avg: number;
+    prior_avg: number;
+    delta_percentage: number;
+    direction: 'up' | 'down' | 'steady';
+    sample_size: number;
+  } | null;
+  assignments: {
+    active_total: number;
+    completed: number;
+    pending: number;
+    completion_rate: number | null;
+  };
+  essays: {
+    total_submitted: number;
+    graded_or_reviewed: number;
+    open_appeals: number;
+    recent_teacher_feedback: Array<{
+      submission_id: number;
+      topic_title: string;
+      final_score: number;
+      converted_score: number | null;
+      teacher_name: string;
+      comments: string;
+      has_voice_feedback: boolean;
+      voice_duration_seconds: number;
+      reviewed_at: string | null;
+    }>;
+  };
+}
+
 export const Results = {
   mine: () => api<Paginated<Record<string, unknown>>>('/api/results/my-results/'),
   stats: () => api<Record<string, unknown>>('/api/results/stats/'),
+  insights: () => api<StudentInsightsResponse>('/api/results/insights/'),
   detail: (id: string | number) =>
     api<Record<string, unknown>>(`/api/results/${id}/detail/`),
   pdfUrl: (id: string | number) =>
@@ -2210,6 +2260,31 @@ export interface GroupFullAnalyticsResponse {
     average_essay_score: number;
     bmb_distribution: Record<string, number>;
   };
+  assignments_summary?: {
+    active_assignments: number;
+    completed_submissions: number;
+    expected_submissions: number;
+    completion_rate: number | null;
+    overdue_count: number;
+  };
+  weak_tests?: Array<{
+    test_id: number;
+    test_title: string;
+    attempts: number;
+    passed: number;
+    avg_percentage: number;
+  }>;
+  essay_insights?: {
+    pending_reviews_count: number;
+    pending_appeals_count: number;
+    pending_join_requests_count: number;
+    criterion_averages: Array<{
+      criterion_id: number;
+      name: string;
+      avg_score: number;
+      samples: number;
+    }>;
+  };
   students: GroupStudentAnalytics[];
 }
 
@@ -3119,6 +3194,8 @@ export const ClassroomApi = {
     api<{ groups: Array<Record<string, unknown>>; total_groups: number }>('/api/classroom/student/my-groups/'),
   checkTestAccess: (testId: number) =>
     api<TestAccessResponse>(`/api/classroom/tests/${testId}/access/`),
+  exportGroupReportUrl: (groupId: number | string) =>
+    `${API_BASE}/api/classroom/groups/${groupId}/report/export/`,
 };
 
 // -- Referral & Viral Bonus Engine -----------------------------------------

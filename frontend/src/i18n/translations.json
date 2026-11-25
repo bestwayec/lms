@@ -3461,7 +3461,19 @@
     "att_card3_f1": "86+ ball bilan Oliy toifa uchun individual reja",
     "att_card3_f2": "Kuchsiz bo'limlarni avtomatik aniqlash va kuchaytirish",
     "att_card3_f3": "Attestatsiyagacha qolgan vaqt bo'yicha tayyorgarlik",
-    "att_card3_cta": "Toifa rejasini tuzish →"
+    "att_card3_cta": "Toifa rejasini tuzish →",
+    "ins_title": "O'quv tahlili va tavsiyalar",
+    "ins_min_samples_hint": "Fanlar bo'yicha kuchli va kuchsiz tomonlarni aniqlash uchun har bir fandan kamida {n} ta test ishlang.",
+    "ins_strongest": "Kuchli fan",
+    "ins_weakest": "E'tibor talab fan",
+    "ins_trend_label": "Oxirgi natijalar dinamikasi",
+    "ins_assignments_done": "Bajarilgan vazifalar",
+    "ins_latest_feedback": "Ustozning so'nggi izohlari",
+    "grp_export_csv": "CSV Hisobot",
+    "grp_hw_completion": "Vazifa bajarilishi",
+    "grp_overdue": "Muddati o'tgan",
+    "grp_weak_tests": "Qiyin testlar (o'rtacha past)",
+    "grp_essay_criteria_avg": "Esse mezonlari bo'yicha o'rtacha ball"
   },
   "ru": {
     "spk_practise_again": "Повторить эту тему",
@@ -6925,7 +6937,19 @@
     "att_card3_f1": "Индивидуальный план на 86+ баллов для высшей категории",
     "att_card3_f2": "Автоопределение и усиление слабых тем",
     "att_card3_f3": "Подготовка с учётом оставшегося времени до аттестации",
-    "att_card3_cta": "Составить план подготовки →"
+    "att_card3_cta": "Составить план подготовки →",
+    "ins_title": "Аналитика обучения",
+    "ins_min_samples_hint": "Пройдите минимум {n} теста по предмету, чтобы определить сильные и слабые стороны.",
+    "ins_strongest": "Сильный предмет",
+    "ins_weakest": "Требует внимания",
+    "ins_trend_label": "Динамика последних результатов",
+    "ins_assignments_done": "Выполнено заданий",
+    "ins_latest_feedback": "Последние отзывы преподавателя",
+    "grp_export_csv": "CSV отчёт",
+    "grp_hw_completion": "Выполнение ДЗ",
+    "grp_overdue": "Просрочено",
+    "grp_weak_tests": "Сложные тесты (низкий средний балл)",
+    "grp_essay_criteria_avg": "Средние баллы по критериям эссе"
   },
   "en": {
     "spk_practise_again": "Practise this topic again",
@@ -10389,6 +10413,18 @@
     "att_card3_f1": "Personal study plan for 86+ score milestone",
     "att_card3_f2": "Auto-detect and strengthen weak sections",
     "att_card3_f3": "Structured pacing until attestation day",
-    "att_card3_cta": "Build preparation plan →"
+    "att_card3_cta": "Build preparation plan →",
+    "ins_title": "Learning insights",
+    "ins_min_samples_hint": "Complete at least {n} tests per subject to identify strengths and weak areas.",
+    "ins_strongest": "Strongest subject",
+    "ins_weakest": "Needs practice",
+    "ins_trend_label": "Recent score trend",
+    "ins_assignments_done": "Completed assignments",
+    "ins_latest_feedback": "Latest teacher feedback",
+    "grp_export_csv": "CSV Report",
+    "grp_hw_completion": "Homework completion",
+    "grp_overdue": "Overdue",
+    "grp_weak_tests": "Challenging tests (lowest avg)",
+    "grp_essay_criteria_avg": "Average essay rubric scores"
   }
 }

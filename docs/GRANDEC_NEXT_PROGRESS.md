@@ -736,5 +736,21 @@ Executed sequentially across 4 engineering audit phases on `feat/grandec-next-8-
    - Inspected live `/`, `/login`, and mobile `/tma` in Chromium: fixed invisible white-on-white active Staff tab text on `/login`, removed duplicate Telegram button icon, added `/login` language switcher, fixed EN hero duplicate word, fixed PRO badge contrast, and updated `/tma` fallback screen to GRANDEC branding.
 
 
+## GRANDEC NEXT 8.3 — Performance, Optimization & Product Excellence
+
+Branch: `feat/grandec-next-8-3-optimization` (from verified `main` `e7fe12911fe705c1637af5f6ca444302dbc5a07f`).
+
+1. **Infrastructure & Release Optimization:**
+   - Fixed `CI -> Release -> Build -> Deploy` commit/tag/VERSION ordering without broad PATs (`GITHUB_TOKEN` + `release-meta`/`build-meta` artifacts) and added `VERSION == APP_VERSION` verification plus OCI metadata labels in `Dockerfile`.
+   - Upgraded workflow Node actions to Node 24, added Ubuntu `nginx` CI job running `verify_private_media_nginx.sh` with `Cache-Control: private, no-store` voice check, added `docs/STAGING.md`, and applied safe Python dependency updates (`pytest>=9.0.3`, `factory-boy`, `django-stubs`, `drf-spectacular`, `google-auth`, keeping `redis<6.0` for `kombu`).
+2. **Performance, Caching & Access Hardening:**
+   - Reduced initial `index.js` (`676.71 kB` -> `~291.27 kB`) and `Tma.js` (`58.23 kB` -> `~18.58 kB`) via Vite `splitI18nLocales` virtual locale chunks, `AuthModal` & TMA tab lazy-loading, and profile refresh throttling.
+   - Eliminated `tma_tests_view` N+1 question count queries, fixed archived-group access leaks (`visibility.py`, `access_policy.py`), wired `on_commit` TMA cache invalidation in `group_service.py`, tightened Celery retry/ack settings, and cleaned up dead leaderboard cache keys.
+3. **Product Experience, Smart Analytics & Classroom Automation:**
+   - Added TMA mobile safe-area/touch-target polish, inline appeal validation, teacher queue filtering (`all|appeals|pending`), and complete `uz`/`ru`/`en` parity across 3,474 translation keys including `Landing.tsx`.
+   - Added truthful `build_student_insights` (`/api/results/insights/`, `/tma/api/insights/`) and `ProfileTab.tsx` insights card, extended group analytics (`assignments_summary`, `weak_tests`, `criterion_averages`), formula-safe teacher CSV group export (`/api/classroom/groups/<id>/report/export/`), fixed `teacher_group_detail_view` roster key and archived-group reminder exclusion, and added transactional `OutboxMessage` events (`essay_appeal`, `essay_reviewed`, migration `0017_alter_outboxmessage_event`).
+
+
+
 
 

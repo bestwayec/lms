@@ -458,6 +458,8 @@ class OutboxMessage(models.Model):
         JOIN_REQUEST_APPROVED = "join_request_approved", _("Guruhga qabul qilindi")
         JOIN_REQUEST_REJECTED = "join_request_rejected", _("Guruh so'rovi rad etildi")
         GROUP_WELCOME = "group_welcome", _("Guruhga xush kelibsiz")
+        ESSAY_APPEAL = "essay_appeal", _("Esse apellatsiyasi (ustozga)")
+        ESSAY_REVIEWED = "essay_reviewed", _("Esse ustoz tomonidan tekshirildi")
 
     dedup_key = models.CharField(_("idempotentlik kaliti"), max_length=200, unique=True)
     recipient = models.ForeignKey(

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useLang } from '../../i18n/LangContext';
+import type { StudentInsightsResponse } from '../../lib/api';
 import { TmaApi } from './api';
 import type { TmaProfile } from './api';
 
@@ -10,6 +11,7 @@ export default function ProfileTab({ profile }: { profile: TmaProfile | null }) 
   const [streakOptIn, setStreakOptIn] = useState(profile?.stats?.streak_opt_in !== false);
   const [savingPref, setSavingPref] = useState(false);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
+  const [insights, setInsights] = useState<StudentInsightsResponse | null>(null);
 
   useEffect(() => {
     TmaApi.gamificationSettings()
@@ -18,6 +20,9 @@ export default function ProfileTab({ profile }: { profile: TmaProfile | null }) 
         setPseudonym(s.leaderboard_pseudonym || '');
         setStreakOptIn(s.streak_opt_in);
       })
+      .catch(() => undefined);
+    TmaApi.insights()
+      .then((res) => setInsights(res))
       .catch(() => undefined);
   }, []);
 
@@ -143,6 +148,75 @@ export default function ProfileTab({ profile }: { profile: TmaProfile | null }) 
           </div>
         </div>
       </div>
+
+      {/* Data-grounded Learning Insights */}
+      {insights && (
+        <div className="tma-card" style={{ marginBottom: 16 }}>
+          <p className="tma-sub" style={{ fontWeight: 700, color: 'var(--tma-ink)', marginBottom: 10 }}>
+            📈 {t('ins_title')}
+          </p>
+          {!insights.has_sufficient_data ? (
+            <p className="tma-muted" style={{ margin: '0 0 8px', fontSize: 12 }}>
+              {t('ins_min_samples_hint').replace('{n}', String(insights.min_subject_samples))}
+            </p>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+              {insights.strongest_subject && (
+                <div style={{ background: '#f0fdf4', borderRadius: 10, padding: '8px 10px' }}>
+                  <span className="tma-muted" style={{ fontSize: 11 }}>{t('ins_strongest')}</span>
+                  <p style={{ margin: '2px 0 0', fontWeight: 700, fontSize: 13, color: '#15803d', textTransform: 'capitalize' }}>
+                    {insights.strongest_subject.subject} ({insights.strongest_subject.avg_percentage}%)
+                  </p>
+                </div>
+              )}
+              {insights.weakest_subject && (
+                <div style={{ background: '#fff7ed', borderRadius: 10, padding: '8px 10px' }}>
+                  <span className="tma-muted" style={{ fontSize: 11 }}>{t('ins_weakest')}</span>
+                  <p style={{ margin: '2px 0 0', fontWeight: 700, fontSize: 13, color: '#c2410c', textTransform: 'capitalize' }}>
+                    {insights.weakest_subject.subject} ({insights.weakest_subject.avg_percentage}%)
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {insights.improvement_trend && (
+            <p className="tma-sub" style={{ margin: '0 0 8px', fontSize: 12 }}>
+              {t('ins_trend_label')}:{' '}
+              <strong style={{ color: insights.improvement_trend.delta_percentage >= 0 ? '#16a34a' : '#dc2626' }}>
+                {insights.improvement_trend.delta_percentage >= 0 ? '+' : ''}
+                {insights.improvement_trend.delta_percentage}%
+              </strong>{' '}
+              ({insights.improvement_trend.recent_avg}% / {insights.improvement_trend.prior_avg}%)
+            </p>
+          )}
+
+          <p className="tma-sub" style={{ margin: '0 0 8px', fontSize: 12 }}>
+            ✅ {t('ins_assignments_done')}:{' '}
+            <strong>
+              {insights.assignments.completed}/{insights.assignments.active_total}
+            </strong>
+            {insights.assignments.completion_rate !== null ? ` (${insights.assignments.completion_rate}%)` : ''}
+          </p>
+
+          {insights.essays.recent_teacher_feedback.length > 0 && (
+            <div style={{ borderTop: '1px solid var(--tma-border)', paddingTop: 8 }}>
+              <span className="tma-muted" style={{ fontSize: 11 }}>{t('ins_latest_feedback')}</span>
+              {insights.essays.recent_teacher_feedback.slice(0, 2).map((fb) => (
+                <div key={fb.submission_id} style={{ marginTop: 6, fontSize: 12 }}>
+                  <strong>{fb.topic_title || `#${fb.submission_id}`}</strong> — {fb.final_score}/24
+                  {fb.has_voice_feedback ? ' 🎙️' : ''}
+                  {fb.comments && (
+                    <p className="tma-muted" style={{ margin: '2px 0 0', fontSize: 11 }}>
+                      {fb.comments}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Privacy & Optional Gamification Preferences */}
       <div className="tma-card" style={{ marginBottom: 16 }}>

@@ -1160,6 +1160,13 @@ class TeacherReviewService:
         except Exception as xp_err:
             logger.warning("Educational XP award notice: %s", xp_err)
 
+        try:
+            from apps.notifications.outbox import enqueue_essay_reviewed
+
+            enqueue_essay_reviewed(submission, review)
+        except Exception as outbox_err:
+            logger.warning("Essay review outbox enqueue notice: %s", outbox_err)
+
         logger.info(
             "Teacher review submitted: submission=%d, teacher=%d, score=%s/24, created=%s",
             submission.id,
@@ -1227,6 +1234,13 @@ class TeacherReviewService:
                 "updated_at",
             ]
         )
+
+        try:
+            from apps.notifications.outbox import enqueue_essay_appeal_submitted
+
+            enqueue_essay_appeal_submitted(submission, reviewer)
+        except Exception as outbox_err:
+            logger.warning("Essay appeal outbox enqueue notice: %s", outbox_err)
 
         # Notify reviewer via Telegram
         _db_txn.on_commit(lambda: _notify_reviewer(submission, reviewer))

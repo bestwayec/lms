@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useLang } from '../i18n/LangContext';
-import { School, WhiteLabelApi, api } from '../lib/api';
+import { School, WhiteLabelApi, ClassroomApi, api } from '../lib/api';
 import { FolderOpenIcon, SettingsIcon, UsersIcon, XIcon } from '../components/icons';
 import type {
   GroupMember,
@@ -864,6 +864,15 @@ export default function Groups() {
                                 <span>📥</span> Excel (.xlsx)
                               </a>
                               <a
+                                href={ClassroomApi.exportGroupReportUrl(g.id)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="btn sm"
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderColor: '#38bdf8', color: '#38bdf8' }}
+                              >
+                                <span>📊</span> {t('grp_export_csv')}
+                              </a>
+                              <a
                                 href={School.exportPdfUrl(g.id)}
                                 target="_blank"
                                 rel="noreferrer"
@@ -909,7 +918,66 @@ export default function Groups() {
                                 <span className="muted small">O‘rtacha Esse:</span>
                                 <strong style={{ display: 'block', fontSize: '1.05rem', color: '#f59e0b' }}>{analytics.summary.average_essay_score} / 20</strong>
                               </div>
+                              {analytics.assignments_summary && (
+                                <div style={{ background: 'rgba(255, 255, 255, 0.03)', padding: '8px 10px', borderRadius: '6px' }}>
+                                  <span className="muted small">{t('grp_hw_completion')}:</span>
+                                  <strong style={{ display: 'block', fontSize: '1.05rem', color: '#38bdf8' }}>
+                                    {analytics.assignments_summary.completion_rate !== null
+                                      ? `${analytics.assignments_summary.completion_rate}%`
+                                      : '—'}
+                                  </strong>
+                                  {analytics.assignments_summary.overdue_count > 0 && (
+                                    <span className="muted small" style={{ color: '#f87171', fontSize: '0.72rem' }}>
+                                      {t('grp_overdue')}: {analytics.assignments_summary.overdue_count}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </div>
+
+                            {analytics.weak_tests && analytics.weak_tests.length > 0 && (
+                              <div>
+                                <span className="muted small" style={{ fontWeight: 600 }}>{t('grp_weak_tests')}:</span>
+                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                                  {analytics.weak_tests.map((wt) => (
+                                    <span
+                                      key={wt.test_id}
+                                      style={{
+                                        padding: '3px 8px',
+                                        borderRadius: '4px',
+                                        fontSize: '0.76rem',
+                                        background: 'rgba(239, 68, 68, 0.12)',
+                                        color: '#fca5a5',
+                                      }}
+                                    >
+                                      {wt.test_title} — {wt.avg_percentage}% ({wt.attempts})
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {analytics.essay_insights && analytics.essay_insights.criterion_averages.length > 0 && (
+                              <div>
+                                <span className="muted small" style={{ fontWeight: 600 }}>{t('grp_essay_criteria_avg')}:</span>
+                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                                  {analytics.essay_insights.criterion_averages.slice(0, 4).map((cr) => (
+                                    <span
+                                      key={cr.criterion_id}
+                                      style={{
+                                        padding: '3px 8px',
+                                        borderRadius: '4px',
+                                        fontSize: '0.74rem',
+                                        background: 'rgba(245, 158, 11, 0.12)',
+                                        color: '#fcd34d',
+                                      }}
+                                    >
+                                      #{cr.criterion_id}: {cr.avg_score} ({cr.samples})
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
 
                             {/* BMB distribution */}
                             <div>

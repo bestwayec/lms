@@ -1237,3 +1237,12 @@ def tma_mytuition_view(request: Request) -> Response:
         rows = []
 
     return Response({"tuition": rows})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def tma_insights_view(request: Request) -> Response:
+    """GET /tma/api/insights/ — Data-grounded student learning insights for TMA."""
+    from apps.results.services.insights import build_student_insights
+
+    return Response(build_student_insights(request.user))

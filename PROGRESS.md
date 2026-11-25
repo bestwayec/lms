@@ -9,6 +9,21 @@
    - Ustoz kabinetida har bir o'quvchining PRO holati (`⭐ PRO (Faol)`), ishlagan testlari va esselari aks etishi.
 3. Attestatsiya 2026 yangi diagnostika testini 50 ta savoli bilan bazaga seed qilish, kategoriyalashtirish va VPS ga deploy qilish.
 
+### 2.99. Rasmiy Versiya v8.3: Performance, Optimization & Product Excellence
+*   **Bajarildi (Infrastructure, Release & Security Chain):**
+    *   `CI -> Release -> Build -> Deploy` zanjiri qayta ulanib, GitHub Release (`vX.Y.Z`) va `VERSION` fayli o'rtasidagi farq bartaraf etildi (`GITHUB_TOKEN` + `release-meta`/`build-meta` artifactlari orqali).
+    *   `Dockerfile` va `build.yml` da `VERSION == APP_VERSION` qat'iy tekshiruvi, `provenance: mode=min` va GHCR manifest verifikatsiyasi joriy qilindi; `ci.yml` ga Ubuntu Nginx private-media verifikatsiyasi (`nginx` job) va `verify_private_media_nginx.sh` da `Cache-Control: private, no-store` tekshiruvi qo'shildi.
+    *   GitHub Actions Node 24 versiyalariga yangilandi; `pytest`, `factory-boy`, `django-stubs`, `drf-spectacular`, `google-auth` xavfsiz yangilandi (`kombu` bilan moslik uchun `redis<6.0` saqlandi); `docs/STAGING.md` tayyorlandi.
+*   **Bajarildi (Performance, Cache & Revocation Security):**
+    *   Vite virtual modul (`virtual:i18n-ru`, `virtual:i18n-en`) hamda TMA/`AuthModal` lazy-loading orqali boshlang'ich `index.js` hajmi `676.71 kB` dan `~291.27 kB` ga (~57% kamayish), `Tma.js` esa `58.23 kB` dan `~18.58 kB` ga qisqartirildi.
+    *   `tma_tests_view` da `Count` annotatsiyasi bilan N+1 savol so'rovlari bartaraf etildi; arxivlangan guruhlar bo'yicha `visibility.py`, `access_policy.py` va `_tma_user_cache_key` cheklovlari tuzatildi; `group_service.py` da `transaction.on_commit` TMA kesh tozalashi qo'shildi; Celery vazifalariga `acks_late=True` va exponential `retry_backoff` qo'shildi.
+*   **Bajarildi (UX Polish, i18n, Analytics & Automation):**
+    *   TMA 5-tab mobil ko'rinishi (`env(safe-area-inset-bottom)`, `>= 44px` tugmalar, `16px` iOS input shrifti), `Essays.tsx` apellatsiya inline xatolari, `EssayTeacherQueue.tsx` (`all|appeals|pending` filtri) va `Landing.tsx` kartalari to'liq `uz`/`ru`/`en` ga o'tkazildi (3,474 tadan kalit, 100% paritet).
+    *   `GET /api/results/insights/` va `GET /tma/api/insights/` (minimal namuna chegarasi bilan fanlar, o'sish sur'ati, vazifalar va ustoz izohlari), kengaytirilgan guruh tahlili (`assignments_summary`, `weak_tests`, `essay_insights.criterion_averages`), formula-xavfsiz CSV eksport (`GET /api/classroom/groups/<id>/report/export/`) va esse apellatsiya/tekshiruvlari uchun idempotent `OutboxMessage` avtomatizatsiyasi qo'shildi.
+*   **Keyingi qadamlar:**
+    *   Draft PR ustida GitHub Actions (`CI` jumladan `nginx` job + `Security`) yakunlanishini kuzatish.
+    *   Staging va Production deploy uchun muhit secretlari hamda alohida tasdiq kutilmoqda.
+
 ### 2.98. Rasmiy Versiya v8.1: Quad Audit, Hardening & Product Polish (PR #148)
 - **Maqsad**:
   * **1-Bosqich — Integratsiya va CI Tiklanishi (`c6dff15`)**:

@@ -62,4 +62,5 @@ urlpatterns = [
     path("api/certificates/", views.tma_certificates_view, name="certificates"),
     path("api/myplan/", views.tma_myplan_view, name="myplan"),
     path("api/mytuition/", views.tma_mytuition_view, name="mytuition"),
+    path("api/insights/", views.tma_insights_view, name="insights"),
 ]
