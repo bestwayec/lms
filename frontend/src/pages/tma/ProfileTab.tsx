@@ -42,9 +42,9 @@ export default function ProfileTab({ profile }: { profile: TmaProfile | null }) 
       setLbOptIn(updated.leaderboard_opt_in);
       setPseudonym(updated.leaderboard_pseudonym || '');
       setStreakOptIn(updated.streak_opt_in);
-      setSavedNotice('✓ Saqlandi');
+      setSavedNotice(`✓ ${t('tma_saved_ok')}`);
     } catch {
-      setSavedNotice('✕ Xatolik yuz berdi');
+      setSavedNotice(`✕ ${t('tma_save_err')}`);
     } finally {
       setSavingPref(false);
     }
@@ -57,12 +57,12 @@ export default function ProfileTab({ profile }: { profile: TmaProfile | null }) 
   const league = stats?.weekly_league || 'bronze';
   const leagueTitle =
     league === 'diamond'
-      ? '💎 Olmos liga'
+      ? `💎 ${t('tma_league_diamond')}`
       : league === 'gold'
-      ? '🥇 Oltin liga'
+      ? `🥇 ${t('tma_league_gold')}`
       : league === 'silver'
-      ? '🥈 Kumush liga'
-      : '🥉 Bronza liga';
+      ? `🥈 ${t('tma_league_silver')}`
+      : `🥉 ${t('tma_league_bronze')}`;
 
   return (
     <div className="tma-slide">
@@ -98,7 +98,7 @@ export default function ProfileTab({ profile }: { profile: TmaProfile | null }) 
             </p>
             <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
               <span className="tma-badge" style={{ background: '#f1f5f9', color: '#475569' }}>
-                {user?.role === 'teacher' ? "👨‍🏫 O'qituvchi" : '🎓 O\'quvchi'}
+                {user?.role === 'teacher' ? `👨‍🏫 ${t('tma_role_teacher')}` : `🎓 ${t('tma_role_student')}`}
               </span>
               <span className="tma-badge" style={{ background: '#fef3c7', color: '#b45309' }}>
                 {leagueTitle}
@@ -111,11 +111,11 @@ export default function ProfileTab({ profile }: { profile: TmaProfile | null }) 
       {/* Streak & XP Highlight */}
       <div className="tma-grid2" style={{ marginBottom: 16 }}>
         <div className="tma-stat" style={{ borderLeft: '4px solid #f97316' }}>
-          <p>🔥 Faollik streaki</p>
-          <b style={{ color: '#ea580c' }}>{streak} kun</b>
+          <p>🔥 {t('tma_streak_label')}</p>
+          <b style={{ color: '#ea580c' }}>{streak} {t('tma_days_suffix')}</b>
         </div>
         <div className="tma-stat" style={{ borderLeft: '4px solid #d97706' }}>
-          <p>⚡ Jami tajriba (XP)</p>
+          <p>⚡ {t('tma_total_xp_label')}</p>
           <b style={{ color: '#d97706' }}>{stats?.total_xp ?? 0}</b>
         </div>
       </div>
@@ -123,27 +123,27 @@ export default function ProfileTab({ profile }: { profile: TmaProfile | null }) 
       {/* Learning stats */}
       <div className="tma-card" style={{ marginBottom: 16 }}>
         <p className="tma-sub" style={{ fontWeight: 700, color: 'var(--tma-ink)', marginBottom: 12 }}>
-          📊 O'quv faoliyati statistikasi
+          📊 {t('tma_stats_heading')}
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div>
-            <span className="tma-muted" style={{ fontSize: 11 }}>Topshirilgan testlar:</span>
-            <p style={{ margin: '2px 0 0', fontWeight: 800, fontSize: 18 }}>{stats?.tests_taken ?? 0} ta</p>
+            <span className="tma-muted" style={{ fontSize: 11 }}>{t('tma_tests_taken')}:</span>
+            <p style={{ margin: '2px 0 0', fontWeight: 800, fontSize: 18 }}>{stats?.tests_taken ?? 0}</p>
           </div>
           <div>
-            <span className="tma-muted" style={{ fontSize: 11 }}>Muvaffaqiyatli:</span>
+            <span className="tma-muted" style={{ fontSize: 11 }}>{t('tma_tests_passed')}:</span>
             <p style={{ margin: '2px 0 0', fontWeight: 800, fontSize: 18, color: '#16a34a' }}>
-              {stats?.tests_passed ?? 0} ta
+              {stats?.tests_passed ?? 0}
             </p>
           </div>
           <div>
-            <span className="tma-muted" style={{ fontSize: 11 }}>Yozilgan esselar:</span>
-            <p style={{ margin: '2px 0 0', fontWeight: 800, fontSize: 18 }}>{stats?.essays_written ?? 0} ta</p>
+            <span className="tma-muted" style={{ fontSize: 11 }}>{t('tma_essays_written')}:</span>
+            <p style={{ margin: '2px 0 0', fontWeight: 800, fontSize: 18 }}>{stats?.essays_written ?? 0}</p>
           </div>
           <div>
-            <span className="tma-muted" style={{ fontSize: 11 }}>Sertifikatlar:</span>
+            <span className="tma-muted" style={{ fontSize: 11 }}>{t('tma_certificates_count')}:</span>
             <p style={{ margin: '2px 0 0', fontWeight: 800, fontSize: 18, color: '#d97706' }}>
-              {stats?.certificates ?? 0} ta
+              {stats?.certificates ?? 0}
             </p>
           </div>
         </div>
@@ -221,10 +221,10 @@ export default function ProfileTab({ profile }: { profile: TmaProfile | null }) 
       {/* Privacy & Optional Gamification Preferences */}
       <div className="tma-card" style={{ marginBottom: 16 }}>
         <p className="tma-sub" style={{ fontWeight: 700, color: 'var(--tma-ink)', marginBottom: 10 }}>
-          🛡️ Reyting va maxfiylik sozlamalari
+          🛡️ {t('tma_privacy_heading')}
         </p>
         <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, marginBottom: 10, gap: 8 }}>
-          <span>Umumiy reytingda qatnashish (ixtiyoriy)</span>
+          <span>{t('tma_privacy_opt_in')}</span>
           <input
             type="checkbox"
             checked={lbOptIn}
@@ -239,7 +239,7 @@ export default function ProfileTab({ profile }: { profile: TmaProfile | null }) 
         <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
           <input
             className="tma-input"
-            placeholder="Taxallus (masalan: Lochin_01)"
+            placeholder={t('tma_pseudonym_placeholder')}
             maxLength={40}
             value={pseudonym}
             onChange={(e) => setPseudonym(e.target.value)}
@@ -251,11 +251,11 @@ export default function ProfileTab({ profile }: { profile: TmaProfile | null }) 
             disabled={savingPref}
             onClick={() => void savePrivacySettings(lbOptIn, pseudonym, streakOptIn)}
           >
-            Saqlash
+            {t('tma_save')}
           </button>
         </div>
         <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, gap: 8 }}>
-          <span>Kunlik streak hisoblagichini yoqish</span>
+          <span>{t('tma_streak_opt_in')}</span>
           <input
             type="checkbox"
             checked={streakOptIn}

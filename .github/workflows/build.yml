@@ -111,6 +111,7 @@ jobs:
           echo "Verified release commit $RELEASE_SHA (CI commit $SOURCE_CI_SHA, version $FILE_VERSION)."
           {
             echo "sha=$RELEASE_SHA"
+            echo "source_ci_sha=$SOURCE_CI_SHA"
             echo "short=$SHORT"
             echo "version=$FILE_VERSION"
           } >> "$GITHUB_OUTPUT"
@@ -169,17 +170,43 @@ jobs:
         id: verify
         run: |
           set -euo pipefail
-          IMAGE_REF="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.vsha.outputs.short }}"
+          IMAGE_BASE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          IMAGE_REF="${IMAGE_BASE}:sha-${{ steps.vsha.outputs.short }}"
           docker buildx imagetools inspect "$IMAGE_REF" | tee /tmp/inspect.txt
           DIGEST="$(grep -m1 '^Digest:' /tmp/inspect.txt | awk '{print $2}' || true)"
+          if [ -z "$DIGEST" ]; then
+            echo "::error::Failed to extract GHCR image digest for $IMAGE_REF"
+            exit 1
+          fi
+          BUILT_DIGEST="${{ steps.build_cached.outputs.digest || steps.build_fallback.outputs.digest }}"
+          if [ -n "$BUILT_DIGEST" ] && [ "$BUILT_DIGEST" != "$DIGEST" ]; then
+            echo "::error::Digest mismatch: build output ($BUILT_DIGEST) != inspected manifest ($DIGEST)."
+            exit 1
+          fi
+          for ALIAS in "v${{ steps.vsha.outputs.version }}" "latest"; do
+            ALIAS_DIGEST="$(docker buildx imagetools inspect "${IMAGE_BASE}:${ALIAS}" | grep -m1 '^Digest:' | awk '{print $2}' || true)"
+            if [ "$ALIAS_DIGEST" != "$DIGEST" ]; then
+              echo "::error::Tag ${IMAGE_BASE}:${ALIAS} digest ($ALIAS_DIGEST) != $DIGEST."
+              exit 1
+            fi
+          done
           {
             echo "RELEASE_SHA=${{ steps.vsha.outputs.sha }}"
+            echo "SOURCE_CI_SHA=${{ steps.vsha.outputs.source_ci_sha }}"
             echo "RELEASE_SHORT=${{ steps.vsha.outputs.short }}"
             echo "IMAGE_TAG=sha-${{ steps.vsha.outputs.short }}"
             echo "VERSION=${{ steps.vsha.outputs.version }}"
             echo "TAG=v${{ steps.vsha.outputs.version }}"
             echo "DIGEST=${DIGEST}"
           } > build-meta.env
+          {
+            echo "## Verified GHCR Release Build"
+            echo "- Version: \`v${{ steps.vsha.outputs.version }}\`"
+            echo "- Release SHA: \`${{ steps.vsha.outputs.sha }}\`"
+            echo "- Source CI SHA: \`${{ steps.vsha.outputs.source_ci_sha }}\`"
+            echo "- Image: \`${IMAGE_REF}\`"
+            echo "- Digest: \`${DIGEST}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload build metadata artifact
         uses: actions/upload-artifact@v7

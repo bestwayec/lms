@@ -103,7 +103,7 @@ export default function LeaderboardTab() {
             }}
             onClick={() => setPeriod('weekly')}
           >
-            Haftalik XP
+            {t('tma_lb_weekly_xp')}
           </button>
           <button
             type="button"
@@ -118,7 +118,7 @@ export default function LeaderboardTab() {
             }}
             onClick={() => setPeriod('all_time')}
           >
-            Barcha davrlar
+            {t('tma_lb_all_time')}
           </button>
         </div>
       )}
@@ -156,10 +156,10 @@ export default function LeaderboardTab() {
           {platformData.opted_in === false && (
             <div className="tma-card" style={{ background: '#f8fafc', borderColor: '#cbd5e1', marginBottom: 16 }}>
               <p style={{ margin: '0 0 8px', fontWeight: 700, fontSize: 13, color: 'var(--tma-ink)' }}>
-                🔒 Umumiy reytingda qatnashish ixtiyoriy
+                🔒 {t('tma_lb_opt_in_title')}
               </p>
               <p className="tma-muted" style={{ margin: '0 0 10px', fontSize: 12 }}>
-                Siz hozir umumiy reytingdan yashirilgansiz. Xohlasangiz taxallus (pseudonim) ostida qo'shilishingiz mumkin.
+                {t('tma_lb_opt_in_desc')}
               </p>
               <button
                 type="button"
@@ -175,7 +175,7 @@ export default function LeaderboardTab() {
                   }
                 }}
               >
-                Reytingga qo'shilish (taxallus bilan)
+                {t('tma_lb_join_btn')}
               </button>
             </div>
           )}
@@ -183,7 +183,7 @@ export default function LeaderboardTab() {
             <div className="tma-card" style={{ background: '#fef3c7', borderColor: '#fcd34d', marginBottom: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontWeight: 700, color: '#92400e', fontSize: 13 }}>
-                  ⚡ Sizning o'rningiz:
+                  ⚡ {t('tma_lb_your_rank')}:
                 </span>
                 <span style={{ fontWeight: 800, fontSize: 16, color: '#b45309' }}>
                   #{platformData.user_rank}

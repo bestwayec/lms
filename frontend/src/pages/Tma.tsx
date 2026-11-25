@@ -228,7 +228,7 @@ export default function Tma() {
                   boxSizing: 'border-box',
                 }}
               >
-                Telegram botda ochish
+                {t('tma_open_in_bot')}
               </a>
               <button
                 type="button"
@@ -236,7 +236,7 @@ export default function Tma() {
                 onClick={() => window.open(window.location.origin, '_blank')}
                 style={{ width: '100%' }}
               >
-                🌐 Brauzerda ochish
+                🌐 {t('tma_open_in_browser')}
               </button>
               <button
                 type="button"
@@ -244,7 +244,7 @@ export default function Tma() {
                 onClick={() => window.location.reload()}
                 style={{ width: '100%' }}
               >
-                🔄 Qayta urinish
+                🔄 {t('tma_retry')}
               </button>
             </div>
             <p className="tma-muted" style={{ marginTop: 16 }}>
@@ -262,9 +262,9 @@ export default function Tma() {
         <div className="tma-auth">
           <div className="tma-auth-card" style={{ maxWidth: 360, textAlign: 'center', padding: '24px 20px' }}>
             <div style={{ fontSize: 36, marginBottom: 8 }}>⚠️</div>
-            <h1 style={{ fontSize: 20, fontWeight: 800, margin: '0 0 8px' }}>Xatolik yuz berdi</h1>
+            <h1 style={{ fontSize: 20, fontWeight: 800, margin: '0 0 8px' }}>{t('tma_error_title')}</h1>
             <p style={{ color: '#f87171', fontSize: '0.9rem', marginBottom: 20, lineHeight: 1.5 }}>
-              {error || "Telegram orqali tizimga kirishda nosozlik yuz berdi."}
+              {error || t('tma_auth_error_fallback')}
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <button
@@ -273,7 +273,7 @@ export default function Tma() {
                 onClick={() => window.location.reload()}
                 style={{ width: '100%' }}
               >
-                🔄 Qayta urinish
+                🔄 {t('tma_retry')}
               </button>
               <button
                 type="button"
@@ -281,7 +281,7 @@ export default function Tma() {
                 onClick={() => window.open(window.location.origin, '_blank')}
                 style={{ width: '100%' }}
               >
-                🌐 Brauzerda ochish
+                🌐 {t('tma_open_in_browser')}
               </button>
             </div>
           </div>
@@ -297,7 +297,7 @@ export default function Tma() {
     <div className="tma-root">
       <div className="tma-wrap">
         <header className="tma-header">
-          <h1>{firstName ? `${t('tma_greeting', 'Salom')}, ${firstName}!` : t('dashboard')}</h1>
+          <h1>{firstName ? `${t('tma_greeting')}, ${firstName}!` : t('dashboard')}</h1>
           <span className="tma-xp">⚡ {profile?.stats.total_xp ?? 0} XP</span>
         </header>
 

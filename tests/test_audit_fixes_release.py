@@ -348,5 +348,11 @@ class ReleaseConsistencyAndWorkflowTests(TestCase):
         bld = (wf_dir / "build.yml").read_text(encoding="utf-8")
         self.assertIn("workflows: [Release]", bld)
         self.assertIn("APP_VERSION=${{ steps.vsha.outputs.version }}", bld)
+        self.assertIn("Failed to extract GHCR image digest", bld)
+        dep = yaml.safe_load((wf_dir / "deploy.yml").read_text(encoding="utf-8"))
+        self.assertEqual(
+            dep["jobs"]["production"]["if"],
+            "${{ github.event_name == 'workflow_dispatch' }}",
+        )
         ci = (wf_dir / "ci.yml").read_text(encoding="utf-8")
         self.assertIn("verify_private_media_nginx.sh", ci)
