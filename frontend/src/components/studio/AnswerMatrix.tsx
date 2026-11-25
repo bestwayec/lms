@@ -98,6 +98,27 @@ export default function AnswerMatrix({ blocks, issues, onChange }: Props) {
     }
   };
 
+  const handleClearAll = () => {
+    if (!window.confirm(t('studio_matrix_clear_confirm', 'Barcha javob kalitlarini tozalashni tasdiqlaysizmi?'))) {
+      return;
+    }
+    onChange(
+      blocks.map((b) => {
+        if (b.type === 'gap') {
+          let text = b.gap_text;
+          for (const q of blockQuestions(b)) {
+            text = setGapAnswer(text, q.number, '');
+          }
+          return { ...b, gap_text: text, questions: blockQuestions({ ...b, gap_text: text }) };
+        }
+        return {
+          ...b,
+          questions: b.questions.map((q) => ({ ...q, answer: '' })),
+        };
+      }),
+    );
+  };
+
   const rows = blocks.flatMap((b, bi) => blockQuestions(b).map((q) => ({ b, bi, q })));
 
   return (
@@ -114,11 +135,18 @@ export default function AnswerMatrix({ blocks, issues, onChange }: Props) {
           placeholder={t('studio_key_ph')}
           onChange={(e) => setBulk(e.target.value)}
         />
-        <div className="studio-row">
-          <button type="button" className="btn sm primary" onClick={() => void applyBulk()} disabled={busy || !bulk.trim()}>
-            {t('studio_key_apply')}
-          </button>
-          {note && <span className="muted small" role="status">{note}</span>}
+        <div className="studio-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button type="button" className="btn sm primary" onClick={() => void applyBulk()} disabled={busy || !bulk.trim()}>
+              {t('studio_key_apply')}
+            </button>
+            {note && <span className="muted small" role="status">{note}</span>}
+          </div>
+          {rows.length > 0 && (
+            <button type="button" className="btn sm ghost" onClick={handleClearAll} style={{ color: 'var(--danger, #DC2626)' }}>
+              ✕ {t('studio_matrix_clear', 'Tozalash')}
+            </button>
+          )}
         </div>
       </div>
 

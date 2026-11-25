@@ -367,6 +367,10 @@ class Test(models.Model):
             cache.delete("tma_tests_active_v1")
             if self.pk:
                 cache.delete(f"grandec:mock_leaderboard_v1:{self.pk}")
+            try:
+                cache.incr("tma_tests_global_version")
+            except Exception:
+                cache.set("tma_tests_global_version", 2, timeout=None)
         except Exception:
             pass
 

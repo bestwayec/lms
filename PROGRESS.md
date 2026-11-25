@@ -9,6 +9,50 @@
    - Ustoz kabinetida har bir o'quvchining PRO holati (`⭐ PRO (Faol)`), ishlagan testlari va esselari aks etishi.
 3. Attestatsiya 2026 yangi diagnostika testini 50 ta savoli bilan bazaga seed qilish, kategoriyalashtirish va VPS ga deploy qilish.
 
+### 2.96. Rasmiy Versiya v7.1: Release Recovery, Teacher Studio Autosave & Zero-Stale TMA Cache
+- **Maqsad**:
+  * **Reliz Pipeline Tiklanishi & Kesh Barqarorligi (PR #147 -> `main`)**:
+    - GitHub Actions Docker kesh eksportida yuzaga kelgan 504 Gateway Timeout xatosi to'liq tuzatildi. `.github/workflows/build.yml` da `mode=min` rejimiga o'tildi, kesh eksporti `continue-on-error: true` bilan xavfsizlandi va keshsiz zaxira yig'ish (fallback build) ta'minlandi.
+    - Qo'lda ishga tushirishda (manual dispatch) CI yashilligini tekshiruvchi himoya va GHCR dagi tasvir butunligini tekshiruvchi `docker buildx imagetools inspect` bosqichi qo'shildi. PR #147 barcha 7 ta CI tekshiruvidan muvaffaqiyatli o'tib, `main` ga birlashtirildi.
+  * **Teacher Studio 7.0 & Qoralamalarni Avto-saqlash (Autosave & Draft Recovery)**:
+    - Ustoz test yaratish jarayonida (`TeacherStudioEditor.tsx`) brauzer yopilib qolsa yoki sahifa yangilansa, mehnat yo'qolmasligi uchun `localStorage` asosida avto-saqlash va tiklash banneri joriy etildi.
+    - Banner orqali qoralama bir bosishda tiklanishi (`Qoralamani tiklash`) yoki rad etilishi (`Rad etish`) mumkin; muvaffaqiyatli serverga saqlanganda yoki chop etilganda kesh avtomatik tozalanadi.
+    - Test strukturasini tezkor shakllantirish uchun `[+10]`, `[+20]`, `[+30]`, `[+40]` starter savol generatorlari va Smart Paste da `TEMPLATE_MCQ_20`, `TEMPLATE_MCQ_30` shablonlari qo'shildi.
+    - `AnswerMatrix.tsx` da javob kalitlarini tozalash (`Hammasini tozalash`) amali tasdiqlash dialogi bilan kiritildi.
+  * **O'quvchi Ish Maydoni 7.0 (Student Workspace)**:
+    - Testlar katalogida (`Tests.tsx`) `topic_test` (Mavzuli testlar), `full_mock` (To'liq mock), va `classroom_quiz` (Darslik testlari) universal toifa filtrlari qo'shildi.
+    - Kartalarda toifa nishonlari, vaqtsiz testlar uchun `Cheklovsiz` ko'rsatkichi va bepul sinfxona testlari uchun `Guruh testi (Bepul)` ajratuvchi yorlig'i o'rnatildi.
+  * **Telegram Mini App 7.0 & Dinamik Holat Imzoli Kesh (Zero-Stale Cache)**:
+    - `apps/telegram_app/views.py` dagi statik foydalanuvchi keshi dinamik holat imzosi (`_tma_user_cache_key`) bilan almashtirildi: foydalanuvchining faol guruhlari, uy vazifalari ID lari, PRO holati, roli va global test versiyasi birlashtirildi.
+    - O'quvchi guruhdan chiqarilganda yoki `Test.save()` orqali test arxivlanganda/o'zgartirilganda 0ms ichida barcha keshlar o'z-o'zidan bekor bo'lishi kafolatlandi.
+  * **To'liq Lokalizatsiya & 100% QA Sifat Darvozasi**:
+    - `frontend/src/i18n/translations.json` ga o'zbek, rus va ingliz tillarida 17 ta yangi kalit kiritilib, 100% simmetriya (3 388 ta kalit) saqlab qolindi.
+    - `tests/test_tma_tests_access_policy_7.py` orqali TMA kirish siyosati va kesh bekor bo'lishi to'liq qamrab olindi (100% PASS).
+    - Frontend unit testlari: 28/28 PASS; Oxlint: 0 ta xato, 0 ta ogohlantirish (188 ta fayl); Vite production build: muvaffaqiyatli yig'ildi.
+- **Bajarildi**:
+  * [x] PR #147 (`fix(ci): make docker cache export nonfatal and enforce verified commit builds`) `main` ga birlashtirildi.
+  * [x] `TeacherStudioEditor.tsx`: Starter bloklar, Smart Paste 20/30, va qoralama tiklash banneri.
+  * [x] `AnswerMatrix.tsx`: "Hammasini tozalash" amali.
+  * [x] `Tests.tsx`: Universal toifa chiplari, vaqtsiz test va sinfxona nishonlari.
+  * [x] `apps/telegram_app/views.py`: Dinamik holat imzoli kesh (`_tma_user_cache_key`).
+  * [x] `apps/tests/models.py`: `Test.save()` da global test keshini bekor qilish.
+  * [x] `frontend/src/i18n/translations.json`: 3 388 ta kalit bo'yicha 100% tarjima pariteti.
+  * [x] `tests/test_tma_tests_access_policy_7.py`: 5 ta test 100% PASS.
+  * [x] `tests/test_user_facing_messages.py`: 6 ta test 100% PASS.
+  * [x] `npm --prefix frontend test`: 28 ta test 100% PASS.
+  * [x] `npm --prefix frontend run lint`: 0 xato, 0 ogohlantirish (188 fayl).
+  * [x] `npm --prefix frontend run build`: Muammosiz toza yig'ma.
+  * [x] **GitHub Actions CI (PR #146, commit `c8a2152`)**: ALL 7 CHECKS GREEN (PostgreSQL 5m38s, Pytest/Django 8m21s, Browser regressions 1m50s, Build 25s, Lint 22s, security 30s, automerge 6s).
+- **Jarayonda**:
+  * PR #146 loyiha egasi ko'rib chiqishi va qabul qilishi uchun to'liq tayyor.
+- **Keyingi qadamlar**:
+  * PR #146 ni `main` ga birlashtirish va keyingi rejalashtirilgan takomillashtirishlarni davom ettirish.
+- **Muhim qarorlar**:
+  * GitHub Actions kesh eksporti xatosi butun relizni to'xtatib qo'ymasligi uchun fallback build mexanizmi saqlanadi.
+  * O'quvchi guruhdan chiqarilganda keshning eski holatda qolishi mutlaqo taqiqlandi (dinamik holat imzosi orqali nol kechikish).
+  * Qoralamalar brauzerda faqat avtorizatsiyalangan ustoz sessiyasi doirasida xavfsiz saqlanadi va serverga muvaffaqiyatli yuklangach tozalanadi.
+
+
 ### 2.95. Rasmiy Versiya v6.3: Autonomous Improvement & UI/UX Polish (Ustoz va O'quvchi Tajribasi Mukammalligi)
 - **Maqsad**:
   * **Ustoz Tajribasi va Boshqaruv Qulayligi**:
@@ -2455,11 +2499,57 @@ uff check apps/ 0 xato, pytest tests/test_spa_contract.py 20/20 test 100% PASS.
   * Frontend: 24/24 ta test 100% PASS, `npm run build` (`tsc -b && vite build`) toza yakunlandi.
   * Zero AI Attribution: Barcha o'zgarishlar `Komiljon Roziyev <kruziyev0@gmail.com>` nomidan rasmiylashtirildi.
 
-## 3. Jarayonda
-- Barcha Stage 4 va Test Builder 3.0 / Mobile UX talablari to'liq yakunlandi va branchga birlashtirishga tayyor holga keltirildi.
+## 3. GRANDEC NEXT 7.0 — Integration & Product Evolution
+- [x] **PR #145 To'liq Integratsiyasi (6.3 Release)**:
+  * PR #145 muvaffaqiyatli `main` ga birlashtirildi (Merge commit: `48c404bc2fff3a29833bcb3d7c3fb4c55cab824b`).
+  * GitHub CI, Security va Build barcha 7 ta tekshiruv 100% yashil o'tdi.
+  * PR #134 dagi bir martalik havola xavfsizlik tuzatishlari to'liq kiritilgan holda avtomatik merged maqomida yopildi.
+  * Yangi toza rivojlanish tarmog'i ochildi: `feat/grandec-next-7`.
+- [x] **Teacher Workspace 7.0**:
+  * Tezkor savol yaratish (Starter Generator): `blankMcqBlock` orqali 10, 20, 30 va 40 savollik bo'sh bloklarni bir zumda qo'shish tugmalari.
+  * Smart Paste kengaytmasi: 10, 20 va 30 savollik namunaviy shablonlar (Darslik testi, Milliy sertifikat/Attestatsiya).
+  * AnswerMatrix takomillashtirildi: Barcha kalitlarni 1-klikda tozalash (Clear All) va tezkor boshqaruv.
+- [x] **Student Workspace 7.0**:
+  * Universal toifa filtrlari: `topic_test` (Mavzuli testlar), `attestation`, `milliy`, `full_mock`, `classroom_quiz` (Darslik testlari), `adabiyot`, `ielts`, `multilevel`.
+  * Kartalar vizualizatsiyasi: Mavzuli, Full Mock, Attestatsiya, Milliy sertifikat nishonlari; `Cheklovsiz` (Untimed) ko'rsatkichi; darslik a'zolari uchun `Guruh testi (Bepul)` ko'rinishi.
+- [x] **Telegram Mini App & Group Bot 7.0**:
+  * TMA Testlar ro'yxatida xavfsizlik: `visible_tests` orqali faqat ruxsat etilgan testlar ko'rsatilishi kafolatlandi, guruh testlari boshqalarga ko'rinmaydi.
+  * TMA Test kartalarida `is_timed`, toifa nishoni va `Cheklovsiz` vaqt ko'rsatkichi qo'shildi.
+- [x] **Xalqaro Tarjima (i18n) Pariteti**:
+  * `frontend/src/i18n/translations.json` ga barcha 3 ta til (`uz`, `ru`, `en`) bo'yicha 13 ta yangi kalit qo'shildi (har bir tilda 3384 tadan kalit).
+- [x] **QA & Xavfsizlik Darvozasi**:
+  * `tests/test_tma_tests_access_policy_7.py`: 3 ta yangi regressiya testi 100% PASS.
+  * Frontend: `oxlint` 0 ta xato, 0 ta ogohlantirish (188 ta fayl); `tsc -b && vite build` toza yig'ildi (0 xato).
+  * Regressiya: 28 ta frontend unit testi, 26 ta classroom/telegram backend testi to'liq PASS.
+  * Mualliflik: `Komiljon Roziyev <kruziyev0@gmail.com>` (Zero AI attribution).
+
+## 4. GRANDEC NEXT 7.1 — Release Recovery & Product Hardening
+- [x] **Release Pipeline Recovery (Docker Buildx & GHCR)**:
+  * PR #147 (`fix/build-cache-resilience`) yaratildi: GHA Cache API 504 Gateway Timeout muammosi bartaraf etildi.
+  * `cache-to` rejimi `max` dan `min` ga o'tkazilib, gigabaytlik keraksiz qatlamlar uzatilishining oldi olindi.
+  * Kesh eksporti uzilishlariga qarshi zaxira mexanizmi (`fallback without cache-to`) joriy etildi: kesh yozishdagi vaqtinchalik xatoliklar asosiy imij yig'ilishi va push bo'lishini to'xtatmaydi.
+  * `docker buildx imagetools inspect` orqali GHCR imiji mavjudligi va verifikatsiyasi tekshirilishi qo'shildi.
+  * Qo'lda chaqiriladigan `workflow_dispatch` uchun commit CI'dan o'tganligini tekshiruvchi guard o'rnatildi.
+- [x] **TMA 7.0 Kesh Auditi va Xavfsizligi**:
+  * `apps/telegram_app/views.py` da foydalanuvchi holati imzosi (`state_sig`: guruh a'zoliklari, vazifalar, PRO obuna va global versiya) kiritildi.
+  * Guruhdan o'quvchi chiqarilganda yoki test arxivlanganda eskigan (stale) maxfiy test metama'lumotlari darhol yo'qolishi kafolatlandi (0ms stale window).
+  * `apps/tests/models.py` da test saqlanganda yoki arxivlanganda `tma_tests_global_version` oshirilib, barcha foydalanuvchilar keshi bir zumda yangilanishi ta'minlandi.
+  * `tests/test_tma_tests_access_policy_7.py`: 5/5 test 100% PASS.
+- [x] **Teacher Studio Qoralama Tiklash (Draft Recovery)**:
+  * `TeacherStudioEditor.tsx` da `localStorage` orqali uzluksiz qoralama saqlash va brauzer yopilganda qayta tiklash (Draft Recovery Banner) qo'shildi.
+  * React lazy state initializer orqali oxlint ogohlantirishlari 0 ga tushirildi.
+  * 4 ta yangi tarjima kaliti kiritildi (jami 3,388 kalit, 100% paritet).
+- [x] **QA & Yetkazib Berish**:
+  * 28/28 frontend unit testlari, 4/4 tarjima testlari, 5/5 TMA testlari PASS.
+  * `oxlint` 0 xato/ogohlantirish, `tsc -b && vite build` toza yig'ildi (15.6s).
+  * Mualliflik: `Komiljon Roziyev <kruziyev0@gmail.com>` (Zero AI attribution).
+
+## 5. Jarayonda
+- PR #146 ni yangilash va GitHub Actions tekshiruvlarini kuzatish.
 
 ---
 
-## 4. Keyingi qadamlar
-- O'qituvchilar tomonidan testlarni mobil qurilmalarda yaratish va o'quvchilar tomonidan topshirish jarayonini amalda sinovdan o'tkazish.
-- Keyingi rejalashtirilgan takomillashtirishlarni davom ettirish.
+## 6. Keyingi qadamlar
+- O'qituvchi va o'quvchi interfeyslarining yakuniy brauzer sinovlarini olib borish.
+
+

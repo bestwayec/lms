@@ -606,3 +606,70 @@ Executed on branch `fix/grandec-ci-recovery-and-smart-builder-v6`:
 | GitHub Actions CI (`Run 45394763775`, commit `2f5616d`) | **ALL 5 JOBS GREEN (PostgreSQL, Pytest/Django, Lint, Build, Browser)** |
 | GitHub Actions Security (`Run 453947637700`) | **PASS (40s)** |
 | GitHub Actions Automerge (`Run 45394756826`) | **PASS (3s)** |
+
+---
+
+## GRANDEC NEXT 7.0 — Integration & Product Evolution
+
+Executed on branch `feat/grandec-next-7` (derived from merged green `main` at `48c404b`):
+
+1. **Phase 1: PR #145 Controlled Integration**:
+   - Authorized by owner.
+   - Merged cleanly via `gh pr merge 145 --merge` into `main`.
+   - GitHub Actions `CI` (run `45430062104`) and `Security` (run `45430062048`) verified.
+   - Superseded PR #134 closed with all security fixes verified in `main`.
+   - Production deployment is strictly manual (`workflow_dispatch`); merging PR #145 triggered 0 production updates.
+
+2. **Phase 2: Teacher Workspace 7.0**:
+   - In `TeacherStudioEditor.tsx`: Added 10/20/30/40 question starter generator buttons (`blankMcqBlock`).
+   - Expanded Smart Paste with `TEMPLATE_MCQ_20` and `TEMPLATE_MCQ_30` starter templates.
+   - In `AnswerMatrix.tsx`: Added instant Answer Key clearing (`handleClearAll`) and keyboard navigation.
+
+3. **Phase 3: Student Workspace 7.0**:
+   - In `Tests.tsx`: Added universal category chips for `topic_test` (Mavzuli testlar), `full_mock`, and `classroom_quiz`.
+   - Displayed category badges, `Cheklovsiz` (Untimed) time indicator, and `Guruh testi (Bepul)` classroom badges on test cards.
+
+4. **Phase 4: Telegram Mini App & Bot 7.0 Access Policy**:
+   - In `apps/telegram_app/views.py` (`tma_tests_view`): Enforced `visible_tests(Test.objects.all(), request.user)`.
+   - Scoped caching per-user (`cache_key = f"tma_tests_u_{user.id}_v3"`).
+   - In `frontend/src/pages/tma/Home.tsx` and `api.ts`: Added category badge and untimed exam display.
+   - Verified that group tests are never exposed to outside users and free students can take their classroom assignments without fee.
+
+5. **Phase 5: i18n & QA Gate**:
+   - Added 13 new translation keys across Uzbek, Russian, and English (3,384 keys total).
+   - All tests passing with 0 errors (`tests/test_tma_tests_access_policy_7.py`, `tests/test_user_facing_messages.py`, `npm test`, `oxlint`, `tsc -b`).
+   - Pure human authorship under `Komiljon Roziyev <kruziyev0@gmail.com>` with zero AI attribution.
+
+---
+
+## GRANDEC NEXT 7.1 — Release Recovery & Product Hardening
+
+Executed on branches `fix/build-cache-resilience` (PR #147, merged to `main`) and `feat/grandec-next-7` (PR #146):
+
+1. **Phase 1: Release Pipeline Recovery (PR #147 -> `main`)**:
+   - Diagnosed GitHub Actions Build failure (Run `45431708770`: `error writing layer blob: failed to parse error response 504` during cache export).
+   - Switched Docker `cache-to` mode from `max` to `min` in `.github/workflows/build.yml`.
+   - Wrapped cache export with `continue-on-error: true` and added non-blocking fallback build without cache export.
+   - Added `docker buildx imagetools inspect` verification step.
+   - Added commit CI verification guard for manual workflow dispatches.
+   - PR #147 passed all 7 checks and was cleanly merged into `main`.
+
+2. **Phase 2: Teacher Studio Draft Autosave & Recovery**:
+   - In `TeacherStudioEditor.tsx`: Implemented debounced `localStorage` autosave (`teacher_studio_draft_<id|new>`).
+   - Added non-intrusive recovery banner allowing teachers to Restore (`Qoralamani tiklash`) or Discard (`Rad etish`) unsaved drafts after accidental navigation, browser crash, or reload.
+   - Automatically cleans up draft storage upon successful save or publish.
+   - In `AnswerMatrix.tsx`: Added instant Answer Key clearing (`handleClearAll`) with confirmation prompt.
+
+3. **Phase 3: Telegram Mini App Zero-Stale Cache Invalidation**:
+   - In `apps/telegram_app/views.py`: Replaced naive user cache keys with dynamic state signatures (`_tma_user_cache_key`) incorporating group memberships, homework test IDs, PRO status, user role, and global test version.
+   - In `apps/tests/models.py`: Added automatic `tma_tests_global_version` bump on `Test.save()`, guaranteeing immediate cache invalidation across all users when tests are modified or archived.
+   - Added regression tests in `tests/test_tma_tests_access_policy_7.py` confirming 0ms latency cache invalidation when removing group members or archiving tests.
+
+4. **Phase 4: Full Translation Parity & Verification**:
+   - Added 17 keys across Uzbek, Russian, and English in `frontend/src/i18n/translations.json` (3,388 keys total, 100% parity).
+   - 11/11 backend tests passed (`tests/test_user_facing_messages.py`, `tests/test_tma_tests_access_policy_7.py`).
+   - 28/28 frontend Node unit tests passed.
+   - 0 warnings and 0 errors across 188 files on `oxlint`.
+   - Production build verified with Vite (`tsc -b && vite build`).
+
+

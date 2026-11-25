@@ -61,41 +61,25 @@ const errText = (e: unknown, t: (k: string, fallback?: string) => string) => {
   return code ? t(`studio_err_${code}`, fallback) : fallback;
 };
 
-const TEMPLATE_MCQ_10 = `Q1. Dunyodagi eng katta okean qaysi?
-A) Atlantika okeani
-B) Tinch okeani
-C) Hind okeani
-D) Shimoliy muz okeani
-ANSWER: B
+function generateMcqTemplate(count: number): string {
+  const sampleQuestions = [
+    { q: "Dunyodagi eng katta okean qaysi?", a: "Atlantika okeani", b: "Tinch okeani", c: "Hind okeani", d: "Shimoliy muz okeani", ans: "B" },
+    { q: "O'zbekiston Respublikasi poytaxti qaysi shahar?", a: "Samarqand", b: "Buxoro", c: "Toshkent", d: "Xiva", ans: "C" },
+    { q: "H2O nimaning kimyoviy formulasi?", a: "Oksigen", b: "Suv", c: "Vodorod", d: "Osh tuzi", ans: "B" },
+    { q: "Quyosh qaysi tomondan chiqadi?", a: "Sharqdan", b: "G'arbdan", c: "Shimoldan", d: "Janubdan", ans: "A" },
+    { q: "1 metr necha santimetrga teng?", a: "10 sm", b: "100 sm", c: "1000 sm", d: "50 sm", ans: "B" },
+  ];
+  let res = '';
+  for (let i = 1; i <= count; i++) {
+    const s = sampleQuestions[(i - 1) % sampleQuestions.length];
+    res += `Q${i}. ${s.q}\nA) ${s.a}\nB) ${s.b}\nC) ${s.c}\nD) ${s.d}\nANSWER: ${s.ans}\n\n`;
+  }
+  return res.trim();
+}
 
-Q2. O'zbekiston Respublikasi poytaxti qaysi shahar?
-A) Samarqand
-B) Buxoro
-C) Toshkent
-D) Xiva
-ANSWER: C
-
-Q3. H2O nimaning kimyoviy formulasi?
-A) Oksigen
-B) Suv
-C) Vodorod
-D) Osh tuzi
-ANSWER: B
-
-Q4. Quyosh qaysi tomondan chiqadi?
-A) Sharqdan
-B) G'arbdan
-C) Shimoldan
-D) Janubdan
-ANSWER: A
-
-Q5. 1 metr necha santimetrga teng?
-A) 10 sm
-B) 100 sm
-C) 1000 sm
-D) 50 sm
-ANSWER: B
-`;
+const TEMPLATE_MCQ_10 = generateMcqTemplate(10);
+const TEMPLATE_MCQ_20 = generateMcqTemplate(20);
+const TEMPLATE_MCQ_30 = generateMcqTemplate(30);
 
 /**
  * Teacher Test Builder 3.0: 3-step wizard workflow:
@@ -140,6 +124,72 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
   const [pane, setPane] = useState<'edit' | 'preview'>('edit');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const validateTimer = useRef<number | null>(null);
+
+  const draftKey = `studio_draft_${id ?? 'new'}`;
+  const [recoverableDraft, setRecoverableDraft] = useState<{
+    meta?: Meta;
+    blocks?: StudioBlock[];
+    wizardStep?: 1 | 2 | 3;
+    tab?: Tab;
+    paste?: string;
+    timestamp: number;
+  } | null>(() => {
+    try {
+      const raw = localStorage.getItem(draftKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (parsed && (parsed.blocks?.length > 0 || parsed.meta?.title?.trim() || parsed.paste?.trim())) {
+        if (Date.now() - (parsed.timestamp || 0) < 7 * 86400 * 1000) {
+          return parsed;
+        }
+      }
+    } catch {
+      /* ignore storage failure */
+    }
+    return null;
+  });
+
+  // Auto-save local draft
+  useEffect(() => {
+    if (!dirty) return;
+    const timer = window.setTimeout(() => {
+      try {
+        const draft = {
+          meta,
+          blocks,
+          wizardStep,
+          tab,
+          paste,
+          timestamp: Date.now(),
+        };
+        localStorage.setItem(draftKey, JSON.stringify(draft));
+      } catch {
+        /* storage full */
+      }
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [dirty, meta, blocks, wizardStep, tab, paste, draftKey]);
+
+  const restoreDraft = () => {
+    if (!recoverableDraft) return;
+    if (recoverableDraft.meta) setMeta(recoverableDraft.meta);
+    if (recoverableDraft.blocks) setBlocks(withKeys(recoverableDraft.blocks));
+    if (recoverableDraft.wizardStep) setWizardStep(recoverableDraft.wizardStep);
+    if (recoverableDraft.tab) setTab(recoverableDraft.tab);
+    if (recoverableDraft.paste) setPaste(recoverableDraft.paste);
+    setDirty(true);
+    setNotice(t('studio_draft_restored', 'Qoralama muvaffaqiyatli tiklandi!'));
+    setRecoverableDraft(null);
+  };
+
+  const discardDraft = () => {
+    try {
+      localStorage.removeItem(draftKey);
+    } catch {
+      /* ignore */
+    }
+    setRecoverableDraft(null);
+  };
 
   const applyDetail = useCallback((d: StudioDetail) => {
     setDetail(d);
@@ -239,6 +289,12 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
     try {
       const payload = { ...meta, title: meta.title.trim(), blocks };
       const d = id ? await StudioApi.update(id, payload) : await StudioApi.create(payload);
+      try {
+        localStorage.removeItem(draftKey);
+        setRecoverableDraft(null);
+      } catch {
+        /* ignore */
+      }
       applyDetail(d);
       setNotice(t('studio_saved', 'O‘zgarishlar saqlandi!'));
       if (!id) navigate(`/teacher/studio/${d.test.id}/edit`, { replace: true });
@@ -249,7 +305,7 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
     } finally {
       setBusy(null);
     }
-  }, [id, meta, blocks, applyDetail, navigate, t]);
+  }, [id, meta, blocks, applyDetail, navigate, t, draftKey]);
 
   const publish = async () => {
     const saved = dirty || !detail ? await save() : detail;
@@ -514,6 +570,44 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
         </div>
       )}
 
+      {recoverableDraft && (
+        <aside
+          className="studio-alert"
+          style={{
+            background: 'linear-gradient(135deg, rgba(200, 146, 42, 0.15), rgba(59, 130, 246, 0.12))',
+            borderColor: 'var(--primary, #C8922A)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 12,
+            marginBottom: 16,
+          }}
+          role="status"
+          aria-label={t('studio_draft_found', 'Saqlanmagan qoralama topildi!')}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 20 }}>💾</span>
+            <div>
+              <strong>{t('studio_draft_found', 'Saqlanmagan qoralama topildi!')}</strong>
+              <div className="muted small">
+                {recoverableDraft.meta?.title ? `"${recoverableDraft.meta.title}" · ` : ''}
+                {recoverableDraft.blocks?.length ? `${recoverableDraft.blocks.length} ta guruh · ` : ''}
+                {new Date(recoverableDraft.timestamp).toLocaleTimeString()}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="btn sm primary" onClick={restoreDraft}>
+              {t('studio_draft_restore_btn', 'Qoralamani tiklash')}
+            </button>
+            <button type="button" className="btn sm ghost" onClick={discardDraft}>
+              {t('studio_draft_discard_btn', 'Rad etish')}
+            </button>
+          </div>
+        </aside>
+      )}
+
       {/* STEP 1: TEST METADATA */}
       {wizardStep === 1 && (
         <section className="card studio-step-card" style={{ maxWidth: 700, margin: '0 auto', padding: 24 }}>
@@ -763,13 +857,30 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
                   {blocks.length === 0 ? (
                     <div className="studio-empty">
                       <p>{t('studio_no_blocks', 'Hozircha savollar qo‘shilmagan')}</p>
-                      <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 12 }}>
+                      <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 12, flexWrap: 'wrap' }}>
                         <button type="button" className="btn primary" onClick={() => addBlock('mcq')}>
                           + {t('studio_type_mcq', 'Variantli savol qo‘shish')}
                         </button>
                         <button type="button" className="btn secondary" onClick={() => setTab('paste')}>
                           <ClipboardPaste size={14} aria-hidden="true" /> {t('studio_tab_paste', 'Matndan import')}
                         </button>
+                      </div>
+                      <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px dashed var(--border)' }}>
+                        <span className="muted small" style={{ display: 'block', marginBottom: 8 }}>
+                          ⚡ {t('studio_quick_starters', 'Tezkor to‘plam')}:
+                        </span>
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+                          {[10, 20, 30, 40].map((n) => (
+                            <button
+                              key={n}
+                              type="button"
+                              className="btn sm ghost"
+                              onClick={() => editBlocks([...blocks, withKeys([blankMcqBlock(n, nextNumber(blocks))])[0]])}
+                            >
+                              + {t(`studio_starter_${n}`, `${n} ta savol`)}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   ) : (
@@ -810,13 +921,27 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
                     <p className="studio-hint" style={{ margin: 0 }}>
                       {t('studio_paste_help', 'Savollar, variantlar va javoblarni matn shaklida qo‘ying. Q1. ... A) ... ANSWER: B formatini taniydi.')}
                     </p>
-                    <div style={{ display: 'flex', gap: 6 }}>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       <button
                         type="button"
                         className="btn sm ghost"
                         onClick={() => setPaste(TEMPLATE_MCQ_10)}
                       >
-                        <Sparkles size={13} aria-hidden="true" /> {t('studio_template_10', 'Namuna shablon')}
+                        <Sparkles size={13} aria-hidden="true" /> {t('studio_starter_10', '10 ta savol')}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn sm ghost"
+                        onClick={() => setPaste(TEMPLATE_MCQ_20)}
+                      >
+                        <Sparkles size={13} aria-hidden="true" /> {t('studio_starter_20', '20 ta savol')}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn sm ghost"
+                        onClick={() => setPaste(TEMPLATE_MCQ_30)}
+                      >
+                        <Sparkles size={13} aria-hidden="true" /> {t('studio_starter_30', '30 ta savol')}
                       </button>
                     </div>
                   </div>

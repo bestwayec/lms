@@ -11,6 +11,9 @@ export interface TmaTestSummary {
   description?: string;
   course?: string;
   time_limit_minutes: number;
+  is_timed?: boolean;
+  assessment_category?: string;
+  audience_mode?: string;
   total_questions: number;
   difficulty: string;
 }
