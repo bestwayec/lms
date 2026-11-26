@@ -1477,6 +1477,25 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
 
     # 3. Teacher Workspace callbacks (tch_*)
     if data.startswith("tch_"):
+        def _is_verified_teacher(tg_id):
+            from apps.accounts.models import User as UserModel
+            u = UserModel.objects.filter(
+                telegram_chat_id=tg_id,
+                telegram_identity_verified_at__isnull=False,
+                is_active=True,
+            ).first()
+            return bool(
+                u
+                and (
+                    getattr(u, "role", "") in ("teacher", "admin", "superadmin")
+                    or getattr(u, "is_superuser", False)
+                )
+            )
+
+        if not await _run_db(_is_verified_teacher, tg_user.id if tg_user else 0):
+            await query.answer("⛔️ Bu amal faqat tasdiqlangan o'qituvchilar uchun!", show_alert=True)
+            return
+
         if data == "tch_main":
             await ustoz_menu_command(update, context)
             await query.answer()
@@ -1723,6 +1742,28 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
 
     # 4. Admin Workspace callbacks (adm_*)
     if data.startswith("adm_"):
+        def _is_verified_admin(tg_id):
+            from apps.accounts.models import User as UserModel
+            from apps.accounts.access import is_platform_admin
+
+            u = UserModel.objects.filter(
+                telegram_chat_id=tg_id,
+                telegram_identity_verified_at__isnull=False,
+                is_active=True,
+            ).first()
+            return bool(
+                u
+                and (
+                    is_platform_admin(u)
+                    or getattr(u, "role", "") in ("admin", "superadmin")
+                    or getattr(u, "is_superuser", False)
+                )
+            )
+
+        if not await _run_db(_is_verified_admin, tg_user.id if tg_user else 0):
+            await query.answer("⛔️ Bu amal faqat tasdiqlangan administratorlar uchun!", show_alert=True)
+            return
+
         if data == "adm_main":
             await admin_bot_menu_command(update, context)
             await query.answer()
@@ -1742,10 +1783,13 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
                 return []
             centers = await _run_db(_get_centers, tg_user.id if tg_user else 0)
             lines = ["🏫 <b>O'quv Markazlari:</b>\n"]
-            for c in centers:
-                lines.append(f"• <b>{escape(c['name'])}</b> (Slug: <code>{c['slug']}</code>)")
+            if centers:
+                for c in centers:
+                    lines.append(f"• <b>{escape(c['name'])}</b> (Slug: <code>{c['slug']}</code>)")
+            else:
+                lines.append("<i>Hozircha o'quv markazlari ro'yxatdan o'tmagan.</i>")
             markup = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 Admin Menyusi", callback_data="adm_main")],
+                [InlineKeyboardButton("🔙 Admin Menyusi", callback_data="menu_admin")],
             ])
             await query.edit_message_text("\n".join(lines), parse_mode=ParseMode.HTML, reply_markup=markup)
             await query.answer()
@@ -1763,7 +1807,7 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
             t_cnt = await _run_db(_get_teachers_count, tg_user.id if tg_user else 0)
             text = f"👨‍🏫 <b>O'qituvchilar soni:</b> {t_cnt} nafar"
             markup = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 Admin Menyusi", callback_data="adm_main")],
+                [InlineKeyboardButton("🔙 Admin Menyusi", callback_data="menu_admin")],
             ])
             await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
             await query.answer()
@@ -1782,7 +1826,7 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
             g_cnt = await _run_db(_get_groups_count, tg_user.id if tg_user else 0)
             text = f"👥 <b>Guruhlar soni:</b> {g_cnt} ta"
             markup = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 Admin Menyusi", callback_data="adm_main")],
+                [InlineKeyboardButton("🔙 Admin Menyusi", callback_data="menu_admin")],
             ])
             await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
             await query.answer()
@@ -1806,15 +1850,24 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
                 f"Urinishlar mavjud: <b>{stats['attempted_tests'] if stats else 0} ta</b>\n"
             )
             markup = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 Admin Menyusi", callback_data="adm_main")],
+                [InlineKeyboardButton("🔙 Admin Menyusi", callback_data="menu_admin")],
             ])
             await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
             await query.answer()
             return
         elif data in ("adm_reports", "adm_broadcast", "adm_security", "adm_settings"):
-            text = f"🛡️ <b>Admin Bo'limi ({data.replace('adm_', '').title()}):</b>\n\nUshbu bo'lim to'liq veb-boshqaruv panelida mavjud."
+            site_url = getattr(settings, "SITE_URL", "https://grandec.uz").rstrip("/")
+            section_paths = {
+                "adm_reports": ("Hisobotlar va Tahlil", "/analytics"),
+                "adm_broadcast": ("Murojaatlar va Xabarlar", "/panel/feedback"),
+                "adm_security": ("Xavfsizlik va Test Auditi", "/panel/tests"),
+                "adm_settings": ("Platforma Sozlamalari", "/panel"),
+            }
+            label, rel_path = section_paths[data]
+            text = f"🛡️ <b>Admin Bo'limi — {label}:</b>\n\nUshbu bo'lim veb-panelda to'liq boshqariladi."
             markup = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 Admin Menyusi", callback_data="adm_main")],
+                [InlineKeyboardButton("🌐 Veb-panelda ochish", url=f"{site_url}{rel_path}")],
+                [InlineKeyboardButton("🔙 Admin Menyusi", callback_data="menu_admin")],
             ])
             await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
             await query.answer()
@@ -1940,5 +1993,8 @@ def setup_group_handlers(app) -> None:
     app.add_handler(CommandHandler("ustoz", ustoz_menu_command))
     app.add_handler(CommandHandler("admin", admin_bot_menu_command))
     app.add_handler(
-        CallbackQueryHandler(group_assistant_callback_handler, pattern=r"^(grp_att_|grp_cmd_|grp_m_|ustoz_|tch_|adm_)")
+        CallbackQueryHandler(
+            group_assistant_callback_handler,
+            pattern=r"^(grp_att_|grp_cmd_|grp_m_|ustoz_|tch_|adm_(?:main|centers|teachers|groups|tests|reports|broadcast|security)$)",
+        )
     )
