@@ -204,7 +204,11 @@ def _build_skill_progress(user) -> dict[str, Any]:
         },
         "speaking": {
             "submissions": eng_speaking.count(),
-            "latest_band": float(latest_speaking.overall_band) if latest_speaking else None,
+            "latest_band": (
+                float(latest_speaking.overall_band)
+                if latest_speaking and latest_speaking.overall_band is not None
+                else None
+            ),
         },
         "vocabulary": {
             "reviewed": word_total,
@@ -359,6 +363,12 @@ class EnglishCenterView(APIView):
         ]
 
         homework_items = _active_english_homework(request.user)
+        from apps.vocabulary.models import GrammarCategory
+        from apps.vocabulary.quiz_engine import seed_grammar_curriculum
+
+        if GrammarCategory.objects.count() < 10:
+            seed_grammar_curriculum()
+        grammar_list = list(GrammarCategory.objects.order_by("sort_order", "id")[:10])
 
         return Response(
             {
@@ -375,7 +385,7 @@ class EnglishCenterView(APIView):
                     "writing_topics": len(writing_topics),
                     "speaking_topics": len(speaking_topics),
                     "vocabulary_packs": len(vocab_packs),
-                    "grammar_topics": 0,
+                    "grammar_topics": len(grammar_list),
                     "pending_homework": sum(1 for h in homework_items if not h["is_completed"]),
                     "unresolved_mistakes": unresolved_test_mistakes + word_mistakes_count,
                 },
@@ -413,7 +423,14 @@ class EnglishCenterView(APIView):
                     }
                     for p in vocab_packs
                 ],
-                "grammar_topics": [],
+                "grammar_topics": [
+                    {
+                        "slug": g.slug,
+                        "title": g.title,
+                        "cefr_level": g.cefr_level,
+                    }
+                    for g in grammar_list
+                ],
                 "homework": homework_items,
                 "mistakes": {
                     "test_mistakes_count": unresolved_test_mistakes,

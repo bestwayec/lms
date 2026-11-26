@@ -45,6 +45,8 @@ const ROUTE_TITLES: ReadonlyArray<readonly [string, string, string]> = [
   ['/import', 'import_title', 'CSV Import'],
   ['/speaking', 'tb_title_speaking', 'AI Speaking'],
   ['/english', 'english_center_title', 'English Center'],
+  ['/vocabulary', 'voc_studio_title', 'Vocabulary Studio'],
+  ['/grammar', 'gram_studio_title', 'Grammar Studio'],
   ['/parent', 'parent', 'Ota-ona Nazorati'],
   ['/profile', 'tb_title_profile', 'Profil'],
   ['/subscribe', 'pay_plans_title', 'Obuna Rejalari'],

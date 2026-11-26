@@ -557,11 +557,13 @@ export default function EnglishCenter() {
                   ))}
                 </ul>
               )}
-              <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs">
-                <span className="text-slate-600 dark:text-slate-400">Grammar Studio</span>
-                <span className="font-mono text-[11px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                  {data.counts.grammar_topics > 0 ? `${data.counts.grammar_topics} topics` : t('eng_ready_soon', 'Tayyorlanmoqda')}
-                </span>
+              <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs gap-2 flex-wrap">
+                <Link to="/vocabulary" className="font-bold text-indigo-600 dark:text-indigo-400 hover:underline">
+                  {t('voc_studio_title', 'Vocabulary Studio')} →
+                </Link>
+                <Link to="/grammar" className="font-bold text-sky-600 dark:text-sky-400 hover:underline">
+                  {t('gram_studio_title', 'Grammar Studio')} →
+                </Link>
               </div>
             </section>
 

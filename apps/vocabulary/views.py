@@ -275,3 +275,245 @@ def spaced_repetition_submit_view(request):
             ),
         }
     )
+
+
+def _student_vocab_entries(user) -> list[dict]:
+    """Assemble groundable vocabulary items from StudentWordMistake + assigned packs."""
+    from .models import VocabularyPack
+
+    entries: list[dict] = []
+    seen: set[str] = set()
+    for m in StudentWordMistake.objects.filter(student=user).order_by("is_mastered", "-mistake_count")[:30]:
+        key = m.word.strip().lower()
+        if key and key not in seen:
+            seen.add(key)
+            entries.append(
+                {
+                    "id": m.id,
+                    "word": m.word,
+                    "meaning": m.translation_uz or m.definition or m.word,
+                    "context_sentence": m.definition if m.word.lower() in (m.definition or "").lower() else "",
+                    "synonyms": [],
+                    "streak": m.consecutive_correct_streak,
+                    "is_mastered": m.is_mastered,
+                }
+            )
+
+    packs = VocabularyPack.objects.filter(group__students=user).order_by("-created_at")[:5]
+    for p in packs:
+        ex = p.exercises_data if isinstance(p.exercises_data, dict) else {}
+        for item in (ex.get("format_3_eng_uzb") or []):
+            w = str(item.get("word") or "").strip()
+            ans = str(item.get("correct_answer") or "").strip()
+            if w and ans and w.lower() not in seen:
+                seen.add(w.lower())
+                entries.append(
+                    {
+                        "id": len(entries) + 1000,
+                        "word": w,
+                        "meaning": ans,
+                        "context_sentence": "",
+                        "synonyms": [],
+                        "streak": 0,
+                        "is_mastered": False,
+                    }
+                )
+    return entries
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def student_vocab_deck_view(request):
+    """GET /api/v1/vocabulary/deck/ — Flashcards & Spaced Repetition queue for student."""
+    mistakes = StudentWordMistake.objects.filter(student=request.user).order_by("is_mastered", "next_review_at")
+    due_count = mistakes.filter(is_mastered=False).count()
+    mastered_count = mistakes.filter(is_mastered=True).count()
+    cards = [
+        {
+            "id": m.id,
+            "word": m.word,
+            "meaning": m.translation_uz or m.definition or "",
+            "definition": m.definition,
+            "streak": m.consecutive_correct_streak,
+            "mistake_count": m.mistake_count,
+            "is_mastered": m.is_mastered,
+        }
+        for m in mistakes[:50]
+    ]
+    return Response(
+        {
+            "due_count": due_count,
+            "mastered_count": mastered_count,
+            "cards": cards,
+        }
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def student_vocab_quiz_view(request):
+    """GET /api/v1/vocabulary/student-quiz/ — Answer-safe Vocabulary Exam 3.0 quiz (never leaks key)."""
+    from .quiz_engine import build_answer_safe_vocab_questions
+
+    entries = _student_vocab_entries(request.user)
+    if not entries:
+        return Response({"status": "empty", "questions": []})
+
+    questions = build_answer_safe_vocab_questions(entries, user_id=request.user.id, seed=request.user.id or 1)[:10]
+    return Response({"status": "active", "questions": questions})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def student_vocab_submit_view(request):
+    """POST /api/v1/vocabulary/student-quiz/submit/ — Grade typed/selected vocab answer server-side."""
+    from .quiz_engine import _canon
+
+    word = str(request.data.get("word") or request.data.get("prompt_word") or "").strip()
+    given = str(request.data.get("answer") or "").strip()
+    q_type = str(request.data.get("type") or "listen_choose").strip()
+    mistake_id = request.data.get("id")
+
+    mistake = None
+    if mistake_id:
+        mistake = StudentWordMistake.objects.filter(id=mistake_id, student=request.user).first()
+    if not mistake and word:
+        mistake = StudentWordMistake.objects.filter(student=request.user, word__iexact=word).first()
+
+    entries = _student_vocab_entries(request.user)
+    matched = next((e for e in entries if (mistake_id and e.get("id") == mistake_id) or (word and _canon(e["word"]) == _canon(word))), None)
+    if not matched and not mistake:
+        return Response({"error": "So'z topilmadi."}, status=status.HTTP_404_NOT_FOUND)
+
+    target_word = mistake.word if mistake else matched["word"]
+    target_meaning = (mistake.translation_uz or mistake.definition) if mistake else matched["meaning"]
+
+    expected = target_word if q_type in ("listen_type", "fill_blank") else target_meaning
+    is_correct = bool(given) and _canon(given) == _canon(expected)
+
+    if mistake:
+        newly_mastered = mistake.record_attempt(is_correct)
+        streak = mistake.consecutive_correct_streak
+        is_mastered = mistake.is_mastered
+    else:
+        obj, _ = StudentWordMistake.objects.get_or_create(
+            student=request.user,
+            word=target_word.lower(),
+            defaults={"translation_uz": target_meaning},
+        )
+        newly_mastered = obj.record_attempt(is_correct)
+        streak = obj.consecutive_correct_streak
+        is_mastered = obj.is_mastered
+
+    return Response(
+        {
+            "ok": True,
+            "is_correct": is_correct,
+            "correct_answer": expected,
+            "streak": streak,
+            "is_mastered": is_mastered,
+            "newly_mastered": newly_mastered,
+        }
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def grammar_topics_view(request):
+    """GET /api/v1/vocabulary/grammar/topics/ — 10 core English grammar topics + mistake recommendations."""
+    from .models import GrammarAttempt, GrammarCategory
+    from .quiz_engine import recommend_grammar_for_student, seed_grammar_curriculum
+
+    if GrammarCategory.objects.count() < 10:
+        seed_grammar_curriculum()
+
+    categories = GrammarCategory.objects.prefetch_related("exercises").order_by("sort_order", "id")
+    topics_data = []
+    for cat in categories:
+        attempts = GrammarAttempt.objects.filter(student=request.user, category=cat)
+        total = attempts.count()
+        correct = attempts.filter(is_correct=True).count()
+        topics_data.append(
+            {
+                "slug": cat.slug,
+                "title": cat.title,
+                "cefr_level": cat.cefr_level,
+                "description": cat.description,
+                "formula": cat.formula,
+                "example_correct": cat.example_correct,
+                "example_incorrect": cat.example_incorrect,
+                "exercise_count": cat.exercises.count(),
+                "attempts": total,
+                "correct": correct,
+                "accuracy_pct": round((correct * 100.0) / total, 1) if total > 0 else None,
+            }
+        )
+
+    recommended = recommend_grammar_for_student(request.user)
+    return Response({"topics": topics_data, "recommended": recommended})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def grammar_topic_detail_view(request, slug: str):
+    """GET /api/v1/vocabulary/grammar/topics/<slug>/ — Rule sheet + answer-free exercises."""
+    from .models import GrammarCategory
+    from .quiz_engine import seed_grammar_curriculum
+
+    if GrammarCategory.objects.count() < 10:
+        seed_grammar_curriculum()
+
+    cat = get_object_or_404(GrammarCategory.objects.prefetch_related("exercises"), slug=slug)
+    exercises = [
+        {
+            "id": ex.id,
+            "prompt": ex.prompt,
+            "options": ex.options,
+            "cefr_level": ex.cefr_level,
+        }
+        for ex in cat.exercises.all().order_by("sort_order", "id")
+    ]
+    return Response(
+        {
+            "slug": cat.slug,
+            "title": cat.title,
+            "cefr_level": cat.cefr_level,
+            "description": cat.description,
+            "formula": cat.formula,
+            "example_correct": cat.example_correct,
+            "example_incorrect": cat.example_incorrect,
+            "exercises": exercises,
+        }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def grammar_attempt_submit_view(request):
+    """POST /api/v1/vocabulary/grammar/submit/ — Grade a grammar exercise answer cleanly."""
+    from .models import GrammarAttempt, GrammarExercise
+    from .quiz_engine import _canon
+
+    ex_id = request.data.get("exercise_id")
+    answer = str(request.data.get("answer") or "").strip()
+    ex = GrammarExercise.objects.select_related("category").filter(id=ex_id).first()
+    if not ex:
+        return Response({"error": "Mashq topilmadi."}, status=status.HTTP_404_NOT_FOUND)
+
+    is_correct = _canon(answer) == _canon(ex.correct_answer)
+    GrammarAttempt.objects.create(
+        student=request.user,
+        category=ex.category,
+        exercise=ex,
+        selected_answer=answer[:255],
+        is_correct=is_correct,
+        source_tag=str(request.data.get("source_tag") or "grammar_studio")[:40],
+    )
+    return Response(
+        {
+            "ok": True,
+            "is_correct": is_correct,
+            "correct_answer": ex.correct_answer,
+            "explanation": ex.explanation,
+        }
+    )

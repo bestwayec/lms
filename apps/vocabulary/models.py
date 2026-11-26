@@ -126,3 +126,80 @@ class StudentWordMistake(models.Model):
 
         self.save()
         return newly_mastered
+
+
+class GrammarCategory(models.Model):
+    """Structured English Grammar topic mapped to CEFR & Essay/Speaking error tags."""
+
+    slug = models.SlugField(_("slug"), max_length=64, unique=True)
+    title = models.CharField(_("mavzu nomi"), max_length=150)
+    cefr_level = models.CharField(_("CEFR darajasi"), max_length=8, default="B1", db_index=True)
+    description = models.TextField(_("qisqa izoh"), blank=True, default="")
+    formula = models.CharField(_("qoida formulasi"), max_length=255, blank=True, default="")
+    example_correct = models.CharField(_("to'g'ri misol"), max_length=300, blank=True, default="")
+    example_incorrect = models.CharField(_("xato misol"), max_length=300, blank=True, default="")
+    error_keywords = models.JSONField(_("bog'liq xato kalit so'zlari"), default=list, blank=True)
+    sort_order = models.PositiveIntegerField(_("tartib"), default=0)
+
+    class Meta:
+        verbose_name = _("Grammatika mavzusi")
+        verbose_name_plural = _("Grammatika mavzulari")
+        ordering = ["sort_order", "id"]
+
+    def __str__(self) -> str:
+        return f"[{self.cefr_level}] {self.title}"
+
+
+class GrammarExercise(models.Model):
+    """Interactive practice question inside a GrammarCategory."""
+
+    category = models.ForeignKey(
+        GrammarCategory,
+        on_delete=models.CASCADE,
+        related_name="exercises",
+        verbose_name=_("mavzu"),
+    )
+    prompt = models.TextField(_("savol matni"))
+    options = models.JSONField(_("variantlar"), default=list)
+    correct_answer = models.CharField(_("to'g'ri javob"), max_length=255)
+    explanation = models.TextField(_("tushuntirish"), blank=True, default="")
+    cefr_level = models.CharField(_("CEFR darajasi"), max_length=8, default="B1")
+    sort_order = models.PositiveIntegerField(_("tartib"), default=0)
+
+    class Meta:
+        verbose_name = _("Grammatika mashqi")
+        verbose_name_plural = _("Grammatika mashqlari")
+        ordering = ["sort_order", "id"]
+
+
+class GrammarAttempt(models.Model):
+    """Student attempt on a GrammarExercise for mastery & mistake-link tracking."""
+
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="grammar_attempts",
+        verbose_name=_("o'quvchi"),
+    )
+    category = models.ForeignKey(
+        GrammarCategory,
+        on_delete=models.CASCADE,
+        related_name="attempts",
+    )
+    exercise = models.ForeignKey(
+        GrammarExercise,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="attempts",
+    )
+    selected_answer = models.CharField(_("tanlangan javob"), max_length=255, blank=True, default="")
+    is_correct = models.BooleanField(_("to'g'rimi"), default=False, db_index=True)
+    source_tag = models.CharField(_("manba"), max_length=40, default="grammar_studio")
+    created_at = models.DateTimeField(_("vaqt"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Grammatika urinishi")
+        verbose_name_plural = _("Grammatika urinishlari")
+        ordering = ["-created_at"]
+
