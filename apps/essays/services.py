@@ -922,6 +922,29 @@ def can_review_submission(user, submission: EssaySubmission) -> bool:
     ).exists()
 
 
+def detect_submission_rubric(submission: EssaySubmission) -> tuple[str, int]:
+    """Return canonical rubric scale ('ielts' | 'multilevel' | 'bmb') and display max."""
+    raw = getattr(submission, "raw_result", None) or {}
+    topic = getattr(submission, "topic", None)
+    rubric_type = (
+        (getattr(topic, "rubric_type", "") if topic else "")
+        or (raw.get("rubric_type", "") if isinstance(raw, dict) else "")
+        or ""
+    ).strip().lower()
+    max_score = int(getattr(submission, "max_score", 24) or 24)
+    subject = (
+        getattr(topic, "subject", "")
+        if topic
+        else ("english" if rubric_type.startswith(("ielts", "multilevel")) or max_score in (9, 16, 75) else "uzbek")
+    ) or "uzbek"
+
+    if rubric_type in ("ielts_task1", "ielts_task2") or (subject == "english" and max_score == 9) or max_score == 9:
+        return "ielts", 9
+    if rubric_type.startswith("multilevel") or (subject == "english" and max_score in (16, 75)) or max_score in (16, 75):
+        return "multilevel", (75 if max_score == 75 else 16)
+    return "bmb", 20
+
+
 def _escape_markdown(text: str) -> str:
     """Escape Telegram Markdown special chars to prevent injection (*, _, [, `)."""
     if not text:
@@ -1045,27 +1068,58 @@ class TeacherReviewService:
                 f"Faqat baholangan esselarni tekshirish mumkin. Hozirgi holat: {submission.status}"
             )
 
-        VALID_SCORES = {0.0, 0.5, 1.0, 1.5, 2.0}
+        rubric_scale, _display_max = detect_submission_rubric(submission)
+        is_english_ielts = rubric_scale == "ielts"
+        is_multilevel = rubric_scale == "multilevel"
 
-        # Validate scores
-        total_score = Decimal("0")
         validated_scores = {}
+        if is_english_ielts:
+            # IELTS Writing: 4 criteria (1..4), each 0.0–9.0 in 0.5 steps; overall rounded to nearest 0.5
+            vals = []
+            for cid in range(1, 5):
+                raw = criteria_scores.get(cid, criteria_scores.get(str(cid), None))
+                if raw is None or raw == "":
+                    raise ValueError(f"IELTS mezon #{cid} bali kiritilmadi.")
+                score = Decimal(str(raw))
+                if score < Decimal("0.0") or score > Decimal("9.0") or (score * 2) % 1 != 0:
+                    raise ValueError(f"IELTS mezon #{cid} bali 0.0–9.0 oralig'ida (0.5 qadam) bo'lishi kerak.")
+                validated_scores[str(cid)] = float(score)
+                vals.append(float(score))
+            raw_avg = sum(vals) / 4.0
+            total_score = Decimal(str(round(raw_avg * 2.0) / 2.0)).quantize(Decimal("0.1"))
+        elif is_multilevel:
+            # BMB Multi-level v2: tasks 1..3 (max 5/5/6 = 16) OR legacy 4 criteria (max 75)
+            max_allowed = Decimal(str(getattr(submission, "max_score", 16) or 16))
+            total_score = Decimal("0")
+            keys = sorted(int(k) for k in criteria_scores.keys() if str(k).isdigit())
+            if not keys:
+                raise ValueError("Multi-level baholash mezonlari bo'sh.")
+            for cid in keys:
+                raw = criteria_scores.get(cid, criteria_scores.get(str(cid), 0))
+                score = Decimal(str(raw or 0))
+                if score < Decimal("0") or score > max_allowed or (score * 2) % 1 != 0:
+                    raise ValueError(f"Multi-level mezon #{cid} bali noto'g'ri.")
+                total_score += score
+                validated_scores[str(cid)] = float(score)
+            total_score = min(total_score, Decimal("75"))
+        else:
+            VALID_SCORES = {0.0, 0.5, 1.0, 1.5, 2.0}
+            total_score = Decimal("0")
+            for cid in range(1, 13):
+                raw = criteria_scores.get(cid, criteria_scores.get(str(cid), 0))
+                if raw is None or raw == "":
+                    raw = 0
+                score = Decimal(str(raw))
+                max_s = EssayCriterionScore.CRITERION_MAX_SCORES.get(cid, Decimal("2.0"))
+                if score not in VALID_SCORES or score > max_s:
+                    raise ValueError(
+                        f"Mezon #{cid}: ball {raw} yaroqsiz (maksimal: {max_s}). "
+                        f"Ruxsat etilgan: {VALID_SCORES}"
+                    )
+                total_score += score
+                validated_scores[str(cid)] = float(score)
 
-        for cid in range(1, 13):
-            raw = criteria_scores.get(cid, criteria_scores.get(str(cid), 0))
-            if raw is None or raw == "":
-                raw = 0
-            score = Decimal(str(raw))
-            max_s = EssayCriterionScore.CRITERION_MAX_SCORES.get(cid, Decimal("2.0"))
-            if score not in VALID_SCORES or score > max_s:
-                raise ValueError(
-                    f"Mezon #{cid}: ball {raw} yaroqsiz (maksimal: {max_s}). "
-                    f"Ruxsat etilgan: {VALID_SCORES}"
-                )
-            total_score += score
-            validated_scores[str(cid)] = float(score)
-
-        total_score = min(total_score, Decimal(str(ESSAY_RUBRIC_MAX_SCORE)))
+            total_score = min(total_score, Decimal(str(ESSAY_RUBRIC_MAX_SCORE)))
 
         defaults = {
             "teacher": teacher,
@@ -4237,6 +4291,7 @@ def _validate_ielts_result(
             if str(e).strip()
         ]
 
+        raw_quote = str(item.get("quote") or item.get("evidence_quote") or "").strip()
         normalized_criteria.append(
             {
                 "id": idx,
@@ -4245,8 +4300,14 @@ def _validate_ielts_result(
                 "max_score": 9.0,
                 "reason": reason or f"{canonical_name} evaluated at Band {band_score}.",
                 "errors": errors,
+                **({"quote": raw_quote} if raw_quote else {}),
             }
         )
+
+    if essay_text:
+        from apps.core.ai_gateway import verify_evidence_items
+
+        normalized_criteria = verify_evidence_items(normalized_criteria, essay_text)
 
     # Enforce topic relevance guardrails for IELTS
     topic_status_raw = str(result.get("topic_status") or "").strip().lower()
@@ -4339,7 +4400,7 @@ def _validate_ielts_result(
 
     return {
         "rubric_type": task_type
-        if task_type in ("ielts_task1", "ielts_task2")
+        if task_type in ("ielts_task1", "ielts_task2", "multilevel_1_1", "multilevel_1_2", "multilevel_2", "multilevel_v2")
         else "ielts_task2",
         "topic_status": topic_status,
         "is_completely_off_topic": topic_status == "completely_off_topic",
@@ -4581,9 +4642,19 @@ def grade_ielts_essay(
     task_type: str = "ielts_task2",
     min_words: int | None = None,
 ) -> dict:
-    """Grade an English IELTS Task 1 / Task 2 / Multi-level essay on the 4 official criteria (Band 1.0–9.0)."""
+    """Grade IELTS (Task 1/2) or BMB Multi-level (1.1/1.2/2) essay cleanly without inventing scores."""
+    from apps.core.ai_gateway import is_insufficient_response, record_ai_usage
+    from apps.essays.pre_validation import PreValidationError
+
     if min_words is None:
-        min_words = 150 if task_type == "ielts_task1" else 250
+        min_words = {
+            "ielts_task1": 150,
+            "ielts_task2": 250,
+            "multilevel_1_1": 50,
+            "multilevel_1_2": 120,
+            "multilevel_2": 180,
+            "multilevel_v2": 150,
+        }.get(task_type, 250)
 
     cleaned_text = (essay_text or "").strip()
     if not cleaned_text:
@@ -4594,30 +4665,48 @@ def grade_ielts_essay(
 
         pre_validate_essay(cleaned_text, topic_title=topic_title, min_words=0)
 
+    if is_insufficient_response(cleaned_text, min_words=10):
+        raise PreValidationError(
+            "RESULT_INSUFFICIENT_RESPONSE_EVIDENCE: Baholash uchun kamida 10 ta inglizcha so'z kiriting."
+        )
+
     if _is_mock_mode():
-        return _mock_ielts_response(
+        # Ground a real quote from student's own text cleanly in mock/test runs
+        first_sentence = re.split(r"[.!?]+", cleaned_text)[0].strip()
+        res = _mock_ielts_response(
             cleaned_text,
             topic_title=topic_title,
             task_type=task_type,
             min_words=min_words,
         )
+        if first_sentence and res.get("criteria"):
+            from apps.core.ai_gateway import verify_evidence_items
+
+            res["criteria"][0]["quote"] = first_sentence[:140]
+            res["criteria"] = verify_evidence_items(res["criteria"], cleaned_text)
+        record_ai_usage(feature="essay_ielts", model="mock", success=True)
+        return res
 
     try:
+        import time as _t
+
+        t0 = _t.monotonic()
         client = _get_llm_client(timeout=60.0)
         candidates = _model_candidates()
         wc = WordCounter.count(cleaned_text)
-        task_label = (
-            "IELTS Academic/General Writing Task 1 (minimum 150 words)"
-            if task_type == "ielts_task1"
-            else "IELTS Writing Task 2 Essay (minimum 250 words)"
-        )
+        task_label = {
+            "ielts_task1": "IELTS Academic/General Writing Task 1 (minimum 150 words)",
+            "multilevel_1_1": "BMB CEFR Multi-level Writing Task 1.1 Informal/Semi-formal Email (50+ words, max 5 pts)",
+            "multilevel_1_2": "BMB CEFR Multi-level Writing Task 1.2 Formal Email/Letter (120+ words, max 5 pts)",
+            "multilevel_2": "BMB CEFR Multi-level Writing Task 2 Essay/Blog (180+ words, max 6 pts)",
+        }.get(task_type, "IELTS Writing Task 2 Essay (minimum 250 words)")
         user_msg = (
             f"Task Type: {task_label}\n"
-            f"Prompt / Topic: {topic_title or 'General IELTS Writing Task'}\n"
+            f"Prompt / Topic: {topic_title or 'English Writing Task'}\n"
             f"Word Count: {wc} words (Minimum required: {min_words} words)\n\n"
             f"Candidate Response:\n{cleaned_text}"
         )
-        response, _ = _chat_with_fallback(
+        response, used_model = _chat_with_fallback(
             client,
             candidates[0],
             candidates[1:],
@@ -4633,15 +4722,24 @@ def grade_ielts_essay(
         raw_content = response.choices[0].message.content or ""
         parsed = parse_llm_json(raw_content)
         if parsed.get("_parse_failed"):
+            record_ai_usage(feature="essay_ielts", model=str(used_model), latency_ms=(_t.monotonic() - t0) * 1000, success=False)
             raise AIUnavailable("IELTS javobi JSON emas", feature="essay_ielts")
+        usage = getattr(response, "usage", None)
+        record_ai_usage(
+            feature="essay_ielts",
+            model=str(used_model),
+            tokens_in=getattr(usage, "prompt_tokens", 0) or 0,
+            tokens_out=getattr(usage, "completion_tokens", 0) or 0,
+            latency_ms=(_t.monotonic() - t0) * 1000,
+            success=True,
+        )
         return _validate_ielts_result(
             parsed, essay_text=cleaned_text, task_type=task_type, min_words=min_words
         )
     except AIUnavailable:
         raise
     except Exception as exc:
-        # Never invent a band: the submission is marked not graded, the
-        # allowance is returned and the admin is alerted after repeated failures.
+        record_ai_usage(feature="essay_ielts", success=False)
         logger.warning("IELTS LLM call failed (%s); not graded, no band invented", exc)
         raise AIUnavailable(str(exc), feature="essay_ielts") from exc
 

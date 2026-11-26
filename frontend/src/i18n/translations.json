@@ -3550,7 +3550,14 @@
     "eng_plays_left": "Qolgan urinish",
     "eng_play_limit": "Limit",
     "eng_hide_transcript": "Transkriptni yopish",
-    "eng_show_transcript": "Transkript"
+    "eng_show_transcript": "Transkript",
+    "eng_writing_empty_err": "Avval esse matnini yozing.",
+    "eng_ai_unavailable": "AI baholash hozircha amalga oshmadi. Limitingiz qaytarildi.",
+    "eng_writing_task_select": "Topshiriq turi",
+    "eng_writing_prompt": "Mavzu matni",
+    "eng_writing_ungraded_hint": "Matnni yozing va AI Baholash tugmasini bosing — mezon ballari va dalilli tahlil shu yerda chiqadi.",
+    "eng_ai_review_tab": "AI Tahlil va Model Javob",
+    "eng_writing_no_result_yet": "Hali AI baholash o'tkazilmagan."
   },
   "ru": {
     "spk_practise_again": "Повторить эту тему",
@@ -7103,7 +7110,14 @@
     "eng_plays_left": "Осталось попыток",
     "eng_play_limit": "Лимит",
     "eng_hide_transcript": "Скрыть текст",
-    "eng_show_transcript": "Транскрипт"
+    "eng_show_transcript": "Транскрипт",
+    "eng_writing_empty_err": "Сначала введите текст эссе.",
+    "eng_ai_unavailable": "AI-проверка временно недоступна. Лимит возвращён.",
+    "eng_writing_task_select": "Тип задания",
+    "eng_writing_prompt": "Текст темы",
+    "eng_writing_ungraded_hint": "Напишите текст и нажмите AI-проверка — оценки и разбор появятся здесь.",
+    "eng_ai_review_tab": "AI-разбор и образец",
+    "eng_writing_no_result_yet": "AI-оценка ещё не выполнялась."
   },
   "en": {
     "spk_practise_again": "Practise this topic again",
@@ -10656,6 +10670,13 @@
     "eng_plays_left": "Plays left",
     "eng_play_limit": "Limit",
     "eng_hide_transcript": "Hide transcript",
-    "eng_show_transcript": "Transcript"
+    "eng_show_transcript": "Transcript",
+    "eng_writing_empty_err": "Please enter your essay text first.",
+    "eng_ai_unavailable": "AI grading is temporarily unavailable. Your quota was refunded.",
+    "eng_writing_task_select": "Task type",
+    "eng_writing_prompt": "Prompt",
+    "eng_writing_ungraded_hint": "Write your response and run AI Check — criteria scores and grounded evidence appear here.",
+    "eng_ai_review_tab": "AI Review & Model Rewrite",
+    "eng_writing_no_result_yet": "No AI evaluation run yet."
   }
 }

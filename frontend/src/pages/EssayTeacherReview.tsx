@@ -15,9 +15,16 @@ const CRITERION_MAX: Record<number, number> = {
   7: 2, 8: 1.5, 9: 1.5, 10: 1.5, 11: 1.5, 12: 1.5,
 };
 
-const getScoreSteps = (cid: number) => {
-  const max = CRITERION_MAX[cid] ?? 2;
-  return max === 1.5 ? [0, 0.5, 1, 1.5] : [0, 0.5, 1, 1.5, 2];
+const getScoreSteps = (cid: number, criterionMaxMap?: Record<string, number>, scale?: string) => {
+  if (scale === 'ielts') {
+    const out: number[] = [];
+    for (let v = 0; v <= 9.0; v += 0.5) out.push(v);
+    return out;
+  }
+  const max = criterionMaxMap?.[String(cid)] ?? CRITERION_MAX[cid] ?? 2;
+  const out: number[] = [];
+  for (let v = 0; v <= max + 1e-9; v += 0.5) out.push(Number(v.toFixed(1)));
+  return out;
 };
 
 /** Single-essay teacher review (parity with legacy /essays/teacher/<id>/review/). */
@@ -41,9 +48,14 @@ export default function EssayTeacherReview() {
     TeacherEssays.detail(id)
       .then((d) => {
         setData(d);
+        const criterionIds = Object.keys(d.criterion_names || {})
+          .map(Number)
+          .filter((n) => Number.isFinite(n))
+          .sort((a, b) => a - b);
+        const activeIds = criterionIds.length > 0 ? criterionIds : Array.from({ length: 12 }, (_, i) => i + 1);
         const preset: Record<number, number> = {};
-        for (let i = 1; i <= 12; i++) {
-          preset[i] = 0;
+        for (const cid of activeIds) {
+          preset[cid] = 0;
         }
         if (d.existing_review?.criteria_scores) {
           for (const [k, v] of Object.entries(d.existing_review.criteria_scores)) {
@@ -64,10 +76,21 @@ export default function EssayTeacherReview() {
       .catch((e) => setErr(e instanceof Error ? e.message : t('err_retry_js')));
   }, [id, t]);
 
-  const total = Array.from({ length: 12 }, (_, i) => i + 1).reduce((a, cid) => {
+  const criterionIds = data
+    ? Object.keys(data.criterion_names || {})
+        .map(Number)
+        .filter((n) => Number.isFinite(n))
+        .sort((a, b) => a - b)
+    : Array.from({ length: 12 }, (_, i) => i + 1);
+  const activeIds = criterionIds.length > 0 ? criterionIds : Array.from({ length: 12 }, (_, i) => i + 1);
+  const isIeltsScale = data?.rubric_scale === 'ielts';
+  const displayMax = data?.display_max ?? (isIeltsScale ? 9 : data?.submission.max_score || 20);
+
+  const rawSum = activeIds.reduce((a, cid) => {
     const val = scores[cid];
     return a + (isScoreMissing(val) ? 0 : Number(val));
   }, 0);
+  const total = isIeltsScale ? Math.round((rawSum / Math.max(1, activeIds.length)) * 2) / 2 : rawSum;
 
   const isAdmin = isPlatformAdmin(user);
 
@@ -101,9 +124,9 @@ export default function EssayTeacherReview() {
     setBusy(true);
     setErr(null);
 
-    // Strict validation: every criterion 1..12 must be present (0 is completely valid)
+    // Strict validation: every criterion for this rubric must be present
     const sanitizedScores: Record<number, number> = {};
-    for (let cid = 1; cid <= 12; cid++) {
+    for (const cid of activeIds) {
       const val = scores[cid];
       if (isScoreMissing(val)) {
         setErr(`Mezon #${cid}: ball kiritilmadi.`);
@@ -194,13 +217,13 @@ export default function EssayTeacherReview() {
 
       {saved !== null && (
         <p className="ok">
-          {t('tr_review_saved')}: {saved}/20
+          {t('tr_review_saved')}: {saved}/{displayMax}
         </p>
       )}
 
       <form onSubmit={onSubmit}>
         <h2>
-          {t('tr_your_score')} — {total.toFixed(1)}/20
+          {t('tr_your_score')} — {total.toFixed(1)}/{displayMax}
         </h2>
         <div className="table-wrap">
           <table className="data">
@@ -213,10 +236,10 @@ export default function EssayTeacherReview() {
               </tr>
             </thead>
             <tbody>
-              {Array.from({ length: 12 }, (_, i) => i + 1).map((cid) => {
+              {activeIds.map((cid) => {
                 const ai = data.ai_criteria.find((c) => c.criterion_id === cid);
-                const max = CRITERION_MAX[cid] ?? 2;
-                const steps = getScoreSteps(cid);
+                const max = data.criterion_max?.[String(cid)] ?? CRITERION_MAX[cid] ?? 2;
+                const steps = getScoreSteps(cid, data.criterion_max, data.rubric_scale);
                 const currentVal = isScoreMissing(scores[cid]) ? 0 : scores[cid];
                 return (
                   <tr key={cid}>

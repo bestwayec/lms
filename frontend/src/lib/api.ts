@@ -2779,27 +2779,39 @@ export interface EssayGradingProvenance {
 }
 
 export interface IeltsCriterionScore {
-  band: number;
-  criterion_name: string;
-  feedback: string;
+  id?: number;
+  name: string;
+  score: number;
+  max_score?: number;
+  reason?: string;
+  errors?: string[];
+  quote?: string;
+  start_offset?: number;
+  end_offset?: number;
+  quote_verified?: boolean;
 }
 
 export interface IeltsGradePayload {
-  task_type: 'task1' | 'task2';
-  prompt: string;
+  task_type: 'ielts_task1' | 'ielts_task2' | 'multilevel_1_1' | 'multilevel_1_2' | 'multilevel_2';
+  topic_title: string;
+  topic_id?: number;
   essay_text: string;
 }
 
 export interface IeltsGradeResponse {
-  task_type: string;
+  ok: boolean;
+  submission_id?: number | null;
+  task_type?: string;
   word_count: number;
   min_words: number;
   overall_band: number;
   cefr_level: string;
-  criteria: Record<string, IeltsCriterionScore>;
-  general_feedback: string;
-  model_band9_rewrite: string;
-  submission_id?: number | null;
+  criteria: IeltsCriterionScore[];
+  summary: string;
+  strengths?: string[];
+  weaknesses?: string[];
+  teacher_recommendation?: string;
+  improved_text?: string;
 }
 
 export const Essays = {
@@ -2888,10 +2900,12 @@ export interface TeacherEssayCard {
 }
 
 export interface TeacherEssayDetail {
-  submission: TeacherEssayCard & { essay_text: string; summary: string };
+  submission: TeacherEssayCard & { essay_text: string; summary: string; subject?: string; rubric_type?: string };
+  rubric_scale?: 'ielts' | 'multilevel' | 'bmb';
+  display_max?: number;
   ai_criteria: { criterion_id: number; name: string; score: number; reason: string }[];
   criterion_names: Record<string, string>;
-  /** Max score per criterion id (BMB 12-criterion rubric). */
+  /** Max score per criterion id (BMB 12-criterion or English rubric). */
   criterion_max?: Record<string, number>;
   existing_review: {
     criteria_scores: Record<string, number>;
