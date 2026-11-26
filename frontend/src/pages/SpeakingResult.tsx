@@ -20,28 +20,44 @@ export default function SpeakingResult() {
   const error = current?.error ?? null;
   const loading = Boolean(id && !current);
 
+  const [requestingReview, setRequestingReview] = useState(false);
+  const [reviewMsg, setReviewMsg] = useState<string | null>(null);
+
   useEffect(() => {
     if (!id) return;
     let active = true;
-    SpeakingApi.submission(id)
-      .then((res) => {
-        if (!active) return;
-        setLoaded({ id, submission: res, error: null });
-        try {
-          confetti({
-            particleCount: 80,
-            spread: 70,
-            origin: { y: 0.6 },
-            colors: ['#6366F1', '#818CF8', '#10B981', '#F59E0B'],
-          });
-        } catch {
-          /* ignore */
-        }
-      })
-      .catch((e: unknown) => {
-        if (active) setLoaded({ id, submission: null, error: e instanceof Error ? e.message : "Natijani yuklashda xatolik." });
-      });
-    return () => { active = false; };
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    const load = (celebrate: boolean) => {
+      SpeakingApi.submission(id)
+        .then((res) => {
+          if (!active) return;
+          setLoaded({ id, submission: res, error: null });
+          if (res.status === 'evaluating') {
+            pollTimer = setTimeout(() => load(false), 2500);
+            return;
+          }
+          if (celebrate && res.overall_band !== null) {
+            try {
+              confetti({
+                particleCount: 80,
+                spread: 70,
+                origin: { y: 0.6 },
+                colors: ['#6366F1', '#818CF8', '#10B981', '#F59E0B'],
+              });
+            } catch {
+              /* ignore */
+            }
+          }
+        })
+        .catch((e: unknown) => {
+          if (active) setLoaded({ id, submission: null, error: e instanceof Error ? e.message : "Natijani yuklashda xatolik." });
+        });
+    };
+    load(true);
+    return () => {
+      active = false;
+      if (pollTimer) clearTimeout(pollTimer);
+    };
   }, [id]);
 
   if (loading) {
@@ -166,14 +182,22 @@ export default function SpeakingResult() {
               boxShadow: '0 6px 20px rgba(99, 102, 241, 0.4)',
             }}
           >
-            {sub.overall_band.toFixed(1)}
+            {sub.track === 'cefr_multilevel' && sub.final_score !== null && sub.final_score !== undefined
+              ? `${sub.final_score.toFixed(0)}/75`
+              : sub.overall_band !== null
+              ? sub.overall_band.toFixed(1)
+              : '—'}
           </div>
           <div>
             <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#A5B4FC', textTransform: 'uppercase' }}>
-              Overall Band
+              {sub.track === 'cefr_multilevel' ? 'CEFR Multi-level' : 'Overall Band'}
             </div>
             <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#fff' }}>
-              {sub.overall_band >= 7.5
+              {sub.status === 'evaluating'
+                ? tr('spk_evaluating')
+                : sub.overall_band === null
+                ? '—'
+                : sub.overall_band >= 7.5
                 ? "Yuqori daraja (C1)"
                 : sub.overall_band >= 6.5
                 ? "Yaxshi daraja (B2+)"
@@ -211,11 +235,11 @@ export default function SpeakingResult() {
                   fontSize: '0.95rem',
                 }}
               >
-                {c.score.toFixed(1)}
+                {c.score !== null && c.score !== undefined ? c.score.toFixed(1) : '—'}
               </span>
             </div>
             <p className="muted small" style={{ margin: 0, fontSize: '0.76rem', lineHeight: 1.4 }}>
-              {c.desc}
+              {c.key === 'pr' && c.score === null ? tr('spk_pronunciation_unmeasured') : c.desc}
             </p>
           </div>
         ))}
@@ -297,10 +321,41 @@ export default function SpeakingResult() {
       )}
 
       {/* Action footer */}
+      {sub.teacher_comments && (
+        <div className="card" style={{ padding: 20, borderRadius: 16, marginBottom: 20 }}>
+          <h4 style={{ margin: '0 0 8px 0' }}>{tr('spk_teacher_feedback_title')}</h4>
+          {sub.teacher_score !== null && sub.teacher_score !== undefined && (
+            <p style={{ margin: '0 0 6px 0', fontWeight: 800 }}>{tr('spk_teacher_score_label')}: {sub.teacher_score.toFixed(1)}</p>
+          )}
+          <p style={{ margin: 0 }}>{sub.teacher_comments}</p>
+        </div>
+      )}
+      {reviewMsg && <p className="muted small" style={{ marginBottom: 12 }}>{reviewMsg}</p>}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <Link to={`/speaking/practice/${sub.topic_id}`} className="btn primary" style={{ textDecoration: 'none' }}>
           🔄 {tr('spk_practise_again')}
         </Link>
+        {!sub.teacher_review_requested && sub.status !== 'evaluating' && (
+          <button
+            type="button"
+            className="btn secondary"
+            disabled={requestingReview}
+            onClick={async () => {
+              setRequestingReview(true);
+              try {
+                const res = await SpeakingApi.requestReview(sub.id);
+                setLoaded({ id: String(sub.id), submission: res.submission, error: null });
+                setReviewMsg(tr('spk_review_requested_ok'));
+              } catch (e: unknown) {
+                setReviewMsg(e instanceof Error ? e.message : tr('spk_error'));
+              } finally {
+                setRequestingReview(false);
+              }
+            }}
+          >
+            {tr('spk_request_teacher_review')}
+          </button>
+        )}
         <Link to="/speaking" className="btn ghost" style={{ textDecoration: 'none' }}>
           {tr('spk_new_topics')} →
         </Link>

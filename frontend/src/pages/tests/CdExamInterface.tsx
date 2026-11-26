@@ -1533,6 +1533,10 @@ function SpeakingPrompt({ q }: { q: CdQuestion }) {
   const { t } = useLang();
   const [phase, setPhase] = useState<'idle' | 'prep' | 'speak' | 'done'>('idle');
   const [left, setLeft] = useState(0);
+  const [recordedUrl, setRecordedUrl] = useState<string | null>(null);
+  const [micNote, setMicNote] = useState<string | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
   const prep = q.config.prep_seconds || 0;
   const speak = q.config.answer_seconds || 0;
 
@@ -1543,13 +1547,54 @@ function SpeakingPrompt({ q }: { q: CdQuestion }) {
         if (phase === 'prep') {
           setPhase('speak');
           setLeft(speak);
-        } else setPhase('done');
+        } else {
+          if (recorderRef.current && recorderRef.current.state === 'recording') {
+            recorderRef.current.stop();
+          }
+          setPhase('done');
+        }
       } else setLeft(left - 1);
     }, left > 0 ? 1000 : 0);
     return () => window.clearTimeout(id);
   }, [phase, left, speak]);
 
+  useEffect(() => {
+    if (phase !== 'speak' || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      return;
+    }
+    let cancelled = false;
+    navigator.mediaDevices
+      .getUserMedia({ audio: true })
+      .then((stream) => {
+        if (cancelled) {
+          stream.getTracks().forEach((tr) => tr.stop());
+          return;
+        }
+        chunksRef.current = [];
+        const mr = new MediaRecorder(stream);
+        recorderRef.current = mr;
+        mr.ondataavailable = (ev) => {
+          if (ev.data.size > 0) chunksRef.current.push(ev.data);
+        };
+        mr.onstop = () => {
+          const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+          setRecordedUrl(URL.createObjectURL(blob));
+          stream.getTracks().forEach((tr) => tr.stop());
+        };
+        mr.start();
+        setMicNote(null);
+      })
+      .catch(() => {
+        if (!cancelled) setMicNote(t('spk_mic_denied'));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [phase, t]);
+
   const start = () => {
+    setRecordedUrl(null);
+    setMicNote(null);
     if (prep) {
       setPhase('prep');
       setLeft(prep);
@@ -1557,6 +1602,13 @@ function SpeakingPrompt({ q }: { q: CdQuestion }) {
       setPhase('speak');
       setLeft(speak);
     }
+  };
+
+  const stopEarly = () => {
+    if (recorderRef.current && recorderRef.current.state === 'recording') {
+      recorderRef.current.stop();
+    }
+    setPhase('done');
   };
 
   return (
@@ -1586,11 +1638,24 @@ function SpeakingPrompt({ q }: { q: CdQuestion }) {
             {t('cd_start_timer')}
           </button>
         ) : (
-          <strong>
-            {phase === 'prep' ? t('cd_prep') : t('cd_speak')}: {fmt(left)}
-          </strong>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <strong>
+              {phase === 'prep' ? t('cd_prep') : t('cd_speak')}: {fmt(left)}
+            </strong>
+            {phase === 'speak' && (
+              <button type="button" className="btn ghost sm" onClick={stopEarly}>
+                {t('spk_stop_recording')}
+              </button>
+            )}
+          </span>
         )}
       </div>
+      {micNote && <p className="muted small">{micNote}</p>}
+      {recordedUrl && (
+        <div style={{ marginTop: 8 }}>
+          <audio src={recordedUrl} controls style={{ width: '100%' }} />
+        </div>
+      )}
     </div>
   );
 }

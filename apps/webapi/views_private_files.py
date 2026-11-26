@@ -53,9 +53,13 @@ def _can_read_proof(user, payment: CoursePayment) -> bool:
 
 
 def _can_read_speaking(user, submission: SpeakingSubmission) -> bool:
-    # Recordings are personal data. Owner and platform admins only; a teacher or center
-    # admin gets no implicit access (grant it explicitly if a review workflow needs it).
-    return submission.user_id == user.pk or is_platform_admin(user)
+    # Recordings are personal data. Owner and platform admins always allowed; an active
+    # group teacher may read ONLY when explicitly granted by review workflow.
+    if submission.user_id == user.pk or is_platform_admin(user):
+        return True
+    from apps.speaking.services import can_review_speaking_submission
+
+    return can_review_speaking_submission(user, submission)
 
 
 @api_view(["GET"])

@@ -3047,23 +3047,37 @@ export interface SpeakingSubmissionDetail {
   topic_title: string;
   part: string;
   part_label: string;
+  track?: 'ielts' | 'cefr_multilevel' | string;
+  rubric_version?: string;
   audio_url?: string | null;
   duration_seconds: number;
+  decoded_duration_ms?: number | null;
+  audio_hash?: string;
+  is_verified_audio?: boolean;
   transcript: string;
-  fluency_score: number;
-  lexical_score: number;
-  grammar_score: number;
-  pronunciation_score: number;
-  overall_band: number;
+  fluency_score: number | null;
+  lexical_score: number | null;
+  grammar_score: number | null;
+  pronunciation_score: number | null;
+  overall_band: number | null;
+  final_score?: number | null;
+  task_scores?: Record<string, number>;
   feedback: {
     summary?: string;
     fluency_feedback?: string;
     lexical_feedback?: string;
     grammar_feedback?: string;
     pronunciation_feedback?: string;
+    pronunciation_status?: string;
     vocabulary_suggestions?: { original: string; improved: string; explanation: string }[];
     grammar_corrections?: { incorrect: string; corrected: string; rule: string }[];
   };
+  teacher_review_requested?: boolean;
+  teacher_score?: number | null;
+  teacher_comments?: string;
+  teacher_reviewed_at?: string | null;
+  student_name?: string;
+  student_email?: string;
   status: string;
   created_at: string;
 }
@@ -3077,12 +3091,24 @@ export const SpeakingApi = {
   },
   topic: (id: number | string) => api<SpeakingTopicItem>(`/api/v1/speaking/topics/${id}/`),
   submit: (formData: FormData) =>
-    api<{ ok: boolean; submission: SpeakingSubmissionDetail }>('/api/v1/speaking/submit/', {
+    api<{ ok: boolean; async?: boolean; submission: SpeakingSubmissionDetail }>('/api/v1/speaking/submit/', {
       method: 'POST',
       body: formData,
     }),
   submission: (id: number | string) => api<SpeakingSubmissionDetail>(`/api/v1/speaking/submissions/${id}/`),
   mySubmissions: () => api<{ count: number; results: SpeakingSubmissionDetail[] }>('/api/v1/speaking/my-submissions/'),
+  requestReview: (id: number | string) =>
+    api<{ ok: boolean; submission: SpeakingSubmissionDetail }>(`/api/v1/speaking/submissions/${id}/request-review/`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+  teacherQueue: () =>
+    api<{ pending: SpeakingSubmissionDetail[]; reviewed: SpeakingSubmissionDetail[] }>('/api/v1/speaking/teacher/queue/'),
+  teacherReview: (id: number | string, payload: { score: number; comments?: string }) =>
+    api<{ ok: boolean; submission: SpeakingSubmissionDetail }>(`/api/v1/speaking/teacher/${id}/review/`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 };
 
 // -- Gamification & Streak --------------------------------------------------

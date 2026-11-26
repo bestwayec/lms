@@ -868,7 +868,8 @@ def generate_speaking_vedomost_pdf(submission_or_id: Any) -> str:
     fc = float(getattr(sub, "fluency_score", 0) or 0)
     lr = float(getattr(sub, "lexical_score", 0) or 0)
     gra = float(getattr(sub, "grammar_score", 0) or 0)
-    pr = float(getattr(sub, "pronunciation_score", 0) or 0)
+    pr_raw = getattr(sub, "pronunciation_score", None)
+    pr_str = f"{float(pr_raw):.1f}" if pr_raw is not None else "N/A"
 
     cefr_map = "C2" if overall >= 8.5 else ("C1" if overall >= 7.0 else ("B2" if overall >= 5.5 else ("B1" if overall >= 4.0 else "A2")))
 
@@ -877,7 +878,7 @@ def generate_speaking_vedomost_pdf(submission_or_id: Any) -> str:
             Paragraph(f"Band {overall:.1f}", styles["metric_value"]),
             Paragraph(cefr_map, styles["metric_value"]),
             Paragraph(f"{fc:.1f} / {lr:.1f}", styles["metric_value"]),
-            Paragraph(f"{gra:.1f} / {pr:.1f}", styles["metric_value"]),
+            Paragraph(f"{gra:.1f} / {pr_str}", styles["metric_value"]),
         ],
         [
             Paragraph("OVERALL BAND", styles["metric_label"]),
@@ -938,7 +939,7 @@ def generate_speaking_vedomost_pdf(submission_or_id: Any) -> str:
         ],
         [
             Paragraph("4. Pronunciation & Intonation (PR)", styles["cell"]),
-            Paragraph(f"<b>{pr:.1f}</b>", styles["cell_center"]),
+            Paragraph(f"<b>{pr_str}</b>", styles["cell_center"]),
             Paragraph("9.0", styles["cell_center"]),
             Paragraph(_esc(str(fb.get("pronunciation_feedback") or "Talaffuz va intonatsiya aniqligi baholandi.")[:220]), styles["cell"]),
         ],

@@ -29,13 +29,32 @@ export default function SpeakingPractice() {
   const [prepSecondsLeft, setPrepSecondsLeft] = useState<number>(60);
   const [speakSecondsLeft, setSpeakSecondsLeft] = useState<number>(120);
 
-  // Audio recording
+  // Audio recording & mic readiness
+  const [micStatus, setMicStatus] = useState<'idle' | 'checking' | 'ready' | 'error'>('idle');
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const prepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const speakTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const checkMicrophone = async () => {
+    setMicStatus('checking');
+    setError(null);
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setMicStatus('error');
+        setError(tr('spk_mic_unsupported'));
+        return;
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((track) => track.stop());
+      setMicStatus('ready');
+    } catch {
+      setMicStatus('error');
+      setError(tr('spk_mic_denied'));
+    }
+  };
 
   // Load topic
   useEffect(() => {
@@ -384,6 +403,16 @@ export default function SpeakingPractice() {
             <p className="muted small" style={{ maxWidth: 400, margin: '0 auto 20px' }}>
               Yuqoridagi binafsha tugmani bosing va baland, ravon ovozda gapirishni boshlang (maksimal {topic?.speak_time_seconds || 120} soniya).
             </p>
+            <button
+              type="button"
+              onClick={checkMicrophone}
+              className="btn sm ghost"
+              disabled={micStatus === 'checking'}
+              style={{ marginBottom: 14, fontWeight: 700 }}
+            >
+              {micStatus === 'ready' ? `✓ ${tr('spk_mic_ready')}` : micStatus === 'checking' ? tr('spk_mic_checking') : `🎤 ${tr('spk_mic_test')}`}
+            </button>
+            <br />
             <button
               type="button"
               onClick={startRecording}

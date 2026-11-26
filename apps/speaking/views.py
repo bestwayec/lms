@@ -12,18 +12,26 @@ Endpoints:
 from __future__ import annotations
 
 import logging
+from django.core.exceptions import PermissionDenied
+from django.db.models import Q
 from rest_framework import permissions, status
-from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
+from apps.accounts.access import is_platform_admin
 from apps.core.ai_health import AIUnavailable, record_ai_failure, record_ai_success
 from apps.payments.ai_quota import consume_feature_cap, refund_feature_cap
 
+from .audio_verify import InvalidSpeakingAudio, inspect_uploaded_audio
 from .models import SpeakingSubmission, SpeakingTopic
-from .services import evaluate_speaking_submission
+from .services import (
+    TeacherSpeakingReviewService,
+    can_review_speaking_submission,
+    evaluate_speaking_submission,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,15 +69,26 @@ def _serialize_submission(sub: SpeakingSubmission) -> dict:
         "topic_title": sub.topic.title if sub.topic else "",
         "part": sub.topic.part if sub.topic else "",
         "part_label": sub.topic.get_part_display() if sub.topic else "",
+        "track": getattr(sub, "track", "ielts"),
+        "rubric_version": getattr(sub, "rubric_version", "ielts_speaking_v1"),
         "audio_url": _audio_path(sub),
         "duration_seconds": sub.duration_seconds,
+        "decoded_duration_ms": getattr(sub, "decoded_duration_ms", None),
+        "audio_hash": getattr(sub, "audio_hash", ""),
+        "is_verified_audio": bool(getattr(sub, "is_verified_audio", False)),
         "transcript": sub.transcript,
-        "fluency_score": float(sub.fluency_score),
-        "lexical_score": float(sub.lexical_score),
-        "grammar_score": float(sub.grammar_score),
-        "pronunciation_score": float(sub.pronunciation_score),
-        "overall_band": float(sub.overall_band),
-        "feedback": sub.feedback,
+        "fluency_score": float(sub.fluency_score) if sub.fluency_score is not None else None,
+        "lexical_score": float(sub.lexical_score) if sub.lexical_score is not None else None,
+        "grammar_score": float(sub.grammar_score) if sub.grammar_score is not None else None,
+        "pronunciation_score": float(sub.pronunciation_score) if sub.pronunciation_score is not None else None,
+        "overall_band": float(sub.overall_band) if sub.overall_band is not None else None,
+        "final_score": float(sub.final_score) if getattr(sub, "final_score", None) is not None else (float(sub.overall_band) if sub.overall_band is not None else None),
+        "task_scores": getattr(sub, "task_scores", {}) or {},
+        "feedback": sub.feedback or {},
+        "teacher_review_requested": bool(getattr(sub, "teacher_review_requested", False)),
+        "teacher_score": float(sub.teacher_score) if getattr(sub, "teacher_score", None) is not None else None,
+        "teacher_comments": getattr(sub, "teacher_comments", ""),
+        "teacher_reviewed_at": sub.teacher_reviewed_at.isoformat() if getattr(sub, "teacher_reviewed_at", None) else None,
         "status": sub.status,
         "created_at": sub.created_at.isoformat(),
     }
@@ -161,6 +180,25 @@ class SpeakingSubmitView(APIView):
         duration = int(duration_raw) if str(duration_raw).isdigit() else 60
         duration = max(self.MIN_SECONDS, min(duration, self.MAX_SECONDS))
 
+        expected_raw = request.data.get("expected_seconds")
+        expected_seconds = int(expected_raw) if str(expected_raw or "").isdigit() else None
+        strict_decode = str(request.data.get("strict_decode", "")).lower() in ("1", "true")
+        transcript_only = str(request.data.get("transcript_only", "")).lower() in ("1", "true")
+        track_raw = str(request.data.get("track", "") or "").strip().lower()
+        track = track_raw if track_raw in ("ielts", "cefr_multilevel") else None
+
+        try:
+            audio_meta = inspect_uploaded_audio(
+                audio_file,
+                expected_seconds=expected_seconds,
+                strict_decode=strict_decode,
+            )
+        except InvalidSpeakingAudio as exc:
+            return Response(
+                {"ok": False, "code": exc.code, "error": exc.message},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         allowed, limit = consume_feature_cap(request.user, "speaking")
         if not allowed:
             return Response(
@@ -169,12 +207,54 @@ class SpeakingSubmitView(APIView):
                 status=status.HTTP_429_TOO_MANY_REQUESTS,
             )
 
+        async_mode = str(request.data.get("async") or request.data.get("async_mode") or "").lower() in ("1", "true")
+        if async_mode:
+            topic = SpeakingTopic.objects.filter(pk=topic_id).first()
+            if not topic:
+                refund_feature_cap(request.user, "speaking")
+                return Response(
+                    {"ok": False, "error": "Speaking mavzusi topilmadi."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            resolved_track = track or (
+                SpeakingSubmission.Track.CEFR_MULTILEVEL
+                if topic.part == SpeakingTopic.PartChoice.MULTILEVEL
+                else SpeakingSubmission.Track.IELTS
+            )
+            sub = SpeakingSubmission.objects.create(
+                user=request.user,
+                topic=topic,
+                audio_file=audio_file,
+                duration_seconds=audio_meta.get("decoded_seconds") or duration,
+                decoded_duration_ms=audio_meta.get("decoded_duration_ms"),
+                audio_hash=audio_meta.get("audio_hash", ""),
+                is_verified_audio=bool(audio_meta.get("is_verified_audio")),
+                track=resolved_track,
+                rubric_version=(
+                    "uzbmb_multilevel_speaking_2026_v2"
+                    if resolved_track == SpeakingSubmission.Track.CEFR_MULTILEVEL
+                    else "ielts_speaking_v1"
+                ),
+                status=SpeakingSubmission.Status.EVALUATING,
+            )
+            from .tasks import evaluate_speaking_submission_task
+
+            evaluate_speaking_submission_task.delay(sub.pk, transcript_only=transcript_only)
+            sub.refresh_from_db()
+            return Response(
+                {"ok": True, "async": True, "submission": _serialize_submission(sub)},
+                status=status.HTTP_202_ACCEPTED,
+            )
+
         try:
             sub = evaluate_speaking_submission(
                 audio_file=audio_file,
                 topic_id=topic_id,
                 user=request.user,
                 duration_seconds=duration,
+                track=track,
+                audio_meta=audio_meta,
+                transcript_only=transcript_only,
             )
             record_ai_success("speaking")
             return Response(
@@ -244,6 +324,90 @@ class MySpeakingSubmissionsView(APIView):
         return Response(
             {"count": len(data), "results": data}, status=status.HTTP_200_OK
         )
+
+
+class SpeakingRequestTeacherReviewView(APIView):
+    """POST /api/v1/speaking/submissions/<id>/request-review/"""
+
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [JSONParser]
+
+    def post(self, request: Request, pk: int) -> Response:
+        sub = SpeakingSubmission.objects.filter(pk=pk, user=request.user).select_related("topic").first()
+        if not sub:
+            return Response({"error": "Topshiriq topilmadi."}, status=status.HTTP_404_NOT_FOUND)
+        if sub.status == SpeakingSubmission.Status.EVALUATING:
+            return Response(
+                {"error": "AI baholash yakunlanishini kuting."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        sub.teacher_review_requested = True
+        if sub.teacher_reviewed_at is None:
+            sub.status = SpeakingSubmission.Status.PENDING_TEACHER
+        sub.save(update_fields=["teacher_review_requested", "status"])
+        return Response({"ok": True, "submission": _serialize_submission(sub)}, status=status.HTTP_200_OK)
+
+
+class TeacherSpeakingQueueView(APIView):
+    """GET /api/v1/speaking/teacher/queue/"""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        if not (
+            getattr(request.user, "role", None) == "teacher" or is_platform_admin(request.user)
+        ):
+            raise PermissionDenied("Faqat o'qituvchilar va adminlar uchun.")
+
+        qs = SpeakingSubmission.objects.select_related("user", "topic").filter(
+            Q(teacher_review_requested=True) | Q(status=SpeakingSubmission.Status.PENDING_TEACHER)
+        )
+        if not is_platform_admin(request.user):
+            qs = qs.filter(user__student_groups__teacher=request.user).distinct()
+
+        pending = qs.filter(teacher_reviewed_at__isnull=True).order_by("-created_at")[:50]
+        reviewed = qs.filter(teacher_reviewed_at__isnull=False).order_by("-teacher_reviewed_at")[:20]
+
+        def _card(s: SpeakingSubmission) -> dict:
+            d = _serialize_submission(s)
+            d["student_name"] = s.user.get_full_name() or s.user.email
+            d["student_email"] = s.user.email
+            return d
+
+        return Response(
+            {
+                "pending": [_card(s) for s in pending],
+                "reviewed": [_card(s) for s in reviewed],
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class TeacherSpeakingReviewView(APIView):
+    """POST /api/v1/speaking/teacher/<id>/review/"""
+
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [JSONParser]
+
+    def post(self, request: Request, pk: int) -> Response:
+        sub = SpeakingSubmission.objects.select_related("user", "topic").filter(pk=pk).first()
+        if not sub:
+            return Response({"error": "Topshiriq topilmadi."}, status=status.HTTP_404_NOT_FOUND)
+        if not can_review_speaking_submission(request.user, sub):
+            raise PermissionDenied("Bu speaking topshirig'ini tekshirishga ruxsatingiz yo'q.")
+
+        raw_score = request.data.get("score")
+        if raw_score is None or isinstance(raw_score, bool):
+            return Response({"detail": "score majburiy."}, status=status.HTTP_400_BAD_REQUEST)
+        comments = str(request.data.get("comments") or request.data.get("teacher_comments") or "")
+        try:
+            updated = TeacherSpeakingReviewService.submit_review(
+                sub, request.user, score=raw_score, comments=comments
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"ok": True, "submission": _serialize_submission(updated)}, status=status.HTTP_200_OK)
 
 
 def _seed_default_speaking_topics():
