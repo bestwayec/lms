@@ -23,14 +23,25 @@ import {
   XIcon,
 } from './icons';
 
+import type { WorkspaceMode } from '../lib/routeTitle';
+
 interface MobileNavDrawerProps {
   isOpen: boolean;
   onClose: () => void;
+  workspace?: WorkspaceMode;
+  availableWorkspaces?: WorkspaceMode[];
+  onSelectWorkspace?: (mode: WorkspaceMode) => void;
 }
 
 export type CategoryTrack = 'milliy' | 'attestatsiya' | 'ielts';
 
-export default function MobileNavDrawer({ isOpen, onClose }: MobileNavDrawerProps) {
+export default function MobileNavDrawer({
+  isOpen,
+  onClose,
+  workspace = 'student',
+  availableWorkspaces = ['student'],
+  onSelectWorkspace,
+}: MobileNavDrawerProps) {
   const { user } = useAuth();
   const { resolvedTheme, setTheme } = useTheme();
   const { t } = useLang();
@@ -162,83 +173,75 @@ export default function MobileNavDrawer({ isOpen, onClose }: MobileNavDrawerProp
               </button>
             </div>
 
-            {/* Main Navigation List */}
-            <nav style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
-              <p
-                style={{
-                  margin: '8px 0 4px',
-                  fontSize: 11,
-                  fontWeight: 800,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.08em',
-                  color: isDark ? '#94A3B8' : '#64748B',
-                }}
-              >
-                {t('nav_sec_main')}
-              </p>
-
-              <NavLink to="/dashboard" style={linkStyle} onClick={onClose}>
-                <span style={{ color: '#F59E0B' }}><HomeIcon size={18} /></span>
-                <span>{t('nav_home')}</span>
-              </NavLink>
-
-              <NavLink to="/tests" style={linkStyle} onClick={onClose}>
-                <span style={{ color: '#059669' }}><FileTextIcon size={18} /></span>
-                <span>{t('nav_tests')}</span>
-              </NavLink>
-
-              <NavLink to="/essays" style={linkStyle} onClick={onClose}>
-                <span style={{ color: '#0284C7' }}><PenLineIcon size={18} /></span>
-                <span>{t('nav_essays')}</span>
-              </NavLink>
-
-              <NavLink to="/arena" style={linkStyle} onClick={onClose}>
-                <span style={{ color: '#DC2626' }}><SwordsIcon size={18} /></span>
-                <span>{t('nav_arena')}</span>
-              </NavLink>
-
-              {!isTeacher && !isAdmin && (
-                <NavLink to="/groups" style={linkStyle} onClick={onClose}>
-                  <span style={{ color: '#0EA5E9' }}><UsersIcon size={18} /></span>
-                  <span>{t('my_group_ranking', 'Guruhim va Reyting')}</span>
-                </NavLink>
-              )}
-
-              <NavLink to="/tests/scan-omr" style={linkStyle} onClick={onClose}>
-                <span style={{ color: '#8B5CF6' }}><CameraIcon size={18} /></span>
-                <span>{t('nav_omr')}</span>
-              </NavLink>
-
-              <NavLink to="/results" style={linkStyle} onClick={onClose}>
-                <span style={{ color: '#D97706' }}><TrophyIcon size={18} /></span>
-                <span>{t('nav_results')}</span>
-              </NavLink>
-
-              {!isAdmin && (
-                <NavLink to="/subscribe" style={linkStyle} onClick={onClose}>
-                  <span style={{ color: '#F59E0B' }}><CrownIcon size={18} /></span>
-                  <span>{t('drawer_plans')}</span>
-                </NavLink>
-              )}
-
-              {/* Role-Specific Sections */}
-              {isTeacher && (
-                <>
-                  <p
-                    style={{
-                      margin: '14px 0 4px',
-                      fontSize: 11,
-                      fontWeight: 800,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.08em',
-                      color: isDark ? '#94A3B8' : '#64748B',
+            {/* Multi-Role Workspace Switcher */}
+            {availableWorkspaces.length > 1 && onSelectWorkspace && (
+              <div className="ui-seg" style={{ marginBottom: 12 }} role="group" aria-label="Ish maydoni">
+                {availableWorkspaces.map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    aria-pressed={workspace === mode}
+                    onClick={() => {
+                      onSelectWorkspace(mode);
+                      onClose();
                     }}
                   >
+                    {mode === 'admin' ? 'Admin' : mode === 'teacher' ? 'Ustoz' : mode === 'parent' ? 'Ota-ona' : "O'quvchi"}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Main Navigation List */}
+            <nav style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+              {workspace === 'admin' && isAdmin && (
+                <>
+                  <p style={{ margin: '8px 0 4px', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#EF4444' }}>
+                    {t('drawer_admin_panel')}
+                  </p>
+                  <NavLink to="/panel" end style={linkStyle} onClick={onClose}>
+                    <ShieldCheckIcon size={18} style={{ color: '#EF4444' }} />
+                    <span>{t('panel_dashboard', 'Admin Panel')}</span>
+                  </NavLink>
+                  <NavLink to="/panel/users" style={linkStyle} onClick={onClose}>
+                    <UsersIcon size={18} />
+                    <span>{t('users', 'Foydalanuvchilar')}</span>
+                  </NavLink>
+                  <NavLink to="/panel/teachers" style={linkStyle} onClick={onClose}>
+                    <UsersIcon size={18} />
+                    <span>{t('manage_teachers', "O'qituvchilar")}</span>
+                  </NavLink>
+                  <NavLink to="/enterprise" style={linkStyle} onClick={onClose}>
+                    <HomeIcon size={18} />
+                    <span>{t('enterprise_title', "O'quv Markazlari")}</span>
+                  </NavLink>
+                  <NavLink to="/panel/groups" style={linkStyle} onClick={onClose}>
+                    <FolderOpenIcon size={18} />
+                    <span>{t('groups', 'Guruhlar')}</span>
+                  </NavLink>
+                  <NavLink to="/panel/tests" style={linkStyle} onClick={onClose}>
+                    <FileTextIcon size={18} />
+                    <span>{t('all_tests_control', 'Barcha Testlar')}</span>
+                  </NavLink>
+                  <NavLink to="/panel/tuition" style={linkStyle} onClick={onClose}>
+                    <CreditCardIcon size={18} />
+                    <span>{t('tuition_title', "To'lovlar")}</span>
+                  </NavLink>
+                  <NavLink to="/panel/feedback" style={linkStyle} onClick={onClose}>
+                    <PenLineIcon size={18} />
+                    <span>{t('fbi_title', 'Fikrlar')}</span>
+                  </NavLink>
+                </>
+              )}
+
+              {workspace === 'teacher' && isTeacher && (
+                <>
+                  <p style={{ margin: '8px 0 4px', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: isDark ? '#94A3B8' : '#64748B' }}>
                     {t('nav_sec_teacher')}
                   </p>
-                  <NavLink to="/teacher/finance" style={linkStyle} onClick={onClose}>
-                    <CreditCardIcon size={18} />
-                    <span>{t('tuition_title')}</span>
+                  <NavLink to="/dashboard" end style={linkStyle} onClick={onClose}>
+                    <HomeIcon size={18} />
+                    <span>{t('teacher_cabinet', "O'qituvchi Kabineti")}</span>
                   </NavLink>
                   <NavLink to="/groups" style={linkStyle} onClick={onClose}>
                     <FolderOpenIcon size={18} />
@@ -247,6 +250,18 @@ export default function MobileNavDrawer({ isOpen, onClose }: MobileNavDrawerProp
                   <NavLink to="/teacher/studio" style={linkStyle} onClick={onClose}>
                     <SparklesIcon size={18} />
                     <span>{t('studio_title')}</span>
+                  </NavLink>
+                  <NavLink to="/tests/create" style={linkStyle} onClick={onClose}>
+                    <SparklesIcon size={18} />
+                    <span>{t('create_smart_test', 'Yangi Test')}</span>
+                  </NavLink>
+                  <NavLink to="/tests" style={linkStyle} onClick={onClose}>
+                    <FileTextIcon size={18} />
+                    <span>{t('my_tests', 'Mening Testlarim')}</span>
+                  </NavLink>
+                  <NavLink to="/teacher/finance" style={linkStyle} onClick={onClose}>
+                    <CreditCardIcon size={18} />
+                    <span>{t('tuition_title')}</span>
                   </NavLink>
                   <NavLink to="/teacher/ai-converter" style={linkStyle} onClick={onClose}>
                     <SparklesIcon size={18} />
@@ -265,23 +280,42 @@ export default function MobileNavDrawer({ isOpen, onClose }: MobileNavDrawerProp
                 </>
               )}
 
-              {isAdmin && (
+              {workspace === 'student' && (
                 <>
-                  <p
-                    style={{
-                      margin: '14px 0 4px',
-                      fontSize: 11,
-                      fontWeight: 800,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.08em',
-                      color: '#EF4444',
-                    }}
-                  >
-                    {t('drawer_admin_panel')}
+                  <p style={{ margin: '8px 0 4px', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: isDark ? '#94A3B8' : '#64748B' }}>
+                    {t('nav_sec_main')}
                   </p>
-                  <NavLink to="/panel" end style={linkStyle} onClick={onClose}>
-                    <ShieldCheckIcon size={18} style={{ color: '#EF4444' }} />
-                    <span>{t('nav_admin')}</span>
+                  <NavLink to="/dashboard" style={linkStyle} onClick={onClose}>
+                    <span style={{ color: '#F59E0B' }}><HomeIcon size={18} /></span>
+                    <span>{t('nav_home')}</span>
+                  </NavLink>
+                  <NavLink to="/tests" style={linkStyle} onClick={onClose}>
+                    <span style={{ color: '#059669' }}><FileTextIcon size={18} /></span>
+                    <span>{t('nav_tests')}</span>
+                  </NavLink>
+                  <NavLink to="/essays" style={linkStyle} onClick={onClose}>
+                    <span style={{ color: '#0284C7' }}><PenLineIcon size={18} /></span>
+                    <span>{t('nav_essays')}</span>
+                  </NavLink>
+                  <NavLink to="/arena" style={linkStyle} onClick={onClose}>
+                    <span style={{ color: '#DC2626' }}><SwordsIcon size={18} /></span>
+                    <span>{t('nav_arena')}</span>
+                  </NavLink>
+                  <NavLink to="/groups" style={linkStyle} onClick={onClose}>
+                    <span style={{ color: '#0EA5E9' }}><UsersIcon size={18} /></span>
+                    <span>{t('my_group_ranking', 'Guruhim va Reyting')}</span>
+                  </NavLink>
+                  <NavLink to="/tests/scan-omr" style={linkStyle} onClick={onClose}>
+                    <span style={{ color: '#8B5CF6' }}><CameraIcon size={18} /></span>
+                    <span>{t('nav_omr')}</span>
+                  </NavLink>
+                  <NavLink to="/results" style={linkStyle} onClick={onClose}>
+                    <span style={{ color: '#D97706' }}><TrophyIcon size={18} /></span>
+                    <span>{t('nav_results')}</span>
+                  </NavLink>
+                  <NavLink to="/subscribe" style={linkStyle} onClick={onClose}>
+                    <span style={{ color: '#F59E0B' }}><CrownIcon size={18} /></span>
+                    <span>{t('drawer_plans')}</span>
                   </NavLink>
                 </>
               )}

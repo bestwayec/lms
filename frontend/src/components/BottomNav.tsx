@@ -1,24 +1,17 @@
 import { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Home, FileText, Users, Trophy, User } from 'lucide-react';
+import { BarChart3, FileText, Home, ShieldCheck, Trophy, User, Users } from 'lucide-react';
 import { useAuth } from '../auth/authState';
 import { useLang } from '../i18n/LangContext';
 import { hapticSelect } from '../lib/haptics';
+import type { WorkspaceMode } from '../lib/routeTitle';
 
 interface BottomNavProps {
   onOpenProfile?: () => void;
+  workspace?: WorkspaceMode;
 }
 
-/**
- * Mobile-First Sticky Bottom Navigation Bar (App Shell)
- * Features:
- * - 5 core destinations: Bosh sahifa, Testlar, Guruhim, Reyting, Profil
- * - Safe area support (pb-[max(1rem,env(safe-area-inset-bottom))])
- * - Frosted glass backdrop (glassmorphism blur)
- * - Vibrant gradient active state with glowing indicator dot
- * - Auto-hide when mobile virtual keyboard is open
- */
-export default function BottomNav({ onOpenProfile }: BottomNavProps) {
+export default function BottomNav({ onOpenProfile, workspace = 'student' }: BottomNavProps) {
   const { user, openAuthModal } = useAuth();
   const { t } = useLang();
   const { pathname } = useLocation();
@@ -99,39 +92,108 @@ export default function BottomNav({ onOpenProfile }: BottomNavProps) {
     }
   };
 
-  const navItems = [
-    {
-      to: user ? '/dashboard' : '/',
-      label: t('bnav_home', 'Bosh sahifa'),
-      Icon: Home,
-      isActive: pathname === '/' || pathname === '/dashboard',
-    },
-    {
-      to: '/tests',
-      label: t('bnav_tests', 'Testlar'),
-      Icon: FileText,
-      isActive: pathname.startsWith('/tests'),
-    },
-    {
-      to: '/groups',
-      label: t('bnav_groups', 'Guruhim'),
-      Icon: Users,
-      isActive: pathname.startsWith('/groups') || pathname.startsWith('/join'),
-    },
-    {
-      to: '/leaderboard',
-      label: t('bnav_leaderboard', 'Reyting'),
-      Icon: Trophy,
-      isActive: pathname.startsWith('/leaderboard') || pathname.startsWith('/arena'),
-    },
-    {
-      to: '/profile',
-      label: t('bnav_profile', 'Profil'),
-      Icon: User,
-      onClick: handleProfileClick,
-      isActive: pathname.startsWith('/profile'),
-    },
-  ];
+  const navItems =
+    workspace === 'admin'
+      ? [
+          {
+            to: '/panel',
+            label: t('tb_admin_panel', 'Panel'),
+            Icon: ShieldCheck,
+            isActive: pathname === '/panel',
+          },
+          {
+            to: '/panel/users',
+            label: t('users', 'A’zolar'),
+            Icon: Users,
+            isActive: pathname.startsWith('/panel/users') || pathname.startsWith('/panel/teachers'),
+          },
+          {
+            to: '/panel/tests',
+            label: t('bnav_tests', 'Testlar'),
+            Icon: FileText,
+            isActive: pathname.startsWith('/panel/tests'),
+          },
+          {
+            to: '/panel/groups',
+            label: t('groups', 'Guruhlar'),
+            Icon: BarChart3,
+            isActive: pathname.startsWith('/panel/groups') || pathname.startsWith('/groups'),
+          },
+          {
+            to: '/profile',
+            label: t('bnav_profile', 'Profil'),
+            Icon: User,
+            onClick: handleProfileClick,
+            isActive: pathname.startsWith('/profile'),
+          },
+        ]
+      : workspace === 'teacher'
+      ? [
+          {
+            to: '/dashboard',
+            label: t('bnav_home', 'Kabinet'),
+            Icon: Home,
+            isActive: pathname === '/' || pathname === '/dashboard',
+          },
+          {
+            to: '/groups',
+            label: t('groups', 'Guruhlar'),
+            Icon: Users,
+            isActive: pathname.startsWith('/groups'),
+          },
+          {
+            to: '/tests',
+            label: t('bnav_tests', 'Testlar'),
+            Icon: FileText,
+            isActive: pathname.startsWith('/tests') || pathname.startsWith('/teacher/studio'),
+          },
+          {
+            to: '/analytics',
+            label: t('analytics', 'Tahlil'),
+            Icon: BarChart3,
+            isActive: pathname.startsWith('/analytics'),
+          },
+          {
+            to: '/profile',
+            label: t('bnav_profile', 'Profil'),
+            Icon: User,
+            onClick: handleProfileClick,
+            isActive: pathname.startsWith('/profile'),
+          },
+        ]
+      : [
+          {
+            to: user ? '/dashboard' : '/',
+            label: t('bnav_home', 'Bosh sahifa'),
+            Icon: Home,
+            isActive: pathname === '/' || pathname === '/dashboard',
+          },
+          {
+            to: '/tests',
+            label: t('bnav_tests', 'Testlar'),
+            Icon: FileText,
+            isActive: pathname.startsWith('/tests'),
+          },
+          {
+            to: '/groups',
+            label: t('bnav_groups', 'Guruhim'),
+            Icon: Users,
+            isActive: pathname.startsWith('/groups') || pathname.startsWith('/join'),
+          },
+          {
+            to: '/leaderboard',
+            label: t('bnav_leaderboard', 'Reyting'),
+            Icon: Trophy,
+            isActive: pathname.startsWith('/leaderboard') || pathname.startsWith('/arena'),
+          },
+          {
+            to: '/profile',
+            label: t('bnav_profile', 'Profil'),
+            Icon: User,
+            onClick: handleProfileClick,
+            isActive: pathname.startsWith('/profile'),
+          },
+        ];
 
   return (
     <>
