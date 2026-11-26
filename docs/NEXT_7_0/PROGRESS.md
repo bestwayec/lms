@@ -7,9 +7,9 @@
 | :--- | :--- | :--- | :--- |
 | Phase 00 | Complete Repository Audit | PASS | Audited backend, frontend, bot, TMA, nginx, CI; recorded baseline tests & 13 confirmed bugs. |
 | Phase 01 | Critical API & Authentication Recovery | PASS | Fixed unmatched API JSON 404 guard, Groups lifecycle routes & duplicate-submit locks, centralized `httpClient.ts`/`api.ts` Content-Type & HTML checks, TMA `@authentication_classes([])` + `get_token` CSRF issuance (`62` pytest + `32` frontend unit tests PASS). |
-| Phase 02 | Unified GRANDEC Design System | IN PROGRESS | Consolidating semantic tokens, Light/Dark/System themes, and reusable UI primitives. |
-| Phase 03 | Role-Based Workspace Architecture | NOT STARTED | Separate Admin / Teacher / Student shells, remove student subject switcher from Admin, fix `<title>`. |
-| Phase 04 | Responsive Layout 2.0 | NOT STARTED | Collapsible sidebar, mobile menu trigger, 320–1920px grid/flex stabilization. |
+| Phase 02 | Unified GRANDEC Design System | PASS | Consolidated semantic Light/Dark/System tokens in `index.css` & `ThemeContext.tsx` (zero FOUC in `index.html`), removed unsafe `!important` color overrides, and built 20 reusable UI primitives in `components/ui/index.tsx`. |
+| Phase 03 | Role-Based Workspace Architecture | IN PROGRESS | Separating Admin/Teacher/Student shells, adding workspace switcher, and fixing route `<title>` sync. |
+| Phase 04 | Responsive Layout 2.0 | IN PROGRESS | Adding collapsible desktop sidebar, mobile menu trigger, and 320–1920px shell stabilization. |
 | Phase 05 | Admin Panel 2.0 | NOT STARTED | Fix dark-mode modals/tables in `PanelTests` / `PanelUsers`, refine `PanelDashboard`. |
 | Phase 06 | Group Management & Teacher Workspace 3.0 | NOT STARTED | Group card actions & overflow menu, inline create validation, Telegram connect/send UX. |
 | Phase 07 | Smart Test Builder 7.0 | NOT STARTED | Theme-aware `SmartTestCreate`, responsive editor/preview tabs, draft recovery & validation. |
