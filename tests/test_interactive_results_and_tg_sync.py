@@ -318,7 +318,8 @@ def test_result_vedomost_pdf_download_endpoint(setup_branch_and_test, settings, 
     def generate_private_pdf(attempt_id):
         path = generate_student_vedomost_pdf(attempt_id)
         paths.append(path)
-        assert os.stat(path).st_mode & 0o777 == 0o600
+        if os.name != "nt":
+            assert os.stat(path).st_mode & 0o777 == 0o600
         assert not os.path.commonpath([str(tmp_path), path]) == str(tmp_path)
         return path
 
@@ -399,7 +400,8 @@ def test_ai_scorecard_files_are_private(setup_branch_and_test, settings, tmp_pat
         paths.extend([generate(), generate()])
         assert paths[0] != paths[1]
         for path in paths:
-            assert os.stat(path).st_mode & 0o777 == 0o600
+            if os.name != "nt":
+                assert os.stat(path).st_mode & 0o777 == 0o600
             with open(path, "rb") as report:
                 assert report.read(4) == b"%PDF"
         assert not list(tmp_path.rglob("*.pdf"))

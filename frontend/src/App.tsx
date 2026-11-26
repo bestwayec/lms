@@ -86,6 +86,7 @@ const AuthModal = lazyPage(() => import('./components/AuthModal'));
 import ErrorBoundary from './components/ErrorBoundary';
 import { useLang } from './i18n/LangContext';
 import { ToastProvider } from './context/ToastContext';
+import { resolveRouteTitle } from './lib/routeTitle';
 
 export default function App() {
   return (
@@ -401,18 +402,19 @@ function PanelQuestionsRedirect() {
   return <Navigate to={`/panel/tests/${id}/questions`} replace />;
 }
 
-/** New page starts at the top (except same-page anchor jumps). */
+/** New page starts at the top and keeps browser <title> aligned with the active route. */
 function ScrollTop() {
   const { pathname, hash } = useLocation();
+  const { t } = useLang();
   useEffect(() => {
     if (!hash) window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+    document.title = resolveRouteTitle(pathname, t);
     // Private routes must not inherit indexable metadata from the landing page.
     const isPublic = pathname === '/' || pathname === '/pricing';
     let robots = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
     if (!robots) { robots = document.createElement('meta'); robots.name = 'robots'; document.head.appendChild(robots); }
     robots.content = isPublic ? 'index, follow' : 'noindex, follow';
     if (!isPublic) document.getElementById('seo-json-ld')?.remove();
-
-  }, [pathname, hash]);
+  }, [pathname, hash, t]);
   return null;
 }

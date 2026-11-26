@@ -501,6 +501,7 @@ class StudentGroupSerializer(serializers.ModelSerializer):
             "name",
             "description",
             "subject",
+            "status",
             "teacher",
             "teacher_name",
             "branch",

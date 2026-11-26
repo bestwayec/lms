@@ -9,6 +9,19 @@
    - Ustoz kabinetida har bir o'quvchining PRO holati (`⭐ PRO (Faol)`), ishlagan testlari va esselari aks etishi.
 3. Attestatsiya 2026 yangi diagnostika testini 50 ta savoli bilan bazaga seed qilish, kategoriyalashtirish va VPS ga deploy qilish.
 
+### 3.0. GRANDEC NEXT 7.0: Full Platform Refinement, UI/UX, Telegram & Production Reliability
+- **Maqsad:** Platformadagi API/CSRF xatolari, Dark Mode va Light Mode kontrast muammolari, rolga ajratilgan ish maydonlari (`Admin`, `Teacher`, `Student`), guruh boshqaruvi (`Groups.tsx`), `SmartTestCreate`, Telegram bot callback/RBAC va Telegram Mini App (`/tma`) ishonchliligini to'liq tiklash hamda yakuniy QA/Playwright tekshiruvidan o'tkazish.
+- **Bajarildi:**
+  * [x] **0–1-bosqich (Audit, API & CSRF tiklash):** Unmatched `/api/*` uchun JSON 404 himoyasi (`config/urls.py`), `Groups` lifecycle endpointlari (`archive`, `restore`, `dependencies`, `safe-delete`), `StudentGroupSerializer.status` maydoni (`apps/webapi/serializers.py`), `tma_auth_view` uchun `@authentication_classes([])` + `get_token(request)` CSRF himoyasi va `httpClient.ts` HTML-javob himoyasi (`BUG-001`..`BUG-003`, `BUG-014`).
+  * [x] **2–4-bosqich (Dizayn Tizimi & Rol Arxitekturasi):** Light/Dark/System semantik dizayn tokenlari (`index.html`, `ThemeContext.tsx`, `index.css`), 20 ta UI primitiv (`components/ui/index.tsx`), `Admin`/`Teacher`/`Student`/`Parent` uchun ajratilgan navigatsiya va sarlavhalar (`Layout.tsx`, `Navbar.tsx`, `routeTitle.ts`), yig'iluvchi desktop sidebar va mobil menyu tugmasi (`BUG-006`..`BUG-009`).
+  * [x] **5–7-bosqich (Admin Panel, Guruhlar, Smart Test Builder):** `PanelTests`, `PanelUsers`, `PanelDashboard` dark-mode modallari/jadvallari; `Groups.tsx` `<Dropdown>` menyusi, tekshirilgan Telegram/Vedomost holati, `<Modal>` dialoglari va yuklash qulflari; `SmartTestCreate.tsx` dark-mode moslashuvi, mobil `Editor`/`Preview` tablari va `localStorage` qoralama saqlanishi (`BUG-004`, `BUG-005`, `BUG-010`).
+  * [x] **8–9-bosqich (Telegram Bot & Mini App 7.0):** `group_assistant_callback_handler` regex to'qnashuvi bartaraf etildi, `adm_*` / `tch_*` callbacklarida qat'iy tasdiqlangan rol tekshiruvi va `/dashboard` havolalari qo'shildi; `Tma.css` Light/Dark/ThemeParams moslashuvi, qorong'u sarlavha kontrasti tuzatildi, `Admin`/`Ustoz` TMA tezkor kartalari hamda `TestFlow.tsx` `sessionStorage` qayta tiklash qo'shildi (`BUG-011`, `BUG-012`).
+  * [x] **10–11-bosqich (Sifat, Xavfsizlik, To'liq Verifikatsiya):** `ruff check .` (0), `manage.py check` (0), `makemigrations --check --dry-run` (0 o'zgarish), `pytest -q` (`2026 passed, 14 skipped, 272 subtests passed`), `oxlint` (`0 warnings, 0 errors`), `frontend test` (`34 passed`), `tsc -b && vite build` (`5.85s`), Chromium Playwright E2E (`39 passed, 0 failed, 0 console errors`), yakuniy hujjatlar to'plami `docs/NEXT_7_0/`.
+- **Jarayonda:**
+  * GitHub Draft PR (`feat/grandec-next-7-0-platform-refinement` -> `main`) yaratilib CI/Security tekshiruvlariga topshirilmoqda (prod deploy qilinmadi).
+- **Keyingi qadamlar:**
+  * GitHub Actions CI (shu jumladan PostgreSQL concurrency testlari va Nginx check) natijasini ko'zdan kechirish va egasi ruxsati bilan merge hamda qo'lda production deploy bajarish.
+
 ### 2.99. Rasmiy Versiya v8.3: Performance, Optimization & Product Excellence
 *   **Bajarildi (Infrastructure, Release & Security Chain):**
     *   `CI -> Release -> Build -> Deploy` zanjiri qayta ulanib, GitHub Release (`vX.Y.Z`) va `VERSION` fayli o'rtasidagi farq bartaraf etildi (`GITHUB_TOKEN` + `release-meta`/`build-meta` artifactlari orqali).

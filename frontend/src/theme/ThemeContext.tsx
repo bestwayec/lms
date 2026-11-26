@@ -6,41 +6,48 @@ const THEME_KEY = 'theme_v2';
 
 function getStoredTheme(): Theme {
   try {
-    // Purge legacy dark preference so users transition to the unified Warm Academic Luxury light aesthetic
-    if (localStorage.getItem('theme') === 'dark') {
-      localStorage.removeItem('theme');
-    }
-    const saved = localStorage.getItem(THEME_KEY);
-    if (saved === 'dark') {
-      return 'dark';
-    }
-    if (saved === 'light' || saved === 'system') {
+    const saved = localStorage.getItem(THEME_KEY) || localStorage.getItem('theme');
+    if (saved === 'dark' || saved === 'light' || saved === 'system') {
+      if (!localStorage.getItem(THEME_KEY)) {
+        localStorage.setItem(THEME_KEY, saved);
+      }
       return saved;
     }
   } catch {
     /* ignore */
   }
-  // Default is STRICTLY light mode (Warm Academic Luxury)
   return 'light';
+}
+
+function getSystemDark(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) return false;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(getStoredTheme);
+  const [systemDark, setSystemDark] = useState<boolean>(getSystemDark);
 
-  // Default to light mode (warm academic luxury), dark only if explicitly chosen
-  const resolvedTheme: ResolvedTheme = theme === 'dark' ? 'dark' : 'light';
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return undefined;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = (e: MediaQueryListEvent) => setSystemDark(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  const resolvedTheme: ResolvedTheme =
+    theme === 'dark' ? 'dark' : theme === 'system' && systemDark ? 'dark' : 'light';
 
   useEffect(() => {
     const root = document.documentElement;
     root.setAttribute('data-theme', resolvedTheme);
-    if (resolvedTheme === 'light') {
-      root.classList.remove('dark');
-      root.classList.add('light');
-      root.style.colorScheme = 'light';
-    } else {
-      root.classList.remove('light');
-      root.classList.add('dark');
-      root.style.colorScheme = 'dark';
+    root.classList.remove('light', 'dark');
+    root.classList.add(resolvedTheme);
+    root.style.colorScheme = resolvedTheme;
+    const metaTheme = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (metaTheme) {
+      metaTheme.content = resolvedTheme === 'dark' ? '#090D16' : '#F8FAFC';
     }
   }, [resolvedTheme]);
 
@@ -48,6 +55,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setThemeState(next);
     try {
       localStorage.setItem(THEME_KEY, next);
+      localStorage.setItem('theme', next);
     } catch {
       /* ignore */
     }

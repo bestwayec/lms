@@ -2,7 +2,8 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/authState';
 import { useLang } from '../i18n/LangContext';
-import { TelegramAuth } from '../lib/api';
+import { useTheme } from '../theme/themeState';
+import { canTeach, isPlatformAdmin, TelegramAuth } from '../lib/api';
 import { TmaApi } from './tma/api';
 import type { TmaProfile } from './tma/api';
 import { loadTelegramScript, tg } from './tma/telegram';
@@ -29,12 +30,19 @@ type Tab = 'home' | 'tests' | 'classroom' | 'leaderboard' | 'profile';
 export default function Tma() {
   const { user, loginWithTelegram } = useAuth();
   const { t, setLang } = useLang();
+  const { resolvedTheme: appThemeResolved } = useTheme();
+  const [tgColorScheme, setTgColorScheme] = useState<'light' | 'dark' | null>(() => tg()?.colorScheme ?? null);
   const [boot, setBoot] = useState<Boot>('boot');
   const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<TmaProfile | null>(null);
   const [tab, setTab] = useState<Tab>('home');
   const [activeTestId, setActiveTestId] = useState<number | null>(null);
   const backHandlerRef = useRef<(() => void) | null>(null);
+
+  const isDark = (tgColorScheme ?? appThemeResolved) === 'dark';
+  const isAdmin = isPlatformAdmin(user) || profile?.user?.role === 'admin' || profile?.user?.role === 'superadmin';
+  const isTeacher = !isAdmin && (canTeach(user) || profile?.user?.role === 'teacher');
+  const roleKind: 'admin' | 'teacher' | 'student' = isAdmin ? 'admin' : isTeacher ? 'teacher' : 'student';
 
   const setBackHandler = useCallback((fn: (() => void) | null) => {
     backHandlerRef.current = fn;
@@ -84,9 +92,13 @@ export default function Tma() {
       try {
         wa.ready();
         wa.expand();
+        const waScheme = wa.colorScheme;
+        setTgColorScheme(waScheme ?? null);
+        const darkNow = (waScheme ?? appThemeResolved) === 'dark';
+        const tp = wa.themeParams;
         try {
-          wa.setHeaderColor('#FFFFFF');
-          wa.setBackgroundColor('#F8FAFC');
+          wa.setHeaderColor(tp?.header_bg_color || (darkNow ? '#0B1220' : '#FFFFFF'));
+          wa.setBackgroundColor(tp?.bg_color || (darkNow ? '#0F172A' : '#F8FAFC'));
         } catch {
           /* older clients — ignore */
         }
@@ -190,7 +202,7 @@ export default function Tma() {
 
   if (boot === 'boot' || boot === 'authing') {
     return (
-      <div className="tma-root">
+      <div className={`tma-root ${isDark ? 'is-dark' : ''}`} data-theme={isDark ? 'dark' : 'light'}>
         <div className="tma-auth">
           <div>
             <div className="tma-spin" />
@@ -203,7 +215,7 @@ export default function Tma() {
 
   if (boot === 'outside') {
     return (
-      <div className="tma-root">
+      <div className={`tma-root ${isDark ? 'is-dark' : ''}`} data-theme={isDark ? 'dark' : 'light'}>
         <div className="tma-auth">
           <div className="tma-auth-card" style={{ maxWidth: 360, textAlign: 'center', padding: '24px 20px' }}>
             <img
@@ -258,7 +270,7 @@ export default function Tma() {
 
   if (boot === 'error') {
     return (
-      <div className="tma-root">
+      <div className={`tma-root ${isDark ? 'is-dark' : ''}`} data-theme={isDark ? 'dark' : 'light'}>
         <div className="tma-auth">
           <div className="tma-auth-card" style={{ maxWidth: 360, textAlign: 'center', padding: '24px 20px' }}>
             <div style={{ fontSize: 36, marginBottom: 8 }}>⚠️</div>
@@ -294,11 +306,17 @@ export default function Tma() {
   const inFlow = activeTestId !== null;
 
   return (
-    <div className="tma-root">
+    <div className={`tma-root ${isDark ? 'is-dark' : ''}`} data-theme={isDark ? 'dark' : 'light'}>
       <div className="tma-wrap">
         <header className="tma-header">
           <h1>{firstName ? `${t('tma_greeting')}, ${firstName}!` : t('dashboard')}</h1>
-          <span className="tma-xp">⚡ {profile?.stats.total_xp ?? 0} XP</span>
+          <span className="tma-xp">
+            {roleKind === 'admin'
+              ? '👑 Admin'
+              : roleKind === 'teacher'
+              ? '👨‍🏫 Ustoz'
+              : `⚡ ${profile?.stats.total_xp ?? 0} XP`}
+          </span>
         </header>
 
         <main className="tma-main">
@@ -308,6 +326,7 @@ export default function Tma() {
             ) : tab === 'home' ? (
               <Home
                 profile={profile}
+                role={roleKind}
                 onProfileLoaded={setProfile}
                 onOpenTest={openTest}
                 onNavigateClassroom={() => switchTab('classroom')}

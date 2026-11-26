@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Alert, Modal } from '../components/ui';
 import { useLang } from '../i18n/LangContext';
 import {
   Panel,
@@ -21,7 +22,6 @@ import {
   ShieldCheckIcon,
   TargetIcon,
   UsersIcon,
-  XIcon,
 } from '../components/icons';
 
 /**
@@ -43,6 +43,7 @@ export default function PanelDashboard() {
   const [teachers, setTeachers] = useState<PanelTeacherItem[]>([]);
   const [attendance, setAttendance] = useState<PanelAttendanceItem[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(true);
+  const [groupsLoadErr, setGroupsLoadErr] = useState<string | null>(null);
 
   // Group Create Modal State
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
@@ -55,14 +56,23 @@ export default function PanelDashboard() {
   const [groupErrorMsg, setGroupErrorMsg] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
-  const loadGroupsAndAttendance = () => {
+  const loadGroupsAndAttendance = useCallback(() => {
     setGroupsLoading(true);
+    setGroupsLoadErr(null);
     Promise.allSettled([
       Panel.groups(),
       Panel.teachers(),
       Panel.attendance(),
     ]).then(([gRes, tRes, aRes]) => {
-      if (gRes.status === 'fulfilled') setGroups(gRes.value.results || []);
+      if (gRes.status === 'fulfilled') {
+        setGroups(gRes.value.results || []);
+      } else {
+        setGroupsLoadErr(
+          gRes.reason instanceof Error
+            ? gRes.reason.message
+            : 'Guruhlar ro‘yxatini yuklab bo‘lmadi.',
+        );
+      }
       if (tRes.status === 'fulfilled') {
         const tList = tRes.value.results || [];
         setTeachers(tList);
@@ -73,14 +83,22 @@ export default function PanelDashboard() {
       if (aRes.status === 'fulfilled') setAttendance(aRes.value.results || []);
       setGroupsLoading(false);
     });
-  };
+  }, []);
 
   useEffect(() => {
     let active = true;
     Promise.allSettled([Panel.groups(), Panel.teachers(), Panel.attendance()])
       .then(([gRes, tRes, aRes]) => {
         if (!active) return;
-        if (gRes.status === 'fulfilled') setGroups(gRes.value.results || []);
+        if (gRes.status === 'fulfilled') {
+          setGroups(gRes.value.results || []);
+        } else {
+          setGroupsLoadErr(
+            gRes.reason instanceof Error
+              ? gRes.reason.message
+              : 'Guruhlar ro‘yxatini yuklab bo‘lmadi.',
+          );
+        }
         if (tRes.status === 'fulfilled') {
           const list = tRes.value.results || [];
           setTeachers(list);
@@ -218,14 +236,14 @@ export default function PanelDashboard() {
         <button
           type="button"
           className="card stat admin-action"
-          style={{ cursor: 'pointer', textAlign: 'left', background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.35)' }}
+          style={{ cursor: 'pointer', textAlign: 'left', background: 'var(--warning-bg)', border: '1px solid var(--warning-border)' }}
           onClick={() => {
             setIsGroupModalOpen(true);
             setGroupSuccessMsg(null);
             setGroupErrorMsg(null);
           }}
         >
-          <span className="stat-label" style={{ color: '#f59e0b', fontWeight: 700 }}>
+          <span className="stat-label" style={{ color: 'var(--warning-text)', fontWeight: 700 }}>
             <FolderOpenIcon size={15} className="ico" /> ➕ Yangi Guruh Ochish
           </span>
           <span className="muted small">Ustoz biriktirish va #GR-XXX taklif kodi yaratish</span>
@@ -296,13 +314,13 @@ export default function PanelDashboard() {
                 {/* National Certificate */}
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem', fontWeight: 700, marginBottom: 6 }}>
-                    <span style={{ color: '#10B981' }}>🎓 Milliy sertifikat (Abituriyentlar)</span>
+                    <span style={{ color: 'var(--success-text)' }}>🎓 Milliy sertifikat (Abituriyentlar)</span>
                     <span>
                       {d.cohort_analytics.segmentation.national_certificate.count} nafar (
                       {d.cohort_analytics.segmentation.national_certificate.percentage}%)
                     </span>
                   </div>
-                  <div style={{ height: 10, background: 'rgba(255, 255, 255, 0.08)', borderRadius: 5, overflow: 'hidden' }}>
+                  <div style={{ height: 10, background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', borderRadius: 5, overflow: 'hidden' }}>
                     <div
                       style={{
                         width: `${Math.min(100, Math.max(0, d.cohort_analytics.segmentation.national_certificate.percentage))}%`,
@@ -317,13 +335,13 @@ export default function PanelDashboard() {
                 {/* Attestation */}
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem', fontWeight: 700, marginBottom: 6 }}>
-                    <span style={{ color: '#3B82F6' }}>👨‍🏫 Attestatsiya 2026 (O'qituvchilar)</span>
+                    <span style={{ color: 'var(--info-text)' }}>👨‍🏫 Attestatsiya 2026 (O'qituvchilar)</span>
                     <span>
                       {d.cohort_analytics.segmentation.attestation.count} nafar (
                       {d.cohort_analytics.segmentation.attestation.percentage}%)
                     </span>
                   </div>
-                  <div style={{ height: 10, background: 'rgba(255, 255, 255, 0.08)', borderRadius: 5, overflow: 'hidden' }}>
+                  <div style={{ height: 10, background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', borderRadius: 5, overflow: 'hidden' }}>
                     <div
                       style={{
                         width: `${Math.min(100, Math.max(0, d.cohort_analytics.segmentation.attestation.percentage))}%`,
@@ -340,16 +358,17 @@ export default function PanelDashboard() {
                     marginTop: 8,
                     padding: '10px 14px',
                     borderRadius: 10,
-                    background: 'rgba(255, 255, 255, 0.03)',
+                    background: 'var(--bg-elevated)',
+                    border: '1px solid var(--border-subtle)',
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
                   }}
                 >
-                  <span style={{ fontSize: '0.82rem', color: 'var(--ink-muted)' }}>
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
                     Boshlang'ich placement test o'rtacha bali:
                   </span>
-                  <strong style={{ color: '#F59E0B', fontSize: '1.05rem' }}>
+                  <strong style={{ color: 'var(--warning-text)', fontSize: '1.05rem' }}>
                     {d.cohort_analytics.avg_placement_score} / 5.0
                   </strong>
                 </div>
@@ -362,18 +381,18 @@ export default function PanelDashboard() {
                 <span>⏱ Tayyorgarlik muddatlari bo'yicha taqsimot</span>
               </h3>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginTop: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10, marginTop: 10 }}>
                 <div
                   style={{
                     padding: '14px 10px',
                     borderRadius: 12,
-                    background: 'rgba(244, 63, 94, 0.1)',
-                    border: '1px solid rgba(244, 63, 94, 0.25)',
+                    background: 'var(--danger-bg)',
+                    border: '1px solid var(--danger-border)',
                     textAlign: 'center',
                   }}
                 >
-                  <span style={{ fontSize: '0.74rem', color: '#fda4af', fontWeight: 600 }}>1 oylik shoshilinch</span>
-                  <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#f43f5e', marginTop: 4 }}>
+                  <span style={{ fontSize: '0.74rem', color: 'var(--danger-text)', fontWeight: 600 }}>1 oylik shoshilinch</span>
+                  <div style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--danger-text)', marginTop: 4 }}>
                     {d.cohort_analytics.timeline_breakdown.months_1.count}
                   </div>
                 </div>
@@ -382,13 +401,13 @@ export default function PanelDashboard() {
                   style={{
                     padding: '14px 10px',
                     borderRadius: 12,
-                    background: 'rgba(245, 158, 11, 0.1)',
-                    border: '1px solid rgba(245, 158, 11, 0.25)',
+                    background: 'var(--warning-bg)',
+                    border: '1px solid var(--warning-border)',
                     textAlign: 'center',
                   }}
                 >
-                  <span style={{ fontSize: '0.74rem', color: '#fde68a', fontWeight: 600 }}>3 oylik standart</span>
-                  <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#f59e0b', marginTop: 4 }}>
+                  <span style={{ fontSize: '0.74rem', color: 'var(--warning-text)', fontWeight: 600 }}>3 oylik standart</span>
+                  <div style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--warning-text)', marginTop: 4 }}>
                     {d.cohort_analytics.timeline_breakdown.months_3.count}
                   </div>
                 </div>
@@ -397,13 +416,13 @@ export default function PanelDashboard() {
                   style={{
                     padding: '14px 10px',
                     borderRadius: 12,
-                    background: 'rgba(16, 185, 129, 0.1)',
-                    border: '1px solid rgba(16, 185, 129, 0.25)',
+                    background: 'var(--success-bg)',
+                    border: '1px solid var(--success-border)',
                     textAlign: 'center',
                   }}
                 >
-                  <span style={{ fontSize: '0.74rem', color: '#a7f3d0', fontWeight: 600 }}>6 oylik uzoq muddatli</span>
-                  <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#10B981', marginTop: 4 }}>
+                  <span style={{ fontSize: '0.74rem', color: 'var(--success-text)', fontWeight: 600 }}>6 oylik uzoq muddatli</span>
+                  <div style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--success-text)', marginTop: 4 }}>
                     {d.cohort_analytics.timeline_breakdown.months_6.count}
                   </div>
                 </div>
@@ -447,9 +466,9 @@ export default function PanelDashboard() {
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 6,
-                background: 'rgba(16, 185, 129, 0.15)',
-                color: '#10b981',
-                border: '1px solid rgba(16, 185, 129, 0.4)',
+                background: 'var(--success-bg)',
+                color: 'var(--success-text)',
+                border: '1px solid var(--success-border)',
                 fontWeight: 700,
                 textDecoration: 'none',
               }}
@@ -474,6 +493,15 @@ export default function PanelDashboard() {
 
         {groupsLoading ? (
           <p className="muted">Guruhlar yuklanmoqda…</p>
+        ) : groupsLoadErr ? (
+          <Alert tone="danger" title="Guruhlarni yuklab bo‘lmadi">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <span>{groupsLoadErr}</span>
+              <button type="button" className="btn sm secondary" onClick={loadGroupsAndAttendance}>
+                Qayta urinish
+              </button>
+            </div>
+          </Alert>
         ) : groups.length === 0 ? (
           <div className="card" style={{ textAlign: 'center', padding: '32px 20px' }}>
             <span style={{ fontSize: '2.5rem' }}>👥</span>
@@ -526,8 +554,9 @@ export default function PanelDashboard() {
                               <span
                                 className="badge"
                                 style={{
-                                  background: 'rgba(56, 189, 248, 0.12)',
-                                  color: '#0284c7',
+                                  background: 'var(--info-bg)',
+                                  color: 'var(--info-text)',
+                                  border: '1px solid var(--info-border)',
                                   fontSize: '0.72rem',
                                   display: 'inline-block',
                                   marginTop: 2,
@@ -550,9 +579,9 @@ export default function PanelDashboard() {
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: 4,
-                            background: copiedCode === g.invite_code ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.15)',
-                            borderColor: copiedCode === g.invite_code ? '#10b981' : 'rgba(245, 158, 11, 0.4)',
-                            color: copiedCode === g.invite_code ? '#10b981' : '#f59e0b',
+                            background: copiedCode === g.invite_code ? 'var(--success-bg)' : 'var(--warning-bg)',
+                            borderColor: copiedCode === g.invite_code ? 'var(--success-border)' : 'var(--warning-border)',
+                            color: copiedCode === g.invite_code ? 'var(--success-text)' : 'var(--warning-text)',
                             fontWeight: 800,
                             letterSpacing: '0.5px',
                           }}
@@ -569,7 +598,7 @@ export default function PanelDashboard() {
                       <td>
                         {att ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <div style={{ width: 60, height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 3, overflow: 'hidden' }}>
+                            <div style={{ width: 60, height: 6, background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', borderRadius: 3, overflow: 'hidden' }}>
                               <div
                                 style={{
                                   width: `${Math.min(100, Math.max(0, att.attendance_rate))}%`,
@@ -595,8 +624,9 @@ export default function PanelDashboard() {
                                   fontSize: '0.72rem',
                                   padding: '2px 6px',
                                   borderRadius: 6,
-                                  background: 'rgba(255,255,255,0.06)',
-                                  border: '1px solid rgba(255,255,255,0.1)',
+                                  background: 'var(--bg-elevated)',
+                                  border: '1px solid var(--border-subtle)',
+                                  color: 'var(--text-secondary)',
                                 }}
                                 title={`${s.lesson_date}: ${s.present} keldi, ${s.late} kech, ${s.absent} kelmadi`}
                               >
@@ -609,7 +639,7 @@ export default function PanelDashboard() {
                         )}
                       </td>
                       <td>
-                        <span style={{ fontWeight: 700, color: 'var(--ink)' }}>
+                        <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
                           {Number(g.monthly_fee || 400000).toLocaleString()} so'm
                         </span>
                       </td>
@@ -623,212 +653,160 @@ export default function PanelDashboard() {
       </section>
 
       {/* Yangi Guruh Ochish Modal Oynasi */}
-      {isGroupModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.75)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999,
-            padding: 16,
-          }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setIsGroupModalOpen(false);
-          }}
-        >
-          <div
-            className="card"
-            style={{
-              width: '100%',
-              maxWidth: 520,
-              background: 'var(--card, #1e293b)',
-              border: '1px solid var(--border, #334155)',
-              borderRadius: 16,
-              padding: 24,
-              boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>
-                ➕ Yangi O'quv Guruhi Ochish
-              </h3>
+      <Modal
+        open={isGroupModalOpen}
+        onClose={() => {
+          if (!creatingGroup) setIsGroupModalOpen(false);
+        }}
+        title="➕ Yangi O'quv Guruhi Ochish"
+        subtitle="Ustoz biriktirish va #GR-XXX taklif kodi yaratish"
+        maxWidth={520}
+      >
+        {groupSuccessMsg && (
+          <div style={{ marginBottom: 14 }}>
+            <Alert tone="success" onClose={() => setGroupSuccessMsg(null)}>
+              {groupSuccessMsg}
+            </Alert>
+          </div>
+        )}
+
+        {groupErrorMsg && (
+          <div style={{ marginBottom: 14 }}>
+            <Alert tone="danger" onClose={() => setGroupErrorMsg(null)}>
+              {groupErrorMsg}
+            </Alert>
+          </div>
+        )}
+
+        <form onSubmit={handleCreateGroup}>
+          {/* Guruh nomi */}
+          <div style={{ marginBottom: 16 }}>
+            <label htmlFor="panel-group-name" style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: 6 }}>
+              Guruh nomi <span style={{ color: 'var(--danger-text)' }}>*</span>
+            </label>
+            <input
+              id="panel-group-name"
+              type="text"
+              required
+              placeholder="Masalan: IELTS Target Band 7.5 (Ertalabki)"
+              value={groupName}
+              onChange={(e) => setGroupName(e.target.value)}
+              style={{ width: '100%' }}
+            />
+          </div>
+
+          {/* Fan yo'nalishi (Segmented Switcher) */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: 6 }}>
+              Fan yo'nalishi <span style={{ color: 'var(--danger-text)' }}>*</span>
+            </label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <button
                 type="button"
-                className="btn ghost sm"
-                style={{ padding: 4 }}
-                onClick={() => setIsGroupModalOpen(false)}
+                onClick={() => setGroupSubject('uzbek')}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  border: groupSubject === 'uzbek' ? '2px solid var(--warning-border)' : '1px solid var(--border-subtle)',
+                  background: groupSubject === 'uzbek' ? 'var(--warning-bg)' : 'transparent',
+                  color: groupSubject === 'uzbek' ? 'var(--warning-text)' : 'var(--text-primary)',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  transition: 'all 0.15s ease',
+                }}
               >
-                <XIcon size={18} />
+                <span>📖</span>
+                <span>Ona tili</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setGroupSubject('english')}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  border: groupSubject === 'english' ? '2px solid var(--info-border)' : '1px solid var(--border-subtle)',
+                  background: groupSubject === 'english' ? 'var(--info-bg)' : 'transparent',
+                  color: groupSubject === 'english' ? 'var(--info-text)' : 'var(--text-primary)',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <span>🎓</span>
+                <span>English (IELTS)</span>
               </button>
             </div>
-
-            {groupSuccessMsg && (
-              <div
-                style={{
-                  background: 'rgba(16, 185, 129, 0.15)',
-                  border: '1px solid rgba(16, 185, 129, 0.4)',
-                  color: '#10b981',
-                  padding: '12px 16px',
-                  borderRadius: 10,
-                  marginBottom: 16,
-                  fontWeight: 600,
-                  fontSize: '0.9rem',
-                }}
-              >
-                ✅ {groupSuccessMsg}
-              </div>
-            )}
-
-            {groupErrorMsg && (
-              <div
-                style={{
-                  background: 'rgba(239, 68, 68, 0.15)',
-                  border: '1px solid rgba(239, 68, 68, 0.4)',
-                  color: '#f87171',
-                  padding: '12px 16px',
-                  borderRadius: 10,
-                  marginBottom: 16,
-                  fontWeight: 600,
-                  fontSize: '0.9rem',
-                }}
-              >
-                ⚠️ {groupErrorMsg}
-              </div>
-            )}
-
-            <form onSubmit={handleCreateGroup}>
-              {/* Guruh nomi */}
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: 6 }}>
-                  Guruh nomi <span style={{ color: '#f43f5e' }}>*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Masalan: IELTS Target Band 7.5 (Ertalabki)"
-                  value={groupName}
-                  onChange={(e) => setGroupName(e.target.value)}
-                  style={{ width: '100%' }}
-                />
-              </div>
-
-              {/* Fan yo'nalishi (Segmented Switcher) */}
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: 6 }}>
-                  Fan yo'nalishi <span style={{ color: '#f43f5e' }}>*</span>
-                </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                  <button
-                    type="button"
-                    onClick={() => setGroupSubject('uzbek')}
-                    style={{
-                      padding: '10px 14px',
-                      borderRadius: 10,
-                      border: groupSubject === 'uzbek' ? '2px solid #f59e0b' : '1px solid var(--border)',
-                      background: groupSubject === 'uzbek' ? 'rgba(245, 158, 11, 0.15)' : 'transparent',
-                      color: groupSubject === 'uzbek' ? '#f59e0b' : 'var(--ink)',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 8,
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    <span>📖</span>
-                    <span>Ona tili</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setGroupSubject('english')}
-                    style={{
-                      padding: '10px 14px',
-                      borderRadius: 10,
-                      border: groupSubject === 'english' ? '2px solid #3b82f6' : '1px solid var(--border)',
-                      background: groupSubject === 'english' ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
-                      color: groupSubject === 'english' ? '#38bdf8' : 'var(--ink)',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 8,
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    <span>🎓</span>
-                    <span>English (IELTS)</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Ustoz biriktirish (Teacher dropdown) */}
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: 6 }}>
-                  Guruhga mas'ul ustoz <span style={{ color: '#f43f5e' }}>*</span>
-                </label>
-                <select
-                  required
-                  value={groupTeacherId}
-                  onChange={(e) => setGroupTeacherId(Number(e.target.value))}
-                  style={{ width: '100%' }}
-                >
-                  <option value="">Ustozni tanlang...</option>
-                  {teachers.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.full_name} ({t.email}) — {t.role}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Oylik to'lov summasi */}
-              <div style={{ marginBottom: 24 }}>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: 6 }}>
-                  Oylik to'lov summasi (so'm)
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="10000"
-                  placeholder="400000"
-                  value={groupMonthlyFee}
-                  onChange={(e) => setGroupMonthlyFee(Number(e.target.value))}
-                  style={{ width: '100%' }}
-                />
-                <span className="muted small" style={{ display: 'block', marginTop: 4 }}>
-                  Taklif kodi (#GR-XXX) yaratilgach, o'quvchilar ushbu kod orqali guruhga qo'shiladi.
-                </span>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-                <button
-                  type="button"
-                  className="btn ghost sm"
-                  onClick={() => setIsGroupModalOpen(false)}
-                >
-                  Bekor qilish
-                </button>
-                <button
-                  type="submit"
-                  className="btn primary sm"
-                  disabled={creatingGroup}
-                  style={{ fontWeight: 800 }}
-                >
-                  {creatingGroup ? 'Yaratilmoqda…' : '🚀 Guruhni ochish va kod biriktirish'}
-                </button>
-              </div>
-            </form>
           </div>
-        </div>
-      )}
+
+          {/* Ustoz biriktirish (Teacher dropdown) */}
+          <div style={{ marginBottom: 16 }}>
+            <label htmlFor="panel-group-teacher" style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: 6 }}>
+              Guruhga mas'ul ustoz <span style={{ color: 'var(--danger-text)' }}>*</span>
+            </label>
+            <select
+              id="panel-group-teacher"
+              required
+              value={groupTeacherId}
+              onChange={(e) => setGroupTeacherId(Number(e.target.value))}
+              style={{ width: '100%' }}
+            >
+              <option value="">Ustozni tanlang...</option>
+              {teachers.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.full_name} ({t.email}) — {t.role}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Oylik to'lov summasi */}
+          <div style={{ marginBottom: 24 }}>
+            <label htmlFor="panel-group-fee" style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: 6 }}>
+              Oylik to'lov summasi (so'm)
+            </label>
+            <input
+              id="panel-group-fee"
+              type="number"
+              min="0"
+              step="10000"
+              placeholder="400000"
+              value={groupMonthlyFee}
+              onChange={(e) => setGroupMonthlyFee(Number(e.target.value))}
+              style={{ width: '100%' }}
+            />
+            <span className="muted small" style={{ display: 'block', marginTop: 4 }}>
+              Taklif kodi (#GR-XXX) yaratilgach, o'quvchilar ushbu kod orqali guruhga qo'shiladi.
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <button
+              type="button"
+              className="btn ghost sm"
+              onClick={() => setIsGroupModalOpen(false)}
+              disabled={creatingGroup}
+            >
+              Bekor qilish
+            </button>
+            <button
+              type="submit"
+              className="btn primary sm"
+              disabled={creatingGroup}
+              style={{ fontWeight: 800 }}
+            >
+              {creatingGroup ? 'Yaratilmoqda…' : '🚀 Guruhni ochish va kod biriktirish'}
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       <h2>{t('panel_recent_tests')}</h2>
       {recentTests.length === 0 ? (

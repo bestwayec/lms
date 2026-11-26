@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
+import { Alert, Dropdown, Modal } from '../components/ui';
 import { useLang } from '../i18n/LangContext';
 import { School, WhiteLabelApi, ClassroomApi, api } from '../lib/api';
 import { FolderOpenIcon, SettingsIcon, UsersIcon, XIcon } from '../components/icons';
@@ -18,17 +19,19 @@ import {
 
 export default function Groups() {
   const activateQuota = async (groupId: number, studentId: number, planType: 'pro' | 'premium') => {
+    setErr(null);
+    setOk(null);
     try {
       const res = await api<{ status: string; message: string }>(
         `/api/v1/courses/groups/${groupId}/students/${studentId}/activate-quota/`,
         {
           method: 'POST',
           body: JSON.stringify({ plan_type: planType }),
-        }
+        },
       );
-      alert(res.message || 'Litsenziya muvaffaqiyatli faollashtirildi!');
-    } catch (err: any) {
-      alert(err.message || 'Kvota yetarli emas. Iltimos, administratorga murojaat qiling.');
+      flash(res.message || 'Litsenziya muvaffaqiyatli faollashtirildi!');
+    } catch (quotaErr: unknown) {
+      setErr(errMessage(quotaErr));
     }
   };
 
@@ -73,9 +76,13 @@ export default function Groups() {
   const [loadingGroups, setLoadingGroups] = useState(true);
   const searchTimer = useRef<number | null>(null);
 
-  // Student join by invite code
+  // Student join by invite code (optional secondary collapse for teachers/staff)
   const [joinCode, setJoinCode] = useState('');
   const [joinBusy, setJoinBusy] = useState(false);
+  const [showJoinForm, setShowJoinForm] = useState(false);
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [lifecycleBusyId, setLifecycleBusyId] = useState<number | null>(null);
   const [broadcastingId, setBroadcastingId] = useState<number | null>(null);
 
   const handleBroadcastVedomost = async (group: SchoolGroup) => {
@@ -233,16 +240,22 @@ export default function Groups() {
   // POST /api/v1/school/groups/ — parity with group_form.html create.
   const create = async (e: FormEvent) => {
     e.preventDefault();
+    const cleanName = name.trim();
+    if (!cleanName || creatingGroup) return;
+    setCreatingGroup(true);
     setErr(null);
     setOk(null);
     try {
-      await School.createGroup({ name: name.trim(), description: desc.trim() });
+      const idemKey = `grp-${Date.now().toString(36)}-${cleanName.toLowerCase().slice(0, 24)}`;
+      await School.createGroup({ name: cleanName, description: desc.trim() }, idemKey);
       setName('');
       setDesc('');
       flash(t('gf_created'));
       await load();
     } catch (e2: unknown) {
       setErr(errMessage(e2));
+    } finally {
+      setCreatingGroup(false);
     }
   };
 
@@ -256,7 +269,8 @@ export default function Groups() {
   // PATCH /api/v1/school/groups/<id>/ — parity with group_form.html edit.
   const saveEdit = async (e: FormEvent) => {
     e.preventDefault();
-    if (editing === null) return;
+    if (editing === null || savingEdit || !editName.trim()) return;
+    setSavingEdit(true);
     try {
       await School.updateGroup(editing, { name: editName.trim(), description: editDesc.trim() });
       setEditing(null);
@@ -264,6 +278,8 @@ export default function Groups() {
       await load();
     } catch (e2: unknown) {
       setErr(errMessage(e2));
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -287,18 +303,7 @@ export default function Groups() {
     setDepLoading(true);
     setDepData(null);
     try {
-      const res = await api<{
-        can_delete: boolean;
-        reasons: string[];
-        dependencies: {
-          students_count: number;
-          homeworks_count: number;
-          homework_submissions_count: number;
-          attendance_sessions_count: number;
-          essay_assignments_count: number;
-          academic_records_count: number;
-        };
-      }>(`/api/classroom/groups/${g.id}/dependencies/`);
+      const res = await ClassroomApi.groupDependencies(g.id);
       setDepData(res);
     } catch (e: unknown) {
       setErr(errMessage(e));
@@ -309,36 +314,48 @@ export default function Groups() {
   };
 
   const handleArchive = async (id: number) => {
+    if (lifecycleBusyId === id) return;
+    setLifecycleBusyId(id);
     try {
-      await api(`/api/classroom/groups/${id}/archive/`, { method: 'POST' });
-      flash('Guruh muvaffaqiyatli arxivlandi!');
+      const res = await ClassroomApi.archiveGroup(id);
+      flash(res?.message || 'Guruh muvaffaqiyatli arxivlandi!');
       setDepGroup(null);
       await load();
     } catch (e: unknown) {
       setErr(errMessage(e));
+    } finally {
+      setLifecycleBusyId(null);
     }
   };
 
   const handleRestore = async (id: number) => {
+    if (lifecycleBusyId === id) return;
+    setLifecycleBusyId(id);
     try {
-      await api(`/api/classroom/groups/${id}/restore/`, { method: 'POST' });
-      flash('Guruh qayta faollashtirildi!');
+      const res = await ClassroomApi.restoreGroup(id);
+      flash(res?.message || 'Guruh qayta faollashtirildi!');
       await load();
     } catch (e: unknown) {
       setErr(errMessage(e));
+    } finally {
+      setLifecycleBusyId(null);
     }
   };
 
   const handleSafeDelete = async (id: number) => {
+    if (lifecycleBusyId === id) return;
     if (!window.confirm("Haqiqatan ham ushbu guruhni butunlay o'chirmoqchimisiz?")) return;
+    setLifecycleBusyId(id);
     try {
-      await api(`/api/classroom/groups/${id}/safe-delete/`, { method: 'POST' });
-      flash("Guruh muvaffaqiyatli o'chirildi.");
+      const res = await ClassroomApi.deleteGroup(id);
+      flash(res?.message || "Guruh muvaffaqiyatli o'chirildi.");
       setDepGroup(null);
       if (openGroup === id) setOpenGroup(null);
       await load();
     } catch (e: unknown) {
       setErr(errMessage(e));
+    } finally {
+      setLifecycleBusyId(null);
     }
   };
 
@@ -460,22 +477,41 @@ export default function Groups() {
             display: 'inline-flex',
             alignItems: 'center',
             gap: 6,
-            background: 'rgba(99, 102, 241, 0.15)',
-            borderColor: 'rgba(99, 102, 241, 0.35)',
-            color: '#a5b4fc',
+            background: 'var(--info-bg)',
+            borderColor: 'var(--info-border)',
+            color: 'var(--info-text)',
             fontWeight: 600,
           }}
         >
           <SettingsIcon size={14} />
           <span>🎨 Markaz brendi & muhri (White-Label)</span>
         </button>
+        <button
+          type="button"
+          onClick={() => setShowJoinForm((prev) => !prev)}
+          className="btn sm ghost"
+        >
+          {showJoinForm ? '✕ Kod shaklini yopish' : '🎯 Kod bilan guruhga kirish'}
+        </button>
       </div>
-      {err && <p className="error">{err}</p>}
-      {ok && <p className="badge green">{ok}</p>}
 
-      {/* 2-column header: New Group + Join Group by Code */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))', gap: 16 }}>
-        {/* Create — parity with group_form.html (name + description). */}
+      {err && (
+        <div style={{ marginBottom: 14 }}>
+          <Alert tone="danger" onClose={() => setErr(null)}>
+            {err}
+          </Alert>
+        </div>
+      )}
+      {ok && (
+        <div style={{ marginBottom: 14 }}>
+          <Alert tone="success" onClose={() => setOk(null)}>
+            {ok}
+          </Alert>
+        </div>
+      )}
+
+      {/* Primary Group Create + Optional Join Code Form */}
+      <div style={{ display: 'grid', gridTemplateColumns: showJoinForm ? 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))' : '1fr', gap: 16 }}>
         <form onSubmit={create} className="card form" style={{ maxWidth: '100%', margin: 0 }}>
           <h2>{t('gf_new_short')}</h2>
           <div className="row">
@@ -486,6 +522,7 @@ export default function Groups() {
                 onChange={(e) => setName(e.target.value)}
                 placeholder={t('gf_name_ph')}
                 required
+                disabled={creatingGroup}
               />
             </label>
             <label>
@@ -494,33 +531,41 @@ export default function Groups() {
                 value={desc}
                 onChange={(e) => setDesc(e.target.value)}
                 placeholder={t('gf_desc_ph')}
+                disabled={creatingGroup}
               />
             </label>
           </div>
-          <button className="btn primary sm" style={{ alignSelf: 'flex-start' }}>
-            {t('gf_create')}
+          <button
+            type="submit"
+            className="btn primary sm"
+            disabled={creatingGroup || !name.trim()}
+            style={{ alignSelf: 'flex-start' }}
+          >
+            {creatingGroup ? 'Yaratilmoqda…' : t('gf_create')}
           </button>
         </form>
 
-        {/* Join by invite code form */}
-        <form onSubmit={handleJoin} className="card form" style={{ maxWidth: '100%', margin: 0 }}>
-          <h2>🎯 Guruhga Taklif Kodi Orqali Qo‘shilish</h2>
-          <p className="muted small">Ustoz taqdim etgan unikal guruh kodi (#GR-...) orqali darhol guruhga qo‘shiling:</p>
-          <div className="row">
-            <label style={{ flex: 1 }}>
-              Taklif kodi:
-              <input
-                value={joinCode}
-                onChange={(e) => setJoinCode(e.target.value)}
-                placeholder="#GR-104 yoki GR-104"
-                required
-              />
-            </label>
-          </div>
-          <button className="btn primary sm" disabled={joinBusy} style={{ alignSelf: 'flex-start' }}>
-            {joinBusy ? 'Qo‘shilmoqda…' : '🚀 Guruhga qo‘shilish'}
-          </button>
-        </form>
+        {showJoinForm && (
+          <form onSubmit={handleJoin} className="card form" style={{ maxWidth: '100%', margin: 0 }}>
+            <h2>🎯 Guruhga Taklif Kodi Orqali Qo‘shilish</h2>
+            <p className="muted small">Hamkasb ustoz taqdim etgan unikal guruh kodi (#GR-...) orqali guruhga qo‘shiling:</p>
+            <div className="row">
+              <label style={{ flex: 1 }}>
+                Taklif kodi:
+                <input
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value)}
+                  placeholder="#GR-104 yoki GR-104"
+                  required
+                  disabled={joinBusy}
+                />
+              </label>
+            </div>
+            <button type="submit" className="btn primary sm" disabled={joinBusy || !joinCode.trim()} style={{ alignSelf: 'flex-start' }}>
+              {joinBusy ? 'Qo‘shilmoqda…' : '🚀 Guruhga qo‘shilish'}
+            </button>
+          </form>
+        )}
       </div>
 
       {/* List — parity with group_list.html cards + empty state. */}
@@ -537,6 +582,7 @@ export default function Groups() {
             const students = g.students ?? [];
             const open = openGroup === g.id;
             const isEditing = editing === g.id;
+            const isLifecycleBusy = lifecycleBusyId === g.id;
             const tab = groupTabs[g.id] ?? 'analytics';
             const analytics = analyticsData[g.id];
             const isLoadingAnalytics = analyticsLoading === g.id;
@@ -547,14 +593,16 @@ export default function Groups() {
                   <form onSubmit={saveEdit} className="form">
                     <label>
                       {t('gf_name_label')}
-                      <input value={editName} onChange={(e) => setEditName(e.target.value)} required />
+                      <input value={editName} onChange={(e) => setEditName(e.target.value)} required disabled={savingEdit} />
                     </label>
                     <label>
                       {t('gf_desc_label')}
-                      <input value={editDesc} onChange={(e) => setEditDesc(e.target.value)} />
+                      <input value={editDesc} onChange={(e) => setEditDesc(e.target.value)} disabled={savingEdit} />
                     </label>
                     <div className="row">
-                      <button className="btn primary sm">{t('save')}</button>
+                      <button type="submit" className="btn primary sm" disabled={savingEdit || !editName.trim()}>
+                        {savingEdit ? 'Saqlanmoqda…' : t('save')}
+                      </button>
                       <button type="button" className="btn sm ghost" onClick={() => setEditing(null)}>
                         {t('cancel')}
                       </button>
@@ -562,85 +610,60 @@ export default function Groups() {
                   </form>
                 ) : (
                   <>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-                      <strong>{g.name}</strong>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
+                        <strong style={{ fontSize: '1.05rem' }}>{g.name}</strong>
+                        {g.status === 'archived' && (
+                          <span className="badge" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
+                            Arxivlangan
+                          </span>
+                        )}
+                      </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                         {g.telegram_chat_id ? (
                           <span
                             style={{
                               padding: '3px 10px',
                               borderRadius: 999,
-                              background: 'rgba(16, 185, 129, 0.14)',
-                              color: '#10b981',
-                              fontWeight: 800,
-                              fontSize: '0.76rem',
-                              border: '1px solid rgba(16, 185, 129, 0.35)',
+                              background: 'var(--success-bg)',
+                              color: 'var(--success-text)',
+                              fontWeight: 700,
+                              fontSize: '0.75rem',
+                              border: '1px solid var(--success-border)',
                             }}
                           >
-                            ✅ Telegram ulangan: {g.telegram_chat_title || g.telegram_chat_id}
+                            ✅ Telegram: {g.telegram_chat_title || g.telegram_chat_id}
                           </span>
                         ) : (
                           <span
                             style={{
                               padding: '3px 10px',
                               borderRadius: 999,
-                              background: 'rgba(245, 158, 11, 0.14)',
-                              color: '#f59e0b',
-                              fontWeight: 800,
-                              fontSize: '0.76rem',
-                              border: '1px solid rgba(245, 158, 11, 0.35)',
+                              background: 'var(--warning-bg)',
+                              color: 'var(--warning-text)',
+                              fontWeight: 700,
+                              fontSize: '0.75rem',
+                              border: '1px solid var(--warning-border)',
                             }}
                           >
-                            ⚠️ Telegram guruh ulanmagan
+                            ⚠️ Telegram ulanmagan
                           </span>
                         )}
                         {g.invite_code && (
                           <span
                             style={{
                               padding: '2px 8px',
-                              borderRadius: '4px',
-                              background: 'rgba(59, 130, 246, 0.12)',
-                              color: '#3b82f6',
+                              borderRadius: 6,
+                              background: 'var(--info-bg)',
+                              color: 'var(--info-text)',
                               fontWeight: 700,
-                              fontSize: '0.8rem',
-                              border: '1px solid rgba(59, 130, 246, 0.3)',
+                              fontSize: '0.78rem',
+                              border: '1px solid var(--info-border)',
                             }}
                           >
                             #{g.invite_code}
                           </span>
                         )}
-                        <button
-                          type="button"
-                          className="btn sm"
-                          onClick={() => copyInviteLink(g)}
-                          title="Guruhga 1-klikda taklif havolasini nusxalash"
-                          style={{
-                            padding: '3px 10px',
-                            fontSize: '0.78rem',
-                            fontWeight: 700,
-                            background: 'rgba(245, 158, 11, 0.12)',
-                            borderColor: 'rgba(245, 158, 11, 0.35)',
-                            color: '#d97706',
-                          }}
-                        >
-                          📋 Taklif havolasi
-                        </button>
-                        <button
-                          type="button"
-                          className="btn sm"
-                          onClick={() => shareToTelegram(g)}
-                          title="Telegram guruh yoki kanalga ulashish"
-                          style={{
-                            padding: '3px 10px',
-                            fontSize: '0.78rem',
-                            fontWeight: 700,
-                            background: 'rgba(34, 158, 217, 0.12)',
-                            borderColor: 'rgba(34, 158, 217, 0.35)',
-                            color: '#229ED9',
-                          }}
-                        >
-                          ✈️ Telegram
-                        </button>
                       </div>
                     </div>
                     <p className="muted small">
@@ -662,14 +685,15 @@ export default function Groups() {
                       const studentJoinLink = `https://grandec.uz/join/${code}`;
                       const manualCmd = `/ulash ${code}`;
                       const isBroadcasting = broadcastingId === g.id;
+                      const isTgConnected = Boolean(g.telegram_chat_id);
                       return (
                         <div
                           style={{
                             marginTop: 12,
                             padding: '12px 14px',
                             borderRadius: 12,
-                            background: 'var(--bg-card-2, var(--card-2))',
-                            border: '1px solid var(--border-default, var(--border))',
+                            background: 'var(--bg-elevated)',
+                            border: '1px solid var(--border-subtle)',
                             display: 'flex',
                             flexDirection: 'column',
                             gap: 10,
@@ -687,21 +711,22 @@ export default function Groups() {
                                 gap: 6,
                                 padding: '6px 12px',
                                 borderRadius: 10,
-                                fontWeight: 800,
+                                fontWeight: 700,
                                 fontSize: '0.8rem',
-                                background: 'linear-gradient(135deg, #229ED9 0%, #0284C7 100%)',
+                                background: 'var(--brand-telegram)',
                                 color: '#FFFFFF',
                                 border: 'none',
                                 textDecoration: 'none',
                               }}
                             >
-                              📲 Telegram guruhga 1-klikda ulash
+                              {isTgConnected ? '🔄 Telegram guruhni almashtirish' : '📲 Telegram guruhga 1-klikda ulash'}
                             </a>
 
                             <button
                               type="button"
                               className="btn sm"
-                              disabled={isBroadcasting}
+                              disabled={isBroadcasting || !isTgConnected}
+                              title={!isTgConnected ? 'Avval Telegram guruhni ulab oling' : undefined}
                               onClick={() => void handleBroadcastVedomost(g)}
                               style={{
                                 display: 'inline-flex',
@@ -709,18 +734,20 @@ export default function Groups() {
                                 gap: 6,
                                 padding: '6px 12px',
                                 borderRadius: 10,
-                                fontWeight: 800,
+                                fontWeight: 700,
                                 fontSize: '0.8rem',
-                                background: 'linear-gradient(135deg, #C8922A 0%, #F59E0B 100%)',
-                                color: '#FFFFFF',
+                                background: isTgConnected ? 'var(--brand-primary)' : 'var(--disabled-bg)',
+                                color: isTgConnected ? '#FFFFFF' : 'var(--disabled-text)',
                                 border: 'none',
-                                cursor: isBroadcasting ? 'not-allowed' : 'pointer',
+                                cursor: isBroadcasting || !isTgConnected ? 'not-allowed' : 'pointer',
                                 opacity: isBroadcasting ? 0.7 : 1,
                               }}
                             >
                               {isBroadcasting
                                 ? '⏳ Yuborilmoqda...'
-                                : '📤 Reyting va Vedomostni Telegram guruhga yuborish'}
+                                : isTgConnected
+                                ? '📤 Reyting va Vedomostni yuborish'
+                                : '📤 Vedomost (Telegram ulangan emas)'}
                             </button>
                           </div>
 
@@ -731,7 +758,7 @@ export default function Groups() {
                               gap: '6px 14px',
                               alignItems: 'center',
                               fontSize: '0.76rem',
-                              color: 'var(--text-secondary, var(--muted))',
+                              color: 'var(--text-secondary)',
                             }}
                           >
                             <span
@@ -747,10 +774,10 @@ export default function Groups() {
                                 style={{
                                   padding: '2px 6px',
                                   borderRadius: 6,
-                                  background: 'var(--bg-card, var(--card))',
-                                  border: '1px solid var(--border-default, var(--border))',
-                                  color: 'var(--text-primary, var(--ink))',
-                                  fontWeight: 800,
+                                  background: 'var(--bg-surface)',
+                                  border: '1px solid var(--border-subtle)',
+                                  color: 'var(--text-primary)',
+                                  fontWeight: 700,
                                 }}
                               >
                                 {manualCmd}
@@ -766,7 +793,7 @@ export default function Groups() {
                               }}
                             >
                               O&apos;quvchi havolasi:{' '}
-                              <strong style={{ color: '#C8922A', textDecoration: 'underline' }}>
+                              <strong style={{ color: 'var(--brand-primary)', textDecoration: 'underline' }}>
                                 {studentJoinLink}
                               </strong>
                             </span>
@@ -774,35 +801,71 @@ export default function Groups() {
                         </div>
                       );
                     })()}
-                    <div className="row" style={{ marginTop: 10 }}>
-                      <button
-                        className="btn sm ghost"
-                        onClick={() => {
-                          setEditing(null);
-                          const nextOpen = open ? null : g.id;
-                          setOpenGroup(nextOpen);
-                          if (nextOpen && !analyticsData[g.id]) {
-                            void loadAnalytics(g.id);
-                          }
-                        }}
-                      >
-                        {open ? t('back') : 'Tahlil va A‘zolar'}
-                      </button>
-                      <button className="btn sm ghost" onClick={() => startEdit(g)}>
-                        {t('edit')}
-                      </button>
-                      {g.status === 'archived' ? (
-                        <button className="btn sm ghost" onClick={() => void handleRestore(g.id)}>
-                          Faollashtirish
+                    <div className="row" style={{ marginTop: 12, justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          className="btn sm secondary"
+                          onClick={() => {
+                            setEditing(null);
+                            const nextOpen = open ? null : g.id;
+                            setOpenGroup(nextOpen);
+                            if (nextOpen && !analyticsData[g.id]) {
+                              void loadAnalytics(g.id);
+                            }
+                          }}
+                        >
+                          {open ? t('back') : 'Tahlil va A‘zolar'}
                         </button>
-                      ) : (
-                        <button className="btn sm ghost" onClick={() => void handleArchive(g.id)}>
-                          Arxivlash
+                        <button
+                          type="button"
+                          className="btn sm ghost"
+                          disabled={isLifecycleBusy}
+                          onClick={() => startEdit(g)}
+                        >
+                          {t('edit')}
                         </button>
-                      )}
-                      <button className="btn sm danger" onClick={() => void checkDependencies(g)}>
-                        {t('delete')}
-                      </button>
+                      </div>
+
+                      <Dropdown
+                        trigger={
+                          <span className="btn sm ghost" aria-label={`${g.name} qo'shimcha amallari`}>
+                            ⋯ Boshqa
+                          </span>
+                        }
+                        items={[
+                          {
+                            id: 'copy-link',
+                            label: '📋 Taklif havolasini nusxalash',
+                            onClick: () => copyInviteLink(g),
+                          },
+                          {
+                            id: 'share-tg',
+                            label: '✈️ Telegramda ulashish',
+                            onClick: () => shareToTelegram(g),
+                          },
+                          g.status === 'archived'
+                            ? {
+                                id: 'restore',
+                                label: '♻️ Guruhni faollashtirish',
+                                disabled: isLifecycleBusy,
+                                onClick: () => void handleRestore(g.id),
+                              }
+                            : {
+                                id: 'archive',
+                                label: '📦 Guruhni arxivlash',
+                                disabled: isLifecycleBusy,
+                                onClick: () => void handleArchive(g.id),
+                              },
+                          {
+                            id: 'delete',
+                            label: `🗑️ ${t('delete')}`,
+                            danger: true,
+                            disabled: isLifecycleBusy,
+                            onClick: () => void checkDependencies(g),
+                          },
+                        ]}
+                      />
                     </div>
                   </>
                 )}
@@ -906,28 +969,28 @@ export default function Groups() {
                                 <span className="muted small">Testlar:</span>
                                 <strong style={{ display: 'block', fontSize: '1.05rem' }}>{analytics.summary.total_tests_taken}</strong>
                               </div>
-                              <div style={{ background: 'rgba(255, 255, 255, 0.03)', padding: '8px 10px', borderRadius: '6px' }}>
+                              <div style={{ background: 'var(--bg-elevated)', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border-subtle)' }}>
                                 <span className="muted small">Esselar:</span>
                                 <strong style={{ display: 'block', fontSize: '1.05rem' }}>{analytics.summary.total_essays_submitted}</strong>
                               </div>
-                              <div style={{ background: 'rgba(255, 255, 255, 0.03)', padding: '8px 10px', borderRadius: '6px' }}>
+                              <div style={{ background: 'var(--bg-elevated)', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border-subtle)' }}>
                                 <span className="muted small">O‘rtacha Test:</span>
-                                <strong style={{ display: 'block', fontSize: '1.05rem', color: '#10b981' }}>{analytics.summary.average_test_percentage}%</strong>
+                                <strong style={{ display: 'block', fontSize: '1.05rem', color: 'var(--success-text)' }}>{analytics.summary.average_test_percentage}%</strong>
                               </div>
-                              <div style={{ background: 'rgba(255, 255, 255, 0.03)', padding: '8px 10px', borderRadius: '6px' }}>
+                              <div style={{ background: 'var(--bg-elevated)', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border-subtle)' }}>
                                 <span className="muted small">O‘rtacha Esse:</span>
-                                <strong style={{ display: 'block', fontSize: '1.05rem', color: '#f59e0b' }}>{analytics.summary.average_essay_score} / 20</strong>
+                                <strong style={{ display: 'block', fontSize: '1.05rem', color: 'var(--warning-text)' }}>{analytics.summary.average_essay_score} / 20</strong>
                               </div>
                               {analytics.assignments_summary && (
-                                <div style={{ background: 'rgba(255, 255, 255, 0.03)', padding: '8px 10px', borderRadius: '6px' }}>
+                                <div style={{ background: 'var(--bg-elevated)', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border-subtle)' }}>
                                   <span className="muted small">{t('grp_hw_completion')}:</span>
-                                  <strong style={{ display: 'block', fontSize: '1.05rem', color: '#38bdf8' }}>
+                                  <strong style={{ display: 'block', fontSize: '1.05rem', color: 'var(--info-text)' }}>
                                     {analytics.assignments_summary.completion_rate !== null
                                       ? `${analytics.assignments_summary.completion_rate}%`
                                       : '—'}
                                   </strong>
                                   {analytics.assignments_summary.overdue_count > 0 && (
-                                    <span className="muted small" style={{ color: '#f87171', fontSize: '0.72rem' }}>
+                                    <span className="muted small" style={{ color: 'var(--danger-text)', fontSize: '0.72rem' }}>
                                       {t('grp_overdue')}: {analytics.assignments_summary.overdue_count}
                                     </span>
                                   )}
@@ -946,8 +1009,8 @@ export default function Groups() {
                                         padding: '3px 8px',
                                         borderRadius: '4px',
                                         fontSize: '0.76rem',
-                                        background: 'rgba(239, 68, 68, 0.12)',
-                                        color: '#fca5a5',
+                                        background: 'var(--danger-bg)',
+                                        color: 'var(--danger-text)',
                                       }}
                                     >
                                       {wt.test_title} — {wt.avg_percentage}% ({wt.attempts})
@@ -968,8 +1031,8 @@ export default function Groups() {
                                         padding: '3px 8px',
                                         borderRadius: '4px',
                                         fontSize: '0.74rem',
-                                        background: 'rgba(245, 158, 11, 0.12)',
-                                        color: '#fcd34d',
+                                        background: 'var(--warning-bg)',
+                                        color: 'var(--warning-text)',
                                       }}
                                     >
                                       #{cr.criterion_id}: {cr.avg_score} ({cr.samples})
@@ -1054,10 +1117,10 @@ export default function Groups() {
                         </h4>
                         <ul className="muted small">
                           {students.map((s) => (
-                            <li key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', flexWrap: 'wrap', gap: 6 }}>
+                            <li key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border-subtle)', flexWrap: 'wrap', gap: 6 }}>
                               <div>
-                                <span style={{ fontWeight: 600, color: '#f8fafc' }}>{s.full_name}</span>{' '}
-                                <span style={{ opacity: 0.6, fontSize: '0.8rem' }}>({s.email})</span>
+                                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{s.full_name}</span>{' '}
+                                <span className="muted" style={{ fontSize: '0.8rem' }}>({s.email})</span>
                               </div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                                 <button
@@ -1104,7 +1167,7 @@ export default function Groups() {
 
                         {resultsLoading && <p className="muted small" role="status">{t('loading')}…</p>}
                         {studentResults && (
-                          <div className="card" style={{ padding: 12, margin: '12px 0', background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)' }}>
+                          <div className="card" style={{ padding: 12, margin: '12px 0', background: 'var(--bg-elevated)', borderRadius: 8, border: '1px solid var(--border-subtle)' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                               <strong style={{ fontSize: '0.9rem' }}>{studentResults.student.name} — {t('grp_results')}</strong>
                               <button type="button" className="btn sm ghost" onClick={() => setStudentResults(null)}>✕</button>
@@ -1240,11 +1303,11 @@ export default function Groups() {
                           style={{
                             padding: '10px 14px',
                             borderRadius: 8,
-                            background: 'rgba(59, 130, 246, 0.08)',
-                            border: '1px solid rgba(59, 130, 246, 0.25)',
+                            background: 'var(--info-bg)',
+                            border: '1px solid var(--info-border)',
                             marginBottom: 12,
                             fontSize: '0.84rem',
-                            color: '#93c5fd',
+                            color: 'var(--info-text)',
                             display: 'flex',
                             alignItems: 'center',
                             gap: 8,
@@ -1339,212 +1402,161 @@ export default function Groups() {
       )}
 
       {/* White-Label B2B Branding Modal */}
-      {brandingOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.75)',
-            backdropFilter: 'blur(4px)',
-            zIndex: 9999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
-          }}
-          onClick={() => setBrandingOpen(false)}
-        >
-          <div
-            className="card"
-            style={{
-              maxWidth: 520,
-              width: '100%',
-              margin: 0,
-              maxHeight: '90vh',
-              overflowY: 'auto',
-              background: 'var(--card)',
-              border: '1px solid var(--border)',
-              boxShadow: 'var(--card-shadow, 0 20px 40px rgba(0, 0, 0, 0.3))',
-              borderRadius: 16,
-              padding: 24,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <h2 style={{ margin: 0, fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span>🎨</span> Markaz Brendi & White-Label Sozlamalari
-              </h2>
-              <button
-                type="button"
-                className="btn ghost sm"
-                onClick={() => setBrandingOpen(false)}
-                aria-label="Yopish"
-              >
-                <XIcon size={18} />
-              </button>
-            </div>
-            <p className="muted small" style={{ marginBottom: 16 }}>
-              Ushbu ma'lumotlar ota-onalar yig'ilishi va direktorlar uchun generatsiya qilinadigan rasmiy A4 Oylik PDF hisobotlarida to'liq aks etadi.
-            </p>
-
-            <form onSubmit={saveBranding} style={{ display: 'grid', gap: 14 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
-                  O'quv markazi / Maktab nomi
-                </label>
-                <input
-                  type="text"
-                  value={centerName}
-                  onChange={(e) => setCenterName(e.target.value)}
-                  placeholder="Masalan: GRAND EDUCATION Karmana filiali"
-                  required
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
-                  Hisobot bosh sarlavhasi (Header Title)
-                </label>
-                <input
-                  type="text"
-                  value={headerTitle}
-                  onChange={(e) => setHeaderTitle(e.target.value)}
-                  placeholder="Masalan: OYLIK AKADEMIK VA BMB DIAGNOSTIKA HISOBOTI"
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr', gap: 12, alignItems: 'center' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
-                    Brend rangi
-                  </label>
-                  <input
-                    type="color"
-                    value={brandColor}
-                    onChange={(e) => setBrandColor(e.target.value)}
-                    style={{ height: 40, width: '100%', padding: 2, cursor: 'pointer', borderRadius: 8 }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
-                    Rang kodi (HEX)
-                  </label>
-                  <input
-                    type="text"
-                    value={brandColor}
-                    onChange={(e) => setBrandColor(e.target.value)}
-                    placeholder="#1e3a8a"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
-                  O'quv markazi logotipi (PNG / JPG)
-                </label>
-                {currentLogoUrl && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                    <img src={currentLogoUrl} alt="Logo" style={{ height: 36, objectFit: 'contain' }} />
-                    <span className="small muted">Joriy logotip yuklangan</span>
-                  </div>
-                )}
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  onChange={(e) => setLogoFile(e.target.files?.[0] || null)}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
-                  Rasmiy muhr yoki rahbar imzosi (Shaffof PNG tavsiya etiladi)
-                </label>
-                {currentStampUrl && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                    <img src={currentStampUrl} alt="Muhr" style={{ height: 44, objectFit: 'contain' }} />
-                    <span className="small muted">Joriy muhr yuklangan</span>
-                  </div>
-                )}
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  onChange={(e) => setStampFile(e.target.files?.[0] || null)}
-                />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
-                <button
-                  type="button"
-                  className="btn ghost sm"
-                  onClick={() => setBrandingOpen(false)}
-                  disabled={savingBranding}
-                >
-                  Bekor qilish
-                </button>
-                <button
-                  type="submit"
-                  className="btn primary sm"
-                  disabled={savingBranding}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                >
-                  {savingBranding ? 'Saqlanmoqda...' : '💾 Sozlamalarni saqlash'}
-                </button>
-              </div>
-            </form>
+      <Modal
+        open={brandingOpen}
+        onClose={() => {
+          if (!savingBranding) setBrandingOpen(false);
+        }}
+        title="🎨 Markaz Brendi & White-Label Sozlamalari"
+        subtitle="Ushbu ma'lumotlar ota-onalar yig'ilishi va direktorlar uchun generatsiya qilinadigan rasmiy A4 Oylik PDF hisobotlarida to'liq aks etadi."
+        maxWidth={520}
+      >
+        <form onSubmit={saveBranding} style={{ display: 'grid', gap: 14 }}>
+          <div>
+            <label htmlFor="wl-center-name" style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
+              O'quv markazi / Maktab nomi
+            </label>
+            <input
+              id="wl-center-name"
+              type="text"
+              value={centerName}
+              onChange={(e) => setCenterName(e.target.value)}
+              placeholder="Masalan: GRAND EDUCATION Karmana filiali"
+              required
+            />
           </div>
-        </div>
-      )}
-      {/* Dependencies & Academic History Modal */}
-      {depGroup && (
-        <div
-          className="modal-backdrop"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.65)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999,
-            padding: 16,
-          }}
-        >
-          <div
-            className="card"
-            style={{
-              maxWidth: 520,
-              width: '100%',
-              background: '#1e293b',
-              border: '1px solid #334155',
-              borderRadius: 16,
-              padding: 24,
-              color: '#f8fafc',
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)',
-            }}
-          >
-            <h3 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 700, color: '#f8fafc' }}>
-              🛡️ Guruh xavfsizligi va akademik audit
-            </h3>
-            <p style={{ margin: '0 0 16px', color: '#94a3b8', fontSize: 14 }}>
-              Guruh: <strong>{depGroup.name}</strong>
-            </p>
 
+          <div>
+            <label htmlFor="wl-header-title" style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
+              Hisobot bosh sarlavhasi (Header Title)
+            </label>
+            <input
+              id="wl-header-title"
+              type="text"
+              value={headerTitle}
+              onChange={(e) => setHeaderTitle(e.target.value)}
+              placeholder="Masalan: OYLIK AKADEMIK VA BMB DIAGNOSTIKA HISOBOTI"
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr', gap: 12, alignItems: 'center' }}>
+            <div>
+              <label htmlFor="wl-brand-color-picker" style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
+                Brend rangi
+              </label>
+              <input
+                id="wl-brand-color-picker"
+                type="color"
+                value={brandColor}
+                onChange={(e) => setBrandColor(e.target.value)}
+                style={{ height: 40, width: '100%', padding: 2, cursor: 'pointer', borderRadius: 8 }}
+              />
+            </div>
+            <div>
+              <label htmlFor="wl-brand-color-hex" style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
+                Rang kodi (HEX)
+              </label>
+              <input
+                id="wl-brand-color-hex"
+                type="text"
+                value={brandColor}
+                onChange={(e) => setBrandColor(e.target.value)}
+                placeholder="#1e3a8a"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="wl-logo-file" style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
+              O'quv markazi logotipi (PNG / JPG)
+            </label>
+            {currentLogoUrl && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                <img src={currentLogoUrl} alt="Logo" style={{ height: 36, objectFit: 'contain' }} />
+                <span className="small muted">Joriy logotip yuklangan</span>
+              </div>
+            )}
+            <input
+              id="wl-logo-file"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={(e) => setLogoFile(e.target.files?.[0] || null)}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="wl-stamp-file" style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
+              Rasmiy muhr yoki rahbar imzosi (Shaffof PNG tavsiya etiladi)
+            </label>
+            {currentStampUrl && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                <img src={currentStampUrl} alt="Muhr" style={{ height: 44, objectFit: 'contain' }} />
+                <span className="small muted">Joriy muhr yuklangan</span>
+              </div>
+            )}
+            <input
+              id="wl-stamp-file"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={(e) => setStampFile(e.target.files?.[0] || null)}
+            />
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+            <button
+              type="button"
+              className="btn ghost sm"
+              onClick={() => setBrandingOpen(false)}
+              disabled={savingBranding}
+            >
+              Bekor qilish
+            </button>
+            <button
+              type="submit"
+              className="btn primary sm"
+              disabled={savingBranding}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              {savingBranding ? 'Saqlanmoqda...' : '💾 Sozlamalarni saqlash'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Dependencies & Academic History Modal */}
+      <Modal
+        open={Boolean(depGroup)}
+        onClose={() => {
+          if (depGroup && lifecycleBusyId === depGroup.id) return;
+          setDepGroup(null);
+        }}
+        title="🛡️ Guruh xavfsizligi va akademik audit"
+        subtitle={depGroup ? `Guruh: ${depGroup.name}` : undefined}
+        maxWidth={520}
+      >
+        {depGroup && (
+          <>
             {depLoading && (
               <div style={{ textAlign: 'center', padding: '24px 0' }}>
-                <p style={{ color: '#94a3b8' }}>Akademik tarix tekshirilmoqda…</p>
+                <p className="muted">Akademik tarix tekshirilmoqda…</p>
               </div>
             )}
 
             {!depLoading && depData && (
               <div>
-                <div style={{ background: '#0f172a', borderRadius: 12, padding: 14, marginBottom: 16 }}>
-                  <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700, color: '#cbd5e1' }}>
+                <div
+                  style={{
+                    background: 'var(--bg-elevated)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 12,
+                    padding: 14,
+                    marginBottom: 16,
+                  }}
+                >
+                  <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
                     Bog‘liq ma‘lumotlar:
                   </p>
-                  <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: '#94a3b8', lineHeight: 1.6 }}>
+                  <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
                     <li>O‘quvchilar: <b>{depData.dependencies.students_count}</b> nafar</li>
                     <li>Uy vazifalari: <b>{depData.dependencies.homeworks_count}</b> ta</li>
                     <li>Topshirilgan vazifalar: <b>{depData.dependencies.homework_submissions_count}</b> ta</li>
@@ -1554,62 +1566,53 @@ export default function Groups() {
                 </div>
 
                 {!depData.can_delete ? (
-                  <div
-                    style={{
-                      background: '#451a03',
-                      border: '1px solid #78350f',
-                      borderRadius: 12,
-                      padding: 12,
-                      marginBottom: 16,
-                    }}
-                  >
-                    <p style={{ margin: 0, color: '#fde68a', fontSize: 13, lineHeight: 1.5 }}>
-                      ⚠️ <b>Guruhni o‘chirish taqiqlangan!</b><br />
+                  <div style={{ marginBottom: 16 }}>
+                    <Alert tone="warning" title="⚠️ Guruhni o‘chirish taqiqlangan!">
                       Ushbu guruhda o‘quvchilar va akademik tarix mavjud. O‘quvchilar natijalari va baholari yo‘qolib
                       ketmasligi uchun guruhni butunlay o‘chirish o‘rniga <b>arxivlash</b> tavsiya etiladi.
-                    </p>
+                    </Alert>
                   </div>
                 ) : (
-                  <div
-                    style={{
-                      background: '#064e3b',
-                      border: '1px solid #065f46',
-                      borderRadius: 12,
-                      padding: 12,
-                      marginBottom: 16,
-                    }}
-                  >
-                    <p style={{ margin: 0, color: '#a7f3d0', fontSize: 13 }}>
+                  <div style={{ marginBottom: 16 }}>
+                    <Alert tone="success">
                       ✅ Ushbu guruhda hech qanday akademik tarix yoki o‘quvchilar yo‘q. Uni xavfsiz o‘chirishingiz mumkin.
-                    </p>
+                    </Alert>
                   </div>
                 )}
 
                 <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                  <button className="btn ghost sm" onClick={() => setDepGroup(null)}>
+                  <button
+                    type="button"
+                    className="btn ghost sm"
+                    disabled={lifecycleBusyId === depGroup.id}
+                    onClick={() => setDepGroup(null)}
+                  >
                     Bekor qilish
                   </button>
                   <button
-                    className="btn sm"
-                    style={{ background: '#d97706', color: '#fff', border: 'none' }}
+                    type="button"
+                    className="btn secondary sm"
+                    disabled={lifecycleBusyId === depGroup.id}
                     onClick={() => void handleArchive(depGroup.id)}
                   >
-                    📦 Guruhni arxivlash
+                    {lifecycleBusyId === depGroup.id ? 'Bajarilmoqda…' : '📦 Guruhni arxivlash'}
                   </button>
                   {depData.can_delete && (
                     <button
+                      type="button"
                       className="btn danger sm"
+                      disabled={lifecycleBusyId === depGroup.id}
                       onClick={() => void handleSafeDelete(depGroup.id)}
                     >
-                      🗑 Butunlay o‘chirish
+                      {lifecycleBusyId === depGroup.id ? 'O‘chirilmoqda…' : '🗑 Butunlay o‘chirish'}
                     </button>
                   )}
                 </div>
               </div>
             )}
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Modal>
     </div>
   );
 }

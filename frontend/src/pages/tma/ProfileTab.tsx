@@ -97,8 +97,12 @@ export default function ProfileTab({ profile }: { profile: TmaProfile | null }) 
               {user?.email || ''}
             </p>
             <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-              <span className="tma-badge" style={{ background: '#f1f5f9', color: '#475569' }}>
-                {user?.role === 'teacher' ? `👨‍🏫 ${t('tma_role_teacher')}` : `🎓 ${t('tma_role_student')}`}
+              <span className="tma-badge" style={{ background: 'var(--tma-elevated)', color: 'var(--tma-muted)' }}>
+                {user?.role === 'admin' || user?.role === 'superadmin'
+                  ? '👑 Admin'
+                  : user?.role === 'teacher'
+                  ? `👨‍🏫 ${t('tma_role_teacher')}`
+                  : `🎓 ${t('tma_role_student')}`}
               </span>
               <span className="tma-badge" style={{ background: '#fef3c7', color: '#b45309' }}>
                 {leagueTitle}
@@ -162,17 +166,17 @@ export default function ProfileTab({ profile }: { profile: TmaProfile | null }) 
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
               {insights.strongest_subject && (
-                <div style={{ background: '#f0fdf4', borderRadius: 10, padding: '8px 10px' }}>
+                <div style={{ background: 'var(--tma-green-light)', borderRadius: 10, padding: '8px 10px' }}>
                   <span className="tma-muted" style={{ fontSize: 11 }}>{t('ins_strongest')}</span>
-                  <p style={{ margin: '2px 0 0', fontWeight: 700, fontSize: 13, color: '#15803d', textTransform: 'capitalize' }}>
+                  <p style={{ margin: '2px 0 0', fontWeight: 700, fontSize: 13, color: 'var(--tma-green-text)', textTransform: 'capitalize' }}>
                     {insights.strongest_subject.subject} ({insights.strongest_subject.avg_percentage}%)
                   </p>
                 </div>
               )}
               {insights.weakest_subject && (
-                <div style={{ background: '#fff7ed', borderRadius: 10, padding: '8px 10px' }}>
+                <div style={{ background: 'var(--tma-accent-light)', borderRadius: 10, padding: '8px 10px' }}>
                   <span className="tma-muted" style={{ fontSize: 11 }}>{t('ins_weakest')}</span>
-                  <p style={{ margin: '2px 0 0', fontWeight: 700, fontSize: 13, color: '#c2410c', textTransform: 'capitalize' }}>
+                  <p style={{ margin: '2px 0 0', fontWeight: 700, fontSize: 13, color: 'var(--tma-accent-text)', textTransform: 'capitalize' }}>
                     {insights.weakest_subject.subject} ({insights.weakest_subject.avg_percentage}%)
                   </p>
                 </div>

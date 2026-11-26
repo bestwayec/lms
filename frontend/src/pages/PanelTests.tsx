@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Alert, ConfirmDialog, Modal } from '../components/ui';
 import { useLang } from '../i18n/LangContext';
 import { Panel } from '../lib/api';
 
@@ -71,26 +72,20 @@ export default function PanelTests() {
   const [previewData, setPreviewData] = useState<BulkPreviewData | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [isProcessingBulk, setIsProcessingBulk] = useState(false);
+  const [bulkModalErr, setBulkModalErr] = useState<string | null>(null);
+  const [singleConfirm, setSingleConfirm] = useState<{
+    test: TestItem;
+    mode: 'delete' | 'archive';
+    message: string;
+  } | null>(null);
+  const [singleBusy, setSingleBusy] = useState(false);
 
   // Visibility Audit state
   const [auditModalOpen, setAuditModalOpen] = useState(false);
   const [auditLoading, setAuditLoading] = useState(false);
-  const [auditData, setAuditData] = useState<{
-    total_public_studio_tests: number;
-    tests: {
-      id: number;
-      title: string;
-      owner_name: string;
-      owner_email: string;
-      learning_center_id: number | null;
-      learning_center_name: string | null;
-      active_assignments: number;
-      existing_attempts: number;
-      results_count: number;
-      access_policy: string;
-      proposed_access_policy: string;
-    }[];
-  } | null>(null);
+  const [auditErr, setAuditErr] = useState<string | null>(null);
+  const [auditConfirmPending, setAuditConfirmPending] = useState(false);
+  const [auditData, setAuditData] = useState<Awaited<ReturnType<typeof Panel.visibilityAudit>> | null>(null);
   const [selectedAuditIds, setSelectedAuditIds] = useState<number[]>([]);
   const [isApplyingAudit, setIsApplyingAudit] = useState(false);
 
@@ -128,7 +123,7 @@ export default function PanelTests() {
     }
   };
 
-  const removeSingle = async (test: TestItem) => {
+  const removeSingle = (test: TestItem) => {
     const attempts = test.attempts_count || test.results_count || 0;
     const assignments = test.assignments_count || 0;
 
@@ -139,21 +134,38 @@ export default function PanelTests() {
         ? `Ushbu test ${assignments} ta faol topshiriqqa biriktirilgan. Avval topshiriqlarni bekor qiling yoki testni arxivlang.`
         : `E'lon qilingan testni to'g'ridan-to'g'ri o'chirib bo'lmaydi. Uni arxivlash tavsiya etiladi.`;
 
-      const shouldArchive = window.confirm(`${msg}\n\nTestni arxivga o'tkazishni xohlaysizmi?`);
-      if (shouldArchive) {
-        archiveSingle(test.id);
-      }
+      setSingleConfirm({
+        test,
+        mode: 'archive',
+        message: `${msg} Testni arxivga o'tkazishni xohlaysizmi?`,
+      });
       return;
     }
 
-    if (!window.confirm(`"${test.title}" testini butunlay o'chirmoqchimisiz?`)) return;
+    setSingleConfirm({
+      test,
+      mode: 'delete',
+      message: `"${test.title}" testini butunlay o'chirmoqchimisiz?`,
+    });
+  };
 
+  const confirmSingleAction = async () => {
+    if (!singleConfirm) return;
+    setSingleBusy(true);
     try {
-      await Panel.deleteTest(test.id);
-      setSuccessMsg('Test muvaffaqiyatli o\'chirildi.');
+      if (singleConfirm.mode === 'archive') {
+        await Panel.archiveTest(singleConfirm.test.id);
+        setSuccessMsg('Test arxivlandi.');
+      } else {
+        await Panel.deleteTest(singleConfirm.test.id);
+        setSuccessMsg('Test muvaffaqiyatli o\'chirildi.');
+      }
+      setSingleConfirm(null);
       load();
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : 'O\'chirishda xatolik yuz berdi.');
+      setErr(e instanceof Error ? e.message : 'Amalni bajarishda xatolik yuz berdi.');
+    } finally {
+      setSingleBusy(false);
     }
   };
 
@@ -200,9 +212,12 @@ export default function PanelTests() {
   // Request bulk action preview
   const requestBulkAction = async (action: string) => {
     if (selectedIds.length === 0) {
-      alert('Iltimos, avval kamida bitta testni tanlang.');
+      setErr('Iltimos, avval kamida bitta testni tanlang.');
       return;
     }
+
+    setErr(null);
+    setBulkModalErr(null);
 
     if (action === 'export') {
       try {
@@ -233,6 +248,7 @@ export default function PanelTests() {
   const confirmBulkAction = async () => {
     if (!pendingAction || selectedIds.length === 0) return;
     setIsProcessingBulk(true);
+    setBulkModalErr(null);
     try {
       const res = await Panel.bulkActionTests(selectedIds, pendingAction);
       setPreviewData(null);
@@ -248,7 +264,9 @@ export default function PanelTests() {
       }
       load();
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : 'Amalni bajarishda xatolik.');
+      const msg = e instanceof Error ? e.message : 'Amalni bajarishda xatolik.';
+      setBulkModalErr(msg);
+      setErr(msg);
     } finally {
       setIsProcessingBulk(false);
     }
@@ -257,6 +275,8 @@ export default function PanelTests() {
   const openVisibilityAudit = async () => {
     setAuditModalOpen(true);
     setAuditLoading(true);
+    setAuditErr(null);
+    setAuditConfirmPending(false);
     try {
       const res = await Panel.visibilityAudit();
       setAuditData(res);
@@ -271,21 +291,22 @@ export default function PanelTests() {
 
   const handleApplyAudit = async () => {
     if (selectedAuditIds.length === 0) return;
-    if (
-      !window.confirm(
-        `${selectedAuditIds.length} ta testning auditoriyasini xavfsiz GROUP_ONLY rejimiga o'tkazmoqchimisiz?\n\nTarixiy urinishlar va natijalar to'liq saqlanadi.`,
-      )
-    ) {
+    if (!auditConfirmPending) {
+      setAuditConfirmPending(true);
       return;
     }
     setIsApplyingAudit(true);
+    setAuditErr(null);
     try {
       const res = await Panel.applyVisibilityAudit(selectedAuditIds, 'GROUP_ONLY');
       setSuccessMsg(`${res.updated_count} ta test muvaffaqiyatli GROUP_ONLY rejimiga o'tkazildi!`);
+      setAuditConfirmPending(false);
       setAuditModalOpen(false);
       load();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Auditoriyani o\'zgartirishda xatolik yuz berdi');
+      const msg = e instanceof Error ? e.message : 'Auditoriyani o\'zgartirishda xatolik yuz berdi';
+      setAuditErr(msg);
+      setErr(msg);
     } finally {
       setIsApplyingAudit(false);
     }
@@ -349,15 +370,17 @@ export default function PanelTests() {
 
       {/* Notifications */}
       {err && (
-        <div className="card" style={{ padding: '12px 16px', background: '#fee2e2', border: '1px solid #f87171', color: '#991b1b', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>⚠️ {err}</div>
-          <button className="btn sm ghost" onClick={() => setErr(null)}>✕</button>
+        <div style={{ marginBottom: 16 }}>
+          <Alert tone="danger" onClose={() => setErr(null)}>
+            {err}
+          </Alert>
         </div>
       )}
       {successMsg && (
-        <div className="card" style={{ padding: '12px 16px', background: '#ecfdf5', border: '1px solid #6ee7b7', color: '#065f46', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>✅ {successMsg}</div>
-          <button className="btn sm ghost" onClick={() => setSuccessMsg(null)}>✕</button>
+        <div style={{ marginBottom: 16 }}>
+          <Alert tone="success" onClose={() => setSuccessMsg(null)}>
+            {successMsg}
+          </Alert>
         </div>
       )}
 
@@ -387,17 +410,21 @@ export default function PanelTests() {
 
       {/* Bulk Action Toolbar */}
       {selectedIds.length > 0 && (
-        <div className="card" style={{
-          padding: '12px 16px',
-          background: '#f8fafc',
-          border: '1px solid #cbd5e1',
-          marginBottom: '16px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '10px'
-        }}>
+        <div
+          className="card"
+          style={{
+            padding: '12px 16px',
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border-strong)',
+            color: 'var(--text-primary)',
+            marginBottom: '16px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '10px',
+          }}
+        >
           <div style={{ fontWeight: 600 }}>
             📌 {selectedIds.length} ta test tanlandi
             <button className="btn sm ghost" onClick={() => setSelectedIds([])} style={{ marginLeft: '10px' }}>
@@ -446,7 +473,7 @@ export default function PanelTests() {
         <div className="table-wrap card" style={{ padding: 0, overflowX: 'auto' }}>
           <table className="data" style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+              <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                 <th style={{ width: '40px', textAlign: 'center' }}>
                   <input
                     type="checkbox"
@@ -469,17 +496,17 @@ export default function PanelTests() {
                 const isSelected = selectedIds.includes(x.id);
                 const statusBadge =
                   x.status === 'published' && x.is_active
-                    ? { bg: '#ecfdf5', color: '#065f46', label: "E'lon qilingan" }
+                    ? { bg: 'var(--success-bg)', color: 'var(--success-text)', label: "E'lon qilingan" }
                     : x.status === 'draft'
-                    ? { bg: '#fffbeb', color: '#92400e', label: 'Qoralama' }
-                    : { bg: '#f3f4f6', color: '#4b5563', label: 'Arxivlangan' };
+                    ? { bg: 'var(--warning-bg)', color: 'var(--warning-text)', label: 'Qoralama' }
+                    : { bg: 'var(--bg-elevated)', color: 'var(--text-secondary)', label: 'Arxivlangan' };
 
                 return (
                   <tr
                     key={x.id}
+                    className={isSelected ? 'is-selected' : undefined}
                     style={{
-                      background: isSelected ? '#f0f9ff' : 'transparent',
-                      borderBottom: '1px solid #f1f5f9',
+                      borderBottom: '1px solid var(--border-subtle)',
                     }}
                   >
                     <td style={{ textAlign: 'center' }}>
@@ -499,7 +526,10 @@ export default function PanelTests() {
                       )}
                     </td>
                     <td>
-                      <span className="badge" style={{ background: '#f1f5f9', color: '#334155' }}>
+                      <span
+                        className="badge"
+                        style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+                      >
                         {x.subject || 'Umumiy'}
                       </span>
                     </td>
@@ -527,14 +557,14 @@ export default function PanelTests() {
                           fontSize: '12px',
                           padding: '2px 6px',
                           borderRadius: '6px',
-                          background: (x.attempts_count ?? 0) > 0 ? '#ede9fe' : '#f8fafc',
-                          color: (x.attempts_count ?? 0) > 0 ? '#5b21b6' : '#64748b',
+                          background: (x.attempts_count ?? 0) > 0 ? 'var(--info-bg)' : 'var(--bg-elevated)',
+                          color: (x.attempts_count ?? 0) > 0 ? 'var(--info-text)' : 'var(--text-muted)',
                         }}
                       >
                         👤 {x.attempts_count ?? 0} | 📋 {x.assignments_count ?? 0}
                       </span>
                     </td>
-                    <td style={{ fontSize: '13px', color: '#475569' }}>
+                    <td className="muted" style={{ fontSize: '13px' }}>
                       {x.creator_name || '—'}
                     </td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
@@ -629,30 +659,64 @@ export default function PanelTests() {
       )}
 
       {/* Safety Preview Modal */}
-      {previewData && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 9999,
-          padding: '16px'
-        }}>
-          <div className="card" style={{ maxWidth: '580px', width: '100%', padding: '24px', maxHeight: '90vh', overflowY: 'auto' }}>
-            <h2 style={{ margin: '0 0 12px', fontSize: '20px', fontWeight: 800 }}>
-              🛡️ {t('panel_preview_title')}
-            </h2>
-            <p className="muted small" style={{ marginBottom: '16px' }}>
-              {t('panel_preview_notice')}
-            </p>
+      <Modal
+        open={Boolean(previewData)}
+        onClose={() => {
+          if (!isProcessingBulk) {
+            setPreviewData(null);
+            setPendingAction(null);
+            setBulkModalErr(null);
+          }
+        }}
+        title={`🛡️ ${t('panel_preview_title')}`}
+        subtitle={t('panel_preview_notice')}
+        maxWidth={580}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => {
+                setPreviewData(null);
+                setPendingAction(null);
+                setBulkModalErr(null);
+              }}
+              disabled={isProcessingBulk}
+            >
+              Bekor qilish
+            </button>
+            <button
+              type="button"
+              className="btn primary"
+              onClick={confirmBulkAction}
+              disabled={isProcessingBulk}
+            >
+              {isProcessingBulk ? 'Bajarilmoqda...' : 'Tasdiqlash va davom etish'}
+            </button>
+          </>
+        }
+      >
+        {previewData && (
+          <>
+            {bulkModalErr && (
+              <div style={{ marginBottom: 14 }}>
+                <Alert tone="danger" onClose={() => setBulkModalErr(null)}>
+                  {bulkModalErr}
+                </Alert>
+              </div>
+            )}
 
-            <div style={{ background: '#f8fafc', padding: '14px', borderRadius: '8px', marginBottom: '16px', border: '1px solid #e2e8f0' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '14px' }}>
+            <div
+              style={{
+                background: 'var(--bg-elevated)',
+                padding: '14px',
+                borderRadius: '10px',
+                marginBottom: '16px',
+                border: '1px solid var(--border-subtle)',
+                color: 'var(--text-primary)',
+              }}
+            >
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '8px 16px', fontSize: '14px' }}>
                 <div>Tanlangan testlar:</div>
                 <div style={{ fontWeight: 700 }}>{previewData.total_selected} ta</div>
                 <div>Qoralamalar:</div>
@@ -662,24 +726,35 @@ export default function PanelTests() {
                 <div>Topshiriqlari mavjud:</div>
                 <div>{previewData.has_assignments_count} ta</div>
                 <div>Urinishlar / Natijalar bor:</div>
-                <div style={{ color: '#8b5cf6', fontWeight: 700 }}>{previewData.has_attempts_count} ta</div>
-                <div style={{ borderTop: '1px solid #cbd5e1', paddingTop: '6px', fontWeight: 600 }}>
+                <div style={{ color: 'var(--info-text)', fontWeight: 700 }}>{previewData.has_attempts_count} ta</div>
+                <div style={{ borderTop: '1px solid var(--border-strong)', paddingTop: '8px', fontWeight: 600 }}>
                   Xavfsiz o'chiriladi:
                 </div>
-                <div style={{ borderTop: '1px solid #cbd5e1', paddingTop: '6px', color: '#10b981', fontWeight: 800 }}>
+                <div style={{ borderTop: '1px solid var(--border-strong)', paddingTop: '8px', color: 'var(--success-text)', fontWeight: 800 }}>
                   {previewData.safe_to_delete_count} ta
                 </div>
                 <div style={{ fontWeight: 600 }}>Himoyalanadi / Saqlanadi:</div>
-                <div style={{ color: '#ef4444', fontWeight: 800 }}>{previewData.retained_count} ta</div>
+                <div style={{ color: 'var(--danger-text)', fontWeight: 800 }}>{previewData.retained_count} ta</div>
               </div>
             </div>
 
             {previewData.blocked_tests.length > 0 && (
-              <div style={{ marginBottom: '16px' }}>
-                <div style={{ fontWeight: 600, fontSize: '13px', marginBottom: '6px', color: '#991b1b' }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '13px', marginBottom: '6px', color: 'var(--danger-text)' }}>
                   ⚠️ Quyidagi testlar natijalarni himoyalash uchun o'chirilmaydi:
                 </div>
-                <div style={{ maxHeight: '120px', overflowY: 'auto', background: '#fff1f2', padding: '8px', borderRadius: '6px', fontSize: '12px' }}>
+                <div
+                  style={{
+                    maxHeight: '140px',
+                    overflowY: 'auto',
+                    background: 'var(--danger-bg)',
+                    border: '1px solid var(--danger-border)',
+                    color: 'var(--danger-text)',
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                  }}
+                >
                   {previewData.blocked_tests.map((b) => (
                     <div key={b.id} style={{ marginBottom: '4px' }}>
                       • <strong>{b.title}</strong> — {b.reason}
@@ -688,208 +763,183 @@ export default function PanelTests() {
                 </div>
               </div>
             )}
+          </>
+        )}
+      </Modal>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button
-                className="btn secondary"
-                onClick={() => { setPreviewData(null); setPendingAction(null); }}
-                disabled={isProcessingBulk}
-              >
-                Bekor qilish
-              </button>
-              <button
-                className="btn primary"
-                onClick={confirmBulkAction}
-                disabled={isProcessingBulk}
-              >
-                {isProcessingBulk ? 'Bajarilmoqda...' : 'Tasdiqlash va davom etish'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Single Action Confirm Dialog */}
+      <ConfirmDialog
+        open={Boolean(singleConfirm)}
+        onClose={() => {
+          if (!singleBusy) setSingleConfirm(null);
+        }}
+        onConfirm={() => void confirmSingleAction()}
+        title={singleConfirm?.mode === 'archive' ? 'Testni arxivlash' : 'Testni o\'chirish'}
+        message={singleConfirm?.message ?? ''}
+        confirmLabel={singleConfirm?.mode === 'archive' ? 'Arxivlash' : 'Ha, o\'chirish'}
+        danger={singleConfirm?.mode === 'delete'}
+        loading={singleBusy}
+      />
 
       {/* Visibility Audit Modal */}
-      {auditModalOpen && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0,0,0,0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999,
-            padding: '16px',
-          }}
-        >
-          <div
-            className="card"
-            style={{
-              maxWidth: '850px',
-              width: '100%',
-              padding: '24px',
-              maxHeight: '90vh',
-              overflowY: 'auto',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 800 }}>
-                🛡️ {t('panel_visibility_audit_title', 'Ochiq Studio Testlari Auditi')}
-              </h2>
-              <button
-                type="button"
-                className="btn sm ghost"
-                onClick={() => setAuditModalOpen(false)}
-                disabled={isApplyingAudit}
-              >
-                ✕
-              </button>
+      <Modal
+        open={auditModalOpen}
+        onClose={() => {
+          if (!isApplyingAudit) {
+            setAuditModalOpen(false);
+            setAuditConfirmPending(false);
+          }
+        }}
+        title={`🛡️ ${t('panel_visibility_audit_title', 'Ochiq Studio Testlari Auditi')}`}
+        subtitle={t(
+          'panel_visibility_audit_desc',
+          'Eski ochiq (PUBLIC_FREE) o‘qituvchi testlarini aniqlash va ularni xavfsiz faqat guruh aʼzolari uchun (GROUP_ONLY) rejimiga o‘tkazish. O‘quvchilarning barcha mavjud urinishlari, topshiriqlari va natijalari 100% tegilmasdan saqlanadi.',
+        )}
+        maxWidth={860}
+      >
+        {auditErr && (
+          <div style={{ marginBottom: 14 }}>
+            <Alert tone="danger" onClose={() => setAuditErr(null)}>
+              {auditErr}
+            </Alert>
+          </div>
+        )}
+
+        {auditLoading ? (
+          <div style={{ padding: '32px', textAlign: 'center' }}>
+            <p className="muted">{t('loading', 'Tekshirilmoqda...')}</p>
+          </div>
+        ) : !auditData || auditData.tests.length === 0 ? (
+          <Alert tone="success" title="✅ Barcha Studio testlari himoyalangan!">
+            Hozirda noo‘rin ochiq qolgan Studio testlari mavjud emas.
+          </Alert>
+        ) : (
+          <>
+            <div style={{ marginBottom: 14 }}>
+              <Alert tone="warning">
+                ⚠️ <strong>{auditData.total_public_tests ?? auditData.total_public_studio_tests ?? auditData.tests.length} ta</strong> ochiq test aniqlandi.
+                Quyidagi jadvaldan keraklilarini tanlab, bir bosishda <strong>GROUP_ONLY</strong> ga o‘tkazishingiz mumkin.
+              </Alert>
             </div>
 
-            <p className="muted small" style={{ marginBottom: 16 }}>
-              {t(
-                'panel_visibility_audit_desc',
-                'Eski ochiq (PUBLIC_FREE) o‘qituvchi testlarini aniqlash va ularni xavfsiz faqat guruh aʼzolari uchun (GROUP_ONLY) rejimiga o‘tkazish. O‘quvchilarning barcha mavjud urinishlari, topshiriqlari va natijalari 100% tegilmasdan saqlanadi.',
-              )}
-            </p>
-
-            {auditLoading ? (
-              <div style={{ padding: '32px', textAlign: 'center' }}>
-                <p className="muted">{t('loading', 'Tekshirilmoqda...')}</p>
-              </div>
-            ) : !auditData || auditData.tests.length === 0 ? (
-              <div
-                style={{
-                  background: '#ecfdf5',
-                  border: '1px solid #a7f3d0',
-                  borderRadius: 8,
-                  padding: 20,
-                  color: '#065f46',
-                  textAlign: 'center',
-                  marginBottom: 16,
-                }}
-              >
-                <strong>✅ Barcha Studio testlari himoyalangan!</strong>
-                <p style={{ margin: '6px 0 0', fontSize: '0.9rem' }}>
-                  Hozirda noo‘rin ochiq qolgan Studio testlari mavjud emas.
-                </p>
-              </div>
-            ) : (
-              <>
-                <div
-                  style={{
-                    background: '#fffbeb',
-                    border: '1px solid #fde68a',
-                    borderRadius: 8,
-                    padding: '12px 16px',
-                    marginBottom: 16,
-                    color: '#92400e',
-                    fontSize: '0.9rem',
-                  }}
+            {auditConfirmPending && (
+              <div style={{ marginBottom: 14 }}>
+                <Alert
+                  tone="info"
+                  title={`${selectedAuditIds.length} ta test GROUP_ONLY rejimiga o'tkaziladi`}
                 >
-                  ⚠️ <strong>{auditData.total_public_studio_tests} ta</strong> ochiq test aniqlandi.
-                  Quyidagi jadvaldan keraklilarini tanlab, bir bosishda <strong>GROUP_ONLY</strong> ga o‘tkazishingiz mumkin.
-                </div>
-
-                <div className="table-wrap" style={{ maxHeight: '360px', overflowY: 'auto', marginBottom: 16 }}>
-                  <table className="data" style={{ fontSize: '0.85rem' }}>
-                    <thead>
-                      <tr>
-                        <th style={{ width: 40 }}>
-                          <input
-                            type="checkbox"
-                            checked={selectedAuditIds.length === auditData.tests.length && auditData.tests.length > 0}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedAuditIds(auditData.tests.map((x) => x.id));
-                              } else {
-                                setSelectedAuditIds([]);
-                              }
-                            }}
-                          />
-                        </th>
-                        <th>Test nomi</th>
-                        <th>O‘qituvchi</th>
-                        <th>Markaz</th>
-                        <th>Topshiriq</th>
-                        <th>Natijalar</th>
-                        <th>Hozirgi</th>
-                        <th>Taklif</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {auditData.tests.map((item) => (
-                        <tr key={item.id}>
-                          <td>
-                            <input
-                              type="checkbox"
-                              checked={selectedAuditIds.includes(item.id)}
-                              onChange={() => {
-                                setSelectedAuditIds((prev) =>
-                                  prev.includes(item.id)
-                                    ? prev.filter((id) => id !== item.id)
-                                    : [...prev, item.id],
-                                );
-                              }}
-                            />
-                          </td>
-                          <td>
-                            <strong>{item.title}</strong>
-                            <div className="muted small">ID: {item.id}</div>
-                          </td>
-                          <td>
-                            <div>{item.owner_name}</div>
-                            <div className="muted small">{item.owner_email}</div>
-                          </td>
-                          <td>{item.learning_center_name || 'Mustaqil'}</td>
-                          <td>{item.active_assignments} ta</td>
-                          <td>{item.results_count || item.existing_attempts} ta</td>
-                          <td>
-                            <span style={{ color: '#d97706', fontWeight: 600 }}>{item.access_policy}</span>
-                          </td>
-                          <td>
-                            <span style={{ color: '#10b981', fontWeight: 700 }}>
-                              {item.proposed_access_policy}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-                  <span className="muted small">
-                    {selectedAuditIds.length} ta test tanlandi
-                  </span>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button
-                      type="button"
-                      className="btn secondary"
-                      onClick={() => setAuditModalOpen(false)}
-                      disabled={isApplyingAudit}
-                    >
-                      Yopish
-                    </button>
-                    <button
-                      type="button"
-                      className="btn primary"
-                      onClick={() => void handleApplyAudit()}
-                      disabled={selectedAuditIds.length === 0 || isApplyingAudit}
-                    >
-                      {isApplyingAudit ? 'O‘tkazilmoqda...' : 'GROUP_ONLY ga o‘tkazish'}
-                    </button>
-                  </div>
-                </div>
-              </>
+                  Tarixiy urinishlar va natijalar to'liq saqlanadi. Tasdiqlash uchun o'ngdagi tugmani qayta bosing.
+                </Alert>
+              </div>
             )}
-          </div>
-        </div>
-      )}
+
+            <div className="table-wrap" style={{ maxHeight: '360px', overflowY: 'auto', marginBottom: 16 }}>
+              <table className="data" style={{ fontSize: '0.85rem' }}>
+                <thead>
+                  <tr>
+                    <th style={{ width: 40 }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedAuditIds.length === auditData.tests.length && auditData.tests.length > 0}
+                        onChange={(e) => {
+                          setAuditConfirmPending(false);
+                          if (e.target.checked) {
+                            setSelectedAuditIds(auditData.tests.map((x) => x.id));
+                          } else {
+                            setSelectedAuditIds([]);
+                          }
+                        }}
+                      />
+                    </th>
+                    <th>Test nomi</th>
+                    <th>O‘qituvchi</th>
+                    <th>Markaz</th>
+                    <th>Topshiriq</th>
+                    <th>Natijalar</th>
+                    <th>Hozirgi</th>
+                    <th>Taklif</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditData.tests.map((item) => (
+                    <tr key={item.id}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={selectedAuditIds.includes(item.id)}
+                          onChange={() => {
+                            setAuditConfirmPending(false);
+                            setSelectedAuditIds((prev) =>
+                              prev.includes(item.id)
+                                ? prev.filter((id) => id !== item.id)
+                                : [...prev, item.id],
+                            );
+                          }}
+                        />
+                      </td>
+                      <td>
+                        <strong>{item.title}</strong>
+                        <div className="muted small">ID: {item.id}</div>
+                      </td>
+                      <td>
+                        <div>{item.owner_name}</div>
+                        <div className="muted small">{item.owner_email}</div>
+                      </td>
+                      <td>{item.learning_center_name || 'Mustaqil'}</td>
+                      <td>{item.active_assignments_count ?? item.active_assignments ?? 0} ta</td>
+                      <td>{item.results_count ?? item.existing_attempts_count ?? item.existing_attempts ?? 0} ta</td>
+                      <td>
+                        <span style={{ color: 'var(--warning-text)', fontWeight: 600 }}>
+                          {item.current_audience_mode ?? item.access_policy ?? 'PUBLIC_FREE'}
+                        </span>
+                      </td>
+                      <td>
+                        <span style={{ color: 'var(--success-text)', fontWeight: 700 }}>
+                          {item.proposed_audience_mode ?? item.proposed_access_policy ?? 'GROUP_ONLY'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+              <span className="muted small">
+                {selectedAuditIds.length} ta test tanlandi
+              </span>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={() => {
+                    if (auditConfirmPending) {
+                      setAuditConfirmPending(false);
+                    } else {
+                      setAuditModalOpen(false);
+                    }
+                  }}
+                  disabled={isApplyingAudit}
+                >
+                  {auditConfirmPending ? 'Orqaga' : 'Yopish'}
+                </button>
+                <button
+                  type="button"
+                  className="btn primary"
+                  onClick={() => void handleApplyAudit()}
+                  disabled={selectedAuditIds.length === 0 || isApplyingAudit}
+                >
+                  {isApplyingAudit
+                    ? 'O‘tkazilmoqda...'
+                    : auditConfirmPending
+                    ? `Tasdiqlash (${selectedAuditIds.length} ta test)`
+                    : 'GROUP_ONLY ga o‘tkazish'}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </Modal>
     </div>
   );
 }

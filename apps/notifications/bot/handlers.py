@@ -388,6 +388,7 @@ def _student_more_keyboard() -> InlineKeyboardMarkup:
 def _teacher_main_menu_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
     """Main menu inline keyboard for teachers."""
     from django.conf import settings as _settings
+    from telegram import WebAppInfo
 
     _site_url = getattr(_settings, "SITE_URL", "https://grandec.uz").rstrip("/")
     buttons = [
@@ -405,7 +406,11 @@ def _teacher_main_menu_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("👤 Shaxsiy kabinet", callback_data="menu_teacher_profile"),
-            InlineKeyboardButton("🌐 Web kabinet", url=f"{_site_url}/login"),
+            InlineKeyboardButton("🛠️ Ustoz markazi", callback_data="tch_main"),
+        ],
+        [
+            InlineKeyboardButton("📱 Teacher Mini App", web_app=WebAppInfo(url=f"{_site_url}/tma/")),
+            InlineKeyboardButton("🌐 Web kabinet", url=f"{_site_url}/dashboard"),
         ],
     ]
     if is_admin:
@@ -416,6 +421,7 @@ def _teacher_main_menu_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
 def _admin_main_menu_keyboard() -> InlineKeyboardMarkup:
     """Main menu inline keyboard for superadmin."""
     from django.conf import settings as _settings
+    from telegram import WebAppInfo
 
     _site_url = getattr(_settings, "SITE_URL", "https://grandec.uz").rstrip("/")
     return InlineKeyboardMarkup(
@@ -427,13 +433,21 @@ def _admin_main_menu_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton("📈 Umumiy statistika", callback_data="adm_stats"),
             ],
             [
+                InlineKeyboardButton("🏫 Markazlar", callback_data="adm_centers"),
+                InlineKeyboardButton("👥 Guruhlar", callback_data="adm_groups"),
+            ],
+            [
+                InlineKeyboardButton("📝 Barcha testlar", callback_data="adm_tests"),
                 InlineKeyboardButton(
                     "👨‍🏫 O'qituvchilarni tasdiqlash",
                     callback_data="adm_pending_teachers",
                 ),
+            ],
+            [
                 InlineKeyboardButton(
                     "⚙️ Tizim sozlamalari", callback_data="adm_settings"
                 ),
+                InlineKeyboardButton("📱 Admin Mini App", web_app=WebAppInfo(url=f"{_site_url}/tma/")),
             ],
             [
                 InlineKeyboardButton(
@@ -446,7 +460,10 @@ def _admin_main_menu_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
-                    "🌐 Django Admin Panel", url=f"{_site_url}/admin/"
+                    "🌐 Admin Web Panel", url=f"{_site_url}/panel"
+                ),
+                InlineKeyboardButton(
+                    "🔧 Django Admin", url=f"{_site_url}/admin/"
                 ),
             ],
         ]
@@ -5326,17 +5343,29 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         elif data == "role_select_teacher":
             await role_select_teacher_callback(update, context)
         elif data.startswith("adm_appr_tchr_"):
-            target_id = int(data.removeprefix("adm_appr_tchr_"))
-            await admin_approve_teacher_callback(update, context, target_id)
+            target_id = _safe_callback_int(data, prefix="adm_appr_tchr_")
+            if target_id is not None:
+                await admin_approve_teacher_callback(update, context, target_id)
+            else:
+                await query.answer("Noto'g'ri so'rov.", show_alert=True)
         elif data.startswith("adm_rej_tchr_"):
-            target_id = int(data.removeprefix("adm_rej_tchr_"))
-            await admin_reject_teacher_callback(update, context, target_id)
+            target_id = _safe_callback_int(data, prefix="adm_rej_tchr_")
+            if target_id is not None:
+                await admin_reject_teacher_callback(update, context, target_id)
+            else:
+                await query.answer("Noto'g'ri so'rov.", show_alert=True)
         elif data.startswith("publish_feedback_"):
-            fb_id = int(data.removeprefix("publish_feedback_"))
-            await admin_publish_feedback_callback(update, context, fb_id)
+            fb_id = _safe_callback_int(data, prefix="publish_feedback_")
+            if fb_id is not None:
+                await admin_publish_feedback_callback(update, context, fb_id)
+            else:
+                await query.answer("Noto'g'ri so'rov.", show_alert=True)
         elif data.startswith("reject_feedback_"):
-            fb_id = int(data.removeprefix("reject_feedback_"))
-            await admin_reject_feedback_callback(update, context, fb_id)
+            fb_id = _safe_callback_int(data, prefix="reject_feedback_")
+            if fb_id is not None:
+                await admin_reject_feedback_callback(update, context, fb_id)
+            else:
+                await query.answer("Noto'g'ri so'rov.", show_alert=True)
         elif data in ("menu_admin", "adm_main"):
             if query.message:
                 await query.message.reply_text(
@@ -7495,7 +7524,7 @@ async def web_cabinet_handler(
         [
             [
                 InlineKeyboardButton(
-                    "🌐 Veb-kabinetga kirish", url=f"{_site_url}/login"
+                    "🌐 Veb-kabinetga kirish", url=f"{_site_url}/dashboard"
                 ),
             ],
             [
@@ -9914,11 +9943,12 @@ def setup_handlers(app) -> None:
     app.add_handler(CommandHandler("vocab", vocab_handler))
     app.add_handler(CallbackQueryHandler(quiz_callback_handler, pattern=r"^quiz_"))
 
-    # Group Assistant & Workspace callbacks (must be before generic callback_handler)
+    # Group Assistant & Workspace callbacks (must only intercept callbacks it implements;
+    # adm_stats / adm_pending_* / adm_settings / adm_switch_* / adm_rec_* / adm_appr_* flow to callback_handler)
     app.add_handler(
         CallbackQueryHandler(
             group_assistant_callback_handler,
-            pattern=r"^(grp_att_|grp_cmd_|grp_m_|ustoz_|tch_|adm_)",
+            pattern=r"^(grp_att_|grp_cmd_|grp_m_|ustoz_|tch_|adm_(?:main|centers|teachers|groups|tests|reports|broadcast|security)$)",
         )
     )
 

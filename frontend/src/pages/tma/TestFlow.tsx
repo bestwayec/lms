@@ -24,12 +24,14 @@ export default function TestFlow({
   const [remaining, setRemaining] = useState(0);
   const [flagged, setFlagged] = useState<Set<number>>(new Set());
   const [submitting, setSubmitting] = useState(false);
+  const [submitErr, setSubmitErr] = useState<string | null>(null);
+  const [exitConfirm, setExitConfirm] = useState(false);
+  const [submitConfirm, setSubmitConfirm] = useState(false);
   const [result, setResult] = useState<TmaSubmitResult | null>(null);
   const [resultTitle, setResultTitle] = useState('');
+  const [attemptNonce, setAttemptNonce] = useState(0);
   const timerRef = useRef<number | null>(null);
-  const stateRef = useRef({ phase, index });
-
-  stateRef.current = { phase, index };
+  const autoSubmittedRef = useRef(false);
 
   const stopTimer = () => {
     if (timerRef.current !== null) {
@@ -43,6 +45,7 @@ export default function TestFlow({
   // Load (creates or resumes the attempt) — mirrors old showTestInfo().
   useEffect(() => {
     let alive = true;
+    autoSubmittedRef.current = false;
     (async () => {
       try {
         const data = await TmaApi.startTest(testId);
@@ -54,6 +57,15 @@ export default function TestFlow({
           } else if (q.selected_choice_ids?.length) {
             restored[q.id] = [...q.selected_choice_ids];
           }
+        }
+        try {
+          const cached = sessionStorage.getItem(`tma_attempt_${data.attempt_id}`);
+          if (cached) {
+            const parsed = JSON.parse(cached) as Record<number, TmaAnswerValue>;
+            Object.assign(restored, parsed);
+          }
+        } catch {
+          /* ignore storage quota */
         }
         setAnswers(restored);
         setStart(data);
@@ -72,14 +84,21 @@ export default function TestFlow({
     return () => {
       alive = false;
     };
-  }, [testId, t]);
+  }, [testId, attemptNonce, t]);
 
   const doSubmit = useCallback(
     async (attemptId: number, finalAnswers: Record<number, TmaAnswerValue>) => {
       if (!start) return;
       setSubmitting(true);
+      setSubmitErr(null);
+      setSubmitConfirm(false);
       try {
         const data = await TmaApi.submitTest(testId, attemptId, finalAnswers);
+        try {
+          sessionStorage.removeItem(`tma_attempt_${attemptId}`);
+        } catch {
+          /* ignore */
+        }
         hapticNotify(data.is_passed ? 'success' : 'error');
         setResult(data);
         setResultTitle(start.test_title);
@@ -90,6 +109,11 @@ export default function TestFlow({
         if (status === 408) {
           try {
             const r = await TmaApi.attemptResult(attemptId);
+            try {
+              sessionStorage.removeItem(`tma_attempt_${attemptId}`);
+            } catch {
+              /* ignore */
+            }
             setResult(r);
             setResultTitle(start.test_title);
             setPhase('result');
@@ -98,8 +122,8 @@ export default function TestFlow({
             /* fall through to error */
           }
         }
-        setLoadError(tmaErrorMessage(e, t('tma_loading_error')));
-        setPhase('info');
+        // Keep answers & player phase active on network/server failure so student can retry safely
+        setSubmitErr(tmaErrorMessage(e, t('tma_loading_error')));
       } finally {
         setSubmitting(false);
       }
@@ -114,42 +138,48 @@ export default function TestFlow({
 
   // Countdown during play (auto-submit at zero only for timed tests).
   const answersRef = useRef(answers);
-  answersRef.current = answers;
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
 
   useEffect(() => {
     if (phase !== 'play' || !start || !isTimed) return;
     stopTimer();
     timerRef.current = window.setInterval(() => {
-      setRemaining((prev) => {
-        if (prev <= 1) {
-          stopTimer();
-          hapticNotify('warning');
-          void doSubmit(start.attempt_id, answersRef.current);
-          return 0;
-        }
-        return prev - 1;
-      });
+      setRemaining((prev) => (prev <= 1 ? 0 : prev - 1));
     }, 1000);
     return stopTimer;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, start, isTimed]);
 
-  // BackButton: confirm exit mid-test, plain back otherwise.
+  // Trigger timed auto-submit outside the state updater so StrictMode never double-submits.
+  useEffect(() => {
+    if (phase !== 'play' || !start || !isTimed || remaining > 0) return;
+    if (autoSubmittedRef.current) return;
+    autoSubmittedRef.current = true;
+    stopTimer();
+    hapticNotify('warning');
+    void doSubmit(start.attempt_id, answersRef.current);
+  }, [phase, start, isTimed, remaining, doSubmit]);
+
+  // BackButton: inline confirmation mid-test, plain back otherwise.
   useEffect(() => {
     if (phase === 'play') {
-      setBackHandler(() => {
-        if (window.confirm(t('tma_exit_test'))) {
-          stopTimer();
-          onExit();
-        }
-      });
-    } else if (phase === 'info') {
-      setBackHandler(() => onExit());
+      setBackHandler(() => setExitConfirm(true));
     } else {
       setBackHandler(() => onExit());
     }
     return () => setBackHandler(null);
-  }, [phase, onExit, setBackHandler, t]);
+  }, [phase, onExit, setBackHandler]);
+
+  // Persist local attempt draft on every answer change so reload/network hiccup never loses work
+  useEffect(() => {
+    if (!start || phase !== 'play') return;
+    try {
+      sessionStorage.setItem(`tma_attempt_${start.attempt_id}`, JSON.stringify(answers));
+    } catch {
+      /* ignore storage quota */
+    }
+  }, [answers, start, phase]);
 
   if (loadError) {
     return (
@@ -210,10 +240,15 @@ export default function TestFlow({
           <button
             className="tma-btn tma-btn-hl"
             onClick={() => {
+              setLoadError(null);
               setResult(null);
+              setStart(null);
               setAnswers({});
+              setFlagged(new Set());
+              setSubmitErr(null);
               setIndex(0);
               setPhase('info');
+              setAttemptNonce((n) => n + 1);
             }}
           >
             {t('tma_retry')}
@@ -234,11 +269,11 @@ export default function TestFlow({
           <h2 style={{ fontSize: 20, fontWeight: 800, margin: '0 0 8px' }}>{start.test_title}</h2>
           {!!start.test_description && <p className="tma-muted">{start.test_description}</p>}
           <div className="tma-grid2" style={{ margin: '24px 0' }}>
-            <div className="tma-stat" style={{ background: '#F1F5F9' }}>
+            <div className="tma-stat" style={{ background: 'var(--tma-elevated)' }}>
               <b>{start.total_questions}</b>
               <p>{t('tma_info_questions')}</p>
             </div>
-            <div className="tma-stat" style={{ background: '#F1F5F9' }}>
+            <div className="tma-stat" style={{ background: 'var(--tma-elevated)' }}>
               <b>{isTimed ? start.time_limit_minutes : '∞'}</b>
               <p>{isTimed ? t('tma_info_minutes') : (t('tma_untimed') || "Vaqt chegarasiz")}</p>
             </div>
@@ -300,7 +335,8 @@ export default function TestFlow({
   }).length;
 
   const submit = () => {
-    if (unanswered > 0 && !window.confirm(`${unanswered} ${t('tma_unanswered_suffix')}`)) {
+    if (unanswered > 0 && !submitConfirm) {
+      setSubmitConfirm(true);
       return;
     }
     hapticImpact('heavy');
@@ -313,6 +349,62 @@ export default function TestFlow({
 
   return (
     <div>
+      {exitConfirm && (
+        <div className="tma-err" style={{ marginBottom: 14, textAlign: 'left' }}>
+          <p style={{ margin: '0 0 10px' }}>{t('tma_exit_test')}</p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="tma-btn tma-btn-card" onClick={() => setExitConfirm(false)}>
+              Davom etish
+            </button>
+            <button
+              type="button"
+              className="tma-btn tma-btn-hl"
+              onClick={() => {
+                stopTimer();
+                onExit();
+              }}
+            >
+              Chiqish
+            </button>
+          </div>
+        </div>
+      )}
+
+      {submitConfirm && (
+        <div className="tma-err" style={{ marginBottom: 14, textAlign: 'left', background: 'var(--tma-accent-light)', borderColor: 'var(--tma-streak-border)', color: 'var(--tma-streak-title)' }}>
+          <p style={{ margin: '0 0 10px' }}>{unanswered} {t('tma_unanswered_suffix')}</p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="tma-btn tma-btn-card" onClick={() => setSubmitConfirm(false)}>
+              Bekor qilish
+            </button>
+            <button
+              type="button"
+              className="tma-btn tma-btn-green"
+              onClick={() => {
+                hapticImpact('heavy');
+                stopTimer();
+                void doSubmit(start.attempt_id, answers);
+              }}
+            >
+              Baribir yakunlash
+            </button>
+          </div>
+        </div>
+      )}
+
+      {submitErr && (
+        <div className="tma-err" style={{ marginBottom: 14, textAlign: 'left' }}>
+          <p style={{ margin: '0 0 10px' }}>⚠️ {submitErr}</p>
+          <button
+            type="button"
+            className="tma-btn tma-btn-green"
+            disabled={submitting}
+            onClick={() => void doSubmit(start.attempt_id, answers)}
+          >
+            🔄 Qayta yuborish
+          </button>
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div className={`tma-timer ${isTimed ? timerClass : ''}`}>
           ⏱ {isTimed ? formatClock(remaining) : (t('tma_untimed') || "Chegarasiz")}

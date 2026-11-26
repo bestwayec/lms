@@ -223,8 +223,11 @@ def google_auth_callback(request: HttpRequest) -> HttpResponseRedirect:
     if not user.is_active:
         logger.warning("Inactive Google-linked user denied: user_id=%s", user.pk)
         return redirect("/login")
+    from django.middleware.csrf import get_token
+
     login(request, user)
     request.session.set_expiry(60 * 60 * 24 * 30)
+    get_token(request)
     logger.info("Google OAuth login: user_id=%s", user.pk)
 
     # Never put credentials in the URL: they would end up in browser history, Referer
@@ -349,8 +352,11 @@ def google_auth_verify(request: HttpRequest):
     if not user.is_active:
         return JsonResponse({"error": "Hisobingiz faol emas."}, status=403)
 
+    from django.middleware.csrf import get_token
+
     login(request, user)
     request.session.set_expiry(60 * 60 * 24 * 30)
+    get_token(request)
 
     tokens = _jwt_pair_for(user)
     payload = _jwt_user_payload(user)
