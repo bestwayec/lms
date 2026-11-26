@@ -705,7 +705,7 @@ export default function SmartTestCreate() {
               <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
                 Tezkor Ulanish Kodi (PIN)
               </div>
-              <div style={{ fontSize: 26, fontWeight: 900, color: 'var(--brand-primary-text)', letterSpacing: '1px', marginBottom: 12 }}>
+              <div style={{ fontSize: 26, fontWeight: 900, color: 'var(--brand-primary)', letterSpacing: '1px', marginBottom: 12 }}>
                 {createdResult.mock_code}
               </div>
               <button
@@ -984,7 +984,7 @@ export default function SmartTestCreate() {
           {/* Vaqt Limiti */}
           <div>
             <label style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 6 }}>
-              Vaqt Limiti: <span style={{ color: 'var(--brand-primary-text)' }}>{timeLimit === 0 ? 'Cheksiz' : `${timeLimit} daqiqa`}</span>
+              Vaqt Limiti: <span style={{ color: 'var(--brand-primary)' }}>{timeLimit === 0 ? 'Cheksiz' : `${timeLimit} daqiqa`}</span>
             </label>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {[15, 20, 30, 45, 60, 180, 0].map((mins) => (
@@ -1029,7 +1029,7 @@ export default function SmartTestCreate() {
                 border: '1px solid var(--border-strong)',
                 fontSize: 13.5,
                 fontWeight: 700,
-                color: 'var(--brand-primary-text)',
+                color: 'var(--brand-primary)',
                 background: 'var(--bg-elevated)',
                 letterSpacing: '1px',
               }}

@@ -85,22 +85,7 @@ export default function PanelTests() {
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditErr, setAuditErr] = useState<string | null>(null);
   const [auditConfirmPending, setAuditConfirmPending] = useState(false);
-  const [auditData, setAuditData] = useState<{
-    total_public_studio_tests: number;
-    tests: {
-      id: number;
-      title: string;
-      owner_name: string;
-      owner_email: string;
-      learning_center_id: number | null;
-      learning_center_name: string | null;
-      active_assignments: number;
-      existing_attempts: number;
-      results_count: number;
-      access_policy: string;
-      proposed_access_policy: string;
-    }[];
-  } | null>(null);
+  const [auditData, setAuditData] = useState<Awaited<ReturnType<typeof Panel.visibilityAudit>> | null>(null);
   const [selectedAuditIds, setSelectedAuditIds] = useState<number[]>([]);
   const [isApplyingAudit, setIsApplyingAudit] = useState(false);
 
@@ -832,7 +817,7 @@ export default function PanelTests() {
           <>
             <div style={{ marginBottom: 14 }}>
               <Alert tone="warning">
-                ⚠️ <strong>{auditData.total_public_studio_tests} ta</strong> ochiq test aniqlandi.
+                ⚠️ <strong>{auditData.total_public_tests ?? auditData.total_public_studio_tests ?? auditData.tests.length} ta</strong> ochiq test aniqlandi.
                 Quyidagi jadvaldan keraklilarini tanlab, bir bosishda <strong>GROUP_ONLY</strong> ga o‘tkazishingiz mumkin.
               </Alert>
             </div>
@@ -901,14 +886,16 @@ export default function PanelTests() {
                         <div className="muted small">{item.owner_email}</div>
                       </td>
                       <td>{item.learning_center_name || 'Mustaqil'}</td>
-                      <td>{item.active_assignments} ta</td>
-                      <td>{item.results_count || item.existing_attempts} ta</td>
+                      <td>{item.active_assignments_count ?? item.active_assignments ?? 0} ta</td>
+                      <td>{item.results_count ?? item.existing_attempts_count ?? item.existing_attempts ?? 0} ta</td>
                       <td>
-                        <span style={{ color: 'var(--warning-text)', fontWeight: 600 }}>{item.access_policy}</span>
+                        <span style={{ color: 'var(--warning-text)', fontWeight: 600 }}>
+                          {item.current_audience_mode ?? item.access_policy ?? 'PUBLIC_FREE'}
+                        </span>
                       </td>
                       <td>
                         <span style={{ color: 'var(--success-text)', fontWeight: 700 }}>
-                          {item.proposed_access_policy}
+                          {item.proposed_audience_mode ?? item.proposed_access_policy ?? 'GROUP_ONLY'}
                         </span>
                       </td>
                     </tr>

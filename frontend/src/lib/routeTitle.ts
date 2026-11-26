@@ -122,6 +122,9 @@ export function getDefaultWorkspace(
 export function shouldShowSubjectSwitcher(workspace: WorkspaceMode, pathname: string): boolean {
   if (workspace === 'admin' || workspace === 'parent') return false;
   if (workspace === 'teacher') {
+    if (pathname.startsWith('/tests/create') || pathname.startsWith('/tests/scan-omr')) {
+      return false;
+    }
     return (
       pathname.startsWith('/tests') ||
       pathname.startsWith('/essays') ||

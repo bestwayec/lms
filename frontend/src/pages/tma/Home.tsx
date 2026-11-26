@@ -128,31 +128,31 @@ export default function Home({
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             {role === 'admin' ? (
               <>
-                <Link className="tma-btn tma-btn-hl" to="/panel" style={{ fontSize: 13, minHeight: 40, textDecoration: 'none' }}>
+                <Link className="tma-btn tma-btn-hl" to="/panel" style={{ fontSize: 12, padding: '8px 10px', minHeight: 40, whiteSpace: 'nowrap', textDecoration: 'none' }}>
                   🛡️ Admin Panel
                 </Link>
-                <Link className="tma-btn tma-btn-card" to="/panel/tests" style={{ fontSize: 13, minHeight: 40, textDecoration: 'none' }}>
+                <Link className="tma-btn tma-btn-card" to="/panel/tests" style={{ fontSize: 12, padding: '8px 10px', minHeight: 40, whiteSpace: 'nowrap', textDecoration: 'none' }}>
                   📝 Barcha Testlar
                 </Link>
-                <Link className="tma-btn tma-btn-card" to="/panel/users" style={{ fontSize: 13, minHeight: 40, textDecoration: 'none' }}>
+                <Link className="tma-btn tma-btn-card" to="/panel/users" style={{ fontSize: 12, padding: '8px 10px', minHeight: 40, whiteSpace: 'nowrap', textDecoration: 'none' }}>
                   👥 Foydalanuvchilar
                 </Link>
-                <Link className="tma-btn tma-btn-card" to="/panel/tuition" style={{ fontSize: 13, minHeight: 40, textDecoration: 'none' }}>
+                <Link className="tma-btn tma-btn-card" to="/panel/tuition" style={{ fontSize: 12, padding: '8px 10px', minHeight: 40, whiteSpace: 'nowrap', textDecoration: 'none' }}>
                   💳 To‘lov cheklari
                 </Link>
               </>
             ) : (
               <>
-                <Link className="tma-btn tma-btn-hl" to="/groups" style={{ fontSize: 13, minHeight: 40, textDecoration: 'none' }}>
+                <Link className="tma-btn tma-btn-hl" to="/groups" style={{ fontSize: 12, padding: '8px 10px', minHeight: 40, whiteSpace: 'nowrap', textDecoration: 'none' }}>
                   👥 Guruhlarim
                 </Link>
-                <Link className="tma-btn tma-btn-card" to="/tests/create" style={{ fontSize: 13, minHeight: 40, textDecoration: 'none' }}>
+                <Link className="tma-btn tma-btn-card" to="/tests/create" style={{ fontSize: 12, padding: '8px 10px', minHeight: 40, whiteSpace: 'nowrap', textDecoration: 'none' }}>
                   ✨ Smart Test
                 </Link>
-                <Link className="tma-btn tma-btn-card" to="/teacher/studio" style={{ fontSize: 13, minHeight: 40, textDecoration: 'none' }}>
+                <Link className="tma-btn tma-btn-card" to="/teacher/studio" style={{ fontSize: 12, padding: '8px 10px', minHeight: 40, whiteSpace: 'nowrap', textDecoration: 'none' }}>
                   🎬 Test Studio
                 </Link>
-                <Link className="tma-btn tma-btn-card" to="/teacher/essays" style={{ fontSize: 13, minHeight: 40, textDecoration: 'none' }}>
+                <Link className="tma-btn tma-btn-card" to="/teacher/essays" style={{ fontSize: 12, padding: '8px 10px', minHeight: 40, whiteSpace: 'nowrap', textDecoration: 'none' }}>
                   ✍️ Esse Tekshiruvi
                 </Link>
               </>

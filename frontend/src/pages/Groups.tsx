@@ -793,7 +793,7 @@ export default function Groups() {
                               }}
                             >
                               O&apos;quvchi havolasi:{' '}
-                              <strong style={{ color: 'var(--brand-primary-text)', textDecoration: 'underline' }}>
+                              <strong style={{ color: 'var(--brand-primary)', textDecoration: 'underline' }}>
                                 {studentJoinLink}
                               </strong>
                             </span>

@@ -1699,7 +1699,8 @@ export const Panel = {
     ),
   visibilityAudit: () =>
     api<{
-      total_public_studio_tests: number;
+      total_public_studio_tests?: number;
+      total_public_tests?: number;
       tests: {
         id: number;
         title: string;
@@ -1707,11 +1708,16 @@ export const Panel = {
         owner_email: string;
         learning_center_id: number | null;
         learning_center_name: string | null;
-        active_assignments: number;
-        existing_attempts: number;
-        results_count: number;
-        access_policy: string;
-        proposed_access_policy: string;
+        active_assignments?: number;
+        active_assignments_count?: number;
+        existing_attempts?: number;
+        existing_attempts_count?: number;
+        results_count?: number;
+        access_policy?: string;
+        current_audience_mode?: string;
+        current_access_type?: string;
+        proposed_access_policy?: string;
+        proposed_audience_mode?: string;
       }[];
     }>('/api/v1/panel/tests/visibility-audit/'),
   applyVisibilityAudit: (testIds: number[], targetMode = 'GROUP_ONLY') =>

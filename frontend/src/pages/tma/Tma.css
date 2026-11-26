@@ -45,6 +45,7 @@
   -webkit-tap-highlight-color: transparent;
 }
 .tma-root.is-dark,
+.tma-root[data-theme="dark"],
 [data-theme="dark"] .tma-root {
   --tma-bg: var(--tg-theme-bg-color, #0B1220);
   --tma-card: var(--tg-theme-secondary-bg-color, #111C2E);
@@ -53,6 +54,12 @@
   --tma-nav-bg: rgba(11, 18, 32, 0.95);
   --tma-ink: var(--tg-theme-text-color, #F8FAFC);
   --tma-muted: var(--tg-theme-hint-color, #94A3B8);
+  --ink: var(--tma-ink);
+  --ink-soft: var(--tma-muted);
+  --muted: var(--tma-muted);
+  --text-primary: var(--tma-ink);
+  --text-secondary: var(--tma-muted);
+  --text-muted: var(--tma-muted);
   --tma-border: rgba(148, 163, 184, 0.18);
   --tma-border-strong: rgba(148, 163, 184, 0.32);
   --tma-accent: #F59E0B;
@@ -106,7 +113,10 @@
   align-items: center;
   justify-content: space-between;
 }
-.tma-header h1 {
+.tma-root .tma-header h1,
+.tma-root.is-dark .tma-header h1,
+.tma-root.is-dark h1,
+.tma-root.is-dark h2 {
   font-size: 18px;
   font-weight: 800;
   color: var(--tma-ink);
@@ -154,7 +164,9 @@
   color: var(--tma-ink);
   margin-top: 4px;
 }
-.tma-h3 {
+.tma-root .tma-h3,
+.tma-root.is-dark .tma-h3,
+.tma-root.is-dark h3.tma-h3 {
   font-size: 13px;
   font-weight: 700;
   color: var(--tma-muted);
