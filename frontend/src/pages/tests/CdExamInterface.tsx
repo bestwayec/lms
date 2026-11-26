@@ -19,6 +19,7 @@ interface CdQuestion {
   question_type: string;
   section_id: number | null;
   group_id: number | null;
+  audio_start_sec?: number | null;
   config: {
     number?: number;
     min_words?: number;
@@ -40,11 +41,24 @@ interface CdGroup {
   instructions: string;
   answer_rule: string;
   passage_id: number | null;
+  stimulus_ref?: string;
+  content_layout?: string;
   image_url: string;
   options_label: string;
   each_option_once: boolean;
 }
-interface CdPart { id: number; number: string; title: string; instructions: string; audio_url: string; groups: CdGroup[] }
+interface CdPart {
+  id: number;
+  number: string;
+  part_number?: number;
+  title: string;
+  instructions: string;
+  audio_url: string;
+  private_audio_url?: string;
+  audio_play_limit?: number;
+  transcript?: string;
+  groups: CdGroup[];
+}
 interface CdSection { section_id: number; code: string; name: string; duration_minutes: number; parts: CdPart[] }
 export interface CdAttempt {
   id: number;
@@ -187,6 +201,9 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
   });
   const bodyRef = useRef<HTMLElement | null>(null);
   const draggingRef = useRef(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
+  const [audioPlayInfo, setAudioPlayInfo] = useState<Record<number, { remaining: number | null; canPlay: boolean }>>({});
   // Floating selection highlighter toolbar (fixed-position, near selection).
   const [selBox, setSelBox] = useState<{ x: number; y: number } | null>(null);
   const [flagged, setFlagged] = useState<Set<number>>(
@@ -1068,9 +1085,73 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
         </div>
       )}
 
-      {section.code === 'LISTENING' && part.audio_url && (
-        <div className="cd-audio-bar">
-          <audio className="cd-audio" controls preload="metadata" src={part.audio_url} />
+      {section.code === 'LISTENING' && (part.private_audio_url || part.audio_url) && (
+        <div className="cd-audio-bar" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <audio
+              ref={audioRef}
+              className="cd-audio"
+              controls
+              preload="metadata"
+              src={part.private_audio_url || part.audio_url}
+              onPlay={() => {
+                const info = audioPlayInfo[part.id];
+                if (info && !info.canPlay) {
+                  audioRef.current?.pause();
+                  return;
+                }
+                const dur = audioRef.current?.duration && Number.isFinite(audioRef.current.duration)
+                  ? audioRef.current.duration
+                  : undefined;
+                TestsApi.listeningPlay(attemptId, part.id, dur)
+                  .then((res) => {
+                    setAudioPlayInfo((prev) => ({
+                      ...prev,
+                      [part.id]: { remaining: res.remaining_plays, canPlay: res.can_play },
+                    }));
+                  })
+                  .catch(() => {
+                    audioRef.current?.pause();
+                    setAudioPlayInfo((prev) => ({
+                      ...prev,
+                      [part.id]: { remaining: 0, canPlay: false },
+                    }));
+                  });
+              }}
+            />
+            {part.audio_play_limit != null && part.audio_play_limit > 0 && (
+              <span className="pill-badge" style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }}>
+                {audioPlayInfo[part.id]
+                  ? `${t('eng_plays_left', 'Qolgan urinish')}: ${audioPlayInfo[part.id].remaining ?? 0}`
+                  : `${t('eng_play_limit', 'Limit')}: ${part.audio_play_limit}x`}
+              </span>
+            )}
+            {part.transcript && (
+              <button
+                type="button"
+                className="btn sm ghost"
+                onClick={() => setTranscriptOpen((prev) => !prev)}
+              >
+                {transcriptOpen ? t('eng_hide_transcript', 'Transkriptni yopish') : t('eng_show_transcript', 'Transkript')}
+              </button>
+            )}
+          </div>
+          {part.transcript && transcriptOpen && (
+            <div
+              style={{
+                padding: '10px 14px',
+                borderRadius: 10,
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-subtle)',
+                fontSize: 13,
+                lineHeight: 1.55,
+                maxHeight: 180,
+                overflowY: 'auto',
+              }}
+            >
+              {part.transcript}
+            </div>
+          )}
         </div>
       )}
 

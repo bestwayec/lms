@@ -914,6 +914,72 @@ class SessionTakeoverView(APIView):
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+class ListeningScheduleView(APIView):
+    """GET/POST /api/tests/attempts/{id}/listening/{part_id}/play/ — server playback schedule."""
+
+    permission_classes = [IsAuthenticated, IsAttemptOwner]
+
+    def get(self, request: Request, attempt_id: int, part_id: int, *args: Any, **kwargs: Any) -> Response:
+        if _own_attempt_or_404(request, attempt_id) is None:
+            return Response({"error": "Attempt topilmadi."}, status=status.HTTP_404_NOT_FOUND)
+        from .listening_service import get_or_update_listening_schedule
+
+        try:
+            data = get_or_update_listening_schedule(
+                attempt_id=attempt_id,
+                student=request.user,
+                part_id=part_id,
+                start_play=False,
+            )
+            return Response(data, status=status.HTTP_200_OK)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+    def post(self, request: Request, attempt_id: int, part_id: int, *args: Any, **kwargs: Any) -> Response:
+        if _own_attempt_or_404(request, attempt_id) is None:
+            return Response({"error": "Attempt topilmadi."}, status=status.HTTP_404_NOT_FOUND)
+        from .listening_service import get_or_update_listening_schedule
+
+        dur = request.data.get("duration_seconds") if isinstance(request.data, dict) else None
+        try:
+            dur_val = float(dur) if dur is not None else None
+        except (TypeError, ValueError):
+            dur_val = None
+        try:
+            data = get_or_update_listening_schedule(
+                attempt_id=attempt_id,
+                student=request.user,
+                part_id=part_id,
+                start_play=True,
+                duration_seconds=dur_val,
+            )
+            return Response(data, status=status.HTTP_200_OK)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ListeningAudioStreamView(APIView):
+    """GET /api/tests/attempts/{id}/listening/{part_id}/audio/ — Range-safe audio without counting plays."""
+
+    permission_classes = [IsAuthenticated, IsAttemptOwner]
+
+    def get(self, request: Request, attempt_id: int, part_id: int, *args: Any, **kwargs: Any):
+        from django.http import Http404
+        from apps.core.private_files import stream_range_file_response
+
+        attempt = _own_attempt_or_404(request, attempt_id)
+        if attempt is None:
+            raise Http404
+        part = ExamPart.objects.filter(pk=part_id, section__test_id=attempt.test_id).first()
+        if part is None or not part.audio:
+            raise Http404
+        return stream_range_file_response(
+            request,
+            part.audio,
+            download_name=f"listening-part-{part.number}.wav",
+        )
+
+
 # ---------------------------------------------------------------------------
 # Finalize Attempt (PENDING_GRADING → COMPLETED once writing is graded)
 # ---------------------------------------------------------------------------

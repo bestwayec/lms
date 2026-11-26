@@ -722,6 +722,29 @@ export const Tests = {
     }>(`/api/tests/attempts/${attemptId}/session-takeover/`, {
       method: 'POST',
     }),
+  listeningSchedule: (attemptId: string, partId: number) =>
+    api<{
+      attempt_id: number;
+      part_id: number;
+      audio_play_limit: number;
+      plays_used: number;
+      remaining_plays: number | null;
+      can_play: boolean;
+      reading_ends_at?: string | null;
+    }>(`/api/tests/attempts/${attemptId}/listening/${partId}/play/`),
+  listeningPlay: (attemptId: string, partId: number, durationSeconds?: number) =>
+    api<{
+      attempt_id: number;
+      part_id: number;
+      audio_play_limit: number;
+      plays_used: number;
+      remaining_plays: number | null;
+      can_play: boolean;
+      reading_ends_at?: string | null;
+    }>(`/api/tests/attempts/${attemptId}/listening/${partId}/play/`, {
+      method: 'POST',
+      body: JSON.stringify(durationSeconds ? { duration_seconds: durationSeconds } : {}),
+    }),
   submit: (attemptId: string, idempotencyKey?: string) =>
     api<unknown>(`/api/tests/attempts/${attemptId}/submit/`, {
       method: 'POST',

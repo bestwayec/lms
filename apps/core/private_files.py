@@ -19,10 +19,11 @@ from __future__ import annotations
 import mimetypes
 import os
 import posixpath
+import re
 from urllib.parse import quote
 
 from django.conf import settings
-from django.http import FileResponse, Http404, HttpResponse
+from django.http import FileResponse, Http404, HttpResponse, StreamingHttpResponse
 
 #: Storage prefixes that hold private files. Public media (avatars, topic images, exam
 #: assets, logos) deliberately stays outside this list.
@@ -77,7 +78,84 @@ def _harden(response: HttpResponse, *, filename: str, inline: bool) -> HttpRespo
     return response
 
 
-def private_file_response(field_file, *, download_name: str | None = None) -> HttpResponse:
+def _iter_file_range(file_obj, start: int, length: int, chunk_size: int = 65536):
+    remaining = length
+    file_obj.seek(start)
+    try:
+        while remaining > 0:
+            chunk = file_obj.read(min(chunk_size, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+            yield chunk
+    finally:
+        file_obj.close()
+
+
+def stream_range_file_response(
+    request,
+    field_file,
+    *,
+    download_name: str | None = None,
+) -> HttpResponse:
+    """Serve an audio/media FileField with full HTTP Range (206 Partial Content) support.
+
+    Range probes and seeks return 206 Partial Content without requiring a full download,
+    so client players can scrub accurately and server play counters stay decoupled.
+    """
+    if not field_file or not getattr(field_file, "name", ""):
+        raise Http404("No file")
+    name = field_file.name
+    content_type = _content_type(name)
+    inline = content_type in _INLINE_TYPES
+    filename = download_name or os.path.basename(name)
+
+    try:
+        size = field_file.size
+        f = field_file.open("rb")
+    except (FileNotFoundError, OSError, ValueError):
+        raise Http404("File missing")
+
+    range_header = (request.META.get("HTTP_RANGE") or "").strip() if request is not None else ""
+    match = re.match(r"^bytes=(\d*)-(\d*)$", range_header)
+    if match and size > 0:
+        raw_start, raw_end = match.group(1), match.group(2)
+        if raw_start == "" and raw_end == "":
+            f.close()
+            resp = HttpResponse(status=416)
+            resp["Content-Range"] = f"bytes */{size}"
+            return resp
+        if raw_start == "":
+            suffix = int(raw_end)
+            start = max(0, size - suffix)
+            end = size - 1
+        else:
+            start = int(raw_start)
+            end = int(raw_end) if raw_end else size - 1
+            end = min(end, size - 1)
+        if start >= size or start > end:
+            f.close()
+            resp = HttpResponse(status=416)
+            resp["Content-Range"] = f"bytes */{size}"
+            return resp
+        length = end - start + 1
+        response = StreamingHttpResponse(
+            _iter_file_range(f, start, length),
+            status=206,
+            content_type=content_type,
+        )
+        response["Content-Range"] = f"bytes {start}-{end}/{size}"
+        response["Content-Length"] = str(length)
+    else:
+        response = FileResponse(f, content_type=content_type)
+        if size is not None:
+            response["Content-Length"] = str(size)
+
+    response["Accept-Ranges"] = "bytes"
+    return _harden(response, filename=filename, inline=inline)
+
+
+def private_file_response(field_file, *, download_name: str | None = None, request=None) -> HttpResponse:
     """Return the file behind a model ``FileField`` value; raise ``Http404`` if it is gone.
 
     Authorisation is the caller's job and must happen first.
@@ -101,9 +179,13 @@ def private_file_response(field_file, *, download_name: str | None = None) -> Ht
         response["X-Accel-Redirect"] = quote(f"{accel_prefix.rstrip('/')}/{safe_name}")
         return _harden(response, filename=filename, inline=inline)
 
+    if request is not None and (request.META.get("HTTP_RANGE") or "").strip():
+        return stream_range_file_response(request, field_file, download_name=filename)
+
     try:
-        handle = field_file.storage.open(name, "rb")
+        f = field_file.storage.open(name, "rb")
     except (FileNotFoundError, OSError, ValueError) as exc:
         raise Http404("File missing") from exc
-    response = FileResponse(handle, content_type=content_type)
+    response = FileResponse(f, content_type=content_type)
+    response["Accept-Ranges"] = "bytes"
     return _harden(response, filename=filename, inline=inline)

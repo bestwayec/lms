@@ -109,6 +109,16 @@ urlpatterns = [
         name="session-takeover",
     ),
     path(
+        "attempts/<int:attempt_id>/listening/<int:part_id>/play/",
+        views.ListeningScheduleView.as_view(),
+        name="listening-schedule-play",
+    ),
+    path(
+        "attempts/<int:attempt_id>/listening/<int:part_id>/audio/",
+        views.ListeningAudioStreamView.as_view(),
+        name="listening-audio-stream",
+    ),
+    path(
         "attempts/<int:attempt_id>/submit/",
         views.SubmitAttemptView.as_view(),
         name="submit-attempt",

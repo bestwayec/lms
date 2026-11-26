@@ -3546,7 +3546,11 @@
     "cd_retrying": "Qayta urinilmoqda...",
     "cd_conflict": "Sessiya ziddiyati",
     "cd_submitted_short": "Topshirildi",
-    "cd_unsaved": "Saqlanmagan"
+    "cd_unsaved": "Saqlanmagan",
+    "eng_plays_left": "Qolgan urinish",
+    "eng_play_limit": "Limit",
+    "eng_hide_transcript": "Transkriptni yopish",
+    "eng_show_transcript": "Transkript"
   },
   "ru": {
     "spk_practise_again": "Повторить эту тему",
@@ -7095,7 +7099,11 @@
     "cd_retrying": "Повтор...",
     "cd_conflict": "Конфликт сессии",
     "cd_submitted_short": "Отправлено",
-    "cd_unsaved": "Не сохранено"
+    "cd_unsaved": "Не сохранено",
+    "eng_plays_left": "Осталось попыток",
+    "eng_play_limit": "Лимит",
+    "eng_hide_transcript": "Скрыть текст",
+    "eng_show_transcript": "Транскрипт"
   },
   "en": {
     "spk_practise_again": "Practise this topic again",
@@ -10644,6 +10652,10 @@
     "cd_retrying": "Retrying...",
     "cd_conflict": "Conflict",
     "cd_submitted_short": "Submitted",
-    "cd_unsaved": "Unsaved"
+    "cd_unsaved": "Unsaved",
+    "eng_plays_left": "Plays left",
+    "eng_play_limit": "Limit",
+    "eng_hide_transcript": "Hide transcript",
+    "eng_show_transcript": "Transcript"
   }
 }

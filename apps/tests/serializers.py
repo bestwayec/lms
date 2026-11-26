@@ -167,6 +167,7 @@ def _student_question_payload(
     shuffle_choices: bool,
     saved: dict[str, Any] | None = None,
     seed: Any = None,
+    allow_listening_hints: bool = False,
 ) -> dict[str, Any]:
     """One question for student APIs. NEVER includes answer keys:
     no is_correct, no accepted gap answers, no matching mappings."""
@@ -203,6 +204,11 @@ def _student_question_payload(
             for c in choices
         ],
         "config": safe_config,
+        **(
+            {"audio_start_sec": getattr(q, "audio_start_sec", None)}
+            if allow_listening_hints and getattr(q, "audio_start_sec", None) is not None
+            else {}
+        ),
     }
 
     raw_qtype = getattr(q, "question_type", "single") or "single"
@@ -293,12 +299,26 @@ def _sections_payload(test, only_section_id: int | None = None) -> list[dict[str
         return []
 
 
-def _structure_payload(test, only_part_id: int | None = None) -> list[dict[str, Any]]:
+def _structure_payload(
+    test,
+    only_part_id: int | None = None,
+    attempt: Any = None,
+) -> list[dict[str, Any]]:
     """CD-format layout (section → part → group) without any answer data.
 
     Empty for legacy tests that have no parts. ``only_part_id`` keeps a
     single part (free trial attempts).
     """
+    from .listening_service import effective_play_limit
+
+    allow_transcript = bool(
+        attempt
+        and (
+            getattr(attempt, "study_mode", "") == "practice"
+            or getattr(attempt, "mode", "") == "practice"
+            or getattr(attempt, "status", "") in ("completed", "timeout")
+        )
+    )
     out = []
     sections = test.sections.order_by("order").prefetch_related("parts__groups")
     for s in sections:
@@ -315,9 +335,21 @@ def _structure_payload(test, only_part_id: int | None = None) -> list[dict[str, 
                     {
                         "id": p.id,
                         "number": p.number,
+                        "part_number": p.part_number or p.order,
                         "title": p.title,
                         "instructions": p.instructions,
-                        "audio_url": p.audio.url if p.audio else "",
+                        "audio_url": (
+                            f"/api/tests/attempts/{attempt.id}/listening/{p.id}/audio/"
+                            if (attempt and p.audio)
+                            else (p.audio.url if p.audio else "")
+                        ),
+                        "private_audio_url": (
+                            f"/api/tests/attempts/{attempt.id}/listening/{p.id}/audio/"
+                            if (attempt and p.audio)
+                            else ""
+                        ),
+                        "audio_play_limit": effective_play_limit(attempt, p) if attempt else int(p.audio_play_limit or 0),
+                        "transcript": p.transcript if allow_transcript else "",
                         "groups": [
                             {
                                 "id": g.id,
@@ -325,6 +357,8 @@ def _structure_payload(test, only_part_id: int | None = None) -> list[dict[str, 
                                 "instructions": g.instructions,
                                 "answer_rule": g.answer_rule,
                                 "passage_id": g.passage_id,
+                                "stimulus_ref": g.stimulus_ref or "",
+                                "content_layout": g.content_layout or "",
                                 "image_url": g.image.url if g.image else "",
                                 "options_label": g.options_label,
                                 "each_option_once": g.each_option_once,
@@ -776,7 +810,7 @@ class AttemptDetailSerializer(serializers.ModelSerializer):
         return getattr(obj.test, "exam_type", "") or ""
 
     def get_structure(self, obj: TestAttempt) -> list[dict[str, Any]]:
-        return _structure_payload(obj.test, only_part_id=obj.trial_part_id)
+        return _structure_payload(obj.test, only_part_id=obj.trial_part_id, attempt=obj)
 
     def get_subject(self, obj: TestAttempt) -> str:
         test = getattr(obj, "test", None)
@@ -900,12 +934,18 @@ class AttemptDetailSerializer(serializers.ModelSerializer):
                         or 0,
                     }
 
+            allow_hints = bool(
+                getattr(obj, "study_mode", "") == "practice"
+                or getattr(obj, "mode", "") == "practice"
+                or getattr(obj, "status", "") in ("completed", "timeout")
+            )
             return [
                 _student_question_payload(
                     q,
                     shuffle_choices=bool(getattr(test, "shuffle_choices", True)),
                     saved=saved_map.get(q.id),
                     seed=obj.pk,
+                    allow_listening_hints=allow_hints,
                 )
                 for q in questions_list
             ]
