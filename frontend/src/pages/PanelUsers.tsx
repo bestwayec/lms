@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Alert, Modal } from '../components/ui';
 import { useLang } from '../i18n/LangContext';
 import { Auth, Panel } from '../lib/api';
 import { formatDate, str } from '../lib/billingPanelGames';
@@ -111,10 +112,18 @@ export default function PanelUsers() {
       `}</style>
       <h1>{t('users')}</h1>
       <p className="muted">{t('panel_users_by_role')}</p>
-      {err && <p className="error">{err}</p>}
+      {err && (
+        <div style={{ marginBottom: 14 }}>
+          <Alert tone="danger" onClose={() => setErr(null)}>
+            {err}
+          </Alert>
+        </div>
+      )}
       {successMsg && (
-        <div style={{ padding: '12px 16px', background: '#dcfce7', color: '#166534', borderRadius: '10px', marginBottom: '14px', fontWeight: 600, border: '1px solid #86efac' }}>
-          ✓ {successMsg}
+        <div style={{ marginBottom: 14 }}>
+          <Alert tone="success" onClose={() => setSuccessMsg(null)}>
+            ✓ {successMsg}
+          </Alert>
         </div>
       )}
       <div className="toolbar" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
@@ -217,9 +226,9 @@ export default function PanelUsers() {
                         <span
                           className="badge"
                           style={{
-                            background: 'rgba(56, 189, 248, 0.12)',
-                            color: '#0284c7',
-                            border: '1px solid rgba(56, 189, 248, 0.3)',
+                            background: 'var(--info-bg)',
+                            color: 'var(--info-text)',
+                            border: '1px solid var(--info-border)',
                             fontSize: '0.72rem',
                             fontWeight: 700,
                           }}
@@ -234,14 +243,14 @@ export default function PanelUsers() {
                   </div>
 
                   {/* Card Controls: Role & Subscription */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingTop: 6, borderTop: '1px solid var(--border-subtle)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>Roli:</span>
                       <select
                         value={str(u.role)}
                         onChange={(e) => setR(u.id as number, e.target.value)}
                         aria-label="role"
-                        style={{ padding: '3px 8px', fontSize: '0.82rem', borderRadius: 6, background: 'var(--card-2)', border: '1px solid var(--border)', color: 'var(--ink)' }}
+                        style={{ padding: '3px 8px', fontSize: '0.82rem', borderRadius: 6, background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}
                       >
                         {roles.map((r) => (
                           <option key={r.value} value={r.value}>
@@ -253,11 +262,11 @@ export default function PanelUsers() {
 
                     <div>
                       {str(u.role) === 'admin' ? (
-                        <span className="badge" style={{ background: '#fef3c7', color: '#b45309', fontWeight: 700, fontSize: '0.75rem' }}>
+                        <span className="badge" style={{ background: 'var(--warning-bg)', color: 'var(--warning-text)', fontWeight: 700, fontSize: '0.75rem' }}>
                           👑 Admin
                         </span>
                       ) : hasPro ? (
-                        <span className="badge" style={{ background: '#dcfce7', color: '#15803d', fontWeight: 700, fontSize: '0.75rem' }} title={expDate ? `${expDate} gacha` : undefined}>
+                        <span className="badge" style={{ background: 'var(--success-bg)', color: 'var(--success-text)', fontWeight: 700, fontSize: '0.75rem' }} title={expDate ? `${expDate} gacha` : undefined}>
                           ⭐ {planStr.toUpperCase()}
                         </span>
                       ) : (
@@ -356,9 +365,9 @@ export default function PanelUsers() {
                           <span
                             className="badge"
                             style={{
-                              background: 'rgba(56, 189, 248, 0.12)',
-                              color: '#0284c7',
-                              border: '1px solid rgba(56, 189, 248, 0.3)',
+                              background: 'var(--info-bg)',
+                              color: 'var(--info-text)',
+                              border: '1px solid var(--info-border)',
                               fontSize: '0.75rem',
                               fontWeight: 700,
                             }}
@@ -384,16 +393,16 @@ export default function PanelUsers() {
                       </td>
                       <td>
                         {str(u.role) === 'admin' ? (
-                          <span className="badge" style={{ background: '#fef3c7', color: '#b45309', fontWeight: 700 }}>
+                          <span className="badge" style={{ background: 'var(--warning-bg)', color: 'var(--warning-text)', fontWeight: 700 }}>
                             👑 Admin
                           </span>
                         ) : hasPro ? (
                           <div>
-                            <span className="badge" style={{ background: '#dcfce7', color: '#15803d', fontWeight: 700 }}>
+                            <span className="badge" style={{ background: 'var(--success-bg)', color: 'var(--success-text)', fontWeight: 700 }}>
                               ⭐ {planStr.toUpperCase()}
                             </span>
                             {expDate && (
-                              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                              <div className="muted" style={{ fontSize: '11px', marginTop: '2px' }}>
                                 {expDate} gacha
                               </div>
                             )}
@@ -447,90 +456,85 @@ export default function PanelUsers() {
       )}
 
       {/* Grant Subscription Modal */}
-      {grantModalUser && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15, 23, 42, 0.6)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999,
-            padding: '16px',
-          }}
-          onClick={() => setGrantModalUser(null)}
-        >
-          <div
-            style={{
-              background: '#ffffff',
-              borderRadius: '16px',
-              padding: '24px',
-              width: '100%',
-              maxWidth: '440px',
-              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ margin: '0 0 8px 0', fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>
-              ⭐ Bepul Obuna Biriktirish
-            </h3>
-            <p style={{ margin: '0 0 16px 0', fontSize: '14px', color: '#64748b' }}>
-              <strong>{str(grantModalUser.full_name) || str(grantModalUser.email) || `ID #${grantModalUser.id}`}</strong> uchun cheksiz ruxsat taqdim etish:
-            </p>
-
-            <div style={{ marginBottom: '14px' }}>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
-                Obuna Rejasi
-              </label>
-              <select
-                value={grantPlanType}
-                onChange={(e) => setGrantPlanType(e.target.value as 'pro' | 'premium')}
-                style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px' }}
-              >
-                <option value="pro">⭐ PRO — Cheksiz testlar, kunlik 50 AI, Mock testlar</option>
-                <option value="premium">💎 PREMIUM — Mutlaq to'liq ruxsat, ustoz vositalari</option>
-              </select>
-            </div>
-
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
-                Obuna Muddati
-              </label>
-              <select
-                value={grantDays}
-                onChange={(e) => setGrantDays(Number(e.target.value))}
-                style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px' }}
-              >
-                <option value={30}>📅 1 Oy (30 kun)</option>
-                <option value={90}>📅 3 Oy (90 kun)</option>
-                <option value={180}>📅 6 Oy (180 kun)</option>
-                <option value={365}>🎉 1 Yil (365 kun)</option>
-              </select>
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button
-                className="btn"
-                style={{ background: '#f1f5f9', color: '#475569', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' }}
-                onClick={() => setGrantModalUser(null)}
-                disabled={grantLoading}
-              >
-                Bekor qilish
-              </button>
-              <button
-                className="btn"
-                style={{ background: '#0284c7', color: '#ffffff', border: 'none', fontWeight: 600, padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' }}
-                onClick={handleGrant}
-                disabled={grantLoading}
-              >
-                {grantLoading ? 'Yuklanmoqda...' : 'Tasdiqlash va Berish'}
-              </button>
-            </div>
+      <Modal
+        open={Boolean(grantModalUser)}
+        onClose={() => {
+          if (!grantLoading) setGrantModalUser(null);
+        }}
+        title="⭐ Bepul Obuna Biriktirish"
+        subtitle={
+          grantModalUser
+            ? `${str(grantModalUser.full_name) || str(grantModalUser.email) || `ID #${grantModalUser.id}`} uchun cheksiz ruxsat taqdim etish`
+            : undefined
+        }
+        maxWidth={440}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={() => setGrantModalUser(null)}
+              disabled={grantLoading}
+            >
+              Bekor qilish
+            </button>
+            <button
+              type="button"
+              className="btn primary"
+              onClick={handleGrant}
+              disabled={grantLoading}
+            >
+              {grantLoading ? 'Yuklanmoqda...' : 'Tasdiqlash va Berish'}
+            </button>
+          </>
+        }
+      >
+        {err && (
+          <div style={{ marginBottom: 14 }}>
+            <Alert tone="danger" onClose={() => setErr(null)}>
+              {err}
+            </Alert>
           </div>
+        )}
+
+        <div style={{ marginBottom: '14px' }}>
+          <label
+            htmlFor="panel-grant-plan"
+            style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px' }}
+          >
+            Obuna Rejasi
+          </label>
+          <select
+            id="panel-grant-plan"
+            value={grantPlanType}
+            onChange={(e) => setGrantPlanType(e.target.value as 'pro' | 'premium')}
+            style={{ width: '100%' }}
+          >
+            <option value="pro">⭐ PRO — Cheksiz testlar, kunlik 50 AI, Mock testlar</option>
+            <option value="premium">💎 PREMIUM — Mutlaq to'liq ruxsat, ustoz vositalari</option>
+          </select>
         </div>
-      )}
+
+        <div style={{ marginBottom: '4px' }}>
+          <label
+            htmlFor="panel-grant-days"
+            style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px' }}
+          >
+            Obuna Muddati
+          </label>
+          <select
+            id="panel-grant-days"
+            value={grantDays}
+            onChange={(e) => setGrantDays(Number(e.target.value))}
+            style={{ width: '100%' }}
+          >
+            <option value={30}>📅 1 Oy (30 kun)</option>
+            <option value={90}>📅 3 Oy (90 kun)</option>
+            <option value={180}>📅 6 Oy (180 kun)</option>
+            <option value={365}>🎉 1 Yil (365 kun)</option>
+          </select>
+        </div>
+      </Modal>
     </div>
   );
 }
