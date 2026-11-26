@@ -577,8 +577,11 @@ def save_test(user, payload: dict[str, Any], test: Test | None = None) -> Test:
 @transaction.atomic
 def publish_test(test: Test) -> tuple[bool, list[dict[str, Any]]]:
     """Publish when the saved content validates; otherwise return the issues."""
+    from apps.tests.package_service import check_mock_publish_readiness
+
     test = Test.objects.select_for_update().get(pk=test.pk)
     issues = validate_blocks(load_blocks(test))
+    issues.extend(check_mock_publish_readiness(test))
     if issues:
         return False, issues
     if not test.mock_code:

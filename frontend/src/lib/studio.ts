@@ -247,6 +247,17 @@ export const StudioApi = {
     return api.post<FileImportResult>(`${BASE}/import-file/`, fd);
   },
   exportUrl: (id: number | string) => `${BASE}/tests/${id}/export/`,
+  validatePackage: (payload: unknown, template = false) =>
+    api.post<{ valid: boolean; errors: unknown[]; warnings: unknown[]; summary: Record<string, unknown> }>(
+      `${BASE}/package/validate/${template ? '?template=1' : ''}`,
+      payload,
+    ),
+  importPackage: (payload: unknown, template = false) =>
+    api.post<StudioDetail>(`${BASE}/package/import/${template ? '?template=1' : ''}`, payload),
+  exportPackage: (id: number | string, template = false) =>
+    api.get<Record<string, unknown>>(`${BASE}/tests/${id}/package/${template ? '?template=1' : ''}`),
+  checkReadiness: (id: number | string) =>
+    api.get<{ ready: boolean; issues: StudioIssue[] }>(`${BASE}/tests/${id}/readiness/`),
   validate: (blocks: StudioBlock[]) =>
     api.post<{ issues: StudioIssue[] }>(`${BASE}/validate/`, { blocks: clean(blocks) }),
   create: (payload: TestPayload) =>
