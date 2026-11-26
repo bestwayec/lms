@@ -7,7 +7,7 @@
 | Phase | Name | Status | Verification / Notes |
 | :--- | :--- | :--- | :--- |
 | Phase 00 | Full Audit & BESTWAY Integration Map | PASS | Inventoried GRANDEC models/APIs/UI, inspected BESTWAY reference docs & core code, documented 10 confirmed bugs/gaps (`N8-001`..`N8-010`), integration matrix, architecture, and acceptance criteria. |
-| Phase 01 | English Learning Center | PENDING | Track selector (`ielts_academic`, `ielts_general`, `cefr_multilevel`, `general_english`), target score, unified compact English Hub. |
+| Phase 01 | English Learning Center | PASS | Added `english_track`, `target_band`, `target_cefr_level` on `Profile` + migration `0027`, exposed `/api/auth/me/` + `GET/PATCH /api/v1/english/center/`, built `/english` (`EnglishCenter.tsx`) + Dashboard entry + nav & uz/ru/en i18n; 3/3 pytest, 0 oxlint warnings, 34/34 frontend tests, tsc pass. |
 | Phase 02 | Exam Engine Reliability 2.0 | PENDING | Monotonic revisions, 7-state sync UI, session takeover lock, fix `N8-001` & `N8-002`. |
 | Phase 03 | English Exam Builder 3.0 | PENDING | Schema 1.0 JSON validate/import/export, keyless templates, Undo/Redo, mock readiness validation. |
 | Phase 04 | Listening Engine | PENDING | Server playback schedule, Range-safe private audio, practice transcripts/timestamps, synthetic WAV fixtures. |

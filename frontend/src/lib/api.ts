@@ -270,6 +270,9 @@ export interface AuthUser {
   is_platform_admin?: boolean;
   avatar?: string;
   active_subject?: 'uzbek' | 'english' | 'biology' | 'chemistry' | 'law';
+  english_track?: 'ielts_academic' | 'ielts_general' | 'cefr_multilevel' | 'general_english';
+  target_band?: number | string | null;
+  target_cefr_level?: string;
   exam_target?: 'national_certificate' | 'attestation' | 'ielts' | 'multilevel' | 'milliy_sertifikat' | 'cefr' | 'attestatsiya' | 'other' | 'undecided' | string;
   target_exam?: string;
   sub_subject?: string;
@@ -369,6 +372,11 @@ export function normalizeUser(raw: Record<string, unknown>): AuthUser {
     full_name: full,
     is_active: typeof raw.is_active === 'boolean' ? raw.is_active : true,
     active_subject,
+    ...(typeof raw.english_track === 'string'
+      ? { english_track: raw.english_track as AuthUser['english_track'] }
+      : {}),
+    ...(raw.target_band !== undefined ? { target_band: raw.target_band as number | string | null } : {}),
+    ...(typeof raw.target_cefr_level === 'string' ? { target_cefr_level: raw.target_cefr_level } : {}),
     ...(first ? { first_name: first } : {}),
     ...(last ? { last_name: last } : {}),
     ...(typeof raw.language === 'string' ? { language: raw.language } : {}),
@@ -3355,6 +3363,138 @@ export interface DashboardData {
 
 export const DashboardApi = {
   get: (subject: string) => api<DashboardData>(`/api/v1/dashboard/?subject=${encodeURIComponent(subject)}`),
+};
+
+export interface EnglishTrackInfo {
+  code: 'ielts_academic' | 'ielts_general' | 'cefr_multilevel' | 'general_english';
+  label: string;
+  short_label: string;
+  scale: string;
+  description: string;
+  exam_types: string[];
+}
+
+export interface EnglishCenterTestCard {
+  id: number;
+  title: string;
+  exam_type: string;
+  assessment_category: string;
+  time_limit_minutes: number;
+  question_count: number;
+  difficulty: string;
+  has_audio: boolean;
+  sections: string[];
+  mock_code: string;
+}
+
+export interface EnglishCenterData {
+  track: 'ielts_academic' | 'ielts_general' | 'cefr_multilevel' | 'general_english';
+  target_band: number | null;
+  target_cefr_level: string;
+  tracks: EnglishTrackInfo[];
+  study_modes: { code: string; label: string; timed: boolean }[];
+  resume: {
+    kind: 'test' | 'essay';
+    id: number;
+    test_id?: number;
+    topic_id?: number | null;
+    title: string;
+    started_at?: string | null;
+    updated_at?: string | null;
+    route: string;
+  } | null;
+  counts: {
+    listening_tests: number;
+    reading_tests: number;
+    full_mocks: number;
+    writing_topics: number;
+    speaking_topics: number;
+    vocabulary_packs: number;
+    grammar_topics: number;
+    pending_homework: number;
+    unresolved_mistakes: number;
+  };
+  listening_tests: EnglishCenterTestCard[];
+  reading_tests: EnglishCenterTestCard[];
+  full_mocks: EnglishCenterTestCard[];
+  writing_topics: {
+    id: number;
+    title: string;
+    category: string;
+    rubric_type: string;
+    word_limit_min: number;
+    time_limit_minutes: number;
+  }[];
+  speaking_topics: {
+    id: number;
+    title: string;
+    part: string;
+    difficulty: string;
+    prep_time_seconds: number;
+    speak_time_seconds: number;
+  }[];
+  vocabulary_packs: {
+    id: number;
+    title: string;
+    word_count: number;
+    created_at: string | null;
+  }[];
+  grammar_topics: { id: number; title: string; slug: string }[];
+  homework: {
+    id: number;
+    title: string;
+    content_type: string;
+    deadline: string | null;
+    status: string;
+    is_completed: boolean;
+  }[];
+  mistakes: {
+    test_mistakes_count: number;
+    vocabulary_mistakes_count: number;
+    total: number;
+  };
+  skill_progress: {
+    listening: { attempts: number; best_pct: number | null; latest_pct: number | null };
+    reading: { attempts: number; best_pct: number | null; latest_pct: number | null };
+    writing: { submissions: number; latest_score: number | null; latest_max: number | null };
+    speaking: { submissions: number; latest_band: number | null };
+    vocabulary: { reviewed: number; mastered: number };
+  };
+  recent_results: {
+    result_id: number;
+    test_id: number;
+    title: string;
+    exam_type: string;
+    percentage: number;
+    correct: number;
+    total: number;
+    finished_at: string | null;
+  }[];
+}
+
+export const EnglishCenterApi = {
+  get: (track?: string, q?: string) => {
+    const params = new URLSearchParams();
+    if (track) params.set('track', track);
+    if (q) params.set('q', q);
+    const qs = params.toString();
+    return api<EnglishCenterData>(`/api/v1/english/center/${qs ? `?${qs}` : ''}`);
+  },
+  updateSettings: (payload: {
+    english_track?: string;
+    target_band?: number | null;
+    target_cefr_level?: string;
+    set_active_subject?: boolean;
+  }) =>
+    api<{
+      active_subject: string;
+      english_track: string;
+      target_band: number | null;
+      target_cefr_level: string;
+    }>('/api/v1/english/center/', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
 };
 
 

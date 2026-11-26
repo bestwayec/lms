@@ -410,6 +410,31 @@ export default function Dashboard() {
       {/* ======================================================================
           GRANDEC 2.0 BENTO GRID (2x2 Layout)
           ====================================================================== */}
+      {isStudent && subject === 'english' && (
+        <section className="bento-card p-4 sm:p-5 mb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-indigo-500/30 bg-indigo-50/50 dark:bg-indigo-950/30">
+          <div className="min-w-0">
+            <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-300">
+              {t('english_center_title', 'English Learning Center')}
+            </span>
+            <p className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">
+              {user?.english_track === 'cefr_multilevel'
+                ? 'CEFR Multi-level (BMB)'
+                : user?.english_track === 'ielts_general'
+                ? 'IELTS General Training'
+                : user?.english_track === 'general_english'
+                ? 'General English'
+                : 'IELTS Academic'}
+              {user?.target_band ? ` · Band ${user.target_band}` : user?.target_cefr_level ? ` · ${user.target_cefr_level}` : ''}
+            </p>
+          </div>
+          <Link
+            to="/english"
+            className="bento-btn bento-btn-indigo text-xs font-bold px-4 h-9 inline-flex items-center justify-center shrink-0 no-underline"
+          >
+            {t('eng_open_center', 'English Center ga kirish')} →
+          </Link>
+        </section>
+      )}
       {isStudent && data && !failed && (
         <section className="bento-grid grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8" aria-label={todayBadgeText}>
           {/* BENTO BOX 1: Yuqori Chap — Katta Salomlashuv va Kunlik Reja Kartasi */}

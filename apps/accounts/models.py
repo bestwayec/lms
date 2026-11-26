@@ -367,6 +367,36 @@ class Profile(models.Model):
         help_text=_("Har bir fan uchun saqlangan imtihon maqsadi va o'quv rejasi."),
     )
 
+    class EnglishTrack(models.TextChoices):
+        IELTS_ACADEMIC = "ielts_academic", _("IELTS Academic")
+        IELTS_GENERAL = "ielts_general", _("IELTS General Training")
+        CEFR_MULTILEVEL = "cefr_multilevel", _("CEFR Multi-level (BMB)")
+        GENERAL_ENGLISH = "general_english", _("General English (B1–C1)")
+
+    english_track = models.CharField(
+        _("ingliz tili yo'nalishi"),
+        max_length=32,
+        choices=EnglishTrack.choices,
+        default=EnglishTrack.IELTS_ACADEMIC,
+        db_index=True,
+        help_text=_("Ingliz tili bo'yicha asosiy tayyorlov yo'nalishi."),
+    )
+    target_band = models.DecimalField(
+        _("maqsad IELTS bali"),
+        max_digits=3,
+        decimal_places=1,
+        null=True,
+        blank=True,
+        help_text=_("Maqsadli IELTS Band ko'rsatkichi (1.0–9.0)."),
+    )
+    target_cefr_level = models.CharField(
+        _("maqsad CEFR darajasi"),
+        max_length=8,
+        blank=True,
+        default="",
+        help_text=_("Maqsadli CEFR darajasi: A2, B1, B2, C1 yoki C2."),
+    )
+
     class ExamTarget(models.TextChoices):
         NATIONAL_CERTIFICATE = "national_certificate", _("Milliy sertifikat")
         ATTESTATION = "attestation", _("Attestatsiya 2026")

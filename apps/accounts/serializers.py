@@ -23,6 +23,7 @@ from rest_framework_simplejwt.serializers import (
 )
 from rest_framework_simplejwt.tokens import RefreshToken as JWTRefreshToken
 
+from .models import Profile
 
 User = get_user_model()
 
@@ -246,6 +247,23 @@ class UserProfileSerializer(serializers.ModelSerializer):
         read_only=True,
         default="uzbek",
     )
+    english_track = serializers.CharField(
+        source="profile.english_track",
+        read_only=True,
+        default="ielts_academic",
+    )
+    target_band = serializers.DecimalField(
+        source="profile.target_band",
+        max_digits=3,
+        decimal_places=1,
+        read_only=True,
+        allow_null=True,
+    )
+    target_cefr_level = serializers.CharField(
+        source="profile.target_cefr_level",
+        read_only=True,
+        default="",
+    )
     exam_target = serializers.CharField(
         source="profile.exam_target",
         read_only=True,
@@ -345,6 +363,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "has_pro_access",
             "has_custom_limit",
             "active_subject",
+            "english_track",
+            "target_band",
+            "target_cefr_level",
             "exam_target",
             "target_timeline_months",
             "target_grade",
@@ -478,6 +499,24 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
         source="profile.active_subject",
         required=False,
     )
+    english_track = serializers.ChoiceField(
+        source="profile.english_track",
+        choices=Profile.EnglishTrack.choices,
+        required=False,
+    )
+    target_band = serializers.DecimalField(
+        source="profile.target_band",
+        max_digits=3,
+        decimal_places=1,
+        required=False,
+        allow_null=True,
+    )
+    target_cefr_level = serializers.CharField(
+        source="profile.target_cefr_level",
+        required=False,
+        allow_blank=True,
+        max_length=8,
+    )
     exam_target = serializers.CharField(
         source="profile.exam_target",
         required=False,
@@ -544,6 +583,9 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
             "avatar",
             "date_of_birth",
             "active_subject",
+            "english_track",
+            "target_band",
+            "target_cefr_level",
             "exam_target",
             "target_timeline_months",
             "target_grade",
@@ -561,6 +603,21 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
             "is_superuser",
         ]
         read_only_fields = ["role", "is_staff", "is_superuser"]
+
+    def validate_target_band(self, value):
+        from decimal import Decimal
+
+        if value is None:
+            return None
+        if value < Decimal("1.0") or value > Decimal("9.0"):
+            raise serializers.ValidationError("IELTS maqsad bali 1.0 dan 9.0 gacha bo'lishi kerak.")
+        return value
+
+    def validate_target_cefr_level(self, value: str) -> str:
+        clean = (value or "").strip().upper()
+        if clean and clean not in ("A1", "A2", "B1", "B2", "C1", "C2"):
+            raise serializers.ValidationError("CEFR darajasi A1–C2 oralig'ida bo'lishi kerak.")
+        return clean
 
     def update(self, instance: Any, validated_data: dict[str, Any]) -> Any:
         """
@@ -599,6 +656,14 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
                 setattr(profile, attr, value)
         if "exam_target" in profile_data or "target_grade" in profile_data:
             profile.onboarding_completed = True
+        if any(k in profile_data for k in ("english_track", "target_band", "target_cefr_level")):
+            prefs = dict(profile.subject_study_preferences or {})
+            eng = dict(prefs.get("english") or {})
+            eng["track"] = profile.english_track
+            eng["target_band"] = str(profile.target_band) if profile.target_band is not None else None
+            eng["target_cefr_level"] = profile.target_cefr_level
+            prefs["english"] = eng
+            profile.subject_study_preferences = prefs
         profile.save()
 
         return instance

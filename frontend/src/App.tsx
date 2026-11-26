@@ -69,6 +69,7 @@ const TitulScanner = lazyPage(() => import('./pages/TitulScanner'));
 const SpeakingTopics = lazyPage(() => import('./pages/SpeakingTopics'));
 const SpeakingPractice = lazyPage(() => import('./pages/SpeakingPractice'));
 const SpeakingResult = lazyPage(() => import('./pages/SpeakingResult'));
+const EnglishCenter = lazyPage(() => import('./pages/EnglishCenter'));
 const TeacherAiConverter = lazyPage(() => import('./pages/TeacherAiConverter'));
 const TeacherFinanceDashboard = lazyPage(() => import('./pages/TeacherFinanceDashboard'));
 const TeacherVocabGenerator = lazyPage(() => import('./pages/TeacherVocabGenerator'));
@@ -216,7 +217,8 @@ function AnimatedRoutes() {
             {/* Legacy /results/<id>/ deep link */}
             <Route path="/results/:id" element={<Results />} />
             <Route path="/certificates" element={<MyCertificates />} />
-            {/* AI Speaking Simulator (IELTS & Multi-level) */}
+            {/* AI Speaking Simulator & English Learning Center */}
+            <Route path="/english" element={<EnglishCenter />} />
             <Route path="/speaking" element={<SpeakingTopics />} />
             <Route path="/speaking/practice/:topicId" element={<SpeakingPractice />} />
             <Route path="/speaking/result/:id" element={<SpeakingResult />} />
