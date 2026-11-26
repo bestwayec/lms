@@ -76,6 +76,9 @@ export default function Groups() {
   // Student join by invite code
   const [joinCode, setJoinCode] = useState('');
   const [joinBusy, setJoinBusy] = useState(false);
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [lifecycleBusyId, setLifecycleBusyId] = useState<number | null>(null);
   const [broadcastingId, setBroadcastingId] = useState<number | null>(null);
 
   const handleBroadcastVedomost = async (group: SchoolGroup) => {
@@ -233,16 +236,22 @@ export default function Groups() {
   // POST /api/v1/school/groups/ — parity with group_form.html create.
   const create = async (e: FormEvent) => {
     e.preventDefault();
+    const cleanName = name.trim();
+    if (!cleanName || creatingGroup) return;
+    setCreatingGroup(true);
     setErr(null);
     setOk(null);
     try {
-      await School.createGroup({ name: name.trim(), description: desc.trim() });
+      const idemKey = `grp-${Date.now().toString(36)}-${cleanName.toLowerCase().slice(0, 24)}`;
+      await School.createGroup({ name: cleanName, description: desc.trim() }, idemKey);
       setName('');
       setDesc('');
       flash(t('gf_created'));
       await load();
     } catch (e2: unknown) {
       setErr(errMessage(e2));
+    } finally {
+      setCreatingGroup(false);
     }
   };
 
@@ -256,7 +265,8 @@ export default function Groups() {
   // PATCH /api/v1/school/groups/<id>/ — parity with group_form.html edit.
   const saveEdit = async (e: FormEvent) => {
     e.preventDefault();
-    if (editing === null) return;
+    if (editing === null || savingEdit || !editName.trim()) return;
+    setSavingEdit(true);
     try {
       await School.updateGroup(editing, { name: editName.trim(), description: editDesc.trim() });
       setEditing(null);
@@ -264,6 +274,8 @@ export default function Groups() {
       await load();
     } catch (e2: unknown) {
       setErr(errMessage(e2));
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -287,18 +299,7 @@ export default function Groups() {
     setDepLoading(true);
     setDepData(null);
     try {
-      const res = await api<{
-        can_delete: boolean;
-        reasons: string[];
-        dependencies: {
-          students_count: number;
-          homeworks_count: number;
-          homework_submissions_count: number;
-          attendance_sessions_count: number;
-          essay_assignments_count: number;
-          academic_records_count: number;
-        };
-      }>(`/api/classroom/groups/${g.id}/dependencies/`);
+      const res = await ClassroomApi.groupDependencies(g.id);
       setDepData(res);
     } catch (e: unknown) {
       setErr(errMessage(e));
@@ -309,36 +310,48 @@ export default function Groups() {
   };
 
   const handleArchive = async (id: number) => {
+    if (lifecycleBusyId === id) return;
+    setLifecycleBusyId(id);
     try {
-      await api(`/api/classroom/groups/${id}/archive/`, { method: 'POST' });
-      flash('Guruh muvaffaqiyatli arxivlandi!');
+      const res = await ClassroomApi.archiveGroup(id);
+      flash(res?.message || 'Guruh muvaffaqiyatli arxivlandi!');
       setDepGroup(null);
       await load();
     } catch (e: unknown) {
       setErr(errMessage(e));
+    } finally {
+      setLifecycleBusyId(null);
     }
   };
 
   const handleRestore = async (id: number) => {
+    if (lifecycleBusyId === id) return;
+    setLifecycleBusyId(id);
     try {
-      await api(`/api/classroom/groups/${id}/restore/`, { method: 'POST' });
-      flash('Guruh qayta faollashtirildi!');
+      const res = await ClassroomApi.restoreGroup(id);
+      flash(res?.message || 'Guruh qayta faollashtirildi!');
       await load();
     } catch (e: unknown) {
       setErr(errMessage(e));
+    } finally {
+      setLifecycleBusyId(null);
     }
   };
 
   const handleSafeDelete = async (id: number) => {
+    if (lifecycleBusyId === id) return;
     if (!window.confirm("Haqiqatan ham ushbu guruhni butunlay o'chirmoqchimisiz?")) return;
+    setLifecycleBusyId(id);
     try {
-      await api(`/api/classroom/groups/${id}/safe-delete/`, { method: 'POST' });
-      flash("Guruh muvaffaqiyatli o'chirildi.");
+      const res = await ClassroomApi.deleteGroup(id);
+      flash(res?.message || "Guruh muvaffaqiyatli o'chirildi.");
       setDepGroup(null);
       if (openGroup === id) setOpenGroup(null);
       await load();
     } catch (e: unknown) {
       setErr(errMessage(e));
+    } finally {
+      setLifecycleBusyId(null);
     }
   };
 

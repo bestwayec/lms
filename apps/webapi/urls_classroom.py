@@ -26,6 +26,11 @@ urlpatterns = [
     path("teacher/groups/<int:group_id>/archive/", views_classroom.teacher_archive_group_view, name="teacher-group-archive"),
     path("teacher/groups/<int:group_id>/restore/", views_classroom.teacher_restore_group_view, name="teacher-group-restore"),
     path("teacher/groups/<int:group_id>/delete/", views_classroom.teacher_delete_group_view, name="teacher-group-delete"),
+    # Backward-compatible aliases previously used by Groups frontend
+    path("groups/<int:group_id>/dependencies/", views_classroom.teacher_group_dependencies_view, name="group-dependencies-alias"),
+    path("groups/<int:group_id>/archive/", views_classroom.teacher_archive_group_view, name="group-archive-alias"),
+    path("groups/<int:group_id>/restore/", views_classroom.teacher_restore_group_view, name="group-restore-alias"),
+    path("groups/<int:group_id>/safe-delete/", views_classroom.teacher_delete_group_view, name="group-safe-delete-alias"),
     path("teacher/groups/<int:group_id>/transfer/", views_classroom.teacher_transfer_group_view, name="teacher-group-transfer"),
     path("teacher/groups/<int:group_id>/remove-student/", views_classroom.teacher_remove_student_view, name="teacher-group-remove-student"),
 

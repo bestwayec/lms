@@ -8,6 +8,15 @@
 
 import { translate, type AppLang } from '../i18n/LangContext';
 import type { HomeworkAssignmentItem } from './school';
+import {
+  isJsonContentType,
+  makeRequestId,
+  makeTranslatedApiError,
+  parseErrorBody,
+  parseJsonSuccess,
+  toApiError,
+  type ApiError,
+} from './httpClient';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
@@ -90,19 +99,13 @@ async function refreshTokens(): Promise<string> {
   }
 }
 
-export interface ApiError extends Error {
-  status: number;
-  detail: string;
-  /** Machine-readable error code when the endpoint sends one ({"code": ...}). */
-  code?: string;
-}
+export type { ApiError };
 
-/** ApiError for transport-level failures, translated into the UI language. */
-function networkError(status: number, key: string): ApiError {
-  const err = new Error(translate(key, currentLang())) as ApiError;
-  err.status = status;
-  err.detail = err.message;
-  return err;
+const trUi = (key: string): string => translate(key, currentLang());
+
+/** ApiError for transport-level or protocol failures, translated into the UI language. */
+function networkError(status: number, key: string, requestId?: string): ApiError {
+  return makeTranslatedApiError(status, key, trUi, requestId);
 }
 
 function currentLang(): AppLang {
@@ -121,8 +124,30 @@ export function getCsrfToken(): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-/** Authenticated fetch with one automatic refresh-and-retry on 401. */
+/** Try silent Telegram WebApp re-auth when JWT expired inside an active TMA WebView. */
+async function tryTmaReauth(): Promise<string | null> {
+  try {
+    const wa = (typeof window !== 'undefined' ? window.Telegram?.WebApp : undefined) as
+      | { initData?: string }
+      | undefined;
+    const initData = wa?.initData || '';
+    if (!initData) return null;
+    const data = await TelegramAuth.loginWithInitData(initData);
+    if (data?.tokens?.access && data?.tokens?.refresh) {
+      setTokens(data.tokens.access, data.tokens.refresh);
+      return data.tokens.access;
+    }
+  } catch {
+    /* fall through to AuthExpiredError */
+  }
+  return null;
+}
+
+/** Authenticated fetch with Content-Type guards, correlation IDs, and automatic 401 refresh. */
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const method = (init.method || 'GET').toUpperCase();
+  const requestId = makeRequestId();
+
   const doFetch = async (access: string | null): Promise<Response> => {
     const headers = new Headers(init.headers);
     if (access) headers.set('Authorization', `Bearer ${access}`);
@@ -133,28 +158,34 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
       headers.set('Content-Type', 'application/json');
     }
-    const currentLang = typeof localStorage !== 'undefined'
-      ? (localStorage.getItem('i18nextLng') || localStorage.getItem('lms_lang') || 'uz')
-      : 'uz';
-    if (!headers.has('Accept-Language')) {
-      headers.set('Accept-Language', currentLang);
+    if (!headers.has('X-Request-ID')) {
+      headers.set('X-Request-ID', requestId);
     }
-    const method = (init.method || 'GET').toUpperCase();
+    const lang = currentLang();
+    if (!headers.has('Accept-Language')) {
+      headers.set('Accept-Language', lang);
+    }
     try {
-      return await fetch(`${API_BASE}${path}`, { ...init, headers });
+      return await fetch(`${API_BASE}${path}`, {
+        credentials: init.credentials ?? 'same-origin',
+        ...init,
+        headers,
+      });
     } catch (e) {
       if (init.signal?.aborted) throw e;
-      // "Failed to fetch": the request never got a response (offline, proxy
-      // reset, server restarting). Reads are idempotent — retry them once.
       if (method === 'GET' || method === 'HEAD') {
         await new Promise((r) => setTimeout(r, 1000));
         try {
-          return await fetch(`${API_BASE}${path}`, { ...init, headers });
+          return await fetch(`${API_BASE}${path}`, {
+            credentials: init.credentials ?? 'same-origin',
+            ...init,
+            headers,
+          });
         } catch {
           /* fall through to the friendly error */
         }
       }
-      throw networkError(0, 'error_network');
+      throw networkError(0, 'error_network', requestId);
     }
   };
 
@@ -164,8 +195,21 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
       const access = await refreshTokens();
       res = await doFetch(access);
     } catch (e) {
-      if (e instanceof AuthExpiredError) throw e;
-      throw e;
+      if (e instanceof AuthExpiredError) {
+        const recovered = await tryTmaReauth();
+        if (recovered) {
+          res = await doFetch(recovered);
+        } else {
+          throw e;
+        }
+      } else {
+        throw e;
+      }
+    }
+  } else if (res.status === 401) {
+    const recovered = await tryTmaReauth();
+    if (recovered) {
+      res = await doFetch(recovered);
     }
   }
   if (res.status === 401) {
@@ -173,53 +217,9 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new AuthExpiredError();
   }
   if (!res.ok) {
-    // Our own JSON answers carry a machine `code` ("not_graded", "ocr_unavailable", ...) the page
-    // can explain; keep them even on 503/429. nginx HTML and DRF throttle text have none.
-    let ownCode = false;
-    if (res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) {
-      try {
-        const probe = (await res.clone().json()) as { code?: unknown } | null;
-        ownCode = typeof probe?.code === 'string';
-      } catch {
-        ownCode = false;
-      }
-    }
-    // Gateway errors come from nginx as HTML, not a DRF body worth parsing.
-    if (!ownCode && (res.status === 502 || res.status === 503 || res.status === 504)) {
-      throw networkError(res.status, 'error_server_unavailable');
-    }
-    // DRF's throttle text is English and says nothing useful to a student.
-    if (!ownCode && res.status === 429) throw networkError(429, 'error_too_many_requests');
-    const fallbackDetail = `Request failed (${res.status})`;
-    let detail = fallbackDetail;
-    let code: string | undefined;
-    try {
-      const body = (await res.json()) as any;
-      if (typeof body === 'object' && body !== null) {
-        if (typeof body.code === 'string') code = body.code;
-        if ('detail' in body && body.detail) {
-          detail = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail);
-        } else if ('message' in body && body.message) {
-          detail = String(body.message);
-        } else if ('error' in body && body.error) {
-          detail = String(body.error);
-        } else {
-          detail = JSON.stringify(body);
-        }
-      }
-    } catch {
-      /* keep default */
-    }
-    // A 5xx without a JSON message (an HTML error page) is not something to show verbatim.
-    if (res.status >= 500 && detail === fallbackDetail) throw networkError(res.status, 'error_server_failed');
-    const err = new Error(detail) as ApiError;
-    err.status = res.status;
-    err.detail = detail;
-    err.code = code;
-    throw err;
+    throw await toApiError(res, path, method, requestId, trUi);
   }
-  if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  return parseJsonSuccess<T>(res, path, method, requestId, trUi);
 }
 
 api.get = <T>(path: string, init?: RequestInit): Promise<T> =>
@@ -440,29 +440,18 @@ export function normalizeUser(raw: Record<string, unknown>): AuthUser {
 }
 
 /** Turn a DRF error body into a human-readable message (field errors joined). */
-function parseErrorBody(body: unknown, fallback: string): string {
-  if (typeof body === 'object' && body !== null) {
-    const o = body as Record<string, unknown>;
-    if (typeof o.detail === 'string' && o.detail) return o.detail;
-    const parts: string[] = [];
-    for (const [key, value] of Object.entries(o)) {
-      if (Array.isArray(value)) {
-        parts.push(key === 'non_field_errors' ? value.join(' ') : `${key}: ${value.join(' ')}`);
-      } else if (typeof value === 'string') {
-        parts.push(key === 'non_field_errors' ? value : `${key}: ${value}`);
-      }
-    }
-    if (parts.length > 0) return parts.join(' ');
-  }
-  return fallback;
-}
-
 async function throwForResponse(res: Response, fallback: string): Promise<never> {
   let detail = fallback;
-  try {
-    detail = parseErrorBody(await res.json(), fallback);
-  } catch {
-    /* keep fallback */
+  const ct = res.headers.get('content-type') || '';
+  if (!ct || isJsonContentType(ct)) {
+    try {
+      const text = await res.text();
+      if (text.trim() && !text.trimStart().startsWith('<')) {
+        detail = parseErrorBody(JSON.parse(text), fallback);
+      }
+    } catch {
+      /* keep fallback */
+    }
   }
   throw new Error(detail);
 }
@@ -1289,29 +1278,49 @@ export async function sessionApi<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
+  const method = (init.method || 'GET').toUpperCase();
+  const requestId = makeRequestId();
   const headers = new Headers(init.headers);
-  if (init.body && !headers.has('Content-Type')) {
+  if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
-  const csrf = getCookie('csrftoken');
-  if (csrf && init.method && init.method.toUpperCase() !== 'GET') {
-    headers.set('X-CSRFToken', csrf);
+  if (!headers.has('X-Request-ID')) {
+    headers.set('X-Request-ID', requestId);
   }
-  let res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers,
-    credentials: 'include',
-  });
+  const unsafe = !['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(method);
+  if (unsafe) {
+    let csrf = getCookie('csrftoken');
+    if (!csrf) {
+      await probeSession();
+      csrf = getCookie('csrftoken');
+    }
+    if (csrf && !headers.has('X-CSRFToken')) {
+      headers.set('X-CSRFToken', csrf);
+    }
+  }
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers,
+      credentials: 'include',
+    });
+  } catch (e) {
+    if (init.signal?.aborted) throw e;
+    throw networkError(0, 'error_network', requestId);
+  }
   if (res.status === 401) {
     try {
       const ok = await probeSession();
       if (ok) {
+        const refreshedCsrf = getCookie('csrftoken');
+        if (unsafe && refreshedCsrf) headers.set('X-CSRFToken', refreshedCsrf);
         res = await fetch(`${API_BASE}${path}`, {
           ...init,
           headers,
           credentials: 'include',
         });
-        if (res.ok) return (await res.json()) as T;
+        if (res.ok) return parseJsonSuccess<T>(res, path, method, requestId, trUi);
       }
     } catch (e) {
       if (e instanceof AuthExpiredError) throw e;
@@ -1319,7 +1328,7 @@ export async function sessionApi<T>(
     throw new AuthExpiredError();
   }
   if (!res.ok) await throwForResponse(res, `Request failed (${res.status})`);
-  return (await res.json()) as T;
+  return parseJsonSuccess<T>(res, path, method, requestId, trUi);
 }
 
 /** WebSocket URL for the arena (same host, ws/wss matching page protocol). */
@@ -1405,7 +1414,8 @@ export const TelegramAuth = {
    */
   loginWithInitData: (initData: string): Promise<TelegramAuthLogin> => {
     if (inflightInitData && inflightInitData.key === initData) return inflightInitData.promise;
-    const promise = (async () => {
+    let promise!: Promise<TelegramAuthLogin>;
+    promise = (async () => {
       try {
         const res = await fetch(`${API_BASE}/tma/api/auth/`, {
           method: 'POST',
@@ -1414,10 +1424,9 @@ export const TelegramAuth = {
           body: JSON.stringify({ init_data: initData }),
         });
         if (!res.ok) await throwForResponse(res, 'Telegram WebApp avtorizatsiyasida xatolik.');
-        return (await res.json()) as TelegramAuthLogin;
-      } catch (err) {
-        inflightInitData = null;
-        throw err;
+        return await parseJsonSuccess<TelegramAuthLogin>(res, '/tma/api/auth/', 'POST', 'tma-auth', trUi);
+      } finally {
+        if (inflightInitData?.promise === promise) inflightInitData = null;
       }
     })();
     inflightInitData = { key: initData, promise };
@@ -2299,8 +2308,12 @@ export const School = {
   myWeeklyReports: () =>
     api<{ count: number; results: WeeklyReportRow[] }>('/api/v1/billing/weekly-reports/'),
   groups: () => api<Record<string, unknown>[]>('/api/v1/school/groups/'),
-  createGroup: (payload: { name: string; description?: string }) =>
-    api<Record<string, unknown>>('/api/v1/school/groups/', { method: 'POST', body: JSON.stringify(payload) }),
+  createGroup: (payload: { name: string; description?: string }, idempotencyKey?: string) =>
+    api<Record<string, unknown>>('/api/v1/school/groups/', {
+      method: 'POST',
+      headers: idempotencyKey ? { 'X-Idempotency-Key': idempotencyKey } : undefined,
+      body: JSON.stringify(payload),
+    }),
   updateGroup: (id: number | string, payload: Record<string, unknown>) =>
     api<Record<string, unknown>>(`/api/v1/school/groups/${id}/`, {
       method: 'PATCH',
@@ -3194,6 +3207,34 @@ export const ClassroomApi = {
     api<{ groups: Array<Record<string, unknown>>; total_groups: number }>('/api/classroom/student/my-groups/'),
   checkTestAccess: (testId: number) =>
     api<TestAccessResponse>(`/api/classroom/tests/${testId}/access/`),
+  groupDependencies: (groupId: number | string) =>
+    api<{
+      can_delete: boolean;
+      reasons: string[];
+      dependencies: {
+        students_count: number;
+        homeworks_count: number;
+        homework_submissions_count: number;
+        attendance_sessions_count: number;
+        essay_assignments_count: number;
+        academic_records_count: number;
+      };
+    }>(`/api/classroom/teacher/groups/${groupId}/dependencies/`),
+  archiveGroup: (groupId: number | string) =>
+    api<{ status: string; group_id: number; group_status: string; message: string }>(
+      `/api/classroom/teacher/groups/${groupId}/archive/`,
+      { method: 'POST' },
+    ),
+  restoreGroup: (groupId: number | string) =>
+    api<{ status: string; group_id: number; group_status: string; message: string }>(
+      `/api/classroom/teacher/groups/${groupId}/restore/`,
+      { method: 'POST' },
+    ),
+  deleteGroup: (groupId: number | string) =>
+    api<{ status: string; message: string }>(
+      `/api/classroom/teacher/groups/${groupId}/delete/`,
+      { method: 'POST' },
+    ),
   exportGroupReportUrl: (groupId: number | string) =>
     `${API_BASE}/api/classroom/groups/${groupId}/report/export/`,
 };

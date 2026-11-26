@@ -15,10 +15,16 @@ import logging
 
 from django.contrib.auth import get_user_model, login
 from django.http import HttpRequest, HttpResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import redirect
-from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes, throttle_classes
+from rest_framework.decorators import (
+    api_view,
+    authentication_classes,
+    permission_classes,
+    throttle_classes,
+)
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -54,8 +60,12 @@ def _get_client_ip(request: Request) -> str:
     return request.META.get("REMOTE_ADDR", "unknown")
 
 
+# Authentication is verified via Telegram HMAC-SHA256 initData, not cookies.
+# Clearing authentication_classes prevents DRF SessionAuthentication from
+# enforcing CSRF against a stale sessionid cookie on WebView reopen.
 @csrf_exempt
 @api_view(["POST"])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def tma_auth_view(request: Request) -> Response:
     """
@@ -149,8 +159,10 @@ def tma_auth_view(request: Request) -> Response:
     access_token = str(refresh.access_token)
     refresh_token = str(refresh)
 
-    # Also login via Django session (for template rendering)
+    # Also login via Django session (for template rendering / session bridge)
+    # and issue a CSRF token cookie so WebView session calls never fail CSRF.
     login(request, user)
+    get_token(request)
 
     from apps.accounts.access import is_platform_admin
 
@@ -187,6 +199,7 @@ def tma_auth_view(request: Request) -> Response:
 # ---------------------------------------------------------------------------
 
 
+@ensure_csrf_cookie
 def tma_index_view(request: HttpRequest) -> HttpResponse:
     """
     GET /tma/

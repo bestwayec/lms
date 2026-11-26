@@ -412,6 +412,9 @@ class SessionStatusView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        from django.middleware.csrf import get_token
+
+        get_token(request)
         user = request.user
         authed = bool(user and user.is_authenticated)
         tokens = None
@@ -736,8 +739,11 @@ class TelegramWidgetAuthView(APIView):
             user.profile.picture_url = photo_url
             user.profile.save(update_fields=["picture_url"])
 
+        from django.middleware.csrf import get_token
+
         login(request, user)
         request.session.set_expiry(60 * 60 * 24 * 30)
+        get_token(request)
 
         refresh = RefreshToken.for_user(user)
 

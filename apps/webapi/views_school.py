@@ -66,6 +66,18 @@ def _eligible_students(user, group=None):
 @permission_classes([IsTeacherOrAdmin])
 def groups_view(request):
     if request.method == "POST":
+        import hashlib
+        from django.core.cache import cache
+
+        idem_key = (request.META.get("HTTP_X_IDEMPOTENCY_KEY") or "").strip()
+        cache_key = ""
+        if idem_key:
+            digest = hashlib.sha256(f"{request.user.id}:{idem_key}".encode()).hexdigest()
+            cache_key = f"school_group_create:{digest}"
+            cached_data = cache.get(cache_key)
+            if isinstance(cached_data, dict):
+                return Response(cached_data, status=201)
+
         name = str(request.data.get("name", "")).strip()
         if not name:
             return Response({"detail": "Name is required."}, status=400)
@@ -83,7 +95,10 @@ def groups_view(request):
             subject=subject,
             description=str(request.data.get("description", "")),
         )
-        return Response(StudentGroupSerializer(group).data, status=201)
+        payload = StudentGroupSerializer(group).data
+        if cache_key:
+            cache.set(cache_key, payload, timeout=60)
+        return Response(payload, status=201)
     qs = _teacher_groups(request.user).prefetch_related("students").order_by("name")
     return Response(StudentGroupSerializer(qs, many=True).data)
 

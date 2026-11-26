@@ -3,7 +3,8 @@
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
-from django.urls import include, path
+from django.http import JsonResponse
+from django.urls import include, path, re_path
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularRedocView,
@@ -13,6 +14,14 @@ from drf_spectacular.views import (
 from apps.core.spa import serve_spa_shell
 from apps.core.views_seo import robots_txt_view, sitemap_xml_view
 from apps.web.views import set_language_view
+
+
+def api_not_found_view(request, resource: str = "") -> JsonResponse:
+    """Return structured JSON 404 for unmatched API endpoints instead of SPA HTML."""
+    return JsonResponse(
+        {"detail": "So'ralgan API yo'li topilmadi.", "code": "not_found"},
+        status=404,
+    )
 
 urlpatterns = [
     # Django admin
@@ -58,6 +67,12 @@ urlpatterns = [
     # SEO sitemap & robots
     path("sitemap.xml", sitemap_xml_view, name="sitemap-xml"),
     path("robots.txt", robots_txt_view, name="robots-txt"),
+    # Unmatched API prefixes must return JSON 404, never the HTML SPA shell.
+    re_path(
+        r"^(?:api|tma/api|essays/api|arena/api|subscribe/api)(?:/.*)?$",
+        api_not_found_view,
+        name="api-not-found",
+    ),
     # SPA fallback — catches all remaining routes and serves React SPA shell
     # This must be LAST so it doesn't intercept API/admin/static/media paths
     path("", serve_spa_shell, name="spa-shell"),
