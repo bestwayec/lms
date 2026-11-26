@@ -1652,8 +1652,22 @@ export const PlacementQuiz = {
     }),
 };
 
+export interface PanelAiMetricsResponse {
+  total_calls: number;
+  total_cost_usd: number;
+  features: Record<
+    string,
+    {
+      circuit_open: boolean;
+      recent_failures: number;
+      usage?: { calls?: number; success?: number; failures?: number; cost_usd?: number; avg_latency_ms?: number };
+    }
+  >;
+}
+
 export const Panel = {
   dashboard: () => api<PanelDashboardResponse>('/api/v1/panel/dashboard/'),
+  aiMetrics: () => api<PanelAiMetricsResponse>('/api/v1/panel/ai-metrics/'),
   cohorts: () => api<CohortAnalyticsResponse>('/api/v1/panel/analytics/cohorts/'),
   tests: (
     qOrParams: string | { q?: string; status?: string; subject?: string; page?: number; page_size?: number } = '',

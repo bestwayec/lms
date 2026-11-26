@@ -1357,3 +1357,12 @@ def activate_student_quota_view(request, group_id=None, student_id=None):
             "premium_quota_balance": teacher_prof.premium_quota_balance,
         }
     )
+
+
+@api_view(["GET"])
+@permission_classes([IsPanelAdmin])
+def panel_ai_metrics_view(request):
+    """GET /api/v1/panel/ai-metrics/ — Admin AI Cost Control & circuit breaker telemetry."""
+    from apps.core.ai_gateway import get_ai_gateway_health
+
+    return Response(get_ai_gateway_health())

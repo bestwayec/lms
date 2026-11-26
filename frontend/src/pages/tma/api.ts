@@ -249,4 +249,15 @@ export const TmaApi = {
     ),
   voiceFeedbackUrl: (submissionId: number) => `/api/classroom/essays/${submissionId}/voice/`,
   insights: () => api<StudentInsightsResponse>('/tma/api/insights/'),
+  englishHub: () =>
+    api<{
+      role: 'student' | 'teacher';
+      track?: string;
+      due_vocab?: number;
+      grammar_topics?: number;
+      pending_writing?: number;
+      pending_speaking?: number;
+      full_mock_web_only?: boolean;
+      workspace_url?: string;
+    }>('/tma/api/english/'),
 };

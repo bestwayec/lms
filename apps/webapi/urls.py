@@ -250,6 +250,7 @@ urlpatterns = [
     path("games/<slug:slug>/check/", views_games.check_view, name="games-check"),
     # -- Panel -----------------------------------------------------------
     path("panel/dashboard/", views_panel.dashboard_view, name="panel-dashboard"),
+    path("panel/ai-metrics/", views_panel.panel_ai_metrics_view, name="panel-ai-metrics"),
     path(
         "panel/analytics/cohorts/",
         views_panel.cohort_analytics_view,

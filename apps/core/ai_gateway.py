@@ -158,6 +158,25 @@ def get_ai_usage_summary() -> dict[str, Any]:
     return dict(cache.get(AI_USAGE_CACHE_KEY) or {"total_calls": 0, "total_cost_usd": 0.0, "by_feature": {}})
 
 
+def get_ai_gateway_health() -> dict[str, Any]:
+    """Combined AI cost summary + per-feature circuit breaker state for Admin Control."""
+    usage = get_ai_usage_summary()
+    features: dict[str, Any] = {}
+    for feat in ("essay_ielts", "essay", "speaking", "vocab", "converter"):
+        raw_fail = cache.get(f"ai_health:fail:{feat}") or 0
+        tripped = bool(cache.get(f"ai_health:open:{feat}"))
+        features[feat] = {
+            "circuit_open": tripped,
+            "recent_failures": int(raw_fail),
+            "usage": (usage.get("by_feature") or {}).get(feat, {}),
+        }
+    return {
+        "total_calls": usage.get("total_calls", 0),
+        "total_cost_usd": usage.get("total_cost_usd", 0.0),
+        "features": features,
+    }
+
+
 def compute_calibrated_stats(anchors: list[dict[str, float]]) -> dict[str, Any]:
     """Compute MAE and within-0.5-band accuracy over calibrated anchor essays."""
     if not anchors:
