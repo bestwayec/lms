@@ -29,10 +29,9 @@ export default function TestFlow({
   const [submitConfirm, setSubmitConfirm] = useState(false);
   const [result, setResult] = useState<TmaSubmitResult | null>(null);
   const [resultTitle, setResultTitle] = useState('');
+  const [attemptNonce, setAttemptNonce] = useState(0);
   const timerRef = useRef<number | null>(null);
-  const stateRef = useRef({ phase, index });
-
-  stateRef.current = { phase, index };
+  const autoSubmittedRef = useRef(false);
 
   const stopTimer = () => {
     if (timerRef.current !== null) {
@@ -46,6 +45,7 @@ export default function TestFlow({
   // Load (creates or resumes the attempt) — mirrors old showTestInfo().
   useEffect(() => {
     let alive = true;
+    autoSubmittedRef.current = false;
     (async () => {
       try {
         const data = await TmaApi.startTest(testId);
@@ -84,7 +84,7 @@ export default function TestFlow({
     return () => {
       alive = false;
     };
-  }, [testId, t]);
+  }, [testId, attemptNonce, t]);
 
   const doSubmit = useCallback(
     async (attemptId: number, finalAnswers: Record<number, TmaAnswerValue>) => {
@@ -138,25 +138,28 @@ export default function TestFlow({
 
   // Countdown during play (auto-submit at zero only for timed tests).
   const answersRef = useRef(answers);
-  answersRef.current = answers;
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
 
   useEffect(() => {
     if (phase !== 'play' || !start || !isTimed) return;
     stopTimer();
     timerRef.current = window.setInterval(() => {
-      setRemaining((prev) => {
-        if (prev <= 1) {
-          stopTimer();
-          hapticNotify('warning');
-          void doSubmit(start.attempt_id, answersRef.current);
-          return 0;
-        }
-        return prev - 1;
-      });
+      setRemaining((prev) => (prev <= 1 ? 0 : prev - 1));
     }, 1000);
     return stopTimer;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, start, isTimed]);
+
+  // Trigger timed auto-submit outside the state updater so StrictMode never double-submits.
+  useEffect(() => {
+    if (phase !== 'play' || !start || !isTimed || remaining > 0) return;
+    if (autoSubmittedRef.current) return;
+    autoSubmittedRef.current = true;
+    stopTimer();
+    hapticNotify('warning');
+    void doSubmit(start.attempt_id, answersRef.current);
+  }, [phase, start, isTimed, remaining, doSubmit]);
 
   // BackButton: inline confirmation mid-test, plain back otherwise.
   useEffect(() => {
@@ -237,10 +240,15 @@ export default function TestFlow({
           <button
             className="tma-btn tma-btn-hl"
             onClick={() => {
+              setLoadError(null);
               setResult(null);
+              setStart(null);
               setAnswers({});
+              setFlagged(new Set());
+              setSubmitErr(null);
               setIndex(0);
               setPhase('info');
+              setAttemptNonce((n) => n + 1);
             }}
           >
             {t('tma_retry')}

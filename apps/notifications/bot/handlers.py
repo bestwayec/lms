@@ -5343,17 +5343,29 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         elif data == "role_select_teacher":
             await role_select_teacher_callback(update, context)
         elif data.startswith("adm_appr_tchr_"):
-            target_id = int(data.removeprefix("adm_appr_tchr_"))
-            await admin_approve_teacher_callback(update, context, target_id)
+            target_id = _safe_callback_int(data, prefix="adm_appr_tchr_")
+            if target_id is not None:
+                await admin_approve_teacher_callback(update, context, target_id)
+            else:
+                await query.answer("Noto'g'ri so'rov.", show_alert=True)
         elif data.startswith("adm_rej_tchr_"):
-            target_id = int(data.removeprefix("adm_rej_tchr_"))
-            await admin_reject_teacher_callback(update, context, target_id)
+            target_id = _safe_callback_int(data, prefix="adm_rej_tchr_")
+            if target_id is not None:
+                await admin_reject_teacher_callback(update, context, target_id)
+            else:
+                await query.answer("Noto'g'ri so'rov.", show_alert=True)
         elif data.startswith("publish_feedback_"):
-            fb_id = int(data.removeprefix("publish_feedback_"))
-            await admin_publish_feedback_callback(update, context, fb_id)
+            fb_id = _safe_callback_int(data, prefix="publish_feedback_")
+            if fb_id is not None:
+                await admin_publish_feedback_callback(update, context, fb_id)
+            else:
+                await query.answer("Noto'g'ri so'rov.", show_alert=True)
         elif data.startswith("reject_feedback_"):
-            fb_id = int(data.removeprefix("reject_feedback_"))
-            await admin_reject_feedback_callback(update, context, fb_id)
+            fb_id = _safe_callback_int(data, prefix="reject_feedback_")
+            if fb_id is not None:
+                await admin_reject_feedback_callback(update, context, fb_id)
+            else:
+                await query.answer("Noto'g'ri so'rov.", show_alert=True)
         elif data in ("menu_admin", "adm_main"):
             if query.message:
                 await query.message.reply_text(

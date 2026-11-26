@@ -23,16 +23,42 @@ logger = logging.getLogger(__name__)
 
 
 def _jwt_auth(request):
-    """Authenticate with SimpleJWT's standard active-user checks."""
-    if hasattr(request, "user") and getattr(request.user, "is_authenticated", False):
-        return request.user
+    """
+    Authenticate via SimpleJWT Bearer token first, or fall back to an active
+    Django session user only when CSRF checks succeed on unsafe methods.
+    """
     try:
         from rest_framework_simplejwt.authentication import JWTAuthentication
 
         authenticated = JWTAuthentication().authenticate(request)
-        return authenticated[0] if authenticated else None
+        if authenticated:
+            return authenticated[0]
     except Exception:
         return None
+
+    raw_request = getattr(request, "_request", request)
+    django_user = getattr(raw_request, "user", None)
+    if django_user is not None and getattr(django_user, "is_authenticated", False):
+        if request.method not in ("GET", "HEAD", "OPTIONS", "TRACE"):
+            from rest_framework.authentication import SessionAuthentication
+            from rest_framework.exceptions import PermissionDenied
+
+            try:
+                SessionAuthentication().enforce_csrf(request)
+            except PermissionDenied as exc:
+                raise PermissionError(str(exc)) from exc
+        return django_user
+    return None
+
+
+def _auth_user_or_error(request):
+    try:
+        user = _jwt_auth(request)
+    except PermissionError as exc:
+        return None, JsonResponse({"error": str(exc), "detail": str(exc)}, status=403)
+    if not user:
+        return None, JsonResponse({"error": "Unauthorized"}, status=401)
+    return user, None
 
 
 # ---------------------------------------------------------------------------
@@ -50,9 +76,9 @@ def tma_test_start_view(request, test_id: int) -> JsonResponse:
 
     Returns: {attempt_id, questions: [...], time_limit_minutes, started_at}
     """
-    user = _jwt_auth(request)
-    if not user:
-        return JsonResponse({"error": "Unauthorized"}, status=401)
+    user, err_resp = _auth_user_or_error(request)
+    if err_resp is not None:
+        return err_resp
 
     from apps.tests.models import Test, TestAttempt, Question
 
@@ -199,9 +225,9 @@ def tma_test_answer_view(request, test_id: int) -> JsonResponse:
 
     Request body: {attempt_id, question_id, choice_ids: [int]}
     """
-    user = _jwt_auth(request)
-    if not user:
-        return JsonResponse({"error": "Unauthorized"}, status=401)
+    user, err_resp = _auth_user_or_error(request)
+    if err_resp is not None:
+        return err_resp
 
     from apps.tests.models import TestAttempt
     from apps.tests.services import SaveAnswerService
@@ -283,9 +309,9 @@ def tma_test_submit_view(request, test_id: int) -> JsonResponse:
 
     Request body: {attempt_id, answers: {question_id: [choice_id, ...]}}
     """
-    user = _jwt_auth(request)
-    if not user:
-        return JsonResponse({"error": "Unauthorized"}, status=401)
+    user, err_resp = _auth_user_or_error(request)
+    if err_resp is not None:
+        return err_resp
 
     from apps.results.models import Result
     from apps.tests.models import TestAttempt
@@ -439,9 +465,9 @@ def tma_attempt_result_view(request, attempt_id: int) -> JsonResponse:
 
     Get detailed result for a completed attempt.
     """
-    user = _jwt_auth(request)
-    if not user:
-        return JsonResponse({"error": "Unauthorized"}, status=401)
+    user, err_resp = _auth_user_or_error(request)
+    if err_resp is not None:
+        return err_resp
 
     from apps.tests.models import TestAttempt
 

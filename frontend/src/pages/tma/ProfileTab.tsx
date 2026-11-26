@@ -98,7 +98,11 @@ export default function ProfileTab({ profile }: { profile: TmaProfile | null }) 
             </p>
             <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
               <span className="tma-badge" style={{ background: 'var(--tma-elevated)', color: 'var(--tma-muted)' }}>
-                {user?.role === 'teacher' ? `👨‍🏫 ${t('tma_role_teacher')}` : `🎓 ${t('tma_role_student')}`}
+                {user?.role === 'admin' || user?.role === 'superadmin'
+                  ? '👑 Admin'
+                  : user?.role === 'teacher'
+                  ? `👨‍🏫 ${t('tma_role_teacher')}`
+                  : `🎓 ${t('tma_role_student')}`}
               </span>
               <span className="tma-badge" style={{ background: '#fef3c7', color: '#b45309' }}>
                 {leagueTitle}

@@ -1477,6 +1477,13 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
 
     # 3. Teacher Workspace callbacks (tch_*)
     if data.startswith("tch_"):
+        def _safe_int(prefix: str) -> int | None:
+            raw = data[len(prefix) :] if data.startswith(prefix) else data
+            try:
+                return int(raw)
+            except (ValueError, TypeError):
+                return None
+
         def _is_verified_teacher(tg_id):
             from apps.accounts.models import User as UserModel
             u = UserModel.objects.filter(
@@ -1487,7 +1494,7 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
             return bool(
                 u
                 and (
-                    getattr(u, "role", "") in ("teacher", "admin", "superadmin")
+                    getattr(u, "role", "") in ("teacher", "center_admin", "admin", "superadmin")
                     or getattr(u, "is_superuser", False)
                 )
             )
@@ -1523,7 +1530,10 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
             await query.answer()
             return
         elif data.startswith("tch_inv_"):
-            group_id = int(data.removeprefix("tch_inv_"))
+            group_id = _safe_int("tch_inv_")
+            if group_id is None:
+                await query.answer("Noto'g'ri so'rov.", show_alert=True)
+                return
             def _get_grp_inv(tg_id, g_id):
                 from apps.accounts.models import User
                 from apps.courses.models import StudentGroup
@@ -1581,7 +1591,10 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
             await query.answer()
             return
         elif data.startswith("tch_appr_"):
-            req_id = int(data.removeprefix("tch_appr_"))
+            req_id = _safe_int("tch_appr_")
+            if req_id is None:
+                await query.answer("Noto'g'ri so'rov.", show_alert=True)
+                return
             def _do_appr(tg_id, r_id):
                 from django.core.exceptions import ValidationError
                 from apps.accounts.models import User
@@ -1599,7 +1612,10 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
             await ustoz_menu_command(update, context)
             return
         elif data.startswith("tch_rej_"):
-            req_id = int(data.removeprefix("tch_rej_"))
+            req_id = _safe_int("tch_rej_")
+            if req_id is None:
+                await query.answer("Noto'g'ri so'rov.", show_alert=True)
+                return
             def _do_rej(tg_id, r_id):
                 from django.core.exceptions import ValidationError
                 from apps.accounts.models import User
@@ -1624,7 +1640,7 @@ async def group_assistant_callback_handler(update: Update, context: ContextTypes
                 "keng qamrovli test yaratish uchun Teacher Studio dan foydalaning:"
             )
             markup = InlineKeyboardMarkup([
-                [InlineKeyboardButton("📱 Teacher Studio (Mini App)", web_app=WebAppInfo(url=f"{site_url}/tma/#/teacher/studio"))],
+                [InlineKeyboardButton("📱 Teacher Mini App", web_app=WebAppInfo(url=f"{site_url}/tma/"))],
                 [InlineKeyboardButton("🌐 Veb-saytda ochish", url=f"{site_url}/teacher/studio")],
                 [InlineKeyboardButton("🔙 Ustoz Menyusi", callback_data="tch_main")],
             ])

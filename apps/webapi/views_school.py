@@ -68,33 +68,48 @@ def groups_view(request):
     if request.method == "POST":
         import hashlib
         from django.core.cache import cache
-
-        idem_key = (request.META.get("HTTP_X_IDEMPOTENCY_KEY") or "").strip()
-        cache_key = ""
-        if idem_key:
-            digest = hashlib.sha256(f"{request.user.id}:{idem_key}".encode()).hexdigest()
-            cache_key = f"school_group_create:{digest}"
-            cached_data = cache.get(cache_key)
-            if isinstance(cached_data, dict):
-                return Response(cached_data, status=201)
+        from django.db import IntegrityError, transaction
 
         name = str(request.data.get("name", "")).strip()
         if not name:
             return Response({"detail": "Name is required."}, status=400)
-        teacher = request.user
-        if _teacher_groups(request.user).filter(name=name).exists():
-            return Response({"detail": "Group with this name exists."}, status=400)
         subject = str(request.data.get("subject", "uzbek") or "uzbek").strip().lower()
         if subject not in ("uzbek", "english"):
             subject = "uzbek"
+
+        idem_key = (request.META.get("HTTP_X_IDEMPOTENCY_KEY") or "").strip()
+        cache_key = ""
+        if idem_key:
+            digest = hashlib.sha256(
+                f"{request.user.id}:{idem_key}:{name}:{subject}".encode()
+            ).hexdigest()
+            cache_key = f"school_group_create:{digest}"
+            cached_data = cache.get(cache_key)
+            if (
+                isinstance(cached_data, dict)
+                and cached_data.get("id")
+                and StudentGroup.objects.filter(
+                    id=cached_data["id"], teacher=request.user
+                ).exists()
+            ):
+                return Response(cached_data, status=201)
+
+        teacher = request.user
         branch = getattr(request.user, "branch", None)
-        group = StudentGroup.objects.create(
-            teacher=teacher,
-            branch=branch,
-            name=name,
-            subject=subject,
-            description=str(request.data.get("description", "")),
-        )
+        try:
+            with transaction.atomic():
+                if _teacher_groups(request.user).filter(name=name).exists():
+                    return Response({"detail": "Group with this name exists."}, status=400)
+                group = StudentGroup.objects.create(
+                    teacher=teacher,
+                    branch=branch,
+                    name=name,
+                    subject=subject,
+                    description=str(request.data.get("description", "")),
+                )
+        except IntegrityError:
+            return Response({"detail": "Group with this name exists."}, status=400)
+
         payload = StudentGroupSerializer(group).data
         if cache_key:
             cache.set(cache_key, payload, timeout=60)

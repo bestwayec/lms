@@ -114,13 +114,16 @@
   justify-content: space-between;
 }
 .tma-root .tma-header h1,
-.tma-root.is-dark .tma-header h1,
-.tma-root.is-dark h1,
-.tma-root.is-dark h2 {
+.tma-root.is-dark .tma-header h1 {
   font-size: 18px;
   font-weight: 800;
   color: var(--tma-ink);
   margin: 0;
+}
+.tma-root.is-dark h1,
+.tma-root.is-dark h2,
+.tma-root.is-dark h3 {
+  color: var(--tma-ink);
 }
 .tma-xp {
   padding: 4px 12px;
