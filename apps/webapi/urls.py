@@ -27,6 +27,7 @@ from . import (
     views_private_files,
     views_homework,
     views_classroom,
+    views_teacher_english,
 )
 from apps.organizations import views as views_enterprise
 from apps.tests import (
@@ -94,6 +95,8 @@ urlpatterns = [
     ),
     path("dashboard/", views_dashboard.StudentDashboardView.as_view(), name="student-dashboard"),
     path("english/center/", views_english.EnglishCenterView.as_view(), name="english-center"),
+    path("english/teacher/workspace/", views_teacher_english.TeacherEnglishWorkspaceView.as_view(), name="english-teacher-workspace"),
+    path("english/teacher/export/", views_teacher_english.TeacherEnglishExportView.as_view(), name="english-teacher-export"),
     path("essays/ocr/", views_essay_studio.essay_ocr_view, name="essays-ocr"),
     path("essays/image-submit/", views_essay_studio.essay_image_submit_view, name="essays-image-submit"),
     path("essays/custom/", views_essay_studio.essay_custom_view, name="essays-custom"),

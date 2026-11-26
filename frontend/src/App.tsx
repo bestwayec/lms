@@ -70,6 +70,7 @@ const SpeakingTopics = lazyPage(() => import('./pages/SpeakingTopics'));
 const SpeakingPractice = lazyPage(() => import('./pages/SpeakingPractice'));
 const SpeakingResult = lazyPage(() => import('./pages/SpeakingResult'));
 const EnglishCenter = lazyPage(() => import('./pages/EnglishCenter'));
+const TeacherEnglishWorkspace = lazyPage(() => import('./pages/TeacherEnglishWorkspace'));
 const VocabularyStudio = lazyPage(() => import('./pages/VocabularyStudio'));
 const GrammarStudio = lazyPage(() => import('./pages/GrammarStudio'));
 const TeacherAiConverter = lazyPage(() => import('./pages/TeacherAiConverter'));
@@ -305,6 +306,7 @@ function AnimatedRoutes() {
             {/* School */}
             <Route element={<TeacherRoute />}>
               <Route path="/teacher" element={<TeacherDashboard />} />
+              <Route path="/teacher/english" element={<TeacherEnglishWorkspace />} />
               <Route path="/teacher/studio" element={<TeacherStudio />} />
               <Route path="/teacher/studio/new" element={<TeacherStudioEditor />} />
               <Route path="/teacher/studio/:id/edit" element={<TeacherStudioEditor />} />

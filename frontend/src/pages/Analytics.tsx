@@ -46,9 +46,14 @@ export default function Analytics() {
       <h1>
         <TrendingUpIcon size={24} className="ico" /> {t('analytics')}
       </h1>
-      <Link to="/teacher" className="muted small">
-        ← {t('teacher_dashboard')}
-      </Link>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Link to="/teacher" className="muted small">
+          ← {t('teacher_dashboard')}
+        </Link>
+        <Link to="/teacher/english" className="muted small">
+          {t('ten_workspace_title')} →
+        </Link>
+      </div>
       {err && <p className="error">{err}</p>}
 
       {/* Day-range selector — backend clamps days to 1..90. */}
