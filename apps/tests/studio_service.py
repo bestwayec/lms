@@ -450,12 +450,19 @@ def _build_content(test: Test, blocks: list[dict[str, Any]]) -> None:
             passage_text = "\n\n".join(p for p in (b["passage"], gap_context(b["gap_text"])) if p)
         passage = None
         if passage_text:
-            passage = passages.get(passage_text)
+            sref = str(b.get("stimulus_ref") or "").strip()
+            pkey = f"ref:{sref}" if sref else f"txt:{passage_text}"
+            passage = passages.get(pkey)
             if passage is None:
                 passage = ReadingPassage.objects.create(
-                    test=test, section=section, title=b["title"], content=passage_text, order=bi
+                    test=test,
+                    section=section,
+                    title=b["title"],
+                    content=passage_text,
+                    stimulus_ref=sref[:80],
+                    order=bi,
                 )
-                passages[passage_text] = passage
+                passages[pkey] = passage
 
         group = QuestionGroup.objects.create(
             part=part,

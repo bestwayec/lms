@@ -454,7 +454,11 @@ class ResultDetailSerializer(serializers.ModelSerializer):
                     "status": status,
                     "hint": hint,
                     "explanation": q.explanation if show_explanation else "",
-                    "evidence": q.evidence if show_explanation else "",
+                    "evidence": (q.evidence or q.evidence_text) if reveal_answers else "",
+                    "stimulus_ref": (
+                        (q.reading_passage.stimulus_ref if q.reading_passage else "")
+                        or (group.stimulus_ref if group else "")
+                    ),
                     "explanation_status": q.explanation_status if show_explanation and q.explanation else "",
                     "part_id": group.part_id if group else None,
                     "part_number": group.part.number if group else "",

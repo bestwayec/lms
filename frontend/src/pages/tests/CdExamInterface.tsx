@@ -207,7 +207,7 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
   // Floating selection highlighter toolbar (fixed-position, near selection).
   const [selBox, setSelBox] = useState<{ x: number; y: number } | null>(null);
   const [flagged, setFlagged] = useState<Set<number>>(
-    () => new Set((read(sessionStorage, `cd-flags:${attemptId}`) || '').split(',').filter(Boolean).map(Number)),
+    () => new Set((read(localStorage, `cd-flags:${attemptId}`) || read(sessionStorage, `cd-flags:${attemptId}`) || '').split(',').filter(Boolean).map(Number)),
   );
   const textTimers = useRef<Record<number, number>>({});
   const submittedRef = useRef(false);
@@ -219,10 +219,17 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
   const [selectedText, setSelectedText] = useState('');
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteContent, setNoteContent] = useState('');
-  const [notes, setNotes] = useState<Record<number, string[]>>({});
+  const [notes, setNotes] = useState<Record<number, string[]>>(() => {
+    try {
+      const saved = localStorage.getItem(`cd-notes:${attemptId}`);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
   const [highlights, setHighlights] = useState<Record<number, { text: string; color: string }[]>>(() => {
     try {
-      const saved = sessionStorage.getItem(`cd-highlights:${attemptId}`);
+      const saved = localStorage.getItem(`cd-highlights:${attemptId}`) || sessionStorage.getItem(`cd-highlights:${attemptId}`);
       return saved ? JSON.parse(saved) : {};
     } catch {
       return {};
@@ -232,6 +239,7 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
   const saveHighlights = useCallback((newH: Record<number, { text: string; color: string }[]>) => {
     setHighlights(newH);
     try {
+      localStorage.setItem(`cd-highlights:${attemptId}`, JSON.stringify(newH));
       sessionStorage.setItem(`cd-highlights:${attemptId}`, JSON.stringify(newH));
     } catch {
       // storage quota
@@ -378,8 +386,12 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
     write(sessionStorage, `cd-pos:${attemptId}`, `${pos.s},${pos.p}`);
   }, [attemptId, pos]);
   useEffect(() => {
+    write(localStorage, `cd-flags:${attemptId}`, [...flagged].join(','));
     write(sessionStorage, `cd-flags:${attemptId}`, [...flagged].join(','));
   }, [attemptId, flagged]);
+  useEffect(() => {
+    write(localStorage, `cd-notes:${attemptId}`, JSON.stringify(notes));
+  }, [attemptId, notes]);
   useEffect(() => {
     write(localStorage, 'cd-font', String(fontStep));
   }, [fontStep]);

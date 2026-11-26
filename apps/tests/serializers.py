@@ -133,6 +133,7 @@ def _passage_payload(passage) -> dict[str, Any] | None:
             "id": getattr(passage, "id", 0) or 0,
             "title": getattr(passage, "title", "") or "",
             "content": getattr(passage, "content", "") or "",
+            "stimulus_ref": getattr(passage, "stimulus_ref", "") or "",
             "audio_url": getattr(passage, "audio_url", "") or "",
             "source": getattr(passage, "source", "") or "",
             "order": getattr(passage, "order", 0) or 0,
