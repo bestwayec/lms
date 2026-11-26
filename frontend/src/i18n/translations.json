@@ -3542,7 +3542,11 @@
     "eng_no_homework": "Faol ingliz tili vazifalari yo'q.",
     "eng_mistakes_title": "Xatolar daftari",
     "eng_to_review": "takrorlash kerak",
-    "eng_recordings": "yozuv"
+    "eng_recordings": "yozuv",
+    "cd_retrying": "Qayta urinilmoqda...",
+    "cd_conflict": "Sessiya ziddiyati",
+    "cd_submitted_short": "Topshirildi",
+    "cd_unsaved": "Saqlanmagan"
   },
   "ru": {
     "spk_practise_again": "Повторить эту тему",
@@ -7087,7 +7091,11 @@
     "eng_no_homework": "Активных заданий по английскому нет.",
     "eng_mistakes_title": "Тетрадь ошибок",
     "eng_to_review": "на повторение",
-    "eng_recordings": "записей"
+    "eng_recordings": "записей",
+    "cd_retrying": "Повтор...",
+    "cd_conflict": "Конфликт сессии",
+    "cd_submitted_short": "Отправлено",
+    "cd_unsaved": "Не сохранено"
   },
   "en": {
     "spk_practise_again": "Practise this topic again",
@@ -10632,6 +10640,10 @@
     "eng_no_homework": "No active English homework.",
     "eng_mistakes_title": "Mistake Notebook",
     "eng_to_review": "to review",
-    "eng_recordings": "recordings"
+    "eng_recordings": "recordings",
+    "cd_retrying": "Retrying...",
+    "cd_conflict": "Conflict",
+    "cd_submitted_short": "Submitted",
+    "cd_unsaved": "Unsaved"
   }
 }

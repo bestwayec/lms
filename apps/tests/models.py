@@ -284,6 +284,11 @@ class Test(models.Model):
         default="",
         help_text=_("Ixtiyoriy 4 xonali PIN kod."),
     )
+    content_version = models.PositiveIntegerField(
+        _("kontent versiyasi"),
+        default=1,
+        help_text=_("Savol/matn/audio tuzilmasi o'zgarganda oshiriladigan versiya."),
+    )
 
     # -- Meta -----------------------------------------------------------------
     created_at = models.DateTimeField(_("yaratilgan"), auto_now_add=True)
@@ -919,6 +924,44 @@ class TestAttempt(models.Model):
         default=Mode.STRICT,
         db_index=True,
     )
+    study_mode = models.CharField(
+        _("o'qish rejimi"),
+        max_length=24,
+        blank=True,
+        default="strict",
+        db_index=True,
+    )
+    session_token = models.CharField(
+        _("sessiya kaliti"),
+        max_length=64,
+        blank=True,
+        default="",
+        db_index=True,
+    )
+    last_revision = models.PositiveIntegerField(
+        _("oxirgi reviziya"),
+        default=0,
+    )
+    content_version = models.PositiveIntegerField(
+        _("kontent versiyasi"),
+        default=1,
+    )
+    spec_version = models.CharField(
+        _("spetsifikatsiya versiyasi"),
+        max_length=32,
+        blank=True,
+        default="",
+    )
+    section_deadlines = models.JSONField(
+        _("bo'lim muddatlari"),
+        default=dict,
+        blank=True,
+    )
+    media_state = models.JSONField(
+        _("media va sinxron holati"),
+        default=dict,
+        blank=True,
+    )
     raw_score = models.PositiveIntegerField(
         _("xom ball (to'g'ri javoblar soni)"),
         default=0,
@@ -1104,6 +1147,15 @@ class StudentAnswer(models.Model):
     )
     ai_feedback = models.JSONField(
         _("AI dalilli xulosasi"),
+        default=dict,
+        blank=True,
+    )
+    revision = models.PositiveIntegerField(
+        _("javob reviziyasi"),
+        default=0,
+    )
+    annotations = models.JSONField(
+        _("izoh va ajratishlar"),
         default=dict,
         blank=True,
     )

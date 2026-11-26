@@ -40,7 +40,18 @@ from .serializers import (
     TestListSerializer,
 )
 from .visibility import can_see_test_content, visible_tests
-from .services import SaveAnswerService, StartAttemptService, SubmitAttemptService, TestPinRequiredError, TestInvalidPinError, TestAccessDeniedError, TestPinLockedError
+from .services import (
+    SaveAnswerService,
+    SessionLockConflictError,
+    StaleRevisionError,
+    StartAttemptService,
+    SubmitAttemptService,
+    TakeoverSessionService,
+    TestAccessDeniedError,
+    TestInvalidPinError,
+    TestPinLockedError,
+    TestPinRequiredError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -567,9 +578,22 @@ class SaveBatchAnswerView(APIView):
                         gap_answers=gap_ans,
                         matching=matching_ans,
                         written_text=written_ans,
+                        revision=item.get("revision"),
+                        session_token=item.get("session_token") or request.data.get("session_token"),
+                        annotations=item.get("annotations"),
                         student=request.user,
                     )
                     saved_count += 1
+        except (StaleRevisionError, SessionLockConflictError) as conflict:
+            return Response(
+                {
+                    "error": str(conflict),
+                    "code": conflict.code,
+                    "server_revision": conflict.server_revision,
+                    "saved_count": saved_count,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
         except Exception as e:
             logger.warning(
                 "Batch save partial failure: attempt=%s, user=%s, error=%s",
@@ -583,12 +607,16 @@ class SaveBatchAnswerView(APIView):
             )
 
         attempt.refresh_from_db()
+        from django.utils import timezone
+
         return Response(
             {
                 "success": True,
                 "message": f"{saved_count} ta javob muvaffaqiyatli sinxronlandi.",
                 "saved_count": saved_count,
+                "attempt_last_revision": int(attempt.last_revision or 0),
                 "remaining_seconds": attempt.remaining_seconds,
+                "server_time": timezone.now().isoformat(),
                 "synced": True,
             },
             status=status.HTTP_200_OK,
@@ -650,6 +678,9 @@ class SaveAnswerView(APIView):
                 gap_answers=serializer.validated_data.get("gap_answers") or {},
                 matching=serializer.validated_data.get("matching") or {},
                 written_text=serializer.validated_data.get("written_text"),
+                revision=serializer.validated_data.get("revision"),
+                session_token=serializer.validated_data.get("session_token"),
+                annotations=serializer.validated_data.get("annotations"),
                 student=request.user,
             )
             saved_choices = []
@@ -666,8 +697,12 @@ class SaveAnswerView(APIView):
             if hasattr(answer, "matching_responses"):
                 matching_cnt = answer.matching_responses.count()
             rem_sec = None
+            last_rev = 0
             if hasattr(answer, "attempt") and answer.attempt:
                 rem_sec = answer.attempt.remaining_seconds
+                last_rev = int(answer.attempt.last_revision or 0)
+
+            from django.utils import timezone
 
             return Response(
                 {
@@ -679,9 +714,21 @@ class SaveAnswerView(APIView):
                     "saved_gap_positions": saved_gaps,
                     "saved_matching_count": matching_cnt,
                     "written_word_count": getattr(answer, "written_word_count", 0) or 0,
+                    "revision": getattr(answer, "revision", 0) or 0,
+                    "attempt_last_revision": last_rev,
                     "remaining_seconds": rem_sec,
+                    "server_time": timezone.now().isoformat(),
                 },
                 status=status.HTTP_200_OK,
+            )
+        except (StaleRevisionError, SessionLockConflictError) as conflict:
+            return Response(
+                {
+                    "error": str(conflict),
+                    "code": conflict.code,
+                    "server_revision": conflict.server_revision,
+                },
+                status=status.HTTP_409_CONFLICT,
             )
         except ValueError as e:
             logger.warning(
@@ -764,9 +811,14 @@ class SubmitAttemptView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         try:
+            idem_key = (
+                request.headers.get("Idempotency-Key")
+                or (request.data.get("idempotency_key") if isinstance(request.data, dict) else None)
+            )
             result = SubmitAttemptService.execute(
                 attempt_id=attempt_id,
                 student=request.user,
+                idempotency_key=idem_key,
             )
         except ValueError as e:
             logger.warning(
@@ -842,6 +894,24 @@ class SubmitAttemptView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class SessionTakeoverView(APIView):
+    """POST /api/tests/attempts/{id}/session-takeover/ — transfer session lease."""
+
+    permission_classes = [IsAuthenticated, IsAttemptOwner]
+
+    def post(self, request: Request, attempt_id: int, *args: Any, **kwargs: Any) -> Response:
+        if _own_attempt_or_404(request, attempt_id) is None:
+            return Response(
+                {"error": "Attempt topilmadi."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        try:
+            payload = TakeoverSessionService.execute(attempt_id=attempt_id, student=request.user)
+            return Response(payload, status=status.HTTP_200_OK)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 # ---------------------------------------------------------------------------
@@ -1461,11 +1531,17 @@ class ReportViolationView(APIView):
                 update_fields=["violation_count", "cheating_detected", "violation_logs"]
             )
             try:
+                from apps.results.models import Result
+
                 result = SubmitAttemptService.execute(
                     attempt_id=attempt.id,
                     student=request.user,
                 )
-                result_id = result.id
+                result_id = (
+                    Result.objects.filter(attempt_id=result.attempt_id)
+                    .values_list("id", flat=True)
+                    .first()
+                )
                 attempt.refresh_from_db()
             except Exception as exc:
                 logger.warning(

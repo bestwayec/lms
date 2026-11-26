@@ -703,15 +703,29 @@ export const Tests = {
       test_id?: number | string;
       selected_option_id?: number | null;
       selected_choice_id?: number | null;
+      revision?: number;
+      session_token?: string;
+      annotations?: Record<string, unknown>;
     },
   ) =>
     api<unknown>(`/api/tests/attempts/${attemptId}/save-answer/`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
-  submit: (attemptId: string) =>
+  takeoverSession: (attemptId: string) =>
+    api<{
+      attempt_id: number;
+      session_token: string;
+      last_revision: number;
+      remaining_seconds: number | null;
+      server_time: string;
+    }>(`/api/tests/attempts/${attemptId}/session-takeover/`, {
+      method: 'POST',
+    }),
+  submit: (attemptId: string, idempotencyKey?: string) =>
     api<unknown>(`/api/tests/attempts/${attemptId}/submit/`, {
       method: 'POST',
+      ...(idempotencyKey ? { body: JSON.stringify({ idempotency_key: idempotencyKey }) } : {}),
     }),
   finalize: (attemptId: string) =>
     api<unknown>(`/api/tests/attempts/${attemptId}/finalize/`, {

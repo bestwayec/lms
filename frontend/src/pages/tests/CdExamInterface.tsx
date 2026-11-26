@@ -5,6 +5,7 @@ import { useLang } from '../../i18n/LangContext';
 import { Tests as TestsApi } from '../../lib/api';
 import AutoGrow from '../../components/AutoGrow';
 import { useAnswerQueue, type SavePayload } from '../../lib/useAnswerQueue';
+import ExamSyncPill from '../../components/ExamSyncPill';
 import { revealOnFocus, useIsNarrow, useKeyboardOpen, useVisualViewport } from '../../lib/useVisualViewport';
 import CefrResultSummary, { type CefrSummary } from './CefrResultSummary';
 import IeltsResultSummary, { type IeltsSummary } from './IeltsResultSummary';
@@ -50,6 +51,8 @@ export interface CdAttempt {
   test_title: string;
   is_preview?: boolean;
   is_trial?: boolean;
+  session_token?: string;
+  last_revision?: number;
   remaining_seconds: number | null;
   structure: CdSection[];
   questions: CdQuestion[];
@@ -120,7 +123,21 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
   useVisualViewport(true);
 
   const send = useCallback((payload: SavePayload) => TestsApi.saveAnswer(attemptId, payload), [attemptId]);
-  const queue = useAnswerQueue(attemptId, send);
+  const queue = useAnswerQueue(attemptId, send, {
+    initialRevision: attempt.last_revision || 0,
+    initialSessionToken: attempt.session_token || '',
+  });
+  const handleTakeover = useCallback(async () => {
+    try {
+      const res = await TestsApi.takeoverSession(attemptId);
+      if (res?.session_token) {
+        queue.setSessionToken(res.session_token);
+        await queue.flush();
+      }
+    } catch {
+      /* handled by queue retry/conflict UI */
+    }
+  }, [attemptId, queue]);
 
   const [answers, setAnswers] = useState<Record<number, Answer>>(() => {
     const init: Record<number, Answer> = {};
@@ -408,6 +425,7 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
       const submitted = (await TestsApi.submit(attemptId)) as unknown as {
         result?: { correct_answers?: number; total_questions?: number; result_id?: number | null };
       };
+      queue.markSubmitted();
       setResultId(submitted?.result?.result_id ?? null);
       if (attempt.is_trial) {
         setResult('done');
@@ -703,7 +721,13 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
         ? t('cd_saving')
         : queue.state === 'offline'
           ? t('cd_offline_short')
-          : t('cd_save_failed_short');
+          : queue.state === 'retrying'
+            ? t('cd_retrying', 'Retrying...')
+            : queue.state === 'conflict'
+              ? t('cd_conflict', 'Conflict')
+              : queue.state === 'submitted'
+                ? t('cd_submitted_short', 'Submitted')
+                : t('cd_unsaved', 'Unsaved');
 
   const currentPartQs = partObjective;
   const firstQNum = currentPartQs[0]?.config?.number ?? 1;
@@ -925,8 +949,9 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
           </button>
         </div>
 
-        {/* O'ngda: Taymer va Oltin Topshirish tugmasi */}
+        {/* O'ngda: Sync holati, Taymer va Oltin Topshirish tugmasi */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <ExamSyncPill state={queue.state} labelOverride={saveLabel} onTakeover={handleTakeover} />
           {sectionLeft != null && (
             <span
               style={{
@@ -1012,7 +1037,9 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
         </>
       )}
       {queue.online && queue.justRestored && <p className="cd-alert ok" role="status">{t('cd_online_back')}</p>}
-      {queue.online && queue.state === 'error' && <p className="cd-alert" role="alert">{t('cd_save_error')}</p>}
+      {queue.online && (queue.state === 'retrying' || queue.state === 'conflict') && (
+        <p className="cd-alert" role="alert">{t('cd_save_error')}</p>
+      )}
       {submitError && <p className="cd-alert" role="alert">{submitError}</p>}
       {locked && <p className="cd-alert" role="status">{t('cd_time_up')}</p>}
 

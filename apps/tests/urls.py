@@ -104,6 +104,11 @@ urlpatterns = [
         name="save-answer",
     ),
     path(
+        "attempts/<int:attempt_id>/session-takeover/",
+        views.SessionTakeoverView.as_view(),
+        name="session-takeover",
+    ),
+    path(
         "attempts/<int:attempt_id>/submit/",
         views.SubmitAttemptView.as_view(),
         name="submit-attempt",

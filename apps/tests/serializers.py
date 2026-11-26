@@ -205,8 +205,9 @@ def _student_question_payload(
         "config": safe_config,
     }
 
-    qtype = getattr(q, "question_type", "single")
-    if qtype == "gap_fill":
+    raw_qtype = getattr(q, "question_type", "single") or "single"
+    qtype = raw_qtype.lower()
+    if qtype in ("gap_fill", "inline_gap_fill"):
         gap_blanks = getattr(q, "gap_blanks", None)
         try:
             payload["gaps"] = (
@@ -222,7 +223,7 @@ def _student_question_payload(
         except Exception:
             payload["gaps"] = []
         payload["gap_answers"] = saved.get("gap_answers", {})
-    elif qtype == "matching":
+    elif qtype in ("matching", "matching_matrix"):
         matching_prompts = getattr(q, "matching_prompts", None)
         try:
             payload["prompts"] = (
@@ -618,6 +619,12 @@ class AttemptSerializer(serializers.ModelSerializer):
     time_limit_minutes = serializers.SerializerMethodField()
     total_questions = serializers.SerializerMethodField()
     answered_count = serializers.SerializerMethodField()
+    server_time = serializers.SerializerMethodField()
+
+    def get_server_time(self, obj: TestAttempt) -> str:
+        from django.utils import timezone
+
+        return timezone.now().isoformat()
 
     class Meta:
         model = TestAttempt
@@ -629,6 +636,14 @@ class AttemptSerializer(serializers.ModelSerializer):
             "audio_url",
             "is_strict_mode",
             "mode",
+            "study_mode",
+            "session_token",
+            "last_revision",
+            "content_version",
+            "spec_version",
+            "section_deadlines",
+            "media_state",
+            "server_time",
             "raw_score",
             "band_score",
             "cefr_level",
@@ -704,9 +719,15 @@ class AttemptDetailSerializer(serializers.ModelSerializer):
     exam_type = serializers.SerializerMethodField()
     structure = serializers.SerializerMethodField()
     is_trial = serializers.SerializerMethodField()
+    server_time = serializers.SerializerMethodField()
 
     def get_is_trial(self, obj: TestAttempt) -> bool:
         return bool(obj.trial_part_id)
+
+    def get_server_time(self, obj: TestAttempt) -> str:
+        from django.utils import timezone
+
+        return timezone.now().isoformat()
 
     class Meta:
         model = TestAttempt
@@ -716,6 +737,14 @@ class AttemptDetailSerializer(serializers.ModelSerializer):
             "test_title",
             "exam_type",
             "mode",
+            "study_mode",
+            "session_token",
+            "last_revision",
+            "content_version",
+            "spec_version",
+            "section_deadlines",
+            "media_state",
+            "server_time",
             "is_preview",
             "is_trial",
             "structure",
@@ -963,6 +992,26 @@ class SaveAnswerSerializer(serializers.Serializer):
         required=False,
         default=dict,
         help_text="MATCHING_MATRIX javoblari {'1': 'A', '2': 'C', '3': 'D'}",
+    )
+    revision = serializers.IntegerField(
+        required=False,
+        min_value=0,
+        default=None,
+        allow_null=True,
+        help_text="Monotonik javob reviziyasi (stale write himoyasi).",
+    )
+    session_token = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+        max_length=64,
+        help_text="Faol imtihon sessiyasi qulf kaliti.",
+    )
+    annotations = serializers.DictField(
+        required=False,
+        default=None,
+        allow_null=True,
+        help_text="Savol yoki matn bo'yicha o'quvchi belgilari/izohlari.",
     )
 
     def validate(self, attrs):

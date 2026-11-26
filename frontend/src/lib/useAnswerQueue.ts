@@ -5,9 +5,25 @@ export interface SavePayload {
   choice_ids?: number[];
   text_answer?: string;
   written_text?: string;
+  revision?: number;
+  session_token?: string;
+  annotations?: Record<string, unknown>;
 }
 
-export type SaveState = 'saved' | 'saving' | 'offline' | 'error';
+export type SaveState =
+  | 'unsaved'
+  | 'saving'
+  | 'saved'
+  | 'offline'
+  | 'retrying'
+  | 'conflict'
+  | 'submitted';
+
+export interface AnswerQueueOptions {
+  userId?: number | string;
+  initialRevision?: number;
+  initialSessionToken?: string;
+}
 
 const readQueue = (key: string): Record<number, SavePayload> => {
   try {
@@ -18,20 +34,30 @@ const readQueue = (key: string): Record<number, SavePayload> => {
 };
 
 /**
- * Answers go to the server one at a time, latest value per question wins. A failed or offline
- * save stays in a queue that is kept in localStorage, retried when the connection returns and
- * every few seconds, so a dropped connection or a reload never loses an answer.
+ * Answers go to the server with monotonic per-question revisions and an optional
+ * session lock token. Pending writes survive offline drops and page reloads in
+ * user+attempt scoped localStorage keys; 409 conflicts transition cleanly into
+ * `conflict` so the user can inspect or take over the session without silent overwrite.
  */
-export function useAnswerQueue(attemptId: string, send: (payload: SavePayload) => Promise<unknown>) {
-  const key = `cd-queue:${attemptId}`;
-  const backupKey = `grandec_attempt_${attemptId}_answers`;
+export function useAnswerQueue(
+  attemptId: string,
+  send: (payload: SavePayload) => Promise<unknown>,
+  options: AnswerQueueOptions = {},
+) {
+  const userScope = options.userId != null ? `${options.userId}:` : '';
+  const key = `cd-queue:${userScope}${attemptId}`;
+  const backupKey = `grandec_attempt_${userScope}${attemptId}_answers`;
   const [initial] = useState(() => {
     const q = readQueue(key);
     if (Object.keys(q).length) return q;
+    const legacy = readQueue(`cd-queue:${attemptId}`);
+    if (Object.keys(legacy).length) return legacy;
     return readQueue(backupKey);
   });
   const queue = useRef<Record<number, SavePayload>>({ ...initial });
-  const [state, setState] = useState<SaveState>(Object.keys(initial).length ? 'saving' : 'saved');
+  const revRef = useRef<number>(options.initialRevision || 0);
+  const sessionTokenRef = useRef<string>(options.initialSessionToken || '');
+  const [state, setState] = useState<SaveState>(Object.keys(initial).length ? 'unsaved' : 'saved');
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const [justRestored, setJustRestored] = useState(false);
   const flushing = useRef(false);
@@ -45,11 +71,23 @@ export function useAnswerQueue(attemptId: string, send: (payload: SavePayload) =
       } else {
         localStorage.removeItem(key);
         localStorage.removeItem(backupKey);
+        localStorage.removeItem(`cd-queue:${attemptId}`);
       }
     } catch {
-      /* storage can be unavailable; the queue still works in memory */
+      /* storage unavailable */
     }
-  }, [key, backupKey]);
+  }, [key, backupKey, attemptId]);
+
+  const setSessionToken = useCallback((token: string) => {
+    sessionTokenRef.current = token;
+    setState((prev) => (prev === 'conflict' ? (Object.keys(queue.current).length ? 'retrying' : 'saved') : prev));
+  }, []);
+
+  const markSubmitted = useCallback(() => {
+    queue.current = {};
+    persist();
+    setState('submitted');
+  }, [persist]);
 
   const flush = useCallback(async (): Promise<boolean> => {
     if (flushing.current) return Object.keys(queue.current).length === 0;
@@ -59,17 +97,26 @@ export function useAnswerQueue(attemptId: string, send: (payload: SavePayload) =
         const entry = Object.entries(queue.current)[0];
         if (!entry) break;
         const [qid, payload] = entry;
+        setState(navigator.onLine ? 'saving' : 'offline');
+        const outgoing: SavePayload = {
+          ...payload,
+          ...(sessionTokenRef.current ? { session_token: sessionTokenRef.current } : {}),
+        };
         try {
-          await send(payload);
-        } catch {
-          setState(navigator.onLine ? 'error' : 'offline');
+          await send(outgoing);
+        } catch (err: unknown) {
+          const apiErr = err as { status?: number; code?: string };
+          if (apiErr?.status === 409 || apiErr?.code === 'SESSION_TAKEN_OVER' || apiErr?.code === 'STALE_REVISION') {
+            setState('conflict');
+            return false;
+          }
+          setState(typeof navigator !== 'undefined' && navigator.onLine ? 'retrying' : 'offline');
           return false;
         }
-        // Only drop it if nothing newer was queued for the same question meanwhile.
         if (queue.current[Number(qid)] === payload) delete queue.current[Number(qid)];
         persist();
       }
-      setState('saved');
+      setState((prev) => (prev === 'submitted' ? 'submitted' : 'saved'));
       return true;
     } finally {
       flushing.current = false;
@@ -78,9 +125,11 @@ export function useAnswerQueue(attemptId: string, send: (payload: SavePayload) =
 
   const enqueue = useCallback(
     (payload: SavePayload) => {
-      queue.current[payload.question_id] = payload;
+      revRef.current += 1;
+      const versioned: SavePayload = { ...payload, revision: payload.revision ?? revRef.current };
+      queue.current[payload.question_id] = versioned;
       persist();
-      setState(navigator.onLine ? 'saving' : 'offline');
+      setState('unsaved');
       void flush();
     },
     [flush, persist],
@@ -99,15 +148,17 @@ export function useAnswerQueue(attemptId: string, send: (payload: SavePayload) =
     window.addEventListener('online', goOnline);
     window.addEventListener('offline', goOffline);
     const timer = window.setInterval(() => {
-      if (Object.keys(queue.current).length) void flush();
-    }, 8000);
-    if (Object.keys(queue.current).length) void flush(); // answers left over from before a reload
+      if (Object.keys(queue.current).length && state !== 'conflict' && state !== 'submitted') {
+        void flush();
+      }
+    }, 6000);
+    if (Object.keys(queue.current).length) void flush();
     return () => {
       window.removeEventListener('online', goOnline);
       window.removeEventListener('offline', goOffline);
       window.clearInterval(timer);
     };
-  }, [flush]);
+  }, [flush, state]);
 
   return {
     enqueue,
@@ -116,6 +167,8 @@ export function useAnswerQueue(attemptId: string, send: (payload: SavePayload) =
     online,
     justRestored,
     initial,
+    setSessionToken,
+    markSubmitted,
     pending: () => Object.keys(queue.current).length,
   };
 }

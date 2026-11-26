@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hmac
 import logging
+import uuid
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -167,6 +168,53 @@ class TestAccessDeniedError(ValueError):
     pass
 
 
+class StaleRevisionError(ValueError):
+    """Raised when a client submits an answer with a lower revision than stored."""
+
+    def __init__(self, message: str, *, server_revision: int = 0) -> None:
+        super().__init__(message)
+        self.code = "STALE_REVISION"
+        self.server_revision = server_revision
+
+
+class SessionLockConflictError(ValueError):
+    """Raised when a stale tab/device attempts to write after session takeover."""
+
+    def __init__(self, message: str, *, server_revision: int = 0) -> None:
+        super().__init__(message)
+        self.code = "SESSION_TAKEN_OVER"
+        self.server_revision = server_revision
+
+
+class TakeoverSessionService:
+    """Atomically transfers active attempt ownership to a fresh session token."""
+
+    @staticmethod
+    @transaction.atomic
+    def execute(attempt_id: int, student: Any) -> dict[str, Any]:
+        try:
+            attempt = TestAttempt.objects.select_for_update().get(
+                id=attempt_id,
+                student=student,
+            )
+        except TestAttempt.DoesNotExist:
+            raise ValueError("Attempt topilmadi.")
+
+        if attempt.status != TestAttempt.Status.IN_PROGRESS:
+            raise ValueError("Yakunlangan urinish sessiyasini almashtirib bo'lmaydi.")
+
+        new_token = uuid.uuid4().hex
+        attempt.session_token = new_token
+        attempt.save(update_fields=["session_token"])
+        return {
+            "attempt_id": attempt.id,
+            "session_token": new_token,
+            "last_revision": int(attempt.last_revision or 0),
+            "remaining_seconds": attempt.remaining_seconds,
+            "server_time": timezone.now().isoformat(),
+        }
+
+
 # ---------------------------------------------------------------------------
 # 1. StartAttemptService
 # ---------------------------------------------------------------------------
@@ -274,6 +322,9 @@ class StartAttemptService:
                 active_attempt.status = TestAttempt.Status.TIMEOUT
                 active_attempt.save(update_fields=["status"])
             else:
+                if not active_attempt.session_token:
+                    active_attempt.session_token = uuid.uuid4().hex
+                    active_attempt.save(update_fields=["session_token"])
                 logger.info(
                     "Returning active in-progress attempt=%d for student=%d",
                     active_attempt.id,
@@ -337,6 +388,9 @@ class StartAttemptService:
                 student=student,
                 status=TestAttempt.Status.IN_PROGRESS,
                 mode=selected_mode,
+                study_mode=selected_mode,
+                session_token=uuid.uuid4().hex,
+                content_version=getattr(test, "content_version", 1) or 1,
                 # Teachers/admins only preview: kept out of stats and ratings;
                 # a free trial of one part is never a real result either.
                 is_preview=is_admin_or_teacher or trial_part is not None,
@@ -423,6 +477,9 @@ class SaveAnswerService:
         gap_answers: dict | None = None,
         matching: dict | None = None,
         written_text: str | None = None,
+        revision: int | None = None,
+        session_token: str | None = None,
+        annotations: dict | None = None,
     ) -> StudentAnswer | None:
         """Save an answer and report timeout only after finalization commits."""
         answer = SaveAnswerService._execute_atomic(
@@ -435,6 +492,9 @@ class SaveAnswerService:
             gap_answers=gap_answers,
             matching=matching,
             written_text=written_text,
+            revision=revision,
+            session_token=session_token,
+            annotations=annotations,
         )
         if answer is SaveAnswerService._CLEARED:
             return None
@@ -456,6 +516,9 @@ class SaveAnswerService:
         gap_answers: dict | None = None,
         matching: dict | None = None,
         written_text: str | None = None,
+        revision: int | None = None,
+        session_token: str | None = None,
+        annotations: dict | None = None,
     ) -> StudentAnswer | object | None:
         """Javobni saqlash yoki yangilash."""
         # -- Attempt ni olish va tekshirish --------------------------------
@@ -487,6 +550,14 @@ class SaveAnswerService:
                 "Bu attempt allaqachon yakunlangan. Javob o'zgartirib bo'lmaydi."
             )
 
+        # -- Session lease check -------------------------------------------
+        clean_token = (session_token or "").strip()
+        if clean_token and attempt.session_token and clean_token != attempt.session_token:
+            raise SessionLockConflictError(
+                "Boshqa oyna yoki qurilma ushbu urinish sessiyasini boshqaruvga oldi.",
+                server_revision=int(attempt.last_revision or 0),
+            )
+
         # -- Timer tekshirish ----------------------------------------------
         if attempt.is_time_expired:
             # Timeout — avtomatik yakunlash
@@ -507,6 +578,60 @@ class SaveAnswerService:
                 attempt.test.id,
             )
             raise ValueError("Savol topilmadi yoki bu testga tegishli emas.")
+
+        # -- Monotonic answer revision check -------------------------------
+        existing_ans = StudentAnswer.objects.filter(
+            attempt=attempt,
+            question=question,
+        ).only("id", "revision").first()
+        if revision is not None and existing_ans is not None:
+            if int(revision) < int(existing_ans.revision or 0):
+                raise StaleRevisionError(
+                    "Eski javob reviziyasi (stale write) rad etildi.",
+                    server_revision=int(existing_ans.revision or 0),
+                )
+
+        answer = SaveAnswerService._persist_answer(
+            attempt=attempt,
+            question=question,
+            choice_ids=choice_ids,
+            text_answer=text_answer,
+            allow_clear=allow_clear,
+            gap_answers=gap_answers,
+            matching=matching,
+            written_text=written_text,
+        )
+        if answer in (SaveAnswerService._CLEARED, SaveAnswerService._SECTION_EXPIRED, None):
+            return answer
+
+        # Record monotonic revision & optional annotations under the attempt lock
+        next_rev = int(revision) if revision is not None else max(int(existing_ans.revision or 0) if existing_ans else 0, int(attempt.last_revision or 0) + 1)
+        ans_updates: list[str] = []
+        if getattr(answer, "revision", 0) != next_rev:
+            answer.revision = next_rev
+            ans_updates.append("revision")
+        if annotations is not None and isinstance(annotations, dict):
+            answer.annotations = annotations
+            ans_updates.append("annotations")
+        if ans_updates:
+            answer.save(update_fields=ans_updates)
+        if next_rev > int(attempt.last_revision or 0):
+            attempt.last_revision = next_rev
+            attempt.save(update_fields=["last_revision"])
+        return answer
+
+    @staticmethod
+    def _persist_answer(
+        *,
+        attempt: TestAttempt,
+        question: Question,
+        choice_ids: list[int],
+        text_answer: str = "",
+        allow_clear: bool = False,
+        gap_answers: dict | None = None,
+        matching: dict | None = None,
+        written_text: str | None = None,
+    ) -> StudentAnswer | object | None:
 
         from apps.tests.trial import question_in_trial
 
@@ -924,14 +1049,20 @@ class SubmitAttemptService:
 
     @staticmethod
     @transaction.atomic
-    def execute(attempt_id: int, student: Any) -> AttemptResult:
+    def execute(
+        attempt_id: int,
+        student: Any,
+        idempotency_key: str | None = None,
+    ) -> AttemptResult:
         """Testni yakunlash va natijani hisoblash.
 
         After grading, homework linked to this attempt records the official
         outcome in the same transaction (and queues its notification once).
         A failure there is logged and never affects the grade.
         """
-        outcome = SubmitAttemptService._execute(attempt_id, student)
+        outcome = SubmitAttemptService._execute(
+            attempt_id, student, idempotency_key=idempotency_key
+        )
         try:
             from apps.courses.homework_service import homework_pending_for_attempt, sync_homework_for_attempt
 
@@ -943,7 +1074,11 @@ class SubmitAttemptService:
         return outcome
 
     @staticmethod
-    def _execute(attempt_id: int, student: Any) -> AttemptResult:
+    def _execute(
+        attempt_id: int,
+        student: Any,
+        idempotency_key: str | None = None,
+    ) -> AttemptResult:
         # -- Attempt ni olish (SELECT FOR UPDATE — double-submit lock) -----
         try:
             attempt = (
@@ -967,6 +1102,15 @@ class SubmitAttemptService:
             )
             raise ValueError("Attempt topilmadi.")
 
+        clean_idem = (idempotency_key or "").strip()
+        if (
+            clean_idem
+            and attempt.status != TestAttempt.Status.IN_PROGRESS
+            and isinstance(attempt.media_state, dict)
+            and attempt.media_state.get("submit_idempotency_key") == clean_idem
+        ):
+            return SubmitAttemptService._build_result_from_attempt(attempt)
+
         # -- Status tekshirish (prevents double-submit) --------------------
         # State machine: IN_PROGRESS → COMPLETED/TIMEOUT/PENDING_GRADING;
         # PENDING_GRADING → COMPLETED (finalize, idempotent); terminal
@@ -986,6 +1130,12 @@ class SubmitAttemptService:
                 attempt.status,
             )
             raise ValueError("Bu attempt allaqachon yakunlangan.")
+
+        if clean_idem:
+            state = dict(attempt.media_state or {})
+            state["submit_idempotency_key"] = clean_idem
+            attempt.media_state = state
+            attempt.save(update_fields=["media_state"])
 
         # -- Vaqt tekshirish -----------------------------------------------
         if attempt.is_time_expired:
