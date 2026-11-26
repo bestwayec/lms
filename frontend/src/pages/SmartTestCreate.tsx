@@ -72,8 +72,37 @@ import {
   QrCode,
 } from 'lucide-react';
 import ClassroomQrModal from '../components/ClassroomQrModal';
+import { Tabs } from '../components/ui';
 import { api } from '../lib/api';
 import { parseSmartTestText, type ParsedQuestion, type SupportedSubject } from '../lib/testParser';
+
+const DRAFT_STORAGE_KEY = 'grandec_smart_test_draft_v1';
+
+interface SmartTestDraft {
+  subject?: SupportedSubject;
+  title?: string;
+  timeLimit?: number;
+  strictAntiCheat?: boolean;
+  accessType?: 'PUBLIC' | 'PRO_ONLY' | 'STUDENTS_ONLY';
+  assignedGroupId?: string;
+  autoArchive?: boolean;
+  accessPin?: string;
+  customCode?: string;
+  rawText?: string;
+  savedAt?: number;
+}
+
+function loadSmartTestDraft(): SmartTestDraft | null {
+  try {
+    const raw = window.localStorage.getItem(DRAFT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as SmartTestDraft;
+    if (!parsed || typeof parsed !== 'object') return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
 
 const SAMPLE_15_LITERATURE = `1. Alisher Navoiy qachon va qayerda tavallud topgan?
 *A) 1441-yil 9-fevralda Hirotda
@@ -261,19 +290,26 @@ export default function SmartTestCreate() {
   const [searchParams] = useSearchParams();
   const paramGroupId = searchParams.get('groupId');
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [initialDraft] = useState<SmartTestDraft | null>(() => loadSmartTestDraft());
+  const [draftNotice, setDraftNotice] = useState<boolean>(() => Boolean(initialDraft?.rawText));
+  const [mobilePane, setMobilePane] = useState<'editor' | 'preview'>('editor');
 
   // Test Settings
-  const [subject, setSubject] = useState<SupportedSubject>('uzbek');
-  const [title, setTitle] = useState('');
-  const [timeLimit, setTimeLimit] = useState<number>(20);
-  const [isStrictMode, setIsStrictMode] = useState(false);
-  const [strictAntiCheat, setStrictAntiCheat] = useState(false);
-  const [accessType, setAccessType] = useState<'PUBLIC' | 'PRO_ONLY' | 'STUDENTS_ONLY'>('PUBLIC');
-  const [assignedGroupId, setAssignedGroupId] = useState<string>('');
+  const [subject, setSubject] = useState<SupportedSubject>(initialDraft?.subject ?? 'uzbek');
+  const [title, setTitle] = useState(initialDraft?.title ?? '');
+  const [timeLimit, setTimeLimit] = useState<number>(
+    typeof initialDraft?.timeLimit === 'number' ? initialDraft.timeLimit : 20,
+  );
+  const [isStrictMode, setIsStrictMode] = useState(Boolean(initialDraft?.strictAntiCheat));
+  const [strictAntiCheat, setStrictAntiCheat] = useState(Boolean(initialDraft?.strictAntiCheat));
+  const [accessType, setAccessType] = useState<'PUBLIC' | 'PRO_ONLY' | 'STUDENTS_ONLY'>(
+    initialDraft?.accessType ?? 'PUBLIC',
+  );
+  const [assignedGroupId, setAssignedGroupId] = useState<string>(initialDraft?.assignedGroupId ?? '');
   const [groups, setGroups] = useState<{ id: number; name: string; student_count: number }[]>([]);
-  const [autoArchive, setAutoArchive] = useState(false);
-  const [accessPin, setAccessPin] = useState('');
-  const [customCode, setCustomCode] = useState('');
+  const [autoArchive, setAutoArchive] = useState(Boolean(initialDraft?.autoArchive));
+  const [accessPin, setAccessPin] = useState(initialDraft?.accessPin ?? '');
+  const [customCode, setCustomCode] = useState(initialDraft?.customCode ?? '');
 
   const insertAtCursor = (content: string) => {
     const el = textareaRef.current;
@@ -309,7 +345,7 @@ export default function SmartTestCreate() {
   }, [paramGroupId]);
 
   // Raw text input & questions
-  const [rawText, setRawText] = useState(SAMPLE_15_LITERATURE);
+  const [rawText, setRawText] = useState(initialDraft?.rawText ?? SAMPLE_15_LITERATURE);
   const [readingPassage, setReadingPassage] = useState('');
   const [questions, setQuestions] = useState<ParsedQuestion[]>([]);
   const [editingQIdx, setEditingQIdx] = useState<number | null>(null);
@@ -327,6 +363,45 @@ export default function SmartTestCreate() {
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
+
+  // Persist local draft silently while composing; guard accidental tab close
+  useEffect(() => {
+    if (createdResult) return undefined;
+    const timer = window.setTimeout(() => {
+      try {
+        window.localStorage.setItem(
+          DRAFT_STORAGE_KEY,
+          JSON.stringify({
+            subject,
+            title,
+            timeLimit,
+            strictAntiCheat: strictAntiCheat || isStrictMode,
+            accessType,
+            assignedGroupId,
+            autoArchive,
+            accessPin,
+            customCode,
+            rawText,
+            savedAt: Date.now(),
+          } satisfies SmartTestDraft),
+        );
+      } catch {
+        // storage quota full or disabled
+      }
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [subject, title, timeLimit, strictAntiCheat, isStrictMode, accessType, assignedGroupId, autoArchive, accessPin, customCode, rawText, createdResult]);
+
+  useEffect(() => {
+    const hasUnsaved = Boolean(rawText.trim()) && !createdResult && rawText !== SAMPLE_15_LITERATURE;
+    if (!hasUnsaved) return undefined;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [rawText, createdResult]);
 
   // Reparse before committing a render when the source text or subject changes.
   const [lastParse, setLastParse] = useState<{ rawText: string; subject: SupportedSubject; title: string } | null>(null);
@@ -446,6 +521,12 @@ export default function SmartTestCreate() {
         title: res.title,
         questions_count: res.questions_count,
       });
+      setDraftNotice(false);
+      try {
+        window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+      } catch {
+        // ignore storage errors
+      }
       setQrOpen(true);
     } catch (err2: unknown) {
       const msg = err2 instanceof Error ? err2.message : 'Testni saqlashda xatolik yuz berdi.';
@@ -466,8 +547,21 @@ export default function SmartTestCreate() {
     }
   };
 
+  const clearDraft = () => {
+    setDraftNotice(false);
+    setTitle('');
+    setRawText('');
+    setCustomCode('');
+    setAccessPin('');
+    try {
+      window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+    } catch {
+      // ignore storage errors
+    }
+  };
+
   return (
-    <div style={{ minHeight: '100%', background: '#F8FAFC', padding: '24px 20px 80px' }}>
+    <div style={{ minHeight: '100%', padding: '20px 16px 80px' }}>
       <div style={{ maxWidth: 1400, margin: '0 auto' }}>
       {/* Breadcrumb & Header */}
       <div
@@ -475,18 +569,18 @@ export default function SmartTestCreate() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: 24,
+          marginBottom: 20,
           flexWrap: 'wrap',
           gap: 12,
         }}
       >
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#64748B', marginBottom: 6 }}>
-            <Link to="/tests" style={{ color: '#64748B', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-muted)', marginBottom: 6 }}>
+            <Link to="/tests" style={{ color: 'var(--text-muted)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               <ArrowLeft size={14} /> Testlar
             </Link>
             <span>/</span>
-            <span style={{ color: '#0F172A', fontWeight: 600 }}>{t('x_smart_create')}</span>
+            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{t('x_smart_create')}</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div
@@ -494,20 +588,21 @@ export default function SmartTestCreate() {
                 width: 44,
                 height: 44,
                 borderRadius: 12,
-                background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(217, 119, 6, 0.15))',
-                border: '1px solid rgba(245, 158, 11, 0.3)',
+                background: 'var(--warning-bg)',
+                border: '1px solid var(--warning-border)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                flexShrink: 0,
               }}
             >
               <Zap size={22} color="#D97706" />
             </div>
             <div>
-              <h1 style={{ fontSize: 24, fontWeight: 900, color: '#0F172A', margin: 0, letterSpacing: '-0.02em' }}>
+              <h1 style={{ fontSize: 'clamp(1.25rem, 2.2vw, 1.6rem)', fontWeight: 900, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em' }}>
                 {t('x_smart_title')}
               </h1>
-              <p style={{ fontSize: 13.5, color: '#64748B', margin: '4px 0 0' }}>
+              <p style={{ fontSize: 13.5, color: 'var(--text-secondary)', margin: '4px 0 0' }}>
                 Word yoki Telegram'dan tayyor test matnini nusxalab tashlang. Tizim avtomatik savol va javoblarga ajratadi.
               </p>
             </div>
@@ -517,33 +612,52 @@ export default function SmartTestCreate() {
         {/* Back Link */}
         <Link
           to="/tests"
-          className="btn"
+          className="btn secondary sm"
           style={{
-            background: '#FFFFFF',
-            border: '1px solid #E2E8F0',
-            color: '#475569',
-            fontWeight: 700,
             borderRadius: 12,
             padding: '10px 18px',
             textDecoration: 'none',
             fontSize: 13,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
           }}
         >
           Testlar ro‘yxatiga qaytish
         </Link>
       </div>
 
+      {draftNotice && !createdResult && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 10,
+            padding: '10px 14px',
+            borderRadius: 12,
+            background: 'var(--info-bg)',
+            border: '1px solid var(--info-border)',
+            color: 'var(--info-text)',
+            fontSize: 13,
+            marginBottom: 16,
+          }}
+        >
+          <span>💾 Avvalgi kiritilgan test qoralamasi avtomatik tiklandi.</span>
+          <button type="button" className="btn ghost sm" onClick={clearDraft}>
+            Qoralamani tozalash
+          </button>
+        </div>
+      )}
+
       {/* Success Modal / Banner */}
       {createdResult && (
         <div
           style={{
-            background: '#FFFFFF',
+            background: 'var(--bg-surface)',
             borderRadius: 24,
-            border: '2px solid #10B981',
-            boxShadow: '0 20px 40px -15px rgba(16, 185, 129, 0.2)',
-            padding: 32,
-            marginBottom: 32,
+            border: '2px solid var(--success-border)',
+            boxShadow: 'var(--shadow-md)',
+            padding: 28,
+            marginBottom: 28,
             textAlign: 'center',
           }}
         >
@@ -552,8 +666,8 @@ export default function SmartTestCreate() {
               width: 64,
               height: 64,
               borderRadius: '50%',
-              background: 'rgba(16, 185, 129, 0.12)',
-              border: '2px solid #10B981',
+              background: 'var(--success-bg)',
+              border: '2px solid var(--success-border)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -562,10 +676,10 @@ export default function SmartTestCreate() {
           >
             <Check size={32} color="#10B981" />
           </div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, color: '#0F172A', margin: '0 0 6px' }}>
+          <h2 style={{ fontSize: 22, fontWeight: 900, color: 'var(--text-primary)', margin: '0 0 6px' }}>
             🎉 {t('x_smart_published')}
           </h2>
-          <p style={{ fontSize: 14, color: '#64748B', margin: '0 0 24px' }}>
+          <p style={{ fontSize: 14, color: 'var(--text-secondary)', margin: '0 0 24px' }}>
             «{createdResult.title}» testi bazaga yozildi ({createdResult.questions_count} ta savol). O‘quvchilarga havola yoki maxsus kod orqali ulashing:
           </p>
 
@@ -581,17 +695,17 @@ export default function SmartTestCreate() {
             {/* Mock Code Card */}
             <div
               style={{
-                background: '#F8FAFC',
-                border: '1px solid #E2E8F0',
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-subtle)',
                 borderRadius: 16,
                 padding: 18,
                 textAlign: 'center',
               }}
             >
-              <div style={{ fontSize: 11, fontWeight: 800, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
                 Tezkor Ulanish Kodi (PIN)
               </div>
-              <div style={{ fontSize: 26, fontWeight: 900, color: '#D97706', letterSpacing: '1px', marginBottom: 12 }}>
+              <div style={{ fontSize: 26, fontWeight: 900, color: 'var(--brand-primary-text)', letterSpacing: '1px', marginBottom: 12 }}>
                 {createdResult.mock_code}
               </div>
               <button
@@ -599,9 +713,9 @@ export default function SmartTestCreate() {
                 onClick={() => copyToClipboard(createdResult.mock_code, 'code')}
                 className="btn sm"
                 style={{
-                  background: copiedCode ? '#10B981' : '#FFFFFF',
-                  color: copiedCode ? '#FFFFFF' : '#0F172A',
-                  border: '1px solid #CBD5E1',
+                  background: copiedCode ? '#10B981' : 'var(--bg-surface)',
+                  color: copiedCode ? '#FFFFFF' : 'var(--text-primary)',
+                  border: '1px solid var(--border-strong)',
                   borderRadius: 10,
                   fontWeight: 700,
                   fontSize: 12.5,
@@ -620,29 +734,29 @@ export default function SmartTestCreate() {
             {/* Direct Link Card */}
             <div
               style={{
-                background: '#F8FAFC',
-                border: '1px solid #E2E8F0',
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-subtle)',
                 borderRadius: 16,
                 padding: 18,
                 textAlign: 'center',
               }}
             >
-              <div style={{ fontSize: 11, fontWeight: 800, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
                 To‘g‘ridan-to‘g‘ri Havola
               </div>
               <div
                 style={{
                   fontSize: 13,
                   fontWeight: 700,
-                  color: '#0F172A',
+                  color: 'var(--text-primary)',
                   marginBottom: 12,
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
                   padding: '4px 8px',
-                  background: '#FFFFFF',
+                  background: 'var(--bg-surface)',
                   borderRadius: 8,
-                  border: '1px solid #E2E8F0',
+                  border: '1px solid var(--border-subtle)',
                 }}
               >
                 {createdResult.share_url}
@@ -652,9 +766,9 @@ export default function SmartTestCreate() {
                 onClick={() => copyToClipboard(createdResult.share_url, 'link')}
                 className="btn sm"
                 style={{
-                  background: copiedLink ? '#10B981' : '#FFFFFF',
-                  color: copiedLink ? '#FFFFFF' : '#0F172A',
-                  border: '1px solid #CBD5E1',
+                  background: copiedLink ? '#10B981' : 'var(--bg-surface)',
+                  color: copiedLink ? '#FFFFFF' : 'var(--text-primary)',
+                  border: '1px solid var(--border-strong)',
                   borderRadius: 10,
                   fontWeight: 700,
                   fontSize: 12.5,
@@ -769,20 +883,13 @@ export default function SmartTestCreate() {
 
             <button
               type="button"
-              onClick={() => {
-                setCreatedResult(null);
-                setRawText('');
-                setTitle('');
-              }}
+              onClick={clearDraft}
+              className="btn secondary"
               style={{
-                background: '#FFFFFF',
-                color: '#475569',
                 fontWeight: 700,
                 fontSize: 14,
                 padding: '12px 20px',
                 borderRadius: 12,
-                border: '1px solid #CBD5E1',
-                cursor: 'pointer',
               }}
             >
               + Yana yangi test yaratish
@@ -805,16 +912,17 @@ export default function SmartTestCreate() {
 
       {/* Settings Form Card */}
       <div
+        className="card"
         style={{
-          background: '#FFFFFF',
-          borderRadius: 24,
-          border: '1px solid #E2E8F0',
-          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.03)',
-          padding: 26,
-          marginBottom: 24,
+          background: 'var(--bg-surface)',
+          borderRadius: 20,
+          border: '1px solid var(--border-subtle)',
+          boxShadow: 'var(--shadow-sm)',
+          padding: 24,
+          marginBottom: 20,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, fontSize: 14, fontWeight: 800, color: '#0F172A' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, fontSize: 14, fontWeight: 800, color: 'var(--text-primary)' }}>
           <Sparkles size={16} color="#D97706" />
           <span>{t('x_test_settings')}</span>
         </div>
@@ -822,8 +930,8 @@ export default function SmartTestCreate() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))', gap: 18 }}>
           {/* Test Nomi */}
           <div>
-            <label style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: '#475569', marginBottom: 6 }}>
-              Test Nomi <span style={{ color: '#EF4444' }}>*</span>
+            <label style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 6 }}>
+              Test Nomi <span style={{ color: 'var(--danger-text)' }}>*</span>
             </label>
             <input
               type="text"
@@ -835,18 +943,18 @@ export default function SmartTestCreate() {
                 width: '100%',
                 padding: '10px 14px',
                 borderRadius: 10,
-                border: '1px solid #CBD5E1',
+                border: '1px solid var(--border-strong)',
                 fontSize: 13.5,
                 fontWeight: 600,
-                color: '#0F172A',
-                background: '#F8FAFC',
+                color: 'var(--text-primary)',
+                background: 'var(--bg-elevated)',
               }}
             />
           </div>
 
           {/* Fani va Yo‘nalishi */}
           <div>
-            <label style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: '#475569', marginBottom: 6 }}>
+            <label style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 6 }}>
               Fani va Yo‘nalishi
             </label>
             <select
@@ -856,11 +964,11 @@ export default function SmartTestCreate() {
                 width: '100%',
                 padding: '10px 14px',
                 borderRadius: 10,
-                border: '1px solid #CBD5E1',
+                border: '1px solid var(--border-strong)',
                 fontSize: 13.5,
                 fontWeight: 600,
-                color: '#0F172A',
-                background: '#F8FAFC',
+                color: 'var(--text-primary)',
+                background: 'var(--bg-elevated)',
               }}
             >
               <option value="uzbek">Ona tili (Grammatika va amaliyot)</option>
@@ -875,8 +983,8 @@ export default function SmartTestCreate() {
 
           {/* Vaqt Limiti */}
           <div>
-            <label style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: '#475569', marginBottom: 6 }}>
-              Vaqt Limiti: <span style={{ color: '#D97706' }}>{timeLimit === 0 ? 'Cheksiz' : `${timeLimit} daqiqa`}</span>
+            <label style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 6 }}>
+              Vaqt Limiti: <span style={{ color: 'var(--brand-primary-text)' }}>{timeLimit === 0 ? 'Cheksiz' : `${timeLimit} daqiqa`}</span>
             </label>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {[15, 20, 30, 45, 60, 180, 0].map((mins) => (
@@ -885,16 +993,16 @@ export default function SmartTestCreate() {
                   type="button"
                   onClick={() => setTimeLimit(mins)}
                   style={{
-                    minHeight: 44,
+                    minHeight: 40,
                     minWidth: 44,
                     padding: '6px 10px',
                     borderRadius: 8,
                     fontSize: 11.5,
                     fontWeight: 700,
                     cursor: 'pointer',
-                    background: timeLimit === mins ? '#D97706' : '#F1F5F9',
-                    color: timeLimit === mins ? '#FFFFFF' : '#475569',
-                    border: 'none',
+                    background: timeLimit === mins ? 'var(--brand-primary)' : 'var(--bg-elevated)',
+                    color: timeLimit === mins ? '#FFFFFF' : 'var(--text-secondary)',
+                    border: timeLimit === mins ? '1px solid var(--brand-primary)' : '1px solid var(--border-subtle)',
                     transition: 'all 0.15s ease',
                   }}
                 >
@@ -906,7 +1014,7 @@ export default function SmartTestCreate() {
 
           {/* Maxsus Kod */}
           <div>
-            <label style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: '#475569', marginBottom: 6 }}>
+            <label style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 6 }}>
               Maxsus Ulanish Kodi (Ixtiyoriy)
             </label>
             <input
@@ -918,11 +1026,11 @@ export default function SmartTestCreate() {
                 width: '100%',
                 padding: '10px 14px',
                 borderRadius: 10,
-                border: '1px solid #CBD5E1',
+                border: '1px solid var(--border-strong)',
                 fontSize: 13.5,
                 fontWeight: 700,
-                color: '#D97706',
-                background: '#F8FAFC',
+                color: 'var(--brand-primary-text)',
+                background: 'var(--bg-elevated)',
                 letterSpacing: '1px',
               }}
             />
@@ -930,31 +1038,33 @@ export default function SmartTestCreate() {
         </div>
 
         {/* Permissions, Privacy & Security Settings */}
-        <div style={{ marginTop: 20, paddingTop: 18, borderTop: '1px dashed #E2E8F0', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: 18 }}>
+        <div style={{ marginTop: 20, paddingTop: 18, borderTop: '1px dashed var(--border-subtle)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: 18 }}>
           {/* Access Type Selection */}
           <div>
-            <label style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: '#475569', marginBottom: 8 }}>
+            <label style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8 }}>
               Kirish Huquqi (Access Type):
             </label>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {[
-                { type: 'PUBLIC', label: '🌐 Ommaviy' },
-                { type: 'PRO_ONLY', label: '⚡️ Faqat PRO' },
-                { type: 'STUDENTS_ONLY', label: '👥 Faqat guruhim' },
-              ].map((item) => (
+              {(
+                [
+                  { type: 'PUBLIC', label: '🌐 Ommaviy' },
+                  { type: 'PRO_ONLY', label: '⚡️ Faqat PRO' },
+                  { type: 'STUDENTS_ONLY', label: '👥 Faqat guruhim' },
+                ] as const
+              ).map((item) => (
                 <button
                   key={item.type}
                   type="button"
-                  onClick={() => setAccessType(item.type as any)}
+                  onClick={() => setAccessType(item.type)}
                   style={{
                     padding: '8px 14px',
                     borderRadius: 10,
                     fontSize: 12.5,
                     fontWeight: 700,
                     cursor: 'pointer',
-                    border: accessType === item.type ? '2px solid #D97706' : '1px solid #E2E8F0',
-                    background: accessType === item.type ? '#FEF3C7' : '#F8FAFC',
-                    color: accessType === item.type ? '#92400E' : '#475569',
+                    border: accessType === item.type ? '2px solid var(--warning-border)' : '1px solid var(--border-subtle)',
+                    background: accessType === item.type ? 'var(--warning-bg)' : 'var(--bg-elevated)',
+                    color: accessType === item.type ? 'var(--warning-text)' : 'var(--text-secondary)',
                     transition: 'all 0.15s ease',
                   }}
                 >
@@ -965,7 +1075,7 @@ export default function SmartTestCreate() {
 
             {accessType === 'STUDENTS_ONLY' && (
               <div style={{ marginTop: 10 }}>
-                <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#64748B', marginBottom: 4 }}>
+                <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>
                   Biriktiriladigan Guruh:
                 </label>
                 {groups.length > 0 ? (
@@ -976,11 +1086,11 @@ export default function SmartTestCreate() {
                       width: '100%',
                       padding: '8px 12px',
                       borderRadius: 10,
-                      border: '1.5px solid #D97706',
-                      background: '#FFFFFF',
+                      border: '1.5px solid var(--brand-primary)',
+                      background: 'var(--bg-elevated)',
                       fontSize: 13,
                       fontWeight: 600,
-                      color: '#0F172A',
+                      color: 'var(--text-primary)',
                     }}
                   >
                     {groups.map((g) => (
@@ -990,7 +1100,7 @@ export default function SmartTestCreate() {
                     ))}
                   </select>
                 ) : (
-                  <p style={{ margin: 0, fontSize: 12, color: '#EF4444' }}>
+                  <p style={{ margin: 0, fontSize: 12, color: 'var(--danger-text)' }}>
                     Sizda hali guruhlar yo&apos;q. Avval [Guruhlar] bo&apos;limida guruh yarating.
                   </p>
                 )}
@@ -1000,7 +1110,7 @@ export default function SmartTestCreate() {
 
           {/* Access PIN Code */}
           <div>
-            <label style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: '#475569', marginBottom: 8 }}>
+            <label style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8 }}>
               Kirish PIN Kodi (Ixtiyoriy 4 xonali):
             </label>
             <div style={{ position: 'relative' }}>
@@ -1014,16 +1124,17 @@ export default function SmartTestCreate() {
                   width: '100%',
                   padding: '9px 12px 9px 34px',
                   borderRadius: 10,
-                  border: '1px solid #CBD5E1',
+                  border: '1px solid var(--border-strong)',
                   fontSize: 13,
                   fontWeight: 700,
                   letterSpacing: '2px',
-                  background: '#F8FAFC',
+                  background: 'var(--bg-elevated)',
+                  color: 'var(--text-primary)',
                 }}
               />
-              <Lock size={15} color="#64748B" style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)' }} />
+              <Lock size={15} color="var(--text-muted)" style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)' }} />
             </div>
-            <p style={{ margin: '4px 0 0', fontSize: 11.5, color: '#64748B' }}>
+            <p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'var(--text-muted)' }}>
               Faqat PIN kodni bilgan o&apos;quvchilar testni boshlay oladi.
             </p>
           </div>
@@ -1037,12 +1148,12 @@ export default function SmartTestCreate() {
                 gap: 8,
                 fontSize: 12.5,
                 fontWeight: 600,
-                color: '#0F172A',
+                color: strictAntiCheat || isStrictMode ? 'var(--danger-text)' : 'var(--text-primary)',
                 cursor: 'pointer',
                 padding: '8px 12px',
                 borderRadius: 10,
-                background: strictAntiCheat || isStrictMode ? 'rgba(239, 68, 68, 0.08)' : '#F8FAFC',
-                border: strictAntiCheat || isStrictMode ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid #E2E8F0',
+                background: strictAntiCheat || isStrictMode ? 'var(--danger-bg)' : 'var(--bg-elevated)',
+                border: strictAntiCheat || isStrictMode ? '1px solid var(--danger-border)' : '1px solid var(--border-subtle)',
               }}
             >
               <input
@@ -1054,7 +1165,7 @@ export default function SmartTestCreate() {
                 }}
                 style={{ accentColor: '#EF4444' }}
               />
-              <ShieldAlert size={16} color={strictAntiCheat || isStrictMode ? '#EF4444' : '#64748B'} />
+              <ShieldAlert size={16} color={strictAntiCheat || isStrictMode ? '#EF4444' : 'var(--text-muted)'} />
               <span>Strict Exam Mode & Anti-Cheat (3 marta vkladkadan chiqishda avto-yakunlash)</span>
             </label>
 
@@ -1065,12 +1176,12 @@ export default function SmartTestCreate() {
                 gap: 8,
                 fontSize: 12.5,
                 fontWeight: 600,
-                color: '#0F172A',
+                color: autoArchive ? 'var(--warning-text)' : 'var(--text-primary)',
                 cursor: 'pointer',
                 padding: '8px 12px',
                 borderRadius: 10,
-                background: autoArchive ? 'rgba(245, 158, 11, 0.08)' : '#F8FAFC',
-                border: autoArchive ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid #E2E8F0',
+                background: autoArchive ? 'var(--warning-bg)' : 'var(--bg-elevated)',
+                border: autoArchive ? '1px solid var(--warning-border)' : '1px solid var(--border-subtle)',
               }}
             >
               <input
@@ -1085,22 +1196,35 @@ export default function SmartTestCreate() {
         </div>
       </div>
 
+      {/* Mobile Pane Switcher (< 960px) */}
+      <div className="smart-mobile-tabs">
+        <Tabs
+          value={mobilePane}
+          onChange={(next) => setMobilePane(next === 'preview' ? 'preview' : 'editor')}
+          items={[
+            { id: 'editor', label: '✏️ Matn muharriri' },
+            { id: 'preview', label: "👁️ Jonli ko'rish", count: questions.length },
+          ]}
+        />
+      </div>
+
       {/* Main 2-Column Split: Paste Input (Left) vs Live Preview (Right) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(420px, 100%), 1fr))', gap: 24, alignItems: 'start' }}>
+      <div className="smart-split">
         {/* LEFT COLUMN: SMART PASTE INPUT */}
         <div
+          className={`smart-split-pane ${mobilePane !== 'editor' ? 'is-hidden-mobile' : ''}`}
           style={{
-            background: '#FFFFFF',
-            borderRadius: 24,
-            border: '1px solid #E2E8F0',
-            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.03)',
-            padding: 26,
+            background: 'var(--bg-surface)',
+            borderRadius: 20,
+            border: '1px solid var(--border-subtle)',
+            boxShadow: 'var(--shadow-sm)',
+            padding: 24,
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <BookOpen size={18} color="#D97706" />
-              <strong style={{ fontSize: 15, color: '#0F172A' }}>{t('x_smart_raw_text')}</strong>
+              <strong style={{ fontSize: 15, color: 'var(--text-primary)' }}>{t('x_smart_raw_text')}</strong>
             </div>
 
             {/* Quick Demo Fill Buttons */}
@@ -1114,9 +1238,9 @@ export default function SmartTestCreate() {
                 }}
                 title="15 talik Adabiyot testini namuna sifatida yuklash"
                 style={{
-                  background: '#F8FAFC',
-                  border: '1px solid #CBD5E1',
-                  color: '#475569',
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-strong)',
+                  color: 'var(--text-secondary)',
                   borderRadius: 8,
                   fontSize: 11,
                   fontWeight: 700,
@@ -1135,9 +1259,9 @@ export default function SmartTestCreate() {
                 }}
                 title="10 talik Grammatika testini namuna sifatida yuklash"
                 style={{
-                  background: '#F8FAFC',
-                  border: '1px solid #CBD5E1',
-                  color: '#475569',
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-strong)',
+                  color: 'var(--text-secondary)',
                   borderRadius: 8,
                   fontSize: 11,
                   fontWeight: 700,
@@ -1156,9 +1280,9 @@ export default function SmartTestCreate() {
                 }}
                 title="5 talik Ingliz tili testini namuna sifatida yuklash"
                 style={{
-                  background: '#F8FAFC',
-                  border: '1px solid #CBD5E1',
-                  color: '#475569',
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-strong)',
+                  color: 'var(--text-secondary)',
                   borderRadius: 8,
                   fontSize: 11,
                   fontWeight: 700,
@@ -1177,9 +1301,9 @@ export default function SmartTestCreate() {
                 }}
                 title="Biologiya testini namuna sifatida yuklash"
                 style={{
-                  background: '#F0FDF4',
-                  border: '1px solid #86EFAC',
-                  color: '#166534',
+                  background: 'var(--success-bg)',
+                  border: '1px solid var(--success-border)',
+                  color: 'var(--success-text)',
                   borderRadius: 8,
                   fontSize: 11,
                   fontWeight: 700,
@@ -1198,9 +1322,9 @@ export default function SmartTestCreate() {
                 }}
                 title="Kimyo testini namuna sifatida yuklash"
                 style={{
-                  background: '#FEF3C7',
-                  border: '1px solid #FCD34D',
-                  color: '#92400E',
+                  background: 'var(--warning-bg)',
+                  border: '1px solid var(--warning-border)',
+                  color: 'var(--warning-text)',
                   borderRadius: 8,
                   fontSize: 11,
                   fontWeight: 700,
@@ -1219,9 +1343,9 @@ export default function SmartTestCreate() {
                 }}
                 title="Huquq testini namuna sifatida yuklash"
                 style={{
-                  background: '#F3E8FF',
-                  border: '1px solid #D8B4FE',
-                  color: '#6B21A8',
+                  background: 'var(--info-bg)',
+                  border: '1px solid var(--info-border)',
+                  color: 'var(--info-text)',
                   borderRadius: 8,
                   fontSize: 11,
                   fontWeight: 700,
@@ -1236,9 +1360,9 @@ export default function SmartTestCreate() {
                 onClick={() => setRawText('')}
                 title="Tozalash"
                 style={{
-                  background: '#FEE2E2',
-                  border: '1px solid #FCA5A5',
-                  color: '#B91C1C',
+                  background: 'var(--danger-bg)',
+                  border: '1px solid var(--danger-border)',
+                  color: 'var(--danger-text)',
                   borderRadius: 8,
                   fontSize: 11,
                   fontWeight: 700,
@@ -1253,12 +1377,12 @@ export default function SmartTestCreate() {
 
           <div
             style={{
-              background: '#FFFBEB',
-              border: '1px solid #FDE68A',
+              background: 'var(--warning-bg)',
+              border: '1px solid var(--warning-border)',
               borderRadius: 12,
               padding: '10px 14px',
               fontSize: 12,
-              color: '#92400E',
+              color: 'var(--warning-text)',
               lineHeight: 1.5,
               marginBottom: 14,
             }}
@@ -1266,12 +1390,11 @@ export default function SmartTestCreate() {
             <strong>💡 Format yo‘riqnomasi:</strong> Savol raqami (<code>1.</code>, <code>1)</code>), variantlar (<code>A)</code>, <code>B)</code> yoki <code>(A)</code>, <code>A.</code>). To‘g‘ri javobni variant oldiga <code>*</code> yoki <code>+</code> qo‘yib (masalan: <code>*A)</code>), yoki savol tagiga <code>Javob: B</code>, <code>Ans: C</code> deb yozing.
           </div>
 
-
             {/* Quick Question Type Templates & Science Symbol Toolbar */}
             <div style={{ marginTop: 12, marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
               {/* Question Templates */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B' }}>{t('x_templates')}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>{t('x_templates')}</span>
                 <button
                   type="button"
                   onClick={() => {
@@ -1281,9 +1404,9 @@ export default function SmartTestCreate() {
                   style={{
                     padding: '5px 10px',
                     borderRadius: 8,
-                    border: '1px solid #CBD5E1',
-                    background: '#F1F5F9',
-                    color: '#334155',
+                    border: '1px solid var(--border-strong)',
+                    background: 'var(--bg-elevated)',
+                    color: 'var(--text-secondary)',
                     fontSize: 11.5,
                     fontWeight: 700,
                     cursor: 'pointer',
@@ -1300,9 +1423,9 @@ export default function SmartTestCreate() {
                   style={{
                     padding: '5px 10px',
                     borderRadius: 8,
-                    border: '1px solid #F59E0B',
-                    background: 'rgba(245, 158, 11, 0.12)',
-                    color: '#B45309',
+                    border: '1px solid var(--warning-border)',
+                    background: 'var(--warning-bg)',
+                    color: 'var(--warning-text)',
                     fontSize: 11.5,
                     fontWeight: 700,
                     cursor: 'pointer',
@@ -1319,9 +1442,9 @@ export default function SmartTestCreate() {
                   style={{
                     padding: '5px 10px',
                     borderRadius: 8,
-                    border: '1px solid #10B981',
-                    background: 'rgba(16, 185, 129, 0.12)',
-                    color: '#047857',
+                    border: '1px solid var(--success-border)',
+                    background: 'var(--success-bg)',
+                    color: 'var(--success-text)',
                     fontSize: 11.5,
                     fontWeight: 700,
                     cursor: 'pointer',
@@ -1338,9 +1461,9 @@ export default function SmartTestCreate() {
                   style={{
                     padding: '5px 10px',
                     borderRadius: 8,
-                    border: '1px solid #8B5CF6',
-                    background: 'rgba(139, 92, 246, 0.12)',
-                    color: '#6D28D9',
+                    border: '1px solid var(--info-border)',
+                    background: 'var(--info-bg)',
+                    color: 'var(--info-text)',
                     fontSize: 11.5,
                     fontWeight: 700,
                     cursor: 'pointer',
@@ -1351,8 +1474,8 @@ export default function SmartTestCreate() {
               </div>
 
               {/* Science & Math Symbol Toolbar */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', background: '#F8FAFC', padding: '8px 10px', borderRadius: 10, border: '1px solid #E2E8F0' }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginRight: 4 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', background: 'var(--bg-elevated)', padding: '8px 10px', borderRadius: 10, border: '1px solid var(--border-subtle)' }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginRight: 4 }}>
                   ⚡️ Formulalar & Indekslar:
                 </span>
                 {['₂', '₃', '₄', '⁴', '⁺', '⁻', '²⁺', '³⁺', '²⁻', '→', '⇌', '√', '°C', 'Δ', '≈', '≠', 'π', 'α', 'β', '±', '¹', '²', '³', '⁵'].map((sym) => (
@@ -1363,9 +1486,9 @@ export default function SmartTestCreate() {
                     style={{
                       padding: '4px 8px',
                       borderRadius: 6,
-                      border: '1px solid #CBD5E1',
-                      background: '#FFFFFF',
-                      color: '#0F172A',
+                      border: '1px solid var(--border-strong)',
+                      background: 'var(--bg-surface)',
+                      color: 'var(--text-primary)',
                       fontSize: 13,
                       fontWeight: 700,
                       cursor: 'pointer',
@@ -1385,41 +1508,41 @@ export default function SmartTestCreate() {
             value={rawText}
             onChange={(e) => setRawText(e.target.value)}
             placeholder="Test matnini bu yerga tashlang (Ctrl+V)..."
-            rows={22}
+            rows={20}
             style={{
               width: '100%',
-              padding: 18,
+              padding: 16,
               borderRadius: 16,
-              border: '1.5px solid #CBD5E1',
+              border: '1.5px solid var(--border-strong)',
               fontSize: 13.5,
               fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-              color: '#0F172A',
-              background: '#F8FAFC',
+              color: 'var(--text-primary)',
+              background: 'var(--bg-elevated)',
               lineHeight: 1.65,
               resize: 'vertical',
               outline: 'none',
-              boxShadow: 'inset 0 1px 3px rgba(0, 0, 0, 0.02)',
               transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
             }}
             onFocus={(e) => {
               e.currentTarget.style.borderColor = '#D97706';
-              e.currentTarget.style.boxShadow = '0 0 0 3px rgba(217, 119, 6, 0.15)';
+              e.currentTarget.style.boxShadow = 'var(--focus-ring)';
             }}
             onBlur={(e) => {
-              e.currentTarget.style.borderColor = '#CBD5E1';
-              e.currentTarget.style.boxShadow = 'inset 0 1px 3px rgba(0, 0, 0, 0.02)';
+              e.currentTarget.style.borderColor = 'var(--border-strong)';
+              e.currentTarget.style.boxShadow = 'none';
             }}
           />
         </div>
 
         {/* RIGHT COLUMN: INTERACTIVE LIVE PREVIEW */}
         <div
+          className={`smart-split-pane ${mobilePane !== 'preview' ? 'is-hidden-mobile' : ''}`}
           style={{
-            background: '#FFFFFF',
-            borderRadius: 24,
-            border: '1px solid #E2E8F0',
-            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.03)',
-            padding: 26,
+            background: 'var(--bg-surface)',
+            borderRadius: 20,
+            border: '1px solid var(--border-subtle)',
+            boxShadow: 'var(--shadow-sm)',
+            padding: 24,
           }}
         >
           {/* Header Stats & Publish Button */}
@@ -1430,13 +1553,13 @@ export default function SmartTestCreate() {
               alignItems: 'center',
               flexWrap: 'wrap',
               gap: 12,
-              paddingBottom: 18,
-              borderBottom: '1px solid #E2E8F0',
-              marginBottom: 20,
+              paddingBottom: 16,
+              borderBottom: '1px solid var(--border-subtle)',
+              marginBottom: 18,
             }}
           >
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span
                   style={{
                     display: 'inline-flex',
@@ -1444,8 +1567,8 @@ export default function SmartTestCreate() {
                     gap: 6,
                     padding: '4px 10px',
                     borderRadius: 20,
-                    background: questions.length > 0 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.1)',
-                    color: questions.length > 0 ? '#059669' : '#DC2626',
+                    background: questions.length > 0 ? 'var(--success-bg)' : 'var(--danger-bg)',
+                    color: questions.length > 0 ? 'var(--success-text)' : 'var(--danger-text)',
                     fontSize: 12.5,
                     fontWeight: 800,
                   }}
@@ -1460,8 +1583,8 @@ export default function SmartTestCreate() {
                       gap: 4,
                       padding: '4px 10px',
                       borderRadius: 20,
-                      background: 'rgba(245, 158, 11, 0.12)',
-                      color: '#D97706',
+                      background: 'var(--warning-bg)',
+                      color: 'var(--warning-text)',
                       fontSize: 11.5,
                       fontWeight: 800,
                     }}
@@ -1478,8 +1601,8 @@ export default function SmartTestCreate() {
               onClick={handlePublish}
               disabled={busy || questions.length === 0}
               style={{
-                background: questions.length === 0 ? '#CBD5E1' : 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
-                color: '#FFFFFF',
+                background: questions.length === 0 ? 'var(--disabled-bg)' : 'var(--brand-primary)',
+                color: questions.length === 0 ? 'var(--disabled-text)' : '#FFFFFF',
                 fontWeight: 900,
                 fontSize: 14,
                 padding: '10px 22px',
@@ -1489,7 +1612,7 @@ export default function SmartTestCreate() {
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 8,
-                boxShadow: questions.length > 0 ? '0 4px 14px rgba(217, 119, 6, 0.35)' : 'none',
+                boxShadow: questions.length > 0 ? '0 4px 14px rgba(217, 119, 6, 0.3)' : 'none',
                 transition: 'all 0.15s ease',
               }}
             >
@@ -1507,12 +1630,13 @@ export default function SmartTestCreate() {
           {/* Error Message */}
           {errorMsg && (
             <div
+              role="alert"
               style={{
                 padding: '12px 16px',
                 borderRadius: 12,
-                background: 'rgba(239, 68, 68, 0.1)',
-                border: '1px solid rgba(239, 68, 68, 0.3)',
-                color: '#B91C1C',
+                background: 'var(--danger-bg)',
+                border: '1px solid var(--danger-border)',
+                color: 'var(--danger-text)',
                 fontSize: 13,
                 fontWeight: 600,
                 marginBottom: 16,
@@ -1525,7 +1649,7 @@ export default function SmartTestCreate() {
           {/* Questions Scrollable List */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxHeight: '650px', overflowY: 'auto', paddingRight: 6 }}>
             {questions.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '60px 20px', color: '#94A3B8' }}>
+              <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>
                 <HelpCircle size={40} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
                 <p style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>
                   Chap tomonga test matnini tashlang yoki namunalardan birini tanlang.
@@ -1539,10 +1663,10 @@ export default function SmartTestCreate() {
                   <div
                     key={q.order}
                     style={{
-                      background: hasCorrect ? 'rgba(240, 253, 244, 0.55)' : '#FFFFFF',
+                      background: hasCorrect ? 'var(--bg-elevated)' : 'var(--bg-surface)',
                       borderRadius: 18,
-                      border: hasCorrect ? '1.5px solid #86EFAC' : '1.5px solid #FCD34D',
-                      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.02)',
+                      border: hasCorrect ? '1.5px solid var(--success-border)' : '1.5px solid var(--warning-border)',
+                      boxShadow: 'var(--shadow-sm)',
                       padding: '18px 20px',
                       position: 'relative',
                       transition: 'all 0.2s ease',
@@ -1556,7 +1680,7 @@ export default function SmartTestCreate() {
                             width: 26,
                             height: 26,
                             borderRadius: '50%',
-                            background: '#0F172A',
+                            background: 'var(--brand-primary)',
                             color: '#FFFFFF',
                             fontSize: 12,
                             fontWeight: 800,
@@ -1567,14 +1691,14 @@ export default function SmartTestCreate() {
                         >
                           {q.order}
                         </span>
-                        <span style={{ fontSize: 13, fontWeight: 800, color: '#0F172A' }}>
+                        <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)' }}>
                           Savol #{q.order}
                         </span>
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         {!hasCorrect && (
-                          <span style={{ fontSize: 11, fontWeight: 700, color: '#D97706', background: 'rgba(245, 158, 11, 0.1)', padding: '2px 8px', borderRadius: 6 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--warning-text)', background: 'var(--warning-bg)', padding: '2px 8px', borderRadius: 6 }}>
                             Javob tanlanmagan
                           </span>
                         )}
@@ -1585,9 +1709,9 @@ export default function SmartTestCreate() {
                           onClick={() => setEditingQIdx(isEditingThis ? null : qIdx)}
                           title="Savol matnini tahrirlash"
                           style={{
-                            background: isEditingThis ? '#E2E8F0' : 'transparent',
+                            background: isEditingThis ? 'var(--bg-elevated)' : 'transparent',
                             border: 'none',
-                            color: isEditingThis ? '#0F172A' : '#64748B',
+                            color: isEditingThis ? 'var(--text-primary)' : 'var(--text-muted)',
                             borderRadius: 6,
                             cursor: 'pointer',
                             padding: '4px 6px',
@@ -1610,7 +1734,7 @@ export default function SmartTestCreate() {
                           style={{
                             background: 'transparent',
                             border: 'none',
-                            color: '#94A3B8',
+                            color: 'var(--text-muted)',
                             cursor: 'pointer',
                             padding: 4,
                           }}
@@ -1631,9 +1755,9 @@ export default function SmartTestCreate() {
                             width: '100%',
                             padding: '8px 12px',
                             borderRadius: 10,
-                            border: '1.5px solid #D97706',
-                            background: '#FFFFFF',
-                            color: '#0F172A',
+                            border: '1.5px solid var(--brand-primary)',
+                            background: 'var(--bg-surface)',
+                            color: 'var(--text-primary)',
                             fontSize: 13,
                             fontWeight: 600,
                             lineHeight: 1.5,
@@ -1648,7 +1772,7 @@ export default function SmartTestCreate() {
                         style={{
                           fontSize: 13.5,
                           fontWeight: 600,
-                          color: '#0F172A',
+                          color: 'var(--text-primary)',
                           margin: '0 0 14px',
                           lineHeight: 1.5,
                           cursor: 'pointer',
@@ -1673,9 +1797,9 @@ export default function SmartTestCreate() {
                               gap: 10,
                               padding: '10px 12px',
                               borderRadius: 10,
-                              border: isCorrect ? '1.5px solid #10B981' : '1px solid #CBD5E1',
-                              background: isCorrect ? 'rgba(16, 185, 129, 0.08)' : '#FFFFFF',
-                              color: isCorrect ? '#065F46' : '#334155',
+                              border: isCorrect ? '1.5px solid var(--success-border)' : '1px solid var(--border-subtle)',
+                              background: isCorrect ? 'var(--success-bg)' : 'var(--bg-surface)',
+                              color: isCorrect ? 'var(--success-text)' : 'var(--text-primary)',
                               cursor: 'pointer',
                               textAlign: 'left',
                               fontSize: 12.5,
@@ -1688,8 +1812,8 @@ export default function SmartTestCreate() {
                                 width: 22,
                                 height: 22,
                                 borderRadius: '50%',
-                                background: isCorrect ? '#10B981' : '#F1F5F9',
-                                color: isCorrect ? '#FFFFFF' : '#475569',
+                                background: isCorrect ? '#10B981' : 'var(--bg-elevated)',
+                                color: isCorrect ? '#FFFFFF' : 'var(--text-secondary)',
                                 fontSize: 11,
                                 fontWeight: 800,
                                 display: 'flex',

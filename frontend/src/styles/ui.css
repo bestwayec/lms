@@ -822,3 +822,18 @@ html.dark .lp-foot-link--accent { color: var(--accent); }
 .g-pagination__meta { font-size: 0.82rem; color: var(--text-muted); }
 .g-pagination__actions { display: flex; gap: 8px; }
 
+/* ── Smart Test Create responsive editor/preview split ── */
+.smart-mobile-tabs { margin-bottom: 14px; }
+.smart-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.smart-split-pane.is-hidden-mobile { display: none; }
+@media (min-width: 960px) {
+  .smart-mobile-tabs { display: none; }
+  .smart-split { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+  .smart-split-pane.is-hidden-mobile { display: block; }
+}
+
