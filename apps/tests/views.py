@@ -1759,6 +1759,36 @@ class CertificateCardView(APIView):
             attempt.test, "get_exam_type_display", lambda: "IELTS / CEFR"
         )()
 
+        if attempt.test.exam_type in (Test.ExamType.IELTS_ACADEMIC, Test.ExamType.IELTS_GENERAL) and getattr(attempt, "section_scores", None):
+            sec_map = attempt.section_scores or {}
+            has_pending = any(isinstance(v, dict) and v.get("status") == "pending" for v in sec_map.values())
+            overall_val = None if has_pending or attempt.band_score is None else float(attempt.band_score)
+            from apps.tests.blueprints import IELTS_ESTIMATE_VERSION
+            from apps.results.models import Result
+
+            result = Result.objects.filter(attempt=attempt).only("correct_answers", "total_questions").first()
+            correct = result.correct_answers if result else score_info["raw_score"]
+            total = result.total_questions if result else score_info["total_questions"]
+            return Response(
+                {
+                    "scale": "ielts_estimate",
+                    "is_estimate": True,
+                    "estimate_version": IELTS_ESTIMATE_VERSION,
+                    "grading_status": "pending_grading" if overall_val is None else "graded",
+                    "candidate_name": student_name,
+                    "exam_title": attempt.test.title,
+                    "exam_type": exam_type_str,
+                    "issue_date": (attempt.completed_at or attempt.started_at).strftime("%d.%m.%Y"),
+                    "correct_answers": correct,
+                    "total_questions": total,
+                    "overall_band": overall_val,
+                    "sections": sec_map,
+                    "is_valid": False,
+                    "show_estimate_notice": bool(getattr(settings, "SHOW_ESTIMATE_NOTICE", False)),
+                },
+                status=status.HTTP_200_OK,
+            )
+
         # IELTS / other English tests: the raw score and an ESTIMATED band, nothing
         # that looks like a certificate (no number, QR code, issuer or "official" title).
         from apps.results.models import Result
@@ -1780,6 +1810,18 @@ class CertificateCardView(APIView):
             "show_estimate_notice": bool(getattr(settings, "SHOW_ESTIMATE_NOTICE", False)),
         }
         return Response(payload, status=status.HTTP_200_OK)
+
+
+class EnglishBlueprintsView(APIView):
+    """GET /api/tests/english/blueprints/?exam_type=..."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        from apps.tests.blueprints import get_blueprint
+
+        exam_type = (request.query_params.get("exam_type") or "").strip() or None
+        return Response(get_blueprint(exam_type), status=status.HTTP_200_OK)
 
 
 # ---------------------------------------------------------------------------

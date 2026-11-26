@@ -470,10 +470,16 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
         if (card.scale === 'cefr_multilevel') {
           setResult(card);
         } else if (/ielts/i.test(card.exam_type ?? '') && submitted?.result?.total_questions) {
+          const ieltsCard = card as unknown as { grading_status?: string; sections?: IeltsSummary['sections'] };
           setIelts({
             correct: Number(submitted.result.correct_answers ?? 0),
             total: Number(submitted.result.total_questions),
             band: typeof card.overall_band === 'number' ? card.overall_band : null,
+            grading_status: typeof ieltsCard.grading_status === 'string' ? ieltsCard.grading_status : undefined,
+            sections:
+              ieltsCard.sections && !Array.isArray(ieltsCard.sections) && typeof ieltsCard.sections === 'object'
+                ? ieltsCard.sections
+                : undefined,
           });
           setResult('done');
         } else {

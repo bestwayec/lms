@@ -53,14 +53,22 @@ def evaluate_text_answer(
     accepted_keys: list[str],
     *,
     case_sensitive: bool = False,
+    word_limit_rule: str | None = None,
 ) -> bool:
     """
     Matnli savol (TEXT_MATCH) javobini qabul qilingan kalitlar bilan aqlli taqqoslash:
-    1. To'g'ridan-to'g'ri bo'shliq va registr normalizatsiyasi
-    2. Apostroflar unifikatsiyasi (' ‘ ’ ʻ ʼ `)
-    3. Tinish belgilari yumshatilgan moslik
-    4. 2 talik savollarning 'a) ... b) ...' strukturalarini ajratib taqqoslash
+    1. Agar word_limit_rule (ONE_WORD / ONE_WORD_AND_OR_NUMBER) ko'rsatilgan bo'lsa so'z chegarasini tekshiradi
+    2. To'g'ridan-to'g'ri bo'shliq va registr normalizatsiyasi
+    3. Apostroflar unifikatsiyasi (' ‘ ’ ʻ ʼ `)
+    4. Tinish belgilari yumshatilgan moslik
+    5. 2 talik savollarning 'a) ... b) ...' strukturalarini ajratib taqqoslash
     """
+    if word_limit_rule in ("ONE_WORD", "ONE_WORD_AND_OR_NUMBER"):
+        from apps.tests.blueprints import respects_word_limit_rule
+
+        if not respects_word_limit_rule(str(given_text or ""), word_limit_rule):
+            return False
+
     given = normalize_text(given_text, case_sensitive=case_sensitive)
     if not given:
         return False

@@ -230,6 +230,11 @@ urlpatterns = [
         name="certificate-card",
     ),
     path(
+        "english/blueprints/",
+        views.EnglishBlueprintsView.as_view(),
+        name="english-blueprints",
+    ),
+    path(
         "daily-blitz/",
         views_blitz.DailyBlitzView.as_view(),
         name="daily-blitz",

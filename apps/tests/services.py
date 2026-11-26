@@ -1360,7 +1360,11 @@ class SubmitAttemptService:
                     ]
                     for pos_keys in accepted.values():
                         raw_keys.extend(pos_keys)
-                    is_correct = _evaluate_text_answer(student_answer.text_answer, raw_keys)
+                    is_correct = _evaluate_text_answer(
+                    student_answer.text_answer,
+                    raw_keys,
+                    word_limit_rule=(question.config or {}).get("word_limit_rule"),
+                )
                     earned = qmax if is_correct else Decimal("0")
 
                 question_scores.append(
@@ -1574,7 +1578,11 @@ class SubmitAttemptService:
                     for k in (question.correct_text or "").split("|")
                     if k.strip()
                 ]
-                is_correct = _evaluate_text_answer(student_answer.text_answer, raw_keys)
+                is_correct = _evaluate_text_answer(
+                    student_answer.text_answer,
+                    raw_keys,
+                    word_limit_rule=(question.config or {}).get("word_limit_rule"),
+                )
                 question_scores.append(
                     QuestionScore(
                         question_id=question.id,
@@ -1719,6 +1727,22 @@ class SubmitAttemptService:
             )
             # "Passed" for Multi-level means at least B1 overall, not 60%.
             is_passed = summary["has_certificate"]
+        elif test.exam_type in (Test.ExamType.IELTS_ACADEMIC, Test.ExamType.IELTS_GENERAL):
+            from apps.tests.blueprints import score_ielts_sections
+            from apps.tests import cefr_multilevel
+
+            names = {s.section_code.upper(): s.section_name for s in agg.sections if s.section_code}
+            ielts_summary = score_ielts_sections(
+                question_scores,
+                exam_type=test.exam_type,
+                section_names=names,
+            )
+            band_val = ielts_summary["overall_band"]
+            cefr_val = ielts_summary["cefr_level"]
+            extra_fields["section_scores"] = cefr_multilevel.to_json(ielts_summary["sections"])
+            if band_val is None:
+                grading_status = "pending_grading"
+                new_status = TestAttempt.Status.PENDING_GRADING
         else:
             band_val = raw_to_ielts_band(correct_count, total_questions=total_questions)
             cefr_val, _ = raw_to_cefr_multilevel(correct_count, max_score=total_questions)
