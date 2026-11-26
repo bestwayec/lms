@@ -97,8 +97,8 @@ export default function LeaderboardTab() {
               padding: '6px 14px',
               fontSize: 12,
               cursor: 'pointer',
-              border: period === 'weekly' ? 'none' : '1px solid #cbd5e1',
-              background: period === 'weekly' ? 'var(--tma-accent)' : '#fff',
+              border: period === 'weekly' ? 'none' : '1px solid var(--tma-border-strong)',
+              background: period === 'weekly' ? 'var(--tma-accent)' : 'var(--tma-card)',
               color: period === 'weekly' ? '#fff' : 'var(--tma-muted)',
             }}
             onClick={() => setPeriod('weekly')}
@@ -112,8 +112,8 @@ export default function LeaderboardTab() {
               padding: '6px 14px',
               fontSize: 12,
               cursor: 'pointer',
-              border: period === 'all_time' ? 'none' : '1px solid #cbd5e1',
-              background: period === 'all_time' ? 'var(--tma-accent)' : '#fff',
+              border: period === 'all_time' ? 'none' : '1px solid var(--tma-border-strong)',
+              background: period === 'all_time' ? 'var(--tma-accent)' : 'var(--tma-card)',
               color: period === 'all_time' ? '#fff' : 'var(--tma-muted)',
             }}
             onClick={() => setPeriod('all_time')}
@@ -154,7 +154,7 @@ export default function LeaderboardTab() {
       {!showLoading && scope === 'platform' && platformData && (
         <div>
           {platformData.opted_in === false && (
-            <div className="tma-card" style={{ background: '#f8fafc', borderColor: '#cbd5e1', marginBottom: 16 }}>
+            <div className="tma-card" style={{ background: 'var(--tma-elevated)', borderColor: 'var(--tma-border-strong)', marginBottom: 16 }}>
               <p style={{ margin: '0 0 8px', fontWeight: 700, fontSize: 13, color: 'var(--tma-ink)' }}>
                 🔒 {t('tma_lb_opt_in_title')}
               </p>
@@ -180,12 +180,12 @@ export default function LeaderboardTab() {
             </div>
           )}
           {platformData.user_rank && (
-            <div className="tma-card" style={{ background: '#fef3c7', borderColor: '#fcd34d', marginBottom: 16 }}>
+            <div className="tma-card" style={{ background: 'var(--tma-accent-light)', borderColor: 'var(--tma-streak-border)', marginBottom: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontWeight: 700, color: '#92400e', fontSize: 13 }}>
+                <span style={{ fontWeight: 700, color: 'var(--tma-accent-text)', fontSize: 13 }}>
                   ⚡ {t('tma_lb_your_rank')}:
                 </span>
-                <span style={{ fontWeight: 800, fontSize: 16, color: '#b45309' }}>
+                <span style={{ fontWeight: 800, fontSize: 16, color: 'var(--tma-accent)' }}>
                   #{platformData.user_rank}
                 </span>
               </div>
@@ -199,8 +199,8 @@ export default function LeaderboardTab() {
                 className="tma-card"
                 style={{
                   padding: '12px 16px',
-                  background: item.is_current_user ? '#fffbeb' : '#fff',
-                  border: item.is_current_user ? '1.5px solid #d97706' : '1px solid #e2e8f0',
+                  background: item.is_current_user ? 'var(--tma-accent-light)' : 'var(--tma-card)',
+                  border: item.is_current_user ? '1.5px solid var(--tma-accent)' : '1px solid var(--tma-border)',
                 }}
               >
                 <div className="tma-row">
@@ -260,8 +260,8 @@ export default function LeaderboardTab() {
                 className="tma-card"
                 style={{
                   padding: '12px 16px',
-                  background: item.is_me ? '#fffbeb' : '#fff',
-                  border: item.is_me ? '1.5px solid #d97706' : '1px solid #e2e8f0',
+                  background: item.is_me ? 'var(--tma-accent-light)' : 'var(--tma-card)',
+                  border: item.is_me ? '1.5px solid var(--tma-accent)' : '1px solid var(--tma-border)',
                 }}
               >
                 <div className="tma-row">

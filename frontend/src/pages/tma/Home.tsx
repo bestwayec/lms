@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useLang } from '../../i18n/LangContext';
 import { TmaApi, tmaErrorMessage } from './api';
 import type { TmaProfile, TmaResultItem, TmaTestSummary } from './api';
@@ -14,11 +15,13 @@ type CategoryFilter = 'all' | 'topic_test' | 'attestation' | 'full_mock' | 'nati
 
 export default function Home({
   profile,
+  role = 'student',
   onProfileLoaded,
   onOpenTest,
   onNavigateClassroom,
 }: {
   profile: TmaProfile | null;
+  role?: 'admin' | 'teacher' | 'student';
   onProfileLoaded: (p: TmaProfile) => void;
   onOpenTest: (testId: number) => void;
   onNavigateClassroom?: () => void;
@@ -102,40 +105,98 @@ export default function Home({
 
   return (
     <div className="tma-slide">
-      {/* Gamification Streak & League Banner */}
-      <div
-        className="tma-card"
-        style={{
-          marginBottom: 16,
-          background: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)',
-          borderColor: '#FDE68A',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 28 }}>🔥</span>
-            <div>
-              <p style={{ margin: 0, fontWeight: 800, fontSize: 15, color: '#92400E' }}>
-                {streak > 0 ? `${streak} kunlik ketma-ketlik!` : 'Kunlik o‘qish odati'}
-              </p>
-              <p style={{ margin: '2px 0 0', fontSize: 12, color: '#B45309' }}>
-                {streak > 0 ? 'To‘xtab qolmang, har kuni bilim oling!' : 'Bugun test yeching va streakni boshlang!'}
+      {/* Role-aware Admin / Teacher Workspace Shortcuts */}
+      {(role === 'admin' || role === 'teacher') && (
+        <div
+          className="tma-card"
+          style={{
+            marginBottom: 16,
+            background: role === 'admin' ? 'var(--tma-streak-bg)' : 'var(--tma-info-bg)',
+            borderColor: role === 'admin' ? 'var(--tma-streak-border)' : 'var(--tma-info-border)',
+          }}
+        >
+          <p
+            style={{
+              margin: '0 0 10px',
+              fontWeight: 800,
+              fontSize: 14,
+              color: role === 'admin' ? 'var(--tma-streak-title)' : 'var(--tma-info-title)',
+            }}
+          >
+            {role === 'admin' ? '👑 Administrator Boshqaruvi' : '👨‍🏫 O‘qituvchi Ish Maydoni'}
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            {role === 'admin' ? (
+              <>
+                <Link className="tma-btn tma-btn-hl" to="/panel" style={{ fontSize: 13, minHeight: 40, textDecoration: 'none' }}>
+                  🛡️ Admin Panel
+                </Link>
+                <Link className="tma-btn tma-btn-card" to="/panel/tests" style={{ fontSize: 13, minHeight: 40, textDecoration: 'none' }}>
+                  📝 Barcha Testlar
+                </Link>
+                <Link className="tma-btn tma-btn-card" to="/panel/users" style={{ fontSize: 13, minHeight: 40, textDecoration: 'none' }}>
+                  👥 Foydalanuvchilar
+                </Link>
+                <Link className="tma-btn tma-btn-card" to="/panel/tuition" style={{ fontSize: 13, minHeight: 40, textDecoration: 'none' }}>
+                  💳 To‘lov cheklari
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link className="tma-btn tma-btn-hl" to="/groups" style={{ fontSize: 13, minHeight: 40, textDecoration: 'none' }}>
+                  👥 Guruhlarim
+                </Link>
+                <Link className="tma-btn tma-btn-card" to="/tests/create" style={{ fontSize: 13, minHeight: 40, textDecoration: 'none' }}>
+                  ✨ Smart Test
+                </Link>
+                <Link className="tma-btn tma-btn-card" to="/teacher/studio" style={{ fontSize: 13, minHeight: 40, textDecoration: 'none' }}>
+                  🎬 Test Studio
+                </Link>
+                <Link className="tma-btn tma-btn-card" to="/teacher/essays" style={{ fontSize: 13, minHeight: 40, textDecoration: 'none' }}>
+                  ✍️ Esse Tekshiruvi
+                </Link>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Gamification Streak & League Banner (for students, or preview) */}
+      {role === 'student' && (
+        <div
+          className="tma-card"
+          style={{
+            marginBottom: 16,
+            background: 'var(--tma-streak-bg)',
+            borderColor: 'var(--tma-streak-border)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 28 }}>🔥</span>
+              <div>
+                <p style={{ margin: 0, fontWeight: 800, fontSize: 15, color: 'var(--tma-streak-title)' }}>
+                  {streak > 0 ? `${streak} kunlik ketma-ketlik!` : 'Kunlik o‘qish odati'}
+                </p>
+                <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--tma-streak-sub)' }}>
+                  {streak > 0 ? 'To‘xtab qolmang, har kuni bilim oling!' : 'Bugun test yeching va streakni boshlang!'}
+                </p>
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <span
+                className="tma-badge"
+                style={{ background: '#D97706', color: '#FFFFFF', fontWeight: 800, display: 'inline-block' }}
+              >
+                🏆 {league}
+              </span>
+              <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--tma-streak-title)', fontWeight: 700 }}>
+                +{weeklyXp} XP haftalik
               </p>
             </div>
           </div>
-          <div style={{ textAlign: 'right' }}>
-            <span
-              className="tma-badge"
-              style={{ background: '#F59E0B', color: '#FFFFFF', fontWeight: 800, display: 'inline-block' }}
-            >
-              🏆 {league}
-            </span>
-            <p style={{ margin: '4px 0 0', fontSize: 11, color: '#78350F', fontWeight: 700 }}>
-              +{weeklyXp} XP haftalik
-            </p>
-          </div>
         </div>
-      </div>
+      )}
 
       {/* Classroom Quick Access Banner */}
       {onNavigateClassroom && (
@@ -149,8 +210,8 @@ export default function Home({
           className="tma-card tma-press"
           style={{
             marginBottom: 20,
-            background: 'linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%)',
-            borderColor: '#BFDBFE',
+            background: 'var(--tma-info-bg)',
+            borderColor: 'var(--tma-info-border)',
             cursor: 'pointer',
           }}
         >
@@ -158,15 +219,15 @@ export default function Home({
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontSize: 24 }}>🏫</span>
               <div>
-                <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: '#1E40AF' }}>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: 'var(--tma-info-title)' }}>
                   {t('my_classrooms') || 'Mening sinfxonalarim'}
                 </p>
-                <p style={{ margin: '2px 0 0', fontSize: 12, color: '#3B82F6' }}>
+                <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--tma-info-sub)' }}>
                   {t('tma_classroom_subtitle')}
                 </p>
               </div>
             </div>
-            <span style={{ color: '#2563eb', fontWeight: 700, fontSize: 14 }}>→</span>
+            <span style={{ color: 'var(--tma-info-sub)', fontWeight: 700, fontSize: 14 }}>→</span>
           </div>
         </div>
       )}

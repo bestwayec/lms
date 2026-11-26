@@ -175,10 +175,10 @@ export default function ClassroomTab({ onOpenTest }: { onOpenTest: (testId: numb
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
-                          background: '#f8fafc',
+                          background: 'var(--tma-elevated)',
                           padding: '10px 12px',
                           borderRadius: 10,
-                          border: '1px solid #e2e8f0',
+                          border: '1px solid var(--tma-border)',
                         }}
                       >
                         <div style={{ minWidth: 0, flex: 1, marginRight: 8 }}>
