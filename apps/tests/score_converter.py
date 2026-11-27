@@ -19,18 +19,33 @@ def raw_to_ielts_band(
     raw_score: int | float | Decimal,
     total_questions: int = 40,
     *,
-    section: str = "listening",
+    section: str | None = None,
     exam_type: str = "ielts_academic",
 ) -> Decimal:
     """
-    Convert raw score to official IELTS Band (1.0 - 9.0),
-    honoring separate Academic Reading, General Reading, and Listening scales.
+    Convert raw score to official IELTS Band (1.0 - 9.0).
+    Uses separate Academic Reading, General Reading, and Listening scales when `section` is specified,
+    and preserves the standard 40-question curve when `section` is omitted.
     """
     from apps.tests.blueprints import raw_to_ielts_listening_band, raw_to_ielts_reading_band
 
     if str(section or "").lower() == "reading":
         return raw_to_ielts_reading_band(raw_score, total=total_questions, exam_type=exam_type)
-    return raw_to_ielts_listening_band(raw_score, total=total_questions)
+    if str(section or "").lower() == "listening":
+        return raw_to_ielts_listening_band(raw_score, total=total_questions)
+
+    raw = float(raw_score)
+    if total_questions > 0 and total_questions != 40:
+        raw = round((raw / total_questions) * 40.0)
+    raw_int = int(round(raw))
+    for threshold, band in (
+        (39, "9.0"), (37, "8.5"), (35, "8.0"), (32, "7.5"), (30, "7.0"),
+        (26, "6.5"), (23, "6.0"), (19, "5.5"), (15, "5.0"), (13, "4.5"),
+        (10, "4.0"), (7, "3.5"), (5, "3.0"), (3, "2.5"), (1, "2.0"),
+    ):
+        if raw_int >= threshold:
+            return Decimal(band)
+    return Decimal("1.0")
 
 
 def raw_to_cefr_multilevel(

@@ -9,6 +9,17 @@
    - Ustoz kabinetida har bir o'quvchining PRO holati (`⭐ PRO (Faol)`), ishlagan testlari va esselari aks etishi.
 3. Attestatsiya 2026 yangi diagnostika testini 50 ta savoli bilan bazaga seed qilish, kategoriyalashtirish va VPS ga deploy qilish.
 
+### 4.0. GRANDEC NEXT 8.0: English Learning, Premium UI/UX & AI Assessment Platform
+- **Maqsad:** BESTWAY Exam System 4.0 tajribasiga tayangan holda GRANDEC ichida to'liq English Learning Center (`/english`), Exam Engine Reliability 2.0, Exam Builder 3.0, Listening/Reading dvigatellari, Writing Studio 3.0 va AI baholash, Speaking AI 3.0, IELTS Academic/General va CEFR Multilevel v2 Mock imtihonlari, Vocabulary/Grammar studiyasi, Teacher English Workspace, Telegram `/english` + TMA hamda Admin AI Cost Control ekotizimini ishlab chiqish va yakuniy Release Gate'dan o'tkazish.
+- **Bajarildi:**
+  - Phase 00–14 (`feat/grandec-next-8-0-english-learning` branchida 12 ta commit) to'liq amalga oshirildi.
+  - Phase 15 yakuniy tekshiruvlar bajarildi: `ruff check apps/ tests/` (`All checks passed!`), `manage.py check`, `makemigrations --check --dry-run` (`No changes detected`), to'liq SQLite `pytest -q` (`2054 passed, 14 skipped, 272 subtests passed`), PostgreSQL 17.11 suite (`162 passed, 0 failed, 0 skipped`), frontend `oxlint src` (`0 warnings, 0 errors`), `npm test` (`34 passed, 0 failed`), `tsc -b && vite build` (`3194 modules`, `7.07s`), real-backend Chromium Playwright E2E (6 viewport × Light/Dark, zero console/page/5xx errors).
+  - Yakuniy hisobotlar va vizual dalillar `docs/NEXT_8_0/` hamda `docs/NEXT_8_0/screenshots/` ostiga saqlandi.
+- **Jarayonda:**
+  - Phase 15 fayllarini commit qilish, `feat/grandec-next-8-0-english-learning` branchini push qilish, Draft PR ochish va GitHub CI/Security workflow'larini tekshirish.
+- **Keyingi qadamlar:**
+  - Owner tomonidan Draft PR'ni ko'rib chiqish, merge tasdiqlash va qo'lda (manual) VPS production deploy amalga oshirish.
+
 ### 3.0. GRANDEC NEXT 7.0: Full Platform Refinement, UI/UX, Telegram & Production Reliability
 - **Maqsad:** Platformadagi API/CSRF xatolari, Dark Mode va Light Mode kontrast muammolari, rolga ajratilgan ish maydonlari (`Admin`, `Teacher`, `Student`), guruh boshqaruvi (`Groups.tsx`), `SmartTestCreate`, Telegram bot callback/RBAC va Telegram Mini App (`/tma`) ishonchliligini to'liq tiklash hamda yakuniy QA/Playwright tekshiruvidan o'tkazish.
 - **Bajarildi:**
