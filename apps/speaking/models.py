@@ -117,12 +117,12 @@ class SpeakingSubmission(models.Model):
     decoded_duration_ms = models.PositiveIntegerField(
         _("Tekshirilgan audio davomiyligi (ms)"), null=True, blank=True
     )
-    audio_hash = models.CharField(_("Audio SHA-256"), max_length=64, blank=True, default="", db_index=True)
-    is_verified_audio = models.BooleanField(_("Audio tekshirilgan"), default=False)
+    audio_hash = models.CharField(_("Audio SHA-256"), max_length=64, blank=True, default="", db_default="", db_index=True)
+    is_verified_audio = models.BooleanField(_("Audio tekshirilgan"), default=False, db_default=False)
     track = models.CharField(
-        _("Yo'nalish"), max_length=24, choices=Track.choices, default=Track.IELTS, db_index=True
+        _("Yo'nalish"), max_length=24, choices=Track.choices, default=Track.IELTS, db_default=Track.IELTS, db_index=True
     )
-    rubric_version = models.CharField(_("Rubrika versiyasi"), max_length=48, default="ielts_speaking_v1")
+    rubric_version = models.CharField(_("Rubrika versiyasi"), max_length=48, default="ielts_speaking_v1", db_default="ielts_speaking_v1")
     transcript = models.TextField(_("Ovoz matni (Transcript)"), blank=True, default="")
 
     # 4 Official IELTS Evaluation Criteria (0.0 to 9.0; pronunciation_score nullable when unmeasured acoustically)
@@ -169,9 +169,10 @@ class SpeakingSubmission(models.Model):
     task_scores = models.JSONField(
         _("Bo'lim / Multi-level ballari"),
         default=dict,
+        db_default={},
         blank=True,
     )
-    teacher_review_requested = models.BooleanField(_("Ustoz tekshiruvi so'ralgan"), default=False, db_index=True)
+    teacher_review_requested = models.BooleanField(_("Ustoz tekshiruvi so'ralgan"), default=False, db_default=False, db_index=True)
     teacher_reviewed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -183,7 +184,7 @@ class SpeakingSubmission(models.Model):
     teacher_score = models.DecimalField(
         _("Ustoz qo'ygan ball"), max_digits=5, decimal_places=1, null=True, blank=True
     )
-    teacher_comments = models.TextField(_("Ustoz izohi"), blank=True, default="")
+    teacher_comments = models.TextField(_("Ustoz izohi"), blank=True, default="", db_default="")
     teacher_reviewed_at = models.DateTimeField(_("Ustoz tekshirgan vaqt"), null=True, blank=True)
     final_score = models.DecimalField(
         _("Yakuniy ball"), max_digits=5, decimal_places=1, null=True, blank=True

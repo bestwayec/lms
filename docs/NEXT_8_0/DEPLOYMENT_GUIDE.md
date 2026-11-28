@@ -51,9 +51,12 @@ Six additive schema migrations are included from `v2.12.0`:
 
 ## 4. Rollback Compatibility & Recovery Procedure
 ### Application-Level Rollback (`sha-xxxxxxx`)
-- Note the **rollback caveat** audited in NEXT 8.0: while the 6 migrations add new columns with schema/Django defaults or nullability (`null=True`), Django model migrations add `NOT NULL DEFAULT ...` constraints in Python migrations rather than SQL-level `ALTER COLUMN ... SET DEFAULT` in PostgreSQL!
-- Specifically, in PostgreSQL, a newly added non-nullable column (`english_track`, `last_revision`, `track`, `is_keyless`, etc.) receives its backfill value during `ALTER TABLE ADD COLUMN ... DEFAULT ...`, and Django migrations drop the SQL `DEFAULT` afterward (`DROP DEFAULT`). Therefore:
-  - **Reads & updates** on existing rows by the previous `v2.12.0` image remain **compatible** for most tables, **EXCEPT `INSERT` into tables with new non-null columns (`Profile`, `TestAttempt`, `Test`, `SpeakingSubmission`, `ReadingPassage`, `QuestionGroup`, `ExamPart`)** would fail `NOT NULL constraint` if `v2.12.0` code inserts rows without supplying those columns while migrated schema stays applied!
-- **Safe Rollback Rule**:
-  1. For application rollback **with** reverting the schema back to `v2.12.0` cleanly: restore the mandatory pre-deploy backup in `/opt/backups/lms/pre-deploy/daily/*.sql.gz` or run targeted reverse migrations (`python manage.py migrate <app> <previous_migration>`) BEFORE starting the previous `sha-5db1a43` image via the **Deploy** workflow.
-  2. Never mix `v2.12.0` inserts on `Test` / `TestAttempt` / `Profile` / `SpeakingSubmission` against the un-reverted NEXT 8.0 PostgreSQL schema without restoring the pre-deploy DB snapshot or rolling migrations back cleanly.
+- Initial NEXT 8.0 migrations add new columns with schema/Django defaults or nullability (`null=True`), and subsequent `DROP DEFAULT` operations are explicitly reversed by additive database-default compatibility migrations:
+  - `accounts.0028_db_defaults_compat` (`english_track`, `target_cefr_level`)
+  - `essays.0025_db_defaults_compat` (`stimulus_data`, `task_subtype`)
+  - `speaking.0003_db_defaults_compat` (`audio_hash`, `is_verified_audio`, `rubric_version`, `task_scores`, `teacher_comments`, `teacher_review_requested`, `track`)
+  - `tests.0027_db_defaults_compat` (all newly added non-nullable columns on `Test`, `ExamSection`, `ReadingPassage`, `ExamPart`, `QuestionGroup`, `Question`, `TestAttempt`, `StudentAnswer`)
+- Because every newly added non-nullable column retains a metadata-only PostgreSQL SQL `DEFAULT`, both reads/updates AND raw `v2.12.0` `INSERT` statements omitting NEXT 8.0 columns remain forward-compatible against an upgraded database during rolling deploys or quick application container rollbacks (`tests/test_next8_release_safety.py`).
+- **Standard Safe Rollback Rule**:
+  1. Keep the mandatory pre-deploy backup in `/opt/backups/lms/pre-deploy/daily/*.sql.gz` as your full point-in-time recovery net before migrating.
+  2. For quick application container rollback while retaining DB compatibility, deploy the previous `sha-<short>` tag via manual **Deploy** `workflow_dispatch`; to revert the schema cleanly back to `v2.12.0`, either restore the pre-deploy DB snapshot or run targeted reverse migrations (`python manage.py migrate <app> <previous_migration>`) BEFORE removing NEXT 8.0 schema dependencies.

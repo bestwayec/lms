@@ -208,6 +208,13 @@ jobs:
             echo "- Digest: \`${DIGEST}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Verify built GHCR container runtime and PyAV audio decoding
+        run: |
+          set -euo pipefail
+          IMAGE_REF="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.vsha.outputs.short }}"
+          docker pull "$IMAGE_REF"
+          docker run --rm --entrypoint python "$IMAGE_REF" /app/deploy/scripts/verify_container_runtime.py
+
       - name: Upload build metadata artifact
         uses: actions/upload-artifact@v7
         with:

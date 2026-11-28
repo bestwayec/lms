@@ -90,6 +90,7 @@ class EssayTopic(models.Model):
         max_length=24,
         blank=True,
         default="",
+        db_default="",
         help_text=_("academic_task1, general_task1, task2, bmb_1_1, bmb_1_2, bmb_2"),
     )
     stimulus_image = models.FileField(
@@ -101,6 +102,7 @@ class EssayTopic(models.Model):
     stimulus_data = models.JSONField(
         _("stimul ma'lumotlari"),
         default=dict,
+        db_default={},
         blank=True,
     )
     title = models.CharField(_("sarlavha"), max_length=300)

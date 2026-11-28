@@ -378,6 +378,7 @@ class Profile(models.Model):
         max_length=32,
         choices=EnglishTrack.choices,
         default=EnglishTrack.IELTS_ACADEMIC,
+        db_default=EnglishTrack.IELTS_ACADEMIC,
         db_index=True,
         help_text=_("Ingliz tili bo'yicha asosiy tayyorlov yo'nalishi."),
     )
@@ -394,6 +395,7 @@ class Profile(models.Model):
         max_length=8,
         blank=True,
         default="",
+        db_default="",
         help_text=_("Maqsadli CEFR darajasi: A2, B1, B2, C1 yoki C2."),
     )
 
