@@ -9941,6 +9941,9 @@ def setup_handlers(app) -> None:
     app.add_handler(CommandHandler("finance", finance_handler))
     app.add_handler(CommandHandler("tolovlar", tolovlar_handler))
     app.add_handler(CommandHandler("vocab", vocab_handler))
+    from apps.notifications.bot.english_commands import english_bot_handler
+
+    app.add_handler(CommandHandler("english", english_bot_handler))
     app.add_handler(CallbackQueryHandler(quiz_callback_handler, pattern=r"^quiz_"))
 
     # Group Assistant & Workspace callbacks (must only intercept callbacks it implements;

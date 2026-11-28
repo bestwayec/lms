@@ -9,6 +9,18 @@
    - Ustoz kabinetida har bir o'quvchining PRO holati (`⭐ PRO (Faol)`), ishlagan testlari va esselari aks etishi.
 3. Attestatsiya 2026 yangi diagnostika testini 50 ta savoli bilan bazaga seed qilish, kategoriyalashtirish va VPS ga deploy qilish.
 
+### 4.0. GRANDEC NEXT 8.0: English Learning, Premium UI/UX & AI Assessment Platform
+- **Maqsad:** BESTWAY Exam System 4.0 tajribasiga tayangan holda GRANDEC ichida to'liq English Learning Center (`/english`), Exam Engine Reliability 2.0, Exam Builder 3.0, Listening/Reading dvigatellari, Writing Studio 3.0 va AI baholash, Speaking AI 3.0, IELTS Academic/General va CEFR Multilevel v2 Mock imtihonlari, Vocabulary/Grammar studiyasi, Teacher English Workspace, Telegram `/english` + TMA hamda Admin AI Cost Control ekotizimini ishlab chiqish va mustaqil reliz auditidan o'tkazish.
+- **Bajarildi:**
+  - Phase 00–15 hamda Mustaqil Reliz Auditi (`N8-AUD-01`..`N8-AUD-12`) to'liq yakunlandi: `blueprints.py` rasmiy manbalari va Writing Task 2 `2x` vazni, PyAV (`av>=14.0,<20.0`) WebM/Opus dekodlash, Speaking qisman baho halolligi, CBT Speaking audio yuklash + `ExamBridgeService` `/9` va `/16` shkalalari, `CdExamInterface` `TEXT_MATCH` tuzatishi, Schema 1.0 publish `audio_url` tuzatishi, Writing Studio Draft Save/Restore va takroriy iqtibos grounding, chiqishda draft tozalash, Vocab `synonym` testi, Admin `/panel` va `/english` Dark Mode kontrastlari hamda `.xlsx` eksport va GHCR deploy hujjatlari bajarildi.
+  - Release-safety yakuniy qo'shimchalari: barcha yangi majburiy (`NOT NULL`) ustunlarga qo'shimcha `*_db_defaults_compat.py` migratsiyalari orqali PostgreSQL `db_default` berilib, eski `v2.12.0` raw `INSERT` mosligi tekshirildi; `StudentGroup.save()` `invite_code` kolliziyalari uchun savepoint retry + PostgreSQL multi-thread kolliziya testi (`tests/test_next8_release_safety.py`) hamda `ci.yml`/`build.yml` uchun real Linux Docker container runtime + PyAV/WebM/OGG/WAV audio dekodlash verifikatsiyasi (`deploy/scripts/verify_container_runtime.py`) qo'shildi.
+  - Yakuniy tekshiruvlar: `ruff check .` (`All checks passed!`), `manage.py check`, `makemigrations --check --dry-run` (`No changes detected`), `tests/test_next8_release_safety.py` SQLite (`5 passed, 1 skipped`) & PostgreSQL 17.11 (`6 passed`), `oxlint src` (`0` xato), `npm test` (`34/34`), `tsc -b && vite build`, Chromium E2E hamda PR `#152` CI/Security tekshiruvlari.
+  - Mustaqil audit va qabul matritsalari `docs/NEXT_8_0/INDEPENDENT_AUDIT.md`, `FUNCTIONAL_ACCEPTANCE_MATRIX.md` hamda skrinshotlar `docs/NEXT_8_0/screenshots/` ostiga saqlandi.
+- **Jarayonda:**
+  - PR `#152` (`feat/grandec-next-8-0-english-learning`) ustidagi GitHub CI va Security workflow'lar yakunlanishi kutilmoqda.
+- **Keyingi qadamlar:**
+  - Owner tomonidan PR `#152` ni qo'lda merge qilish va release / production deploy jarayonini boshqarish.
+
 ### 3.0. GRANDEC NEXT 7.0: Full Platform Refinement, UI/UX, Telegram & Production Reliability
 - **Maqsad:** Platformadagi API/CSRF xatolari, Dark Mode va Light Mode kontrast muammolari, rolga ajratilgan ish maydonlari (`Admin`, `Teacher`, `Student`), guruh boshqaruvi (`Groups.tsx`), `SmartTestCreate`, Telegram bot callback/RBAC va Telegram Mini App (`/tma`) ishonchliligini to'liq tiklash hamda yakuniy QA/Playwright tekshiruvidan o'tkazish.
 - **Bajarildi:**

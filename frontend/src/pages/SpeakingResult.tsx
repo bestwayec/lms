@@ -20,28 +20,44 @@ export default function SpeakingResult() {
   const error = current?.error ?? null;
   const loading = Boolean(id && !current);
 
+  const [requestingReview, setRequestingReview] = useState(false);
+  const [reviewMsg, setReviewMsg] = useState<string | null>(null);
+
   useEffect(() => {
     if (!id) return;
     let active = true;
-    SpeakingApi.submission(id)
-      .then((res) => {
-        if (!active) return;
-        setLoaded({ id, submission: res, error: null });
-        try {
-          confetti({
-            particleCount: 80,
-            spread: 70,
-            origin: { y: 0.6 },
-            colors: ['#6366F1', '#818CF8', '#10B981', '#F59E0B'],
-          });
-        } catch {
-          /* ignore */
-        }
-      })
-      .catch((e: unknown) => {
-        if (active) setLoaded({ id, submission: null, error: e instanceof Error ? e.message : "Natijani yuklashda xatolik." });
-      });
-    return () => { active = false; };
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    const load = (celebrate: boolean) => {
+      SpeakingApi.submission(id)
+        .then((res) => {
+          if (!active) return;
+          setLoaded({ id, submission: res, error: null });
+          if (res.status === 'evaluating') {
+            pollTimer = setTimeout(() => load(false), 2500);
+            return;
+          }
+          if (celebrate && res.overall_band !== null) {
+            try {
+              confetti({
+                particleCount: 80,
+                spread: 70,
+                origin: { y: 0.6 },
+                colors: ['#6366F1', '#818CF8', '#10B981', '#F59E0B'],
+              });
+            } catch {
+              /* ignore */
+            }
+          }
+        })
+        .catch((e: unknown) => {
+          if (active) setLoaded({ id, submission: null, error: e instanceof Error ? e.message : "Natijani yuklashda xatolik." });
+        });
+    };
+    load(true);
+    return () => {
+      active = false;
+      if (pollTimer) clearTimeout(pollTimer);
+    };
   }, [id]);
 
   if (loading) {
@@ -129,7 +145,12 @@ export default function SpeakingResult() {
       >
         <div>
           <span className="badge blue" style={{ marginBottom: 8 }}>
-            🎙️ {sub.part_label || "IELTS Speaking"} · Rasmiy baholash
+            🎙️ {sub.part_label || 'IELTS Speaking'} ·{' '}
+            {sub.teacher_score !== null && sub.teacher_score !== undefined
+              ? 'Ustoz Yakuniy Bahosi'
+              : sub.is_partial_estimate || sub.overall_band === null
+              ? 'Qisman AI Taxmin (3/4 mezon)'
+              : 'AI Taxminiy Baholash (Norasmiy)'}
           </span>
           <h1 style={{ fontSize: '1.65rem', fontWeight: 900, margin: '0 0 6px 0', color: 'var(--ink)' }}>
             {sub.topic_title}
@@ -147,8 +168,8 @@ export default function SpeakingResult() {
             gap: 14,
             padding: '16px 24px',
             borderRadius: 18,
-            background: 'rgba(0,0,0,0.3)',
-            border: '2px solid rgba(99, 102, 241, 0.5)',
+            background: 'var(--bg-elevated)',
+            border: '2px solid rgba(99, 102, 241, 0.45)',
           }}
         >
           <div
@@ -163,25 +184,57 @@ export default function SpeakingResult() {
               justifyContent: 'center',
               fontWeight: 900,
               fontSize: '1.35rem',
-              boxShadow: '0 6px 20px rgba(99, 102, 241, 0.4)',
+              boxShadow: '0 6px 20px rgba(99, 102, 241, 0.35)',
             }}
           >
-            {sub.overall_band.toFixed(1)}
+            {sub.track === 'cefr_multilevel' && sub.final_score !== null && sub.final_score !== undefined
+              ? `${sub.final_score.toFixed(0)}/75`
+              : sub.overall_band !== null
+              ? sub.overall_band.toFixed(1)
+              : '—'}
           </div>
           <div>
-            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#A5B4FC', textTransform: 'uppercase' }}>
-              Overall Band
+            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#6366F1', textTransform: 'uppercase' }}>
+              {sub.track === 'cefr_multilevel' ? 'CEFR Multi-level' : 'Speaking Band'}
             </div>
-            <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#fff' }}>
-              {sub.overall_band >= 7.5
-                ? "Yuqori daraja (C1)"
+            <div style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--ink)' }}>
+              {sub.status === 'evaluating'
+                ? tr('spk_evaluating')
+                : sub.overall_band === null
+                ? sub.partial_band_estimate != null
+                  ? `Qisman: ~${Number(sub.partial_band_estimate).toFixed(1)}`
+                  : 'Kutilmoqda'
+                : sub.overall_band >= 7.5
+                ? 'Yuqori daraja (C1)'
                 : sub.overall_band >= 6.5
-                ? "Yaxshi daraja (B2+)"
+                ? 'Yaxshi daraja (B2+)'
                 : "O'rtacha daraja (B2)"}
             </div>
           </div>
         </div>
       </motion.div>
+
+      {(sub.is_partial_estimate || sub.overall_band === null) && sub.status !== 'evaluating' && (
+        <div
+          className="card"
+          role="note"
+          style={{
+            padding: 16,
+            borderRadius: 14,
+            marginBottom: 20,
+            background: 'var(--warning-bg)',
+            border: '1px solid var(--warning-border)',
+            color: 'var(--warning-text)',
+          }}
+        >
+          <strong>Qisman tahlil (Pronunciation akustik tekshirilmadi):</strong>{' '}
+          <span>
+            Talaffuz faqat matn asosida taxmin qilinmadi. To&apos;liq rasmiy uslubdagi yakuniy Speaking bahosi uchun
+            ustoz tekshiruvini so&apos;rang
+            {sub.partial_band_estimate != null ? ` (3 ta matn mezoni taxmini: ~${Number(sub.partial_band_estimate).toFixed(1)}).` : '.'}
+          </span>
+        </div>
+      )}
 
       {/* 4 Official IELTS Criteria Grid */}
       <h3 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: 14 }}>
@@ -211,11 +264,11 @@ export default function SpeakingResult() {
                   fontSize: '0.95rem',
                 }}
               >
-                {c.score.toFixed(1)}
+                {c.score !== null && c.score !== undefined ? c.score.toFixed(1) : '—'}
               </span>
             </div>
             <p className="muted small" style={{ margin: 0, fontSize: '0.76rem', lineHeight: 1.4 }}>
-              {c.desc}
+              {c.key === 'pr' && c.score === null ? tr('spk_pronunciation_unmeasured') : c.desc}
             </p>
           </div>
         ))}
@@ -251,7 +304,7 @@ export default function SpeakingResult() {
           </h3>
 
           {sub.feedback.summary && (
-            <div style={{ marginBottom: 18, padding: 14, borderRadius: 12, background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.25)', color: '#D1FAE5', fontSize: '0.9rem', lineHeight: 1.5 }}>
+            <div style={{ marginBottom: 18, padding: 14, borderRadius: 12, background: 'var(--success-bg)', border: '1px solid var(--success-border)', color: 'var(--success-text)', fontSize: '0.9rem', lineHeight: 1.5 }}>
               <b>{tr('spk_summary')}</b> {sub.feedback.summary}
             </div>
           )}
@@ -297,10 +350,41 @@ export default function SpeakingResult() {
       )}
 
       {/* Action footer */}
+      {sub.teacher_comments && (
+        <div className="card" style={{ padding: 20, borderRadius: 16, marginBottom: 20 }}>
+          <h4 style={{ margin: '0 0 8px 0' }}>{tr('spk_teacher_feedback_title')}</h4>
+          {sub.teacher_score !== null && sub.teacher_score !== undefined && (
+            <p style={{ margin: '0 0 6px 0', fontWeight: 800 }}>{tr('spk_teacher_score_label')}: {sub.teacher_score.toFixed(1)}</p>
+          )}
+          <p style={{ margin: 0 }}>{sub.teacher_comments}</p>
+        </div>
+      )}
+      {reviewMsg && <p className="muted small" style={{ marginBottom: 12 }}>{reviewMsg}</p>}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <Link to={`/speaking/practice/${sub.topic_id}`} className="btn primary" style={{ textDecoration: 'none' }}>
           🔄 {tr('spk_practise_again')}
         </Link>
+        {!sub.teacher_review_requested && sub.status !== 'evaluating' && (
+          <button
+            type="button"
+            className="btn secondary"
+            disabled={requestingReview}
+            onClick={async () => {
+              setRequestingReview(true);
+              try {
+                const res = await SpeakingApi.requestReview(sub.id);
+                setLoaded({ id: String(sub.id), submission: res.submission, error: null });
+                setReviewMsg(tr('spk_review_requested_ok'));
+              } catch (e: unknown) {
+                setReviewMsg(e instanceof Error ? e.message : tr('spk_error'));
+              } finally {
+                setRequestingReview(false);
+              }
+            }}
+          >
+            {tr('spk_request_teacher_review')}
+          </button>
+        )}
         <Link to="/speaking" className="btn ghost" style={{ textDecoration: 'none' }}>
           {tr('spk_new_topics')} →
         </Link>

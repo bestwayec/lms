@@ -868,7 +868,8 @@ def generate_speaking_vedomost_pdf(submission_or_id: Any) -> str:
     fc = float(getattr(sub, "fluency_score", 0) or 0)
     lr = float(getattr(sub, "lexical_score", 0) or 0)
     gra = float(getattr(sub, "grammar_score", 0) or 0)
-    pr = float(getattr(sub, "pronunciation_score", 0) or 0)
+    pr_raw = getattr(sub, "pronunciation_score", None)
+    pr_str = f"{float(pr_raw):.1f}" if pr_raw is not None else "N/A"
 
     cefr_map = "C2" if overall >= 8.5 else ("C1" if overall >= 7.0 else ("B2" if overall >= 5.5 else ("B1" if overall >= 4.0 else "A2")))
 
@@ -877,7 +878,7 @@ def generate_speaking_vedomost_pdf(submission_or_id: Any) -> str:
             Paragraph(f"Band {overall:.1f}", styles["metric_value"]),
             Paragraph(cefr_map, styles["metric_value"]),
             Paragraph(f"{fc:.1f} / {lr:.1f}", styles["metric_value"]),
-            Paragraph(f"{gra:.1f} / {pr:.1f}", styles["metric_value"]),
+            Paragraph(f"{gra:.1f} / {pr_str}", styles["metric_value"]),
         ],
         [
             Paragraph("OVERALL BAND", styles["metric_label"]),
@@ -938,7 +939,7 @@ def generate_speaking_vedomost_pdf(submission_or_id: Any) -> str:
         ],
         [
             Paragraph("4. Pronunciation & Intonation (PR)", styles["cell"]),
-            Paragraph(f"<b>{pr:.1f}</b>", styles["cell_center"]),
+            Paragraph(f"<b>{pr_str}</b>", styles["cell_center"]),
             Paragraph("9.0", styles["cell_center"]),
             Paragraph(_esc(str(fb.get("pronunciation_feedback") or "Talaffuz va intonatsiya aniqligi baholandi.")[:220]), styles["cell"]),
         ],
@@ -1009,4 +1010,82 @@ def generate_speaking_vedomost_pdf(submission_or_id: Any) -> str:
     doc.build(story)
     logger.info("Speaking vedomost PDF generated: %s (submission_id=%s)", file_path, sub.id)
     return file_path
+
+
+def generate_english_analytics_pdf(
+    rows: list[dict[str, Any]],
+    *,
+    teacher_name: str,
+    ielts_summary: dict[str, Any],
+    multilevel_summary: dict[str, Any],
+) -> bytes:
+    """Generate paginated A4 ReportLab PDF for English cohorts with repeatRows=1."""
+    import io
+    from django.utils.html import escape as _esc
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=14 * mm,
+        rightMargin=14 * mm,
+        topMargin=14 * mm,
+        bottomMargin=14 * mm,
+    )
+    styles = _get_styles()
+    story: list[Any] = [
+        Paragraph("GRAND EDUCATION LMS", styles["title"]),
+        Paragraph("ENGLISH LEARNING & ASSESSMENT ANALYTICS REPORT", styles["subtitle"]),
+        Spacer(1, 3 * mm),
+        Paragraph(
+            f"<b>Ustoz:</b> {_esc(teacher_name)} &nbsp; | &nbsp; "
+            f"<b>IELTS Avg Band:</b> {ielts_summary.get('avg_band') if ielts_summary.get('avg_band') is not None else '—'} &nbsp; | &nbsp; "
+            f"<b>Multi-level Avg (/75):</b> {multilevel_summary.get('avg_score_75') if multilevel_summary.get('avg_score_75') is not None else '—'}",
+            styles["cell"],
+        ),
+        Spacer(1, 4 * mm),
+    ]
+
+    table_data: list[list[Any]] = [
+        [
+            Paragraph("<b>#</b>", styles["cell_bold_center"]),
+            Paragraph("<b>O'quvchi</b>", styles["cell_bold"]),
+            Paragraph("<b>Yo'nalish</b>", styles["cell_bold_center"]),
+            Paragraph("<b>Imtihon / Ko'nikma</b>", styles["cell_bold"]),
+            Paragraph("<b>Natija</b>", styles["cell_bold_center"]),
+            Paragraph("<b>Holat</b>", styles["cell_bold_center"]),
+        ]
+    ]
+    for idx, r in enumerate(rows, start=1):
+        table_data.append(
+            [
+                Paragraph(str(idx), styles["cell_center"]),
+                Paragraph(_esc(str(r.get("student") or "")), styles["cell"]),
+                Paragraph(_esc(str(r.get("scale") or "")), styles["cell_center"]),
+                Paragraph(_esc(str(r.get("title") or "")[:60]), styles["cell"]),
+                Paragraph(_esc(str(r.get("score_label") or "—")), styles["cell_center"]),
+                Paragraph(_esc(str(r.get("status") or "")), styles["cell_center"]),
+            ]
+        )
+
+    tbl = Table(
+        table_data,
+        colWidths=[12 * mm, 42 * mm, 26 * mm, 52 * mm, 26 * mm, 24 * mm],
+        repeatRows=1,
+    )
+    tbl.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), VedomostColors.HEADER_BG),
+                ("BOX", (0, 0), (-1, -1), 0.6, VedomostColors.BORDER),
+                ("INNERGRID", (0, 0), (-1, -1), 0.4, VedomostColors.BORDER),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+    story.append(tbl)
+    doc.build(story)
+    return buf.getvalue()
 

@@ -1266,3 +1266,12 @@ def tma_insights_view(request: Request) -> Response:
     from apps.results.services.insights import build_student_insights
 
     return Response(build_student_insights(request.user))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def tma_english_hub_view(request: Request) -> Response:
+    """GET /tma/api/english/ — Role-aware English Learning Hub for Telegram Mini App."""
+    from apps.notifications.bot.english_commands import build_english_bot_payload
+
+    return Response(build_english_bot_payload(request.user))

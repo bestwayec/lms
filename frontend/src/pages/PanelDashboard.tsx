@@ -4,6 +4,7 @@ import { Alert, Modal } from '../components/ui';
 import { useLang } from '../i18n/LangContext';
 import {
   Panel,
+  type PanelAiMetricsResponse,
   type PanelDashboardResponse,
   type PanelGroupItem,
   type PanelTeacherItem,
@@ -40,6 +41,7 @@ export default function PanelDashboard() {
 
   // Groups, Teachers, and Attendance Management
   const [groups, setGroups] = useState<PanelGroupItem[]>([]);
+  const [aiMetrics, setAiMetrics] = useState<PanelAiMetricsResponse | null>(null);
   const [teachers, setTeachers] = useState<PanelTeacherItem[]>([]);
   const [attendance, setAttendance] = useState<PanelAttendanceItem[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(true);
@@ -87,9 +89,10 @@ export default function PanelDashboard() {
 
   useEffect(() => {
     let active = true;
-    Promise.allSettled([Panel.groups(), Panel.teachers(), Panel.attendance()])
-      .then(([gRes, tRes, aRes]) => {
+    Promise.allSettled([Panel.groups(), Panel.teachers(), Panel.attendance(), Panel.aiMetrics()])
+      .then(([gRes, tRes, aRes, aiRes]) => {
         if (!active) return;
+        if (aiRes.status === 'fulfilled') setAiMetrics(aiRes.value);
         if (gRes.status === 'fulfilled') {
           setGroups(gRes.value.results || []);
         } else {
@@ -298,6 +301,32 @@ export default function PanelDashboard() {
           </span>
         </div>
       </div>
+
+      {/* AI Gateway & Cost Control Telemetry */}
+      {aiMetrics && (
+        <section style={{ marginTop: 20, marginBottom: 20 }}>
+          <h2>⚡ {t('panel_ai_metrics_title')}</h2>
+          <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+            <div className="card stat">
+              <span className="stat-label">{t('panel_ai_total_calls')}</span>
+              <span className="stat-value">{aiMetrics.total_calls}</span>
+            </div>
+            <div className="card stat">
+              <span className="stat-label">{t('panel_ai_total_cost')}</span>
+              <span className="stat-value">${aiMetrics.total_cost_usd.toFixed(4)}</span>
+            </div>
+            {Object.entries(aiMetrics.features).map(([feat, info]) => (
+              <div key={feat} className="card stat">
+                <span className="stat-label">{feat}</span>
+                <span className="stat-value">{info.circuit_open ? 'OPEN' : 'OK'}</span>
+                <span className="muted small">
+                  calls: {info.usage?.calls ?? 0} · fail: {info.recent_failures}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Smart Onboarding Audience Segmentation & Cohort Analytics */}
       {d.cohort_analytics && (

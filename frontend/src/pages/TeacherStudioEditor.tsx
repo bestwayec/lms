@@ -7,13 +7,16 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardPaste,
+  Download,
   FileSpreadsheet,
   KeyRound,
   Layers,
+  Redo2,
   Save,
   Send,
   Share2,
   Sparkles,
+  Undo2,
   Upload,
 } from 'lucide-react';
 import { useLang } from '../i18n/LangContext';
@@ -123,7 +126,10 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
   const [assignOpen, setAssignOpen] = useState(false);
   const [pane, setPane] = useState<'edit' | 'preview'>('edit');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const jsonInputRef = useRef<HTMLInputElement>(null);
   const validateTimer = useRef<number | null>(null);
+  const [undoStack, setUndoStack] = useState<StudioBlock[][]>([]);
+  const [redoStack, setRedoStack] = useState<StudioBlock[][]>([]);
 
   const draftKey = `studio_draft_${id ?? 'new'}`;
   const [recoverableDraft, setRecoverableDraft] = useState<{
@@ -253,9 +259,63 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
   }, [dirty]);
 
   const editBlocks = (next: StudioBlock[]) => {
+    setUndoStack((prev) => [...prev.slice(-19), blocks]);
+    setRedoStack([]);
     setBlocks(next);
     setDirty(true);
     setNotice(null);
+  };
+
+  const handleUndo = () => {
+    if (!undoStack.length || locked) return;
+    const prev = undoStack[undoStack.length - 1];
+    setRedoStack((r) => [...r, blocks]);
+    setUndoStack((u) => u.slice(0, -1));
+    setBlocks(prev);
+    setDirty(true);
+  };
+
+  const handleRedo = () => {
+    if (!redoStack.length || locked) return;
+    const next = redoStack[redoStack.length - 1];
+    setUndoStack((u) => [...u, blocks]);
+    setRedoStack((r) => r.slice(0, -1));
+    setBlocks(next);
+    setDirty(true);
+  };
+
+  const handleJsonImport = async (file: File | undefined) => {
+    if (!file) return;
+    setBusy('import');
+    setErr(null);
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text) as Record<string, unknown>;
+      const isTemplate = Boolean(parsed?.isTemplate);
+      const imported = await StudioApi.importPackage(parsed, isTemplate);
+      setNotice(t('studio_json_imported', 'Schema 1.0 JSON paketi muvaffaqiyatli import qilindi!'));
+      navigate(`/teacher/studio/${imported.test.id}/edit`, { replace: true });
+    } catch (e) {
+      setErr(errText(e, t));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleJsonExport = async (asTemplate: boolean) => {
+    if (!detail?.test.id) return;
+    try {
+      const pkg = await StudioApi.exportPackage(detail.test.id, asTemplate);
+      const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `grandec_test_${detail.test.id}${asTemplate ? '_template' : ''}.schema1.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setErr(errText(e, t));
+    }
   };
   const editMeta = (patch: Partial<Meta>) => {
     setMeta((m) => ({ ...m, ...patch }));
@@ -440,7 +500,56 @@ function TeacherStudioEditorBody({ id }: { id?: string }) {
           {dirty && <span className="studio-status is-dirty">{t('studio_unsaved', 'Saqlanmagan')}</span>}
         </div>
 
-        <div className="studio-top__actions" style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <div className="studio-top__actions" style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {!locked && (
+            <>
+              <button type="button" className="btn sm ghost" onClick={handleUndo} disabled={undoStack.length === 0} title="Undo">
+                <Undo2 size={14} aria-hidden="true" />
+              </button>
+              <button type="button" className="btn sm ghost" onClick={handleRedo} disabled={redoStack.length === 0} title="Redo">
+                <Redo2 size={14} aria-hidden="true" />
+              </button>
+              <input
+                ref={jsonInputRef}
+                type="file"
+                accept=".json,application/json"
+                hidden
+                onChange={(e) => {
+                  void handleJsonImport(e.target.files?.[0]);
+                  e.target.value = '';
+                }}
+              />
+              <button
+                type="button"
+                className="btn sm ghost"
+                onClick={() => jsonInputRef.current?.click()}
+                disabled={busy !== null}
+                title="Import Schema 1.0 JSON"
+              >
+                <Upload size={14} aria-hidden="true" /> JSON
+              </button>
+            </>
+          )}
+          {detail?.test.id && (
+            <>
+              <button
+                type="button"
+                className="btn sm ghost"
+                onClick={() => void handleJsonExport(false)}
+                title="Export Schema 1.0 JSON"
+              >
+                <Download size={14} aria-hidden="true" /> JSON
+              </button>
+              <button
+                type="button"
+                className="btn sm ghost"
+                onClick={() => void handleJsonExport(true)}
+                title="Export Keyless Template"
+              >
+                <Download size={14} aria-hidden="true" /> Template
+              </button>
+            </>
+          )}
           {!locked && (
             <button type="button" className="btn sm" onClick={() => void save()} disabled={busy !== null} title="Ctrl+S">
               <Save size={15} aria-hidden="true" /> {busy === 'save' ? t('studio_saving', 'Saqlanmoqda...') : t('studio_save_draft', 'Saqlash')}

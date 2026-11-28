@@ -27,4 +27,9 @@ test('global admin workspace excludes student subject switcher by default', () =
   assert.equal(getDefaultWorkspace(student, '/dashboard'), 'student');
   assert.equal(shouldShowSubjectSwitcher('student', '/dashboard'), true);
   assert.deepEqual(getAvailableWorkspaces(student), ['student']);
+
+  const englishTitle = resolveRouteTitle('/english');
+  assert.ok(englishTitle.includes('English Center'));
+  assert.equal(shouldShowSubjectSwitcher('admin', '/english'), false);
+  assert.equal(shouldShowSubjectSwitcher('student', '/english'), true);
 });

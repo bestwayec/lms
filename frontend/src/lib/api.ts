@@ -44,6 +44,21 @@ export function setTokens(access: string, refresh: string): void {
 export function clearTokens(): void {
   sessionStorage.removeItem(ACCESS_KEY);
   sessionStorage.removeItem(REFRESH_KEY);
+  // Isolate account sessions on shared devices: scrub cached exam drafts, answers, highlights & notes on logout.
+  const prefixes = ['cd-exam:', 'cd-pos:', 'cd-flags:', 'cd-highlights:', 'cd-notes:', 'exam_queue_', 'writing_studio_draft_'];
+  for (const store of [typeof localStorage !== 'undefined' ? localStorage : null, typeof sessionStorage !== 'undefined' ? sessionStorage : null]) {
+    if (!store) continue;
+    try {
+      for (let i = store.length - 1; i >= 0; i--) {
+        const k = store.key(i);
+        if (k && prefixes.some((p) => k.startsWith(p))) {
+          store.removeItem(k);
+        }
+      }
+    } catch {
+      /* ignore storage errors */
+    }
+  }
 }
 
 // Cross-tab sync: keep sessionStorage as store, listen for lms_access changes via storage event
@@ -270,6 +285,9 @@ export interface AuthUser {
   is_platform_admin?: boolean;
   avatar?: string;
   active_subject?: 'uzbek' | 'english' | 'biology' | 'chemistry' | 'law';
+  english_track?: 'ielts_academic' | 'ielts_general' | 'cefr_multilevel' | 'general_english';
+  target_band?: number | string | null;
+  target_cefr_level?: string;
   exam_target?: 'national_certificate' | 'attestation' | 'ielts' | 'multilevel' | 'milliy_sertifikat' | 'cefr' | 'attestatsiya' | 'other' | 'undecided' | string;
   target_exam?: string;
   sub_subject?: string;
@@ -369,6 +387,11 @@ export function normalizeUser(raw: Record<string, unknown>): AuthUser {
     full_name: full,
     is_active: typeof raw.is_active === 'boolean' ? raw.is_active : true,
     active_subject,
+    ...(typeof raw.english_track === 'string'
+      ? { english_track: raw.english_track as AuthUser['english_track'] }
+      : {}),
+    ...(raw.target_band !== undefined ? { target_band: raw.target_band as number | string | null } : {}),
+    ...(typeof raw.target_cefr_level === 'string' ? { target_cefr_level: raw.target_cefr_level } : {}),
     ...(first ? { first_name: first } : {}),
     ...(last ? { last_name: last } : {}),
     ...(typeof raw.language === 'string' ? { language: raw.language } : {}),
@@ -695,15 +718,65 @@ export const Tests = {
       test_id?: number | string;
       selected_option_id?: number | null;
       selected_choice_id?: number | null;
+      revision?: number;
+      session_token?: string;
+      annotations?: Record<string, unknown>;
     },
   ) =>
     api<unknown>(`/api/tests/attempts/${attemptId}/save-answer/`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
-  submit: (attemptId: string) =>
+  takeoverSession: (attemptId: string) =>
+    api<{
+      attempt_id: number;
+      session_token: string;
+      last_revision: number;
+      remaining_seconds: number | null;
+      server_time: string;
+    }>(`/api/tests/attempts/${attemptId}/session-takeover/`, {
+      method: 'POST',
+    }),
+  uploadSpeakingAnswer: (attemptId: string | number, questionId: number, formData: FormData) =>
+    api<{
+      ok: boolean;
+      duplicate?: boolean;
+      submission_id: number;
+      status: string;
+      decoded_duration_ms?: number | null;
+      is_verified_audio?: boolean;
+      audio_hash?: string;
+    }>(`/api/tests/attempts/${attemptId}/questions/${questionId}/speaking/`, {
+      method: 'POST',
+      body: formData,
+    }),
+  listeningSchedule: (attemptId: string, partId: number) =>
+    api<{
+      attempt_id: number;
+      part_id: number;
+      audio_play_limit: number;
+      plays_used: number;
+      remaining_plays: number | null;
+      can_play: boolean;
+      reading_ends_at?: string | null;
+    }>(`/api/tests/attempts/${attemptId}/listening/${partId}/play/`),
+  listeningPlay: (attemptId: string, partId: number, durationSeconds?: number) =>
+    api<{
+      attempt_id: number;
+      part_id: number;
+      audio_play_limit: number;
+      plays_used: number;
+      remaining_plays: number | null;
+      can_play: boolean;
+      reading_ends_at?: string | null;
+    }>(`/api/tests/attempts/${attemptId}/listening/${partId}/play/`, {
+      method: 'POST',
+      body: JSON.stringify(durationSeconds ? { duration_seconds: durationSeconds } : {}),
+    }),
+  submit: (attemptId: string, idempotencyKey?: string) =>
     api<unknown>(`/api/tests/attempts/${attemptId}/submit/`, {
       method: 'POST',
+      ...(idempotencyKey ? { body: JSON.stringify({ idempotency_key: idempotencyKey }) } : {}),
     }),
   finalize: (attemptId: string) =>
     api<unknown>(`/api/tests/attempts/${attemptId}/finalize/`, {
@@ -1607,8 +1680,22 @@ export const PlacementQuiz = {
     }),
 };
 
+export interface PanelAiMetricsResponse {
+  total_calls: number;
+  total_cost_usd: number;
+  features: Record<
+    string,
+    {
+      circuit_open: boolean;
+      recent_failures: number;
+      usage?: { calls?: number; success?: number; failures?: number; cost_usd?: number; avg_latency_ms?: number };
+    }
+  >;
+}
+
 export const Panel = {
   dashboard: () => api<PanelDashboardResponse>('/api/v1/panel/dashboard/'),
+  aiMetrics: () => api<PanelAiMetricsResponse>('/api/v1/panel/ai-metrics/'),
   cohorts: () => api<CohortAnalyticsResponse>('/api/v1/panel/analytics/cohorts/'),
   tests: (
     qOrParams: string | { q?: string; status?: string; subject?: string; page?: number; page_size?: number } = '',
@@ -2734,27 +2821,76 @@ export interface EssayGradingProvenance {
 }
 
 export interface IeltsCriterionScore {
-  band: number;
-  criterion_name: string;
-  feedback: string;
+  id?: number;
+  name: string;
+  score: number;
+  max_score?: number;
+  reason?: string;
+  errors?: string[];
+  quote?: string;
+  start_offset?: number;
+  end_offset?: number;
+  quote_verified?: boolean;
+}
+
+export interface IeltsCorrectionItem {
+  quote: string;
+  correction: string;
+  explanation?: string;
+  category?: string;
+  start_offset: number;
+  end_offset: number;
+  quote_verified: boolean;
 }
 
 export interface IeltsGradePayload {
-  task_type: 'task1' | 'task2';
-  prompt: string;
+  task_type:
+    | 'ielts_task1'
+    | 'ielts_task2'
+    | 'ielts_ac_task1'
+    | 'ielts_ac_task2'
+    | 'ielts_gt_letter'
+    | 'ielts_gt_task2'
+    | 'multilevel_1_1'
+    | 'multilevel_1_2'
+    | 'multilevel_2';
+  topic_title: string;
+  topic_id?: number;
   essay_text: string;
 }
 
 export interface IeltsGradeResponse {
-  task_type: string;
+  ok: boolean;
+  submission_id?: number | null;
+  task_type?: string;
+  rubric_version?: string;
+  evaluation_version?: string;
+  is_estimate?: boolean;
   word_count: number;
   min_words: number;
   overall_band: number;
   cefr_level: string;
-  criteria: Record<string, IeltsCriterionScore>;
-  general_feedback: string;
-  model_band9_rewrite: string;
-  submission_id?: number | null;
+  criteria: IeltsCriterionScore[];
+  summary: string;
+  strengths?: string[];
+  weaknesses?: string[];
+  spelling_errors?: { word: string; correction: string; explanation: string }[];
+  corrections?: IeltsCorrectionItem[];
+  vocabulary_upgrades?: { original: string; upgrade: string; note?: string }[];
+  next_level_example?: string;
+  teacher_recommendation?: string;
+  improved_text?: string;
+  essay_text?: string;
+}
+
+export interface WritingDraftData {
+  id: number;
+  task_type: string;
+  topic_id: number | null;
+  topic_title: string;
+  essay_text: string;
+  word_count: number;
+  updated_at: string;
 }
 
 export const Essays = {
@@ -2825,6 +2961,18 @@ export const Essays = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  ieltsDraftGet: (params?: { task_type?: string; topic_id?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.task_type) qs.set('task_type', params.task_type);
+    if (params?.topic_id) qs.set('topic_id', String(params.topic_id));
+    const q = qs.toString() ? `?${qs.toString()}` : '';
+    return api<{ draft: WritingDraftData | null }>(`/api/v1/essays/ielts/draft/${q}`);
+  },
+  ieltsDraftSave: (payload: { task_type: string; topic_title: string; topic_id?: number; essay_text: string }) =>
+    api<{ ok: boolean; draft: WritingDraftData }>('/api/v1/essays/ielts/draft/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 };
 
 export interface TeacherEssayCard {
@@ -2843,10 +2991,12 @@ export interface TeacherEssayCard {
 }
 
 export interface TeacherEssayDetail {
-  submission: TeacherEssayCard & { essay_text: string; summary: string };
+  submission: TeacherEssayCard & { essay_text: string; summary: string; subject?: string; rubric_type?: string };
+  rubric_scale?: 'ielts' | 'multilevel' | 'bmb';
+  display_max?: number;
   ai_criteria: { criterion_id: number; name: string; score: number; reason: string }[];
   criterion_names: Record<string, string>;
-  /** Max score per criterion id (BMB 12-criterion rubric). */
+  /** Max score per criterion id (BMB 12-criterion or English rubric). */
   criterion_max?: Record<string, number>;
   existing_review: {
     criteria_scores: Record<string, number>;
@@ -2988,23 +3138,40 @@ export interface SpeakingSubmissionDetail {
   topic_title: string;
   part: string;
   part_label: string;
+  track?: 'ielts' | 'cefr_multilevel' | string;
+  rubric_version?: string;
   audio_url?: string | null;
   duration_seconds: number;
+  decoded_duration_ms?: number | null;
+  audio_hash?: string;
+  is_verified_audio?: boolean;
   transcript: string;
-  fluency_score: number;
-  lexical_score: number;
-  grammar_score: number;
-  pronunciation_score: number;
-  overall_band: number;
+  fluency_score: number | null;
+  lexical_score: number | null;
+  grammar_score: number | null;
+  pronunciation_score: number | null;
+  overall_band: number | null;
+  final_score?: number | null;
+  is_partial_estimate?: boolean;
+  partial_band_estimate?: number | null;
+  assessment_scope?: string;
+  task_scores?: Record<string, number>;
   feedback: {
     summary?: string;
     fluency_feedback?: string;
     lexical_feedback?: string;
     grammar_feedback?: string;
     pronunciation_feedback?: string;
+    pronunciation_status?: string;
     vocabulary_suggestions?: { original: string; improved: string; explanation: string }[];
     grammar_corrections?: { incorrect: string; corrected: string; rule: string }[];
   };
+  teacher_review_requested?: boolean;
+  teacher_score?: number | null;
+  teacher_comments?: string;
+  teacher_reviewed_at?: string | null;
+  student_name?: string;
+  student_email?: string;
   status: string;
   created_at: string;
 }
@@ -3018,12 +3185,24 @@ export const SpeakingApi = {
   },
   topic: (id: number | string) => api<SpeakingTopicItem>(`/api/v1/speaking/topics/${id}/`),
   submit: (formData: FormData) =>
-    api<{ ok: boolean; submission: SpeakingSubmissionDetail }>('/api/v1/speaking/submit/', {
+    api<{ ok: boolean; async?: boolean; submission: SpeakingSubmissionDetail }>('/api/v1/speaking/submit/', {
       method: 'POST',
       body: formData,
     }),
   submission: (id: number | string) => api<SpeakingSubmissionDetail>(`/api/v1/speaking/submissions/${id}/`),
   mySubmissions: () => api<{ count: number; results: SpeakingSubmissionDetail[] }>('/api/v1/speaking/my-submissions/'),
+  requestReview: (id: number | string) =>
+    api<{ ok: boolean; submission: SpeakingSubmissionDetail }>(`/api/v1/speaking/submissions/${id}/request-review/`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+  teacherQueue: () =>
+    api<{ pending: SpeakingSubmissionDetail[]; reviewed: SpeakingSubmissionDetail[] }>('/api/v1/speaking/teacher/queue/'),
+  teacherReview: (id: number | string, payload: { score: number; comments?: string }) =>
+    api<{ ok: boolean; submission: SpeakingSubmissionDetail }>(`/api/v1/speaking/teacher/${id}/review/`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 };
 
 // -- Gamification & Streak --------------------------------------------------
@@ -3355,6 +3534,138 @@ export interface DashboardData {
 
 export const DashboardApi = {
   get: (subject: string) => api<DashboardData>(`/api/v1/dashboard/?subject=${encodeURIComponent(subject)}`),
+};
+
+export interface EnglishTrackInfo {
+  code: 'ielts_academic' | 'ielts_general' | 'cefr_multilevel' | 'general_english';
+  label: string;
+  short_label: string;
+  scale: string;
+  description: string;
+  exam_types: string[];
+}
+
+export interface EnglishCenterTestCard {
+  id: number;
+  title: string;
+  exam_type: string;
+  assessment_category: string;
+  time_limit_minutes: number;
+  question_count: number;
+  difficulty: string;
+  has_audio: boolean;
+  sections: string[];
+  mock_code: string;
+}
+
+export interface EnglishCenterData {
+  track: 'ielts_academic' | 'ielts_general' | 'cefr_multilevel' | 'general_english';
+  target_band: number | null;
+  target_cefr_level: string;
+  tracks: EnglishTrackInfo[];
+  study_modes: { code: string; label: string; timed: boolean }[];
+  resume: {
+    kind: 'test' | 'essay';
+    id: number;
+    test_id?: number;
+    topic_id?: number | null;
+    title: string;
+    started_at?: string | null;
+    updated_at?: string | null;
+    route: string;
+  } | null;
+  counts: {
+    listening_tests: number;
+    reading_tests: number;
+    full_mocks: number;
+    writing_topics: number;
+    speaking_topics: number;
+    vocabulary_packs: number;
+    grammar_topics: number;
+    pending_homework: number;
+    unresolved_mistakes: number;
+  };
+  listening_tests: EnglishCenterTestCard[];
+  reading_tests: EnglishCenterTestCard[];
+  full_mocks: EnglishCenterTestCard[];
+  writing_topics: {
+    id: number;
+    title: string;
+    category: string;
+    rubric_type: string;
+    word_limit_min: number;
+    time_limit_minutes: number;
+  }[];
+  speaking_topics: {
+    id: number;
+    title: string;
+    part: string;
+    difficulty: string;
+    prep_time_seconds: number;
+    speak_time_seconds: number;
+  }[];
+  vocabulary_packs: {
+    id: number;
+    title: string;
+    word_count: number;
+    created_at: string | null;
+  }[];
+  grammar_topics: { id: number; title: string; slug: string }[];
+  homework: {
+    id: number;
+    title: string;
+    content_type: string;
+    deadline: string | null;
+    status: string;
+    is_completed: boolean;
+  }[];
+  mistakes: {
+    test_mistakes_count: number;
+    vocabulary_mistakes_count: number;
+    total: number;
+  };
+  skill_progress: {
+    listening: { attempts: number; best_pct: number | null; latest_pct: number | null };
+    reading: { attempts: number; best_pct: number | null; latest_pct: number | null };
+    writing: { submissions: number; latest_score: number | null; latest_max: number | null };
+    speaking: { submissions: number; latest_band: number | null };
+    vocabulary: { reviewed: number; mastered: number };
+  };
+  recent_results: {
+    result_id: number;
+    test_id: number;
+    title: string;
+    exam_type: string;
+    percentage: number;
+    correct: number;
+    total: number;
+    finished_at: string | null;
+  }[];
+}
+
+export const EnglishCenterApi = {
+  get: (track?: string, q?: string) => {
+    const params = new URLSearchParams();
+    if (track) params.set('track', track);
+    if (q) params.set('q', q);
+    const qs = params.toString();
+    return api<EnglishCenterData>(`/api/v1/english/center/${qs ? `?${qs}` : ''}`);
+  },
+  updateSettings: (payload: {
+    english_track?: string;
+    target_band?: number | null;
+    target_cefr_level?: string;
+    set_active_subject?: boolean;
+  }) =>
+    api<{
+      active_subject: string;
+      english_track: string;
+      target_band: number | null;
+      target_cefr_level: string;
+    }>('/api/v1/english/center/', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
 };
 
 

@@ -921,6 +921,25 @@ def complete_onboarding_view(request: Request) -> Response:
     profile.daily_goal_minutes = daily_goal_minutes
     profile.reminder_slot = reminder_slot
     profile.daily_plan_summary = daily_plan_summary
+    if data.get("english_track") in profile.EnglishTrack.values:
+        profile.english_track = data["english_track"]
+    elif mapped_exam_target == "multilevel":
+        profile.english_track = profile.EnglishTrack.CEFR_MULTILEVEL
+    elif mapped_exam_target == "ielts":
+        profile.english_track = profile.EnglishTrack.IELTS_ACADEMIC
+    if "target_band" in data and data.get("target_band") not in (None, ""):
+        from decimal import Decimal, InvalidOperation
+
+        try:
+            band = Decimal(str(data["target_band"]))
+            if Decimal("1.0") <= band <= Decimal("9.0"):
+                profile.target_band = band
+        except (InvalidOperation, ValueError):
+            pass
+    if data.get("target_cefr_level"):
+        cefr_lvl = str(data["target_cefr_level"]).strip().upper()
+        if cefr_lvl in ("A1", "A2", "B1", "B2", "C1", "C2"):
+            profile.target_cefr_level = cefr_lvl
     profile.onboarding_completed = True
     profile.save()
     # Authentication/permissions may have cached the previous reverse relation.

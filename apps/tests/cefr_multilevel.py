@@ -62,11 +62,20 @@ def raw_to_scaled(raw: int | float | Decimal, questions: int | None = None) -> D
 
 
 def rated_to_scaled(earned: Decimal | float, maximum: Decimal | float) -> Decimal:
-    """Writing/Speaking grade (earned of maximum) → 0–75."""
-    maximum = Decimal(str(maximum))
-    if maximum <= 0:
+    """Writing (16 max) / Speaking (21 max) or generic rated grade → 0–75."""
+    from apps.tests.blueprints import (
+        convert_multilevel_speaking_21_to_75,
+        convert_multilevel_writing_16_to_75,
+    )
+
+    maximum_dec = Decimal(str(maximum))
+    if maximum_dec <= 0:
         return Decimal("0")
-    ratio = min(Decimal("1"), max(Decimal("0"), Decimal(str(earned)) / maximum))
+    if maximum_dec == Decimal("16"):
+        return convert_multilevel_writing_16_to_75(earned)
+    if maximum_dec == Decimal("21"):
+        return convert_multilevel_speaking_21_to_75(earned)
+    ratio = min(Decimal("1"), max(Decimal("0"), Decimal(str(earned)) / maximum_dec))
     return _round1(ratio * Decimal(str(load_scale()["scale_max"])))
 
 

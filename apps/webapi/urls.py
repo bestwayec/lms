@@ -18,6 +18,7 @@ from . import (
     views_school,
     views_tournaments,
     views_dashboard,
+    views_english,
     views_essay_studio,
     views_feedback,
     views_question_issues,
@@ -26,6 +27,7 @@ from . import (
     views_private_files,
     views_homework,
     views_classroom,
+    views_teacher_english,
 )
 from apps.organizations import views as views_enterprise
 from apps.tests import (
@@ -47,10 +49,14 @@ urlpatterns = [
     # -- Teacher Studio (test builder, assignment, item analysis) -----------
     path("teacher/studio/parse/", views_studio.studio_parse_view, name="studio-parse"),
     path("teacher/studio/validate/", views_studio.studio_validate_view, name="studio-validate"),
+    path("teacher/studio/package/validate/", views_studio.studio_package_validate_view, name="studio-package-validate"),
+    path("teacher/studio/package/import/", views_studio.studio_package_import_view, name="studio-package-import"),
     path("teacher/studio/media/", views_studio.studio_media_view, name="studio-media"),
     path("teacher/studio/import-file/", views_studio.studio_import_file_view, name="studio-import-file"),
     path("teacher/studio/tests/", views_studio.studio_tests_view, name="studio-tests"),
     path("teacher/studio/tests/<int:test_id>/", views_studio.studio_test_detail_view, name="studio-test-detail"),
+    path("teacher/studio/tests/<int:test_id>/package/", views_studio.studio_package_export_view, name="studio-test-package"),
+    path("teacher/studio/tests/<int:test_id>/readiness/", views_studio.studio_readiness_view, name="studio-test-readiness"),
     path("teacher/studio/tests/<int:test_id>/duplicate/", views_studio.studio_duplicate_view, name="studio-test-duplicate"),
     path("teacher/studio/tests/<int:test_id>/export/", views_studio.studio_export_view, name="studio-test-export"),
     path("teacher/studio/tests/<int:test_id>/publish/", views_studio.studio_publish_view, name="studio-test-publish"),
@@ -88,6 +94,9 @@ urlpatterns = [
         name="webapi-attempt-update-score",
     ),
     path("dashboard/", views_dashboard.StudentDashboardView.as_view(), name="student-dashboard"),
+    path("english/center/", views_english.EnglishCenterView.as_view(), name="english-center"),
+    path("english/teacher/workspace/", views_teacher_english.TeacherEnglishWorkspaceView.as_view(), name="english-teacher-workspace"),
+    path("english/teacher/export/", views_teacher_english.TeacherEnglishExportView.as_view(), name="english-teacher-export"),
     path("essays/ocr/", views_essay_studio.essay_ocr_view, name="essays-ocr"),
     path("essays/image-submit/", views_essay_studio.essay_image_submit_view, name="essays-image-submit"),
     path("essays/custom/", views_essay_studio.essay_custom_view, name="essays-custom"),
@@ -207,6 +216,9 @@ urlpatterns = [
     path(
         "essays/ielts/grade/", views_essays.ielts_grade_view, name="essays-ielts-grade"
     ),
+    path(
+        "essays/ielts/draft/", views_essays.ielts_draft_view, name="essays-ielts-draft"
+    ),
     # -- OMR Answer Sheet Auto-Scanner -----------------------------------
     path("tests/scan-omr/", views_omr.ScanOMRView.as_view(), name="tests-scan-omr"),
     path("tests/scan-omr/confirm/", views_omr.ConfirmOMRView.as_view(), name="tests-scan-omr-confirm"),
@@ -241,6 +253,7 @@ urlpatterns = [
     path("games/<slug:slug>/check/", views_games.check_view, name="games-check"),
     # -- Panel -----------------------------------------------------------
     path("panel/dashboard/", views_panel.dashboard_view, name="panel-dashboard"),
+    path("panel/ai-metrics/", views_panel.panel_ai_metrics_view, name="panel-ai-metrics"),
     path(
         "panel/analytics/cohorts/",
         views_panel.cohort_analytics_view,

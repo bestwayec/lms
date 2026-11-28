@@ -17,8 +17,23 @@ urlpatterns = [
         name="submission-detail",
     ),
     path(
+        "submissions/<int:pk>/request-review/",
+        views.SpeakingRequestTeacherReviewView.as_view(),
+        name="submission-request-review",
+    ),
+    path(
         "my-submissions/",
         views.MySpeakingSubmissionsView.as_view(),
         name="my-submissions",
+    ),
+    path(
+        "teacher/queue/",
+        views.TeacherSpeakingQueueView.as_view(),
+        name="teacher-queue",
+    ),
+    path(
+        "teacher/<int:pk>/review/",
+        views.TeacherSpeakingReviewView.as_view(),
+        name="teacher-review",
     ),
 ]

@@ -518,6 +518,34 @@ html.light .admin-action {
   border: 1px solid #e2e8f0;
 }
 
+/* Explicit Dark Mode parity for Admin Hero, Quick Actions, Headings & Cards */
+html.dark h1, html.dark h2, html.dark h3, html.dark h4, html.dark h5, html.dark h6,
+[data-theme="dark"] h1, [data-theme="dark"] h2, [data-theme="dark"] h3,
+[data-theme="dark"] h4, [data-theme="dark"] h5, [data-theme="dark"] h6 {
+  color: #f8fafc;
+}
+
+html.dark .admin-hero,
+[data-theme="dark"] .admin-hero {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.85), rgba(15, 23, 42, 0.96));
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+html.dark .admin-hero-stats > div,
+[data-theme="dark"] .admin-hero-stats > div {
+  background: rgba(15, 23, 42, 0.78);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+html.dark .card.admin-action,
+html.dark .admin-action,
+[data-theme="dark"] .card.admin-action,
+[data-theme="dark"] .admin-action {
+  background: #162033;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  color: #f8fafc;
+}
+
 
 /* -------------------------------------------------------------------------
  * Next-Gen EdTech Glassmorphism & Micro-animations

@@ -5,6 +5,7 @@ import { useLang } from '../../i18n/LangContext';
 import { Tests as TestsApi } from '../../lib/api';
 import AutoGrow from '../../components/AutoGrow';
 import { useAnswerQueue, type SavePayload } from '../../lib/useAnswerQueue';
+import ExamSyncPill from '../../components/ExamSyncPill';
 import { revealOnFocus, useIsNarrow, useKeyboardOpen, useVisualViewport } from '../../lib/useVisualViewport';
 import CefrResultSummary, { type CefrSummary } from './CefrResultSummary';
 import IeltsResultSummary, { type IeltsSummary } from './IeltsResultSummary';
@@ -18,6 +19,7 @@ interface CdQuestion {
   question_type: string;
   section_id: number | null;
   group_id: number | null;
+  audio_start_sec?: number | null;
   config: {
     number?: number;
     min_words?: number;
@@ -39,18 +41,37 @@ interface CdGroup {
   instructions: string;
   answer_rule: string;
   passage_id: number | null;
+  stimulus_ref?: string;
+  content_layout?: string;
   image_url: string;
   options_label: string;
   each_option_once: boolean;
 }
-interface CdPart { id: number; number: string; title: string; instructions: string; audio_url: string; groups: CdGroup[] }
+interface CdPart {
+  id: number;
+  number: string;
+  part_number?: number;
+  title: string;
+  instructions: string;
+  audio_url: string;
+  private_audio_url?: string;
+  audio_play_limit?: number;
+  transcript?: string;
+  groups: CdGroup[];
+}
 interface CdSection { section_id: number; code: string; name: string; duration_minutes: number; parts: CdPart[] }
 export interface CdAttempt {
   id: number;
   test_title: string;
   is_preview?: boolean;
   is_trial?: boolean;
+  session_token?: string;
+  last_revision?: number;
   remaining_seconds: number | null;
+  media_state?: {
+    speaking_submissions?: Record<string, { submission_id: number; status?: string; decoded_duration_ms?: number | null }>;
+    [k: string]: unknown;
+  };
   structure: CdSection[];
   questions: CdQuestion[];
   passages?: { id: number; title: string; content: string }[];
@@ -120,7 +141,21 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
   useVisualViewport(true);
 
   const send = useCallback((payload: SavePayload) => TestsApi.saveAnswer(attemptId, payload), [attemptId]);
-  const queue = useAnswerQueue(attemptId, send);
+  const queue = useAnswerQueue(attemptId, send, {
+    initialRevision: attempt.last_revision || 0,
+    initialSessionToken: attempt.session_token || '',
+  });
+  const handleTakeover = useCallback(async () => {
+    try {
+      const res = await TestsApi.takeoverSession(attemptId);
+      if (res?.session_token) {
+        queue.setSessionToken(res.session_token);
+        await queue.flush();
+      }
+    } catch {
+      /* handled by queue retry/conflict UI */
+    }
+  }, [attemptId, queue]);
 
   const [answers, setAnswers] = useState<Record<number, Answer>>(() => {
     const init: Record<number, Answer> = {};
@@ -170,10 +205,13 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
   });
   const bodyRef = useRef<HTMLElement | null>(null);
   const draggingRef = useRef(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
+  const [audioPlayInfo, setAudioPlayInfo] = useState<Record<number, { remaining: number | null; canPlay: boolean }>>({});
   // Floating selection highlighter toolbar (fixed-position, near selection).
   const [selBox, setSelBox] = useState<{ x: number; y: number } | null>(null);
   const [flagged, setFlagged] = useState<Set<number>>(
-    () => new Set((read(sessionStorage, `cd-flags:${attemptId}`) || '').split(',').filter(Boolean).map(Number)),
+    () => new Set((read(localStorage, `cd-flags:${attemptId}`) || read(sessionStorage, `cd-flags:${attemptId}`) || '').split(',').filter(Boolean).map(Number)),
   );
   const textTimers = useRef<Record<number, number>>({});
   const submittedRef = useRef(false);
@@ -185,10 +223,17 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
   const [selectedText, setSelectedText] = useState('');
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteContent, setNoteContent] = useState('');
-  const [notes, setNotes] = useState<Record<number, string[]>>({});
+  const [notes, setNotes] = useState<Record<number, string[]>>(() => {
+    try {
+      const saved = localStorage.getItem(`cd-notes:${attemptId}`);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
   const [highlights, setHighlights] = useState<Record<number, { text: string; color: string }[]>>(() => {
     try {
-      const saved = sessionStorage.getItem(`cd-highlights:${attemptId}`);
+      const saved = localStorage.getItem(`cd-highlights:${attemptId}`) || sessionStorage.getItem(`cd-highlights:${attemptId}`);
       return saved ? JSON.parse(saved) : {};
     } catch {
       return {};
@@ -198,6 +243,7 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
   const saveHighlights = useCallback((newH: Record<number, { text: string; color: string }[]>) => {
     setHighlights(newH);
     try {
+      localStorage.setItem(`cd-highlights:${attemptId}`, JSON.stringify(newH));
       sessionStorage.setItem(`cd-highlights:${attemptId}`, JSON.stringify(newH));
     } catch {
       // storage quota
@@ -344,8 +390,12 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
     write(sessionStorage, `cd-pos:${attemptId}`, `${pos.s},${pos.p}`);
   }, [attemptId, pos]);
   useEffect(() => {
+    write(localStorage, `cd-flags:${attemptId}`, [...flagged].join(','));
     write(sessionStorage, `cd-flags:${attemptId}`, [...flagged].join(','));
   }, [attemptId, flagged]);
+  useEffect(() => {
+    write(localStorage, `cd-notes:${attemptId}`, JSON.stringify(notes));
+  }, [attemptId, notes]);
   useEffect(() => {
     write(localStorage, 'cd-font', String(fontStep));
   }, [fontStep]);
@@ -408,6 +458,7 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
       const submitted = (await TestsApi.submit(attemptId)) as unknown as {
         result?: { correct_answers?: number; total_questions?: number; result_id?: number | null };
       };
+      queue.markSubmitted();
       setResultId(submitted?.result?.result_id ?? null);
       if (attempt.is_trial) {
         setResult('done');
@@ -423,10 +474,16 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
         if (card.scale === 'cefr_multilevel') {
           setResult(card);
         } else if (/ielts/i.test(card.exam_type ?? '') && submitted?.result?.total_questions) {
+          const ieltsCard = card as unknown as { grading_status?: string; sections?: IeltsSummary['sections'] };
           setIelts({
             correct: Number(submitted.result.correct_answers ?? 0),
             total: Number(submitted.result.total_questions),
             band: typeof card.overall_band === 'number' ? card.overall_band : null,
+            grading_status: typeof ieltsCard.grading_status === 'string' ? ieltsCard.grading_status : undefined,
+            sections:
+              ieltsCard.sections && !Array.isArray(ieltsCard.sections) && typeof ieltsCard.sections === 'object'
+                ? ieltsCard.sections
+                : undefined,
           });
           setResult('done');
         } else {
@@ -453,8 +510,9 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
 
   const save = useCallback(
     (q: CdQuestion, a: Answer) => {
+      const qt = (q.question_type || '').toUpperCase();
       const payload: SavePayload =
-        q.question_type === 'written'
+        qt === 'WRITTEN' || qt === 'ESSAY'
           ? { question_id: q.id, written_text: a.written || '' }
           : a.choice != null
             ? { question_id: q.id, choice_ids: [a.choice] }
@@ -538,10 +596,27 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
     const a = answers[q.id] || {};
     const num = q.config.number;
     const choices = [...q.choices].sort((x, y) => x.position - y.position);
+    const qtype = (q.question_type || '').toUpperCase();
 
-    if (q.question_type === 'SPEAKING_PROMPT') return <SpeakingPrompt key={q.id} q={q} />;
+    if (qtype === 'SPEAKING_PROMPT') {
+      const initialMeta = attempt.media_state?.speaking_submissions?.[String(q.id)];
+      return (
+        <SpeakingPrompt
+          key={q.id}
+          q={q}
+          attemptId={attemptId}
+          initialMeta={initialMeta}
+          onUploaded={(submissionId) => {
+            setAnswers((prev) => ({
+              ...prev,
+              [q.id]: { ...prev[q.id], text: `speaking_submission:${submissionId}` },
+            }));
+          }}
+        />
+      );
+    }
 
-    if (q.question_type === 'written') {
+    if (qtype === 'WRITTEN' || qtype === 'ESSAY') {
       const words = wordCount(a.written);
       const { min_words: min, max_words: max, target_words: target } = q.config;
       const range = target ? `~${target}` : min && max ? `${min}–${max}` : '';
@@ -568,7 +643,13 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
       );
     }
 
-    if (q.question_type === 'INLINE_GAP_FILL') {
+    if (
+      qtype === 'INLINE_GAP_FILL' ||
+      qtype === 'TEXT' ||
+      qtype === 'TEXT_MATCH' ||
+      qtype === 'GAP_FILL' ||
+      qtype === 'SHORT_ANSWER'
+    ) {
       const input = (
         <input
           className="cd-gap"
@@ -605,7 +686,7 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
       );
     }
 
-    if (SELECT_TYPES.has(q.question_type)) {
+    if (SELECT_TYPES.has(q.question_type) || SELECT_TYPES.has(qtype)) {
       const taken = group.each_option_once
         ? new Set(siblings.filter((s) => s.id !== q.id).map((s) => answers[s.id]?.choice))
         : new Set<number | undefined>();
@@ -632,7 +713,7 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
     }
 
     // MULTIPLE_CHOICE / TRUE_FALSE_NOT_GIVEN
-    const tfng = q.question_type === 'TRUE_FALSE_NOT_GIVEN';
+    const tfng = qtype === 'TRUE_FALSE_NOT_GIVEN';
     return (
       <fieldset key={q.id} id={`cdq-${q.id}`} className="cd-question cd-choice">
         <legend>
@@ -703,7 +784,13 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
         ? t('cd_saving')
         : queue.state === 'offline'
           ? t('cd_offline_short')
-          : t('cd_save_failed_short');
+          : queue.state === 'retrying'
+            ? t('cd_retrying', 'Retrying...')
+            : queue.state === 'conflict'
+              ? t('cd_conflict', 'Conflict')
+              : queue.state === 'submitted'
+                ? t('cd_submitted_short', 'Submitted')
+                : t('cd_unsaved', 'Unsaved');
 
   const currentPartQs = partObjective;
   const firstQNum = currentPartQs[0]?.config?.number ?? 1;
@@ -925,8 +1012,9 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
           </button>
         </div>
 
-        {/* O'ngda: Taymer va Oltin Topshirish tugmasi */}
+        {/* O'ngda: Sync holati, Taymer va Oltin Topshirish tugmasi */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <ExamSyncPill state={queue.state} labelOverride={saveLabel} onTakeover={handleTakeover} />
           {sectionLeft != null && (
             <span
               style={{
@@ -1012,7 +1100,9 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
         </>
       )}
       {queue.online && queue.justRestored && <p className="cd-alert ok" role="status">{t('cd_online_back')}</p>}
-      {queue.online && queue.state === 'error' && <p className="cd-alert" role="alert">{t('cd_save_error')}</p>}
+      {queue.online && (queue.state === 'retrying' || queue.state === 'conflict') && (
+        <p className="cd-alert" role="alert">{t('cd_save_error')}</p>
+      )}
       {submitError && <p className="cd-alert" role="alert">{submitError}</p>}
       {locked && <p className="cd-alert" role="status">{t('cd_time_up')}</p>}
 
@@ -1041,9 +1131,73 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
         </div>
       )}
 
-      {section.code === 'LISTENING' && part.audio_url && (
-        <div className="cd-audio-bar">
-          <audio className="cd-audio" controls preload="metadata" src={part.audio_url} />
+      {section.code === 'LISTENING' && (part.private_audio_url || part.audio_url) && (
+        <div className="cd-audio-bar" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <audio
+              ref={audioRef}
+              className="cd-audio"
+              controls
+              preload="metadata"
+              src={part.private_audio_url || part.audio_url}
+              onPlay={() => {
+                const info = audioPlayInfo[part.id];
+                if (info && !info.canPlay) {
+                  audioRef.current?.pause();
+                  return;
+                }
+                const dur = audioRef.current?.duration && Number.isFinite(audioRef.current.duration)
+                  ? audioRef.current.duration
+                  : undefined;
+                TestsApi.listeningPlay(attemptId, part.id, dur)
+                  .then((res) => {
+                    setAudioPlayInfo((prev) => ({
+                      ...prev,
+                      [part.id]: { remaining: res.remaining_plays, canPlay: res.can_play },
+                    }));
+                  })
+                  .catch(() => {
+                    audioRef.current?.pause();
+                    setAudioPlayInfo((prev) => ({
+                      ...prev,
+                      [part.id]: { remaining: 0, canPlay: false },
+                    }));
+                  });
+              }}
+            />
+            {part.audio_play_limit != null && part.audio_play_limit > 0 && (
+              <span className="pill-badge" style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }}>
+                {audioPlayInfo[part.id]
+                  ? `${t('eng_plays_left', 'Qolgan urinish')}: ${audioPlayInfo[part.id].remaining ?? 0}`
+                  : `${t('eng_play_limit', 'Limit')}: ${part.audio_play_limit}x`}
+              </span>
+            )}
+            {part.transcript && (
+              <button
+                type="button"
+                className="btn sm ghost"
+                onClick={() => setTranscriptOpen((prev) => !prev)}
+              >
+                {transcriptOpen ? t('eng_hide_transcript', 'Transkriptni yopish') : t('eng_show_transcript', 'Transkript')}
+              </button>
+            )}
+          </div>
+          {part.transcript && transcriptOpen && (
+            <div
+              style={{
+                padding: '10px 14px',
+                borderRadius: 10,
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-subtle)',
+                fontSize: 13,
+                lineHeight: 1.55,
+                maxHeight: 180,
+                overflowY: 'auto',
+              }}
+            >
+              {part.transcript}
+            </div>
+          )}
         </div>
       )}
 
@@ -1408,13 +1562,53 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
   );
 }
 
-/** Speaking task: prompt, optional For/Against table and prep/answer timers. */
-function SpeakingPrompt({ q }: { q: CdQuestion }) {
+/** Speaking task: prompt, optional For/Against table, prep/answer timers, audio capture & exam upload. */
+function SpeakingPrompt({
+  q,
+  attemptId,
+  initialMeta,
+  onUploaded,
+}: {
+  q: CdQuestion;
+  attemptId: string;
+  initialMeta?: { submission_id: number; status?: string; decoded_duration_ms?: number | null };
+  onUploaded: (submissionId: number) => void;
+}) {
   const { t } = useLang();
-  const [phase, setPhase] = useState<'idle' | 'prep' | 'speak' | 'done'>('idle');
+  const [phase, setPhase] = useState<'idle' | 'prep' | 'speak' | 'done'>(initialMeta ? 'done' : 'idle');
   const [left, setLeft] = useState(0);
+  const [recordedUrl, setRecordedUrl] = useState<string | null>(null);
+  const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  const [uploadState, setUploadState] = useState<'idle' | 'uploading' | 'uploaded' | 'error'>(
+    initialMeta ? 'uploaded' : 'idle',
+  );
+  const [uploadedSubId, setUploadedSubId] = useState<number | null>(initialMeta?.submission_id ?? null);
+  const [micNote, setMicNote] = useState<string | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
   const prep = q.config.prep_seconds || 0;
   const speak = q.config.answer_seconds || 0;
+
+  const uploadBlob = useCallback(
+    async (blob: Blob, durSec: number) => {
+      setUploadState('uploading');
+      setMicNote(null);
+      try {
+        const fd = new FormData();
+        const ext = blob.type.includes('ogg') ? 'ogg' : blob.type.includes('wav') ? 'wav' : 'webm';
+        fd.append('audio', blob, `speaking_q${q.id}.${ext}`);
+        fd.append('duration_seconds', String(Math.max(5, durSec)));
+        const res = await TestsApi.uploadSpeakingAnswer(attemptId, q.id, fd);
+        setUploadState('uploaded');
+        setUploadedSubId(res.submission_id);
+        onUploaded(res.submission_id);
+      } catch (err: unknown) {
+        setUploadState('error');
+        setMicNote(err instanceof Error ? err.message : t('cd_save_error'));
+      }
+    },
+    [attemptId, onUploaded, q.id, t],
+  );
 
   useEffect(() => {
     if (phase !== 'prep' && phase !== 'speak') return;
@@ -1423,13 +1617,61 @@ function SpeakingPrompt({ q }: { q: CdQuestion }) {
         if (phase === 'prep') {
           setPhase('speak');
           setLeft(speak);
-        } else setPhase('done');
+        } else {
+          if (recorderRef.current && recorderRef.current.state === 'recording') {
+            recorderRef.current.stop();
+          }
+          setPhase('done');
+        }
       } else setLeft(left - 1);
     }, left > 0 ? 1000 : 0);
     return () => window.clearTimeout(id);
   }, [phase, left, speak]);
 
+  useEffect(() => {
+    if (phase !== 'speak' || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      return;
+    }
+    let cancelled = false;
+    navigator.mediaDevices
+      .getUserMedia({ audio: true })
+      .then((stream) => {
+        if (cancelled) {
+          stream.getTracks().forEach((tr) => tr.stop());
+          return;
+        }
+        chunksRef.current = [];
+        const preferredTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'];
+        const chosenMime = preferredTypes.find((m) => MediaRecorder.isTypeSupported?.(m)) || '';
+        const mr = chosenMime ? new MediaRecorder(stream, { mimeType: chosenMime }) : new MediaRecorder(stream);
+        recorderRef.current = mr;
+        mr.ondataavailable = (ev) => {
+          if (ev.data.size > 0) chunksRef.current.push(ev.data);
+        };
+        mr.onstop = () => {
+          const mimeType = mr.mimeType || chosenMime || 'audio/webm';
+          const blob = new Blob(chunksRef.current, { type: mimeType });
+          setRecordedBlob(blob);
+          setRecordedUrl(URL.createObjectURL(blob));
+          stream.getTracks().forEach((tr) => tr.stop());
+          void uploadBlob(blob, Math.max(5, speak || 30));
+        };
+        mr.start();
+        setMicNote(null);
+      })
+      .catch(() => {
+        if (!cancelled) setMicNote(t('spk_mic_denied'));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [phase, speak, t, uploadBlob]);
+
   const start = () => {
+    setRecordedUrl(null);
+    setRecordedBlob(null);
+    setUploadState('idle');
+    setMicNote(null);
     if (prep) {
       setPhase('prep');
       setLeft(prep);
@@ -1437,6 +1679,13 @@ function SpeakingPrompt({ q }: { q: CdQuestion }) {
       setPhase('speak');
       setLeft(speak);
     }
+  };
+
+  const stopEarly = () => {
+    if (recorderRef.current && recorderRef.current.state === 'recording') {
+      recorderRef.current.stop();
+    }
+    setPhase('done');
   };
 
   return (
@@ -1466,11 +1715,39 @@ function SpeakingPrompt({ q }: { q: CdQuestion }) {
             {t('cd_start_timer')}
           </button>
         ) : (
-          <strong>
-            {phase === 'prep' ? t('cd_prep') : t('cd_speak')}: {fmt(left)}
-          </strong>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <strong>
+              {phase === 'prep' ? t('cd_prep') : t('cd_speak')}: {fmt(left)}
+            </strong>
+            {phase === 'speak' && (
+              <button type="button" className="btn ghost sm" onClick={stopEarly}>
+                {t('spk_stop_recording')}
+              </button>
+            )}
+          </span>
         )}
       </div>
+      {uploadState === 'uploading' && (
+        <p className="muted small">{t('cd_saving')}</p>
+      )}
+      {uploadState === 'uploaded' && (
+        <p className="small" style={{ color: '#059669', fontWeight: 700 }}>
+          ✓ Yozuv serverga yuklandi {uploadedSubId ? `(#${uploadedSubId})` : ''}
+        </p>
+      )}
+      {uploadState === 'error' && recordedBlob && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+          <button type="button" className="btn sm primary" onClick={() => void uploadBlob(recordedBlob, Math.max(5, speak || 30))}>
+            Qayta yuklash
+          </button>
+        </div>
+      )}
+      {micNote && <p className="muted small">{micNote}</p>}
+      {recordedUrl && (
+        <div style={{ marginTop: 8 }}>
+          <audio src={recordedUrl} controls style={{ width: '100%' }} />
+        </div>
+      )}
     </div>
   );
 }

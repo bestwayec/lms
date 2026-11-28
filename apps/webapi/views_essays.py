@@ -20,6 +20,7 @@ from apps.essays.services import (
     TeacherReviewService,
     WordCounter,
     can_review_submission,
+    detect_submission_rubric,
 )
 
 logger = logging.getLogger(__name__)
@@ -121,13 +122,32 @@ def teacher_submission_view(request, submission_id: int):
         raise PermissionDenied("Bu esseni tekshirishga ruxsatingiz yo'q.")
     ai_criteria = list(submission.criteria.all().order_by("criterion_id"))
     existing_review = getattr(submission, "teacher_review", None)
+    rubric_scale, display_max = detect_submission_rubric(submission)
+    raw_res = submission.raw_result if isinstance(submission.raw_result, dict) else {}
+    rubric_type = getattr(getattr(submission, "topic", None), "rubric_type", "") or raw_res.get("rubric_type", "")
+    subject = getattr(getattr(submission, "topic", None), "subject", "") or ("english" if rubric_scale in ("ielts", "multilevel") else "uzbek")
+
+    if rubric_scale == "ielts":
+        criterion_names = {str(cid): name for cid, name in EssayCriterionScore.IELTS_CRITERION_NAMES.items()}
+        criterion_max = {str(cid): 9.0 for cid in range(1, 5)}
+    elif rubric_scale == "multilevel":
+        criterion_names = {"1": "Task 1.1 (Email)", "2": "Task 1.2 (Formal Response)", "3": "Task 2 (Essay/Blog)"}
+        criterion_max = {"1": 5.0, "2": 5.0, "3": 6.0}
+    else:
+        criterion_names = {str(k): v for k, v in EssayCriterionScore.CRITERION_NAMES.items()}
+        criterion_max = {str(cid): float(mx) for cid, mx in EssayCriterionScore.CRITERION_MAX_SCORES.items()}
+
     return Response(
         {
             "submission": {
                 **_submission_card(submission),
                 "essay_text": submission.essay_text,
                 "summary": submission.summary,
+                "subject": subject,
+                "rubric_type": rubric_type,
             },
+            "rubric_scale": rubric_scale,
+            "display_max": display_max,
             "ai_criteria": [
                 {
                     "criterion_id": c.criterion_id,
@@ -137,10 +157,8 @@ def teacher_submission_view(request, submission_id: int):
                 }
                 for c in ai_criteria
             ],
-            "criterion_names": EssayCriterionScore.CRITERION_NAMES,
-            "criterion_max": {
-                str(cid): float(mx) for cid, mx in EssayCriterionScore.CRITERION_MAX_SCORES.items()
-            },
+            "criterion_names": criterion_names,
+            "criterion_max": criterion_max,
             "existing_review": (
                 {
                     "criteria_scores": existing_review.criteria_scores,
@@ -170,30 +188,46 @@ def teacher_submit_review_view(request, submission_id: int):
             status=400,
         )
     criteria_scores: dict[int, float] = {}
-    allowed_scores = {0.0, 0.5, 1.0, 1.5, 2.0}
-    import math as _math
+    rubric_scale, _ = detect_submission_rubric(submission)
+    is_english_review = rubric_scale in ("ielts", "multilevel")
 
-    for cid in range(1, 13):
-        raw = raw_scores.get(cid, raw_scores.get(str(cid), None))
-        if raw is None or (isinstance(raw, str) and raw.strip() == ""):
-            return Response({"detail": f"Mezon #{cid}: ball kiritilmadi."}, status=400)
-        if isinstance(raw, bool):
-            return Response({"detail": f"Mezon #{cid}: ball noto'g'ri."}, status=400)
-        try:
-            val = float(str(raw).strip() if isinstance(raw, str) else raw)
-        except (ValueError, TypeError):
-            return Response(
-                {"detail": f"Mezon #{cid}: ball noto'g'ri format '{raw}'."}, status=400
-            )
-        max_s = float(EssayCriterionScore.CRITERION_MAX_SCORES.get(cid, 2.0))
-        if not _math.isfinite(val) or val not in allowed_scores or val > max_s:
-            return Response(
-                {
-                    "detail": f"Mezon #{cid}: ball {raw} yaroqsiz (maksimal: {max_s}). Ruxsat: {sorted(allowed_scores)}"
-                },
-                status=400,
-            )
-        criteria_scores[cid] = val
+    if is_english_review:
+        for raw_cid, raw in raw_scores.items():
+            try:
+                cid = int(raw_cid)
+            except (TypeError, ValueError):
+                return Response({"detail": f"Noto'g'ri mezon ID: {raw_cid}"}, status=400)
+            if raw is None or isinstance(raw, bool):
+                return Response({"detail": f"Mezon #{cid}: ball noto'g'ri."}, status=400)
+            try:
+                criteria_scores[cid] = float(str(raw).strip() if isinstance(raw, str) else raw)
+            except (ValueError, TypeError):
+                return Response({"detail": f"Mezon #{cid}: noto'g'ri format."}, status=400)
+    else:
+        allowed_scores = {0.0, 0.5, 1.0, 1.5, 2.0}
+        import math as _math
+
+        for cid in range(1, 13):
+            raw = raw_scores.get(cid, raw_scores.get(str(cid), None))
+            if raw is None or (isinstance(raw, str) and raw.strip() == ""):
+                return Response({"detail": f"Mezon #{cid}: ball kiritilmadi."}, status=400)
+            if isinstance(raw, bool):
+                return Response({"detail": f"Mezon #{cid}: ball noto'g'ri."}, status=400)
+            try:
+                val = float(str(raw).strip() if isinstance(raw, str) else raw)
+            except (ValueError, TypeError):
+                return Response(
+                    {"detail": f"Mezon #{cid}: ball noto'g'ri format '{raw}'."}, status=400
+                )
+            max_s = float(EssayCriterionScore.CRITERION_MAX_SCORES.get(cid, 2.0))
+            if not _math.isfinite(val) or val not in allowed_scores or val > max_s:
+                return Response(
+                    {
+                        "detail": f"Mezon #{cid}: ball {raw} yaroqsiz (maksimal: {max_s}). Ruxsat: {sorted(allowed_scores)}"
+                    },
+                    status=400,
+                )
+            criteria_scores[cid] = val
 
     from apps.core.validators import sanitize_text_xss
 
@@ -372,12 +406,23 @@ def ielts_grade_view(request):
         .strip()
         .lower()
     )
-    if task_type not in ("ielts_task1", "ielts_task2"):
+    valid_task_types = {
+        "ielts_task1": 150,
+        "ielts_ac_task1": 150,
+        "ielts_gt_letter": 150,
+        "ielts_task2": 250,
+        "ielts_ac_task2": 250,
+        "ielts_gt_task2": 250,
+        "multilevel_1_1": 50,
+        "multilevel_1_2": 120,
+        "multilevel_2": 180,
+        "multilevel_v2": 150,
+    }
+    if task_type not in valid_task_types:
         task_type = "ielts_task2"
 
-    min_words = (
-        topic.word_limit_min if topic else (150 if task_type == "ielts_task1" else 250)
-    )
+    min_words = topic.word_limit_min if topic else valid_task_types[task_type]
+    submission_max_score = 16 if task_type.startswith("multilevel") else 9
     topic_title = str(
         data.get("topic_title") or (topic.title if topic else "IELTS Writing Task")
     ).strip()
@@ -400,7 +445,7 @@ def ielts_grade_view(request):
             topic=topic,
             essay_text=essay_text,
             word_count=WordCounter.count(essay_text),
-            max_score=9,
+            max_score=submission_max_score,
             status=EssaySubmission.Status.PENDING,
             password_verified_at=timezone.now(),
             submitted_at=timezone.now(),
@@ -464,6 +509,10 @@ def ielts_grade_view(request):
         {
             "ok": True,
             "submission_id": submission.id,
+            "task_type": task_type,
+            "rubric_version": result.get("rubric_version"),
+            "evaluation_version": result.get("evaluation_version"),
+            "is_estimate": True,
             "overall_band": result["overall_band"],
             "cefr_level": result["cefr_level"],
             "word_count": result["word_count"],
@@ -472,7 +521,107 @@ def ielts_grade_view(request):
             "summary": result["summary"],
             "strengths": result["strengths"],
             "weaknesses": result["weaknesses"],
+            "spelling_errors": result.get("spelling_errors", []),
+            "corrections": result.get("corrections", []),
+            "vocabulary_upgrades": result.get("vocabulary_upgrades", []),
+            "next_level_example": result.get("next_level_example", ""),
             "teacher_recommendation": result["teacher_recommendation"],
             "improved_text": result["improved_text"],
+            "essay_text": essay_text,
+        }
+    )
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def ielts_draft_view(request):
+    """GET/POST /api/v1/essays/ielts/draft/ — Save and restore Writing Studio drafts."""
+    from django.utils import timezone
+    from apps.essays.models import EssayTopic
+
+    if request.method == "GET":
+        task_type = str(request.query_params.get("task_type") or "").strip().lower()
+        topic_id_raw = request.query_params.get("topic_id")
+        qs = EssaySubmission.objects.filter(
+            student=request.user,
+            status=EssaySubmission.Status.DRAFT,
+        )
+        if topic_id_raw and str(topic_id_raw).isdigit():
+            qs = qs.filter(topic_id=int(topic_id_raw))
+        elif task_type:
+            qs = qs.filter(raw_result__task_type=task_type)
+        draft = qs.order_by("-updated_at").first()
+        if not draft:
+            return Response({"draft": None})
+        raw = draft.raw_result if isinstance(draft.raw_result, dict) else {}
+        return Response(
+            {
+                "draft": {
+                    "id": draft.id,
+                    "task_type": raw.get("task_type") or "ielts_ac_task2",
+                    "topic_id": draft.topic_id,
+                    "topic_title": raw.get("topic_title") or (draft.topic.title if draft.topic else ""),
+                    "essay_text": draft.essay_text,
+                    "word_count": draft.word_count,
+                    "updated_at": draft.updated_at.isoformat(),
+                }
+            }
+        )
+
+    data = request.data or {}
+    essay_text = str(data.get("essay_text") or "")
+    task_type = str(data.get("task_type") or "ielts_ac_task2").strip().lower()
+    topic_title = str(data.get("topic_title") or "").strip()[:300]
+    topic_id_raw = data.get("topic_id")
+    topic = (
+        EssayTopic.objects.filter(id=int(topic_id_raw)).first()
+        if topic_id_raw is not None and str(topic_id_raw).isdigit()
+        else None
+    )
+
+    qs = EssaySubmission.objects.filter(
+        student=request.user,
+        status=EssaySubmission.Status.DRAFT,
+    )
+    if topic:
+        qs = qs.filter(topic=topic)
+    else:
+        qs = qs.filter(raw_result__task_type=task_type)
+    draft = qs.order_by("-updated_at").first()
+    wc = WordCounter.count(essay_text)
+    max_sc = 16 if task_type.startswith("multilevel") else 9
+    meta = {"subject": "english", "task_type": task_type, "topic_title": topic_title}
+
+    if draft:
+        draft.essay_text = essay_text
+        draft.word_count = wc
+        draft.max_score = max_sc
+        draft.raw_result = meta
+        draft.updated_at = timezone.now()
+        draft.save(update_fields=["essay_text", "word_count", "max_score", "raw_result", "updated_at"])
+    else:
+        draft = EssaySubmission.objects.create(
+            student=request.user,
+            topic=topic,
+            essay_text=essay_text,
+            word_count=wc,
+            max_score=max_sc,
+            raw_result=meta,
+            status=EssaySubmission.Status.DRAFT,
+            source=EssaySubmission.Source.WEB,
+        )
+
+    return Response(
+        {
+            "ok": True,
+            "draft": {
+                "id": draft.id,
+                "task_type": task_type,
+                "topic_id": draft.topic_id,
+                "topic_title": topic_title,
+                "essay_text": draft.essay_text,
+                "word_count": draft.word_count,
+                "updated_at": draft.updated_at.isoformat(),
+            },
         }
     )

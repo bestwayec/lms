@@ -81,6 +81,7 @@ const PAGE_TITLES: [string, string][] = [
   ['/groups', 'groups'],
   ['/my-homework', 'my_homework_title'],
   ['/speaking', 'tb_title_speaking'],
+  ['/english', 'english_center_title'],
   ['/subscribe', 'pay_plans_title'],
   ['/plans', 'pay_plans_title'],
   ['/checkout', 'pay_plans_title'],
@@ -342,9 +343,14 @@ export default function Layout() {
                 <CameraIcon size={16} className="ico" /> <span className="side-label">{t('titul_scanner', 'Titul Skaner (OMR)')}</span>
               </NavLink>
               {activeSubject === 'english' && (
-                <NavLink to="/speaking" className={linkClass} onClick={close}>
-                  <MicIcon size={16} className="ico" /> <span className="side-label">AI Speaking</span>
-                </NavLink>
+                <>
+                  <NavLink to="/english" className={linkClass} onClick={close}>
+                    <SparklesIcon size={16} className="ico" /> <span className="side-label">{t('english_center_nav', 'English Center')}</span>
+                  </NavLink>
+                  <NavLink to="/speaking" className={linkClass} onClick={close}>
+                    <MicIcon size={16} className="ico" /> <span className="side-label">AI Speaking</span>
+                  </NavLink>
+                </>
               )}
             </Section>
           )}

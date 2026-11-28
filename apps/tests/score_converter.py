@@ -16,61 +16,35 @@ from typing import Any
 
 
 def raw_to_ielts_band(
-    raw_score: int | float | Decimal, total_questions: int = 40
+    raw_score: int | float | Decimal,
+    total_questions: int = 40,
+    *,
+    section: str | None = None,
+    exam_type: str = "ielts_academic",
 ) -> Decimal:
     """
     Convert raw score to official IELTS Band (1.0 - 9.0).
-
-    Official IELTS 40-question scale:
-        39–40: Band 9.0
-        37–38: Band 8.5
-        35–36: Band 8.0
-        32–34: Band 7.5
-        30–31: Band 7.0
-        26–29: Band 6.5
-        23–25: Band 6.0
-        19–22: Band 5.5
-        15–18: Band 5.0
-        13–14: Band 4.5
-        10–12: Band 4.0
-        0–9:   Band 3.5 and below
+    Uses separate Academic Reading, General Reading, and Listening scales when `section` is specified,
+    and preserves the standard 40-question curve when `section` is omitted.
     """
+    from apps.tests.blueprints import raw_to_ielts_listening_band, raw_to_ielts_reading_band
+
+    if str(section or "").lower() == "reading":
+        return raw_to_ielts_reading_band(raw_score, total=total_questions, exam_type=exam_type)
+    if str(section or "").lower() == "listening":
+        return raw_to_ielts_listening_band(raw_score, total=total_questions)
+
     raw = float(raw_score)
     if total_questions > 0 and total_questions != 40:
         raw = round((raw / total_questions) * 40.0)
-
     raw_int = int(round(raw))
-
-    if raw_int >= 39:
-        return Decimal("9.0")
-    if raw_int >= 37:
-        return Decimal("8.5")
-    if raw_int >= 35:
-        return Decimal("8.0")
-    if raw_int >= 32:
-        return Decimal("7.5")
-    if raw_int >= 30:
-        return Decimal("7.0")
-    if raw_int >= 26:
-        return Decimal("6.5")
-    if raw_int >= 23:
-        return Decimal("6.0")
-    if raw_int >= 19:
-        return Decimal("5.5")
-    if raw_int >= 15:
-        return Decimal("5.0")
-    if raw_int >= 13:
-        return Decimal("4.5")
-    if raw_int >= 10:
-        return Decimal("4.0")
-    if raw_int >= 7:
-        return Decimal("3.5")
-    if raw_int >= 5:
-        return Decimal("3.0")
-    if raw_int >= 3:
-        return Decimal("2.5")
-    if raw_int >= 1:
-        return Decimal("2.0")
+    for threshold, band in (
+        (39, "9.0"), (37, "8.5"), (35, "8.0"), (32, "7.5"), (30, "7.0"),
+        (26, "6.5"), (23, "6.0"), (19, "5.5"), (15, "5.0"), (13, "4.5"),
+        (10, "4.0"), (7, "3.5"), (5, "3.0"), (3, "2.5"), (1, "2.0"),
+    ):
+        if raw_int >= threshold:
+            return Decimal(band)
     return Decimal("1.0")
 
 

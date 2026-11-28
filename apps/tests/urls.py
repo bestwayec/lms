@@ -104,6 +104,26 @@ urlpatterns = [
         name="save-answer",
     ),
     path(
+        "attempts/<int:attempt_id>/session-takeover/",
+        views.SessionTakeoverView.as_view(),
+        name="session-takeover",
+    ),
+    path(
+        "attempts/<int:attempt_id>/listening/<int:part_id>/play/",
+        views.ListeningScheduleView.as_view(),
+        name="listening-schedule-play",
+    ),
+    path(
+        "attempts/<int:attempt_id>/listening/<int:part_id>/audio/",
+        views.ListeningAudioStreamView.as_view(),
+        name="listening-audio-stream",
+    ),
+    path(
+        "attempts/<int:attempt_id>/questions/<int:question_id>/speaking/",
+        views.AttemptSpeakingUploadView.as_view(),
+        name="attempt-speaking-upload",
+    ),
+    path(
         "attempts/<int:attempt_id>/submit/",
         views.SubmitAttemptView.as_view(),
         name="submit-attempt",
@@ -213,6 +233,11 @@ urlpatterns = [
         "attempts/<int:attempt_id>/certificate-card/",
         views.CertificateCardView.as_view(),
         name="certificate-card",
+    ),
+    path(
+        "english/blueprints/",
+        views.EnglishBlueprintsView.as_view(),
+        name="english-blueprints",
     ),
     path(
         "daily-blitz/",

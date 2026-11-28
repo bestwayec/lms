@@ -284,6 +284,25 @@ class Test(models.Model):
         default="",
         help_text=_("Ixtiyoriy 4 xonali PIN kod."),
     )
+    content_version = models.PositiveIntegerField(
+        _("kontent versiyasi"),
+        default=1,
+        db_default=1,
+        help_text=_("Savol/matn/audio tuzilmasi o'zgarganda oshiriladigan versiya."),
+    )
+    is_keyless = models.BooleanField(
+        _("kalitsiz shablonmi"),
+        default=False,
+        db_default=False,
+        help_text=_("To'g'ri javob kalitlari kiritilmagan shablon testlar nashr qilinmaydi."),
+    )
+    spec_version = models.CharField(
+        _("spetsifikatsiya versiyasi"),
+        max_length=32,
+        blank=True,
+        default="",
+        db_default="",
+    )
 
     # -- Meta -----------------------------------------------------------------
     created_at = models.DateTimeField(_("yaratilgan"), auto_now_add=True)
@@ -413,6 +432,14 @@ class ExamSection(models.Model):
         default="",
     )
     order = models.PositiveIntegerField(_("tartib"), default=0)
+    stimulus_ref = models.CharField(
+        _("stimulus identifikatori"),
+        max_length=80,
+        blank=True,
+        default="",
+        db_default="",
+        db_index=True,
+    )
     duration_minutes = models.PositiveIntegerField(
         _("bo'lim vaqti (daqiqa)"),
         default=0,
@@ -478,6 +505,14 @@ class ReadingPassage(models.Model):
         help_text=_("Ixtiyoriy: muallif/manba izohi."),
     )
     order = models.PositiveIntegerField(_("tartib"), default=0)
+    stimulus_ref = models.CharField(
+        _("stimulus identifikatori"),
+        max_length=80,
+        blank=True,
+        default="",
+        db_default="",
+        db_index=True,
+    )
 
     class Meta:
         verbose_name = _("O'qish matni")
@@ -511,6 +546,22 @@ class ExamPart(models.Model):
     instructions = models.TextField(_("ko'rsatma"), blank=True)
     audio = models.FileField(_("audio"), upload_to="exams/audio/", blank=True)
     order = models.PositiveIntegerField(_("tartib"), default=0)
+    part_number = models.PositiveSmallIntegerField(_("raqamli qism tartibi"), null=True, blank=True)
+    audio_play_limit = models.PositiveSmallIntegerField(
+        _("audio eshitish limiti"),
+        default=0,
+        db_default=0,
+        help_text=_("0 = cheklovsiz (mashq); 1 yoki 2 = rasmiy/nazoratli tinglash."),
+    )
+    transcript = models.TextField(_("audio transkripti"), blank=True, default="", db_default="")
+    stimulus_ref = models.CharField(
+        _("stimulus identifikatori"),
+        max_length=80,
+        blank=True,
+        default="",
+        db_default="",
+        db_index=True,
+    )
 
     class Meta:
         verbose_name = _("Imtihon qismi")
@@ -550,6 +601,21 @@ class QuestionGroup(models.Model):
     options_label = models.CharField(_("variantlar sarlavhasi"), max_length=120, blank=True)
     each_option_once = models.BooleanField(_("har variant bir marta"), default=False)
     order = models.PositiveIntegerField(_("tartib"), default=0)
+    stimulus_ref = models.CharField(
+        _("stimulus identifikatori"),
+        max_length=80,
+        blank=True,
+        default="",
+        db_default="",
+        db_index=True,
+    )
+    content_layout = models.CharField(
+        _("kontent joylashuvi"),
+        max_length=32,
+        blank=True,
+        default="",
+        db_default="",
+    )
 
     class Meta:
         verbose_name = _("Savollar guruhi")
@@ -657,6 +723,38 @@ class Question(models.Model):
         _("ball"),
         default=1,
         validators=[MinValueValidator(1)],
+    )
+    max_score = models.DecimalField(
+        _("maksimal ball"),
+        max_digits=5,
+        decimal_places=1,
+        null=True,
+        blank=True,
+    )
+    evidence_text = models.TextField(
+        _("dalil matni"),
+        blank=True,
+        default="",
+        db_default="",
+        help_text=_("Mashq/tahlil rejimida javob dalili."),
+    )
+    audio_start_sec = models.FloatField(
+        _("audio boshlanish soniyasi"),
+        null=True,
+        blank=True,
+    )
+    cefr_level = models.CharField(
+        _("CEFR darajasi"),
+        max_length=8,
+        blank=True,
+        default="",
+        db_default="",
+    )
+    skill_tags = models.JSONField(
+        _("ko'nikma teglari"),
+        default=list,
+        db_default=[],
+        blank=True,
     )
     explanation = models.TextField(
         _("tushuntirish"),
@@ -919,6 +1017,51 @@ class TestAttempt(models.Model):
         default=Mode.STRICT,
         db_index=True,
     )
+    study_mode = models.CharField(
+        _("o'qish rejimi"),
+        max_length=24,
+        blank=True,
+        default="strict",
+        db_default="strict",
+        db_index=True,
+    )
+    session_token = models.CharField(
+        _("sessiya kaliti"),
+        max_length=64,
+        blank=True,
+        default="",
+        db_default="",
+        db_index=True,
+    )
+    last_revision = models.PositiveIntegerField(
+        _("oxirgi reviziya"),
+        default=0,
+        db_default=0,
+    )
+    content_version = models.PositiveIntegerField(
+        _("kontent versiyasi"),
+        default=1,
+        db_default=1,
+    )
+    spec_version = models.CharField(
+        _("spetsifikatsiya versiyasi"),
+        max_length=32,
+        blank=True,
+        default="",
+        db_default="",
+    )
+    section_deadlines = models.JSONField(
+        _("bo'lim muddatlari"),
+        default=dict,
+        db_default={},
+        blank=True,
+    )
+    media_state = models.JSONField(
+        _("media va sinxron holati"),
+        default=dict,
+        db_default={},
+        blank=True,
+    )
     raw_score = models.PositiveIntegerField(
         _("xom ball (to'g'ri javoblar soni)"),
         default=0,
@@ -1105,6 +1248,17 @@ class StudentAnswer(models.Model):
     ai_feedback = models.JSONField(
         _("AI dalilli xulosasi"),
         default=dict,
+        blank=True,
+    )
+    revision = models.PositiveIntegerField(
+        _("javob reviziyasi"),
+        default=0,
+        db_default=0,
+    )
+    annotations = models.JSONField(
+        _("izoh va ajratishlar"),
+        default=dict,
+        db_default={},
         blank=True,
     )
     answered_at = models.DateTimeField(_("javob berilgan"), auto_now=True)

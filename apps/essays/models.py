@@ -67,6 +67,7 @@ class EssayTopic(models.Model):
         BMB_12 = "bmb_12", _("BMB 12 mezon (Ona tili)")
         IELTS_TASK1 = "ielts_task1", _("IELTS Writing Task 1 (150+ so'z, Band 1.0–9.0)")
         IELTS_TASK2 = "ielts_task2", _("IELTS Writing Task 2 (250+ so'z, Band 1.0–9.0)")
+        MULTILEVEL_V2 = "multilevel_v2", _("CEFR Multi-level Writing v2 (5/5/6 · /16)")
 
     subject = models.CharField(
         _("fan / yo'nalish"),
@@ -83,6 +84,26 @@ class EssayTopic(models.Model):
         max_length=20,
         choices=RubricType.choices,
         default=RubricType.BMB_12,
+    )
+    task_subtype = models.CharField(
+        _("topshiriq turi"),
+        max_length=24,
+        blank=True,
+        default="",
+        db_default="",
+        help_text=_("academic_task1, general_task1, task2, bmb_1_1, bmb_1_2, bmb_2"),
+    )
+    stimulus_image = models.FileField(
+        _("stimul rasmi (grafik/jadval)"),
+        upload_to="essays/stimuli/%Y/%m/",
+        blank=True,
+        null=True,
+    )
+    stimulus_data = models.JSONField(
+        _("stimul ma'lumotlari"),
+        default=dict,
+        db_default={},
+        blank=True,
     )
     title = models.CharField(_("sarlavha"), max_length=300)
     description = models.TextField(
@@ -909,7 +930,7 @@ class TeacherReview(models.Model):
         max_digits=5,
         decimal_places=2,
         default=0,
-        validators=[MinValueValidator(0), MaxValueValidator(24)],
+        validators=[MinValueValidator(0), MaxValueValidator(75)],
     )
     teacher_comments = models.TextField(
         _("ustoz izohi"),

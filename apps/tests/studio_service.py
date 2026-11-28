@@ -267,7 +267,7 @@ def validate_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for bi, b in enumerate(blocks):
         if not b["questions"]:
             add(bi, "gap_no_markers" if b["type"] == "gap" else "no_questions")
-        if b["section"] == "LISTENING" and not b["audio_path"]:
+        if b["section"] == "LISTENING" and not (b.get("audio_path") or b.get("audio_url")):
             add(bi, "audio_missing")
         if b["type"] == "matching":
             if len(b["options"]) < 2:
@@ -450,12 +450,19 @@ def _build_content(test: Test, blocks: list[dict[str, Any]]) -> None:
             passage_text = "\n\n".join(p for p in (b["passage"], gap_context(b["gap_text"])) if p)
         passage = None
         if passage_text:
-            passage = passages.get(passage_text)
+            sref = str(b.get("stimulus_ref") or "").strip()
+            pkey = f"ref:{sref}" if sref else f"txt:{passage_text}"
+            passage = passages.get(pkey)
             if passage is None:
                 passage = ReadingPassage.objects.create(
-                    test=test, section=section, title=b["title"], content=passage_text, order=bi
+                    test=test,
+                    section=section,
+                    title=b["title"],
+                    content=passage_text,
+                    stimulus_ref=sref[:80],
+                    order=bi,
                 )
-                passages[passage_text] = passage
+                passages[pkey] = passage
 
         group = QuestionGroup.objects.create(
             part=part,
@@ -577,8 +584,11 @@ def save_test(user, payload: dict[str, Any], test: Test | None = None) -> Test:
 @transaction.atomic
 def publish_test(test: Test) -> tuple[bool, list[dict[str, Any]]]:
     """Publish when the saved content validates; otherwise return the issues."""
+    from apps.tests.package_service import check_mock_publish_readiness
+
     test = Test.objects.select_for_update().get(pk=test.pk)
     issues = validate_blocks(load_blocks(test))
+    issues.extend(check_mock_publish_readiness(test))
     if issues:
         return False, issues
     if not test.mock_code:
@@ -630,7 +640,7 @@ def load_blocks(test: Test) -> list[dict[str, Any]]:
                 "passage": "",
                 "gap_text": "",
                 "audio_path": part.audio.name if part.audio else "",
-                "audio_url": _media_url(part.audio),
+                "audio_url": _media_url(part.audio) or getattr(part.section, "audio_url", "") or getattr(test, "audio_url", ""),
                 "image_path": group.image.name if group.image else "",
                 "image_url": _media_url(group.image),
                 "options": [],
@@ -658,7 +668,13 @@ def load_blocks(test: Test) -> list[dict[str, Any]]:
                     for q in qs:
                         num = q.config.get("number")
                         alts = "|".join(g.answer_text for g in q.gap_blanks.all())
-                        lines.append(re.sub(r"\(\d+\)\s*_{2,}", f"[{num}:{alts}]", q.text, count=1))
+                        replaced = re.sub(
+                            rf"(?:\(\d+\)\s*_{{2,}}|\[{re.escape(str(num))}(?::[^\]]*)?\])",
+                            f"[{num}:{alts}]",
+                            q.text,
+                            count=1,
+                        )
+                        lines.append(replaced)
                     block["gap_text"] = "\n".join(lines)
             else:
                 block["passage"] = passage

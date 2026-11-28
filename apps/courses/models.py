@@ -354,20 +354,38 @@ class StudentGroup(models.Model):
 
     def save(self, *args, **kwargs) -> None:
         import secrets
+        from django.db import IntegrityError, transaction
 
-        if not self.invite_code:
-            prefix_map = {
-                "biology": "BIO",
-                "chemistry": "KIM",
-                "law": "HUQ",
-                "english": "ENG",
-                "uzbek": "ONA",
-            }
-            prefix = prefix_map.get(self.subject, "GR")
-            self.invite_code = f"{prefix}-{secrets.token_hex(2).upper()}"
+        auto_invite_code = not self.invite_code
+        prefix_map = {
+            "biology": "BIO",
+            "chemistry": "KIM",
+            "law": "HUQ",
+            "english": "ENG",
+            "uzbek": "ONA",
+        }
+        prefix = prefix_map.get(self.subject, "GR")
+        if auto_invite_code:
+            candidate = f"{prefix}-{secrets.token_hex(2).upper()}"
+            for attempt in range(16):
+                if not StudentGroup.objects.filter(invite_code=candidate).exists():
+                    break
+                nbytes = 2 if attempt < 8 else 3
+                candidate = f"{prefix}-{secrets.token_hex(nbytes).upper()}"
+            self.invite_code = candidate
         if not self.invite_token:
             self.invite_token = generate_invite_token()
-        super().save(*args, **kwargs)
+        for retry in range(8):
+            try:
+                with transaction.atomic():
+                    super().save(*args, **kwargs)
+                return
+            except IntegrityError:
+                if not auto_invite_code or retry == 7:
+                    raise
+                if not StudentGroup.objects.filter(invite_code=self.invite_code).exists():
+                    raise
+                self.invite_code = f"{prefix}-{secrets.token_hex(3).upper()}"
 
     @property
     def group_code(self) -> str:

@@ -105,6 +105,39 @@ export default function Home({
 
   return (
     <div className="tma-slide">
+      {/* English Learning Center Quick Access Card (Student & Teacher) */}
+      <div className="tma-card" style={{ marginBottom: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div>
+            <strong style={{ fontSize: '0.92rem' }}>🇬🇧 {t('english_center_title')}</strong>
+            <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--tma-muted)' }}>
+              {role === 'teacher'
+                ? t('tma_eng_teacher_hint')
+                : t('tma_eng_student_hint')}
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {role === 'teacher' ? (
+              <Link to="/teacher/english" className="btn sm primary">
+                {t('ten_workspace_title')} →
+              </Link>
+            ) : (
+              <>
+                <Link to="/english" className="btn sm primary">
+                  {t('english_center_title')}
+                </Link>
+                <Link to="/vocabulary" className="btn sm ghost">
+                  {t('voc_studio_title')}
+                </Link>
+                <Link to="/grammar" className="btn sm ghost">
+                  {t('gram_studio_title')}
+                </Link>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Role-aware Admin / Teacher Workspace Shortcuts */}
       {(role === 'admin' || role === 'teacher') && (
         <div

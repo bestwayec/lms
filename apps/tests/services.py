@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hmac
 import logging
+import uuid
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -167,6 +168,53 @@ class TestAccessDeniedError(ValueError):
     pass
 
 
+class StaleRevisionError(ValueError):
+    """Raised when a client submits an answer with a lower revision than stored."""
+
+    def __init__(self, message: str, *, server_revision: int = 0) -> None:
+        super().__init__(message)
+        self.code = "STALE_REVISION"
+        self.server_revision = server_revision
+
+
+class SessionLockConflictError(ValueError):
+    """Raised when a stale tab/device attempts to write after session takeover."""
+
+    def __init__(self, message: str, *, server_revision: int = 0) -> None:
+        super().__init__(message)
+        self.code = "SESSION_TAKEN_OVER"
+        self.server_revision = server_revision
+
+
+class TakeoverSessionService:
+    """Atomically transfers active attempt ownership to a fresh session token."""
+
+    @staticmethod
+    @transaction.atomic
+    def execute(attempt_id: int, student: Any) -> dict[str, Any]:
+        try:
+            attempt = TestAttempt.objects.select_for_update().get(
+                id=attempt_id,
+                student=student,
+            )
+        except TestAttempt.DoesNotExist:
+            raise ValueError("Attempt topilmadi.")
+
+        if attempt.status != TestAttempt.Status.IN_PROGRESS:
+            raise ValueError("Yakunlangan urinish sessiyasini almashtirib bo'lmaydi.")
+
+        new_token = uuid.uuid4().hex
+        attempt.session_token = new_token
+        attempt.save(update_fields=["session_token"])
+        return {
+            "attempt_id": attempt.id,
+            "session_token": new_token,
+            "last_revision": int(attempt.last_revision or 0),
+            "remaining_seconds": attempt.remaining_seconds,
+            "server_time": timezone.now().isoformat(),
+        }
+
+
 # ---------------------------------------------------------------------------
 # 1. StartAttemptService
 # ---------------------------------------------------------------------------
@@ -274,6 +322,9 @@ class StartAttemptService:
                 active_attempt.status = TestAttempt.Status.TIMEOUT
                 active_attempt.save(update_fields=["status"])
             else:
+                if not active_attempt.session_token:
+                    active_attempt.session_token = uuid.uuid4().hex
+                    active_attempt.save(update_fields=["session_token"])
                 logger.info(
                     "Returning active in-progress attempt=%d for student=%d",
                     active_attempt.id,
@@ -337,6 +388,9 @@ class StartAttemptService:
                 student=student,
                 status=TestAttempt.Status.IN_PROGRESS,
                 mode=selected_mode,
+                study_mode=selected_mode,
+                session_token=uuid.uuid4().hex,
+                content_version=getattr(test, "content_version", 1) or 1,
                 # Teachers/admins only preview: kept out of stats and ratings;
                 # a free trial of one part is never a real result either.
                 is_preview=is_admin_or_teacher or trial_part is not None,
@@ -423,6 +477,9 @@ class SaveAnswerService:
         gap_answers: dict | None = None,
         matching: dict | None = None,
         written_text: str | None = None,
+        revision: int | None = None,
+        session_token: str | None = None,
+        annotations: dict | None = None,
     ) -> StudentAnswer | None:
         """Save an answer and report timeout only after finalization commits."""
         answer = SaveAnswerService._execute_atomic(
@@ -435,6 +492,9 @@ class SaveAnswerService:
             gap_answers=gap_answers,
             matching=matching,
             written_text=written_text,
+            revision=revision,
+            session_token=session_token,
+            annotations=annotations,
         )
         if answer is SaveAnswerService._CLEARED:
             return None
@@ -456,6 +516,9 @@ class SaveAnswerService:
         gap_answers: dict | None = None,
         matching: dict | None = None,
         written_text: str | None = None,
+        revision: int | None = None,
+        session_token: str | None = None,
+        annotations: dict | None = None,
     ) -> StudentAnswer | object | None:
         """Javobni saqlash yoki yangilash."""
         # -- Attempt ni olish va tekshirish --------------------------------
@@ -487,6 +550,14 @@ class SaveAnswerService:
                 "Bu attempt allaqachon yakunlangan. Javob o'zgartirib bo'lmaydi."
             )
 
+        # -- Session lease check -------------------------------------------
+        clean_token = (session_token or "").strip()
+        if clean_token and attempt.session_token and clean_token != attempt.session_token:
+            raise SessionLockConflictError(
+                "Boshqa oyna yoki qurilma ushbu urinish sessiyasini boshqaruvga oldi.",
+                server_revision=int(attempt.last_revision or 0),
+            )
+
         # -- Timer tekshirish ----------------------------------------------
         if attempt.is_time_expired:
             # Timeout — avtomatik yakunlash
@@ -507,6 +578,60 @@ class SaveAnswerService:
                 attempt.test.id,
             )
             raise ValueError("Savol topilmadi yoki bu testga tegishli emas.")
+
+        # -- Monotonic answer revision check -------------------------------
+        existing_ans = StudentAnswer.objects.filter(
+            attempt=attempt,
+            question=question,
+        ).only("id", "revision").first()
+        if revision is not None and existing_ans is not None:
+            if int(revision) < int(existing_ans.revision or 0):
+                raise StaleRevisionError(
+                    "Eski javob reviziyasi (stale write) rad etildi.",
+                    server_revision=int(existing_ans.revision or 0),
+                )
+
+        answer = SaveAnswerService._persist_answer(
+            attempt=attempt,
+            question=question,
+            choice_ids=choice_ids,
+            text_answer=text_answer,
+            allow_clear=allow_clear,
+            gap_answers=gap_answers,
+            matching=matching,
+            written_text=written_text,
+        )
+        if answer in (SaveAnswerService._CLEARED, SaveAnswerService._SECTION_EXPIRED, None):
+            return answer
+
+        # Record monotonic revision & optional annotations under the attempt lock
+        next_rev = int(revision) if revision is not None else max(int(existing_ans.revision or 0) if existing_ans else 0, int(attempt.last_revision or 0) + 1)
+        ans_updates: list[str] = []
+        if getattr(answer, "revision", 0) != next_rev:
+            answer.revision = next_rev
+            ans_updates.append("revision")
+        if annotations is not None and isinstance(annotations, dict):
+            answer.annotations = annotations
+            ans_updates.append("annotations")
+        if ans_updates:
+            answer.save(update_fields=ans_updates)
+        if next_rev > int(attempt.last_revision or 0):
+            attempt.last_revision = next_rev
+            attempt.save(update_fields=["last_revision"])
+        return answer
+
+    @staticmethod
+    def _persist_answer(
+        *,
+        attempt: TestAttempt,
+        question: Question,
+        choice_ids: list[int],
+        text_answer: str = "",
+        allow_clear: bool = False,
+        gap_answers: dict | None = None,
+        matching: dict | None = None,
+        written_text: str | None = None,
+    ) -> StudentAnswer | object | None:
 
         from apps.tests.trial import question_in_trial
 
@@ -839,6 +964,46 @@ class ExamBridgeService:
             if submission.status == EssaySubmission.Status.DRAFT:
                 ExamBridgeService._dispatch(submission)
             return submission
+
+        attempt = answer.attempt
+        test = attempt.test
+        exam_type = getattr(test, "exam_type", "")
+        is_ielts = exam_type in (Test.ExamType.IELTS_ACADEMIC, Test.ExamType.IELTS_GENERAL)
+        is_multilevel = exam_type == Test.ExamType.CEFR_MULTILEVEL
+
+        if is_ielts or is_multilevel:
+            cfg = answer.question.config or {}
+            task_type = str(
+                cfg.get("task_type")
+                or ("multilevel_v2" if is_multilevel else "ielts_task2")
+            )
+            q_pts = int(getattr(answer.question, "points", 0) or 0)
+            if is_multilevel:
+                sub_max = q_pts if q_pts in (5, 6, 16) else 16
+                rubric_tag = "uzbmb_multilevel_writing_2026_v2"
+            else:
+                sub_max = 9
+                rubric_tag = "ielts_writing_v1"
+
+            submission = EssaySubmission.objects.create(
+                student_id=student_id,
+                topic=None,
+                essay_text=text,
+                word_count=WordCounter.count(text),
+                max_score=sub_max,
+                raw_result={"subject": "english", "rubric_type": task_type, "exam_type": exam_type},
+                status=EssaySubmission.Status.PENDING_TEACHER,
+                teacher_review_requested=True,
+                teacher_review_reason=f"Full Mock ({test.title})",
+                source=EssaySubmission.Source.EXAM,
+                cache_scope=EssaySubmission.CacheScope.HIGH_STAKES,
+                submitted_at=timezone.now(),
+            )
+            bridge.essay_submission = submission
+            bridge.rubric_version = rubric_tag
+            bridge.save(update_fields=["essay_submission", "rubric_version"])
+            return submission
+
         submission = EssaySubmission.objects.create(
             student_id=student_id,
             topic=None,
@@ -889,14 +1054,15 @@ class ExamBridgeService:
         None = not graded yet (pending — never zero).
         """
         from apps.essays.services import (
-            ESSAY_RUBRIC_MAX_SCORE,
+            detect_submission_rubric,
             essay_has_grade_result,
         )
 
         if submission is None or not essay_has_grade_result(submission):
             return None
+        _scale, rubric_max = detect_submission_rubric(submission)
         return _written_earned(
-            question.points, submission.effective_score, ESSAY_RUBRIC_MAX_SCORE
+            question.points, submission.effective_score, rubric_max
         )
 
 
@@ -924,14 +1090,20 @@ class SubmitAttemptService:
 
     @staticmethod
     @transaction.atomic
-    def execute(attempt_id: int, student: Any) -> AttemptResult:
+    def execute(
+        attempt_id: int,
+        student: Any,
+        idempotency_key: str | None = None,
+    ) -> AttemptResult:
         """Testni yakunlash va natijani hisoblash.
 
         After grading, homework linked to this attempt records the official
         outcome in the same transaction (and queues its notification once).
         A failure there is logged and never affects the grade.
         """
-        outcome = SubmitAttemptService._execute(attempt_id, student)
+        outcome = SubmitAttemptService._execute(
+            attempt_id, student, idempotency_key=idempotency_key
+        )
         try:
             from apps.courses.homework_service import homework_pending_for_attempt, sync_homework_for_attempt
 
@@ -943,7 +1115,11 @@ class SubmitAttemptService:
         return outcome
 
     @staticmethod
-    def _execute(attempt_id: int, student: Any) -> AttemptResult:
+    def _execute(
+        attempt_id: int,
+        student: Any,
+        idempotency_key: str | None = None,
+    ) -> AttemptResult:
         # -- Attempt ni olish (SELECT FOR UPDATE — double-submit lock) -----
         try:
             attempt = (
@@ -967,6 +1143,15 @@ class SubmitAttemptService:
             )
             raise ValueError("Attempt topilmadi.")
 
+        clean_idem = (idempotency_key or "").strip()
+        if (
+            clean_idem
+            and attempt.status != TestAttempt.Status.IN_PROGRESS
+            and isinstance(attempt.media_state, dict)
+            and attempt.media_state.get("submit_idempotency_key") == clean_idem
+        ):
+            return SubmitAttemptService._build_result_from_attempt(attempt)
+
         # -- Status tekshirish (prevents double-submit) --------------------
         # State machine: IN_PROGRESS → COMPLETED/TIMEOUT/PENDING_GRADING;
         # PENDING_GRADING → COMPLETED (finalize, idempotent); terminal
@@ -986,6 +1171,12 @@ class SubmitAttemptService:
                 attempt.status,
             )
             raise ValueError("Bu attempt allaqachon yakunlangan.")
+
+        if clean_idem:
+            state = dict(attempt.media_state or {})
+            state["submit_idempotency_key"] = clean_idem
+            attempt.media_state = state
+            attempt.save(update_fields=["media_state"])
 
         # -- Vaqt tekshirish -----------------------------------------------
         if attempt.is_time_expired:
@@ -1154,9 +1345,76 @@ class SubmitAttemptService:
             case_sensitive = bool(cfg.get("case_sensitive", False))
             partial_credit = bool(cfg.get("partial_credit", False))
 
-            # Speaking is assessed outside the CBT (AI Speaking / examiner):
-            # never auto-graded here and never weighs on the percentage.
+            # Speaking prompts inside Full Mocks resolve linked SpeakingSubmission records;
+            # legacy standalone/non-English SPEAKING_PROMPT questions preserve 0 weight unless linked.
             if question.question_type == Question.QuestionType.SPEAKING_PROMPT:
+                spk_meta = (
+                    (attempt.media_state or {}).get("speaking_submissions") or {}
+                    if isinstance(attempt.media_state, dict)
+                    else {}
+                )
+                raw_entry = spk_meta.get(str(question.id))
+                spk_sub_id = (
+                    raw_entry.get("submission_id")
+                    if isinstance(raw_entry, dict)
+                    else (int(raw_entry) if str(raw_entry or "").isdigit() else None)
+                )
+                ans_row = answers_by_qid.get(question.id)
+                if not spk_sub_id and ans_row and str(ans_row.text_answer or "").startswith("speaking_submission:"):
+                    tail = str(ans_row.text_answer).split(":", 1)[1]
+                    if tail.isdigit():
+                        spk_sub_id = int(tail)
+
+                if spk_sub_id:
+                    from apps.speaking.models import SpeakingSubmission
+
+                    spk_sub = SpeakingSubmission.objects.filter(pk=spk_sub_id).first()
+                    is_ml = test.exam_type == Test.ExamType.CEFR_MULTILEVEL
+                    has_final = (
+                        spk_sub is not None
+                        and spk_sub.status == SpeakingSubmission.Status.COMPLETED
+                        and (spk_sub.teacher_score is not None or spk_sub.final_score is not None or spk_sub.overall_band is not None)
+                    )
+                    if has_final and spk_sub is not None:
+                        if is_ml:
+                            raw_total = (spk_sub.task_scores or {}).get("raw_total")
+                            if raw_total is not None and qmax <= Decimal("21"):
+                                earned_s = min(qmax, Decimal(str(raw_total)))
+                            else:
+                                s75 = spk_sub.final_score if spk_sub.final_score is not None else Decimal("0")
+                                earned_s = min(qmax, (Decimal(str(s75)) / Decimal("75") * qmax).quantize(Decimal("0.1")))
+                        else:
+                            band_s = spk_sub.teacher_score if spk_sub.teacher_score is not None else (spk_sub.overall_band or spk_sub.final_score or Decimal("0"))
+                            earned_s = min(qmax, (Decimal(str(band_s)) / Decimal("9") * qmax).quantize(Decimal("0.1")))
+                        question_scores.append(
+                            QuestionScore(
+                                question_id=question.id,
+                                earned=earned_s,
+                                maximum=qmax,
+                                is_correct=earned_s > 0,
+                                answered=True,
+                                section_code=section_code or "SPEAKING",
+                                section_id=section_id,
+                                kind="written",
+                            )
+                        )
+                    else:
+                        if ans_row:
+                            pending_written_answers.append(ans_row)
+                        question_scores.append(
+                            QuestionScore(
+                                question_id=question.id,
+                                earned=Decimal("0"),
+                                maximum=qmax,
+                                is_correct=None,
+                                answered=True,
+                                section_code=section_code or "SPEAKING",
+                                section_id=section_id,
+                                kind="written",
+                            )
+                        )
+                    continue
+
                 question_scores.append(
                     QuestionScore(
                         question_id=question.id,
@@ -1210,7 +1468,11 @@ class SubmitAttemptService:
                     ]
                     for pos_keys in accepted.values():
                         raw_keys.extend(pos_keys)
-                    is_correct = _evaluate_text_answer(student_answer.text_answer, raw_keys)
+                    is_correct = _evaluate_text_answer(
+                    student_answer.text_answer,
+                    raw_keys,
+                    word_limit_rule=(question.config or {}).get("word_limit_rule"),
+                )
                     earned = qmax if is_correct else Decimal("0")
 
                 question_scores.append(
@@ -1424,7 +1686,11 @@ class SubmitAttemptService:
                     for k in (question.correct_text or "").split("|")
                     if k.strip()
                 ]
-                is_correct = _evaluate_text_answer(student_answer.text_answer, raw_keys)
+                is_correct = _evaluate_text_answer(
+                    student_answer.text_answer,
+                    raw_keys,
+                    word_limit_rule=(question.config or {}).get("word_limit_rule"),
+                )
                 question_scores.append(
                     QuestionScore(
                         question_id=question.id,
@@ -1569,6 +1835,22 @@ class SubmitAttemptService:
             )
             # "Passed" for Multi-level means at least B1 overall, not 60%.
             is_passed = summary["has_certificate"]
+        elif test.exam_type in (Test.ExamType.IELTS_ACADEMIC, Test.ExamType.IELTS_GENERAL):
+            from apps.tests.blueprints import score_ielts_sections
+            from apps.tests import cefr_multilevel
+
+            names = {s.section_code.upper(): s.section_name for s in agg.sections if s.section_code}
+            ielts_summary = score_ielts_sections(
+                question_scores,
+                exam_type=test.exam_type,
+                section_names=names,
+            )
+            band_val = ielts_summary["overall_band"]
+            cefr_val = ielts_summary["cefr_level"]
+            extra_fields["section_scores"] = cefr_multilevel.to_json(ielts_summary["sections"])
+            if band_val is None:
+                grading_status = "pending_grading"
+                new_status = TestAttempt.Status.PENDING_GRADING
         else:
             band_val = raw_to_ielts_band(correct_count, total_questions=total_questions)
             cefr_val, _ = raw_to_cefr_multilevel(correct_count, max_score=total_questions)
@@ -1934,9 +2216,31 @@ class SubmitAttemptService:
 
                 if sub.status == _ES.Status.DRAFT:
                     ExamBridgeService._dispatch(sub)
-        if still_pending:
+        # Also check any linked SpeakingSubmissions inside media_state before finalizing
+        spk_map = (
+            (attempt.media_state or {}).get("speaking_submissions") or {}
+            if isinstance(attempt.media_state, dict)
+            else {}
+        )
+        spk_ids = [
+            int(v["submission_id"]) if isinstance(v, dict) and str(v.get("submission_id", "")).isdigit() else int(v)
+            for v in spk_map.values()
+            if (isinstance(v, dict) and str(v.get("submission_id", "")).isdigit()) or str(v or "").isdigit()
+        ]
+        pending_spk = 0
+        if spk_ids:
+            from apps.speaking.models import SpeakingSubmission
+
+            for spk in SpeakingSubmission.objects.filter(pk__in=spk_ids):
+                is_done = spk.status == SpeakingSubmission.Status.COMPLETED and (
+                    spk.final_score is not None or spk.overall_band is not None or spk.teacher_score is not None
+                )
+                if not is_done:
+                    pending_spk += 1
+
+        if still_pending or pending_spk:
             raise ValueError(
-                f"Yozma ish baholanmoqda ({len(still_pending)} ta kutilmoqda)."
+                f"Yozma yoki og'zaki ish baholanmoqda ({len(still_pending) + pending_spk} ta kutilmoqda)."
             )
         return SubmitAttemptService._grade_attempt(attempt)
 

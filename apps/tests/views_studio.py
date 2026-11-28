@@ -271,3 +271,46 @@ def studio_media_view(request):
     except svc.StudioError as e:
         return _err(e)
     return Response(stored, status=201)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsStudioTeacher])
+def studio_package_validate_view(request):
+    from apps.tests.package_service import validate_exam_package
+
+    allow_keyless = str(request.query_params.get("template") or request.data.get("isTemplate") or "").lower() in ("1", "true")
+    report = validate_exam_package(request.data, allow_keyless=allow_keyless)
+    return Response(report, status=200 if report["valid"] else 400)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsStudioTeacher])
+def studio_package_import_view(request):
+    from apps.tests.package_service import PackageValidationError, import_exam_package
+
+    allow_keyless = str(request.query_params.get("template") or request.data.get("isTemplate") or "").lower() in ("1", "true")
+    try:
+        test = import_exam_package(request.user, request.data, allow_keyless=allow_keyless)
+    except PackageValidationError as exc:
+        return Response({"code": "package_invalid", "errors": exc.errors}, status=400)
+    return Response(_detail(test), status=201)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsStudioTeacher])
+def studio_package_export_view(request, test_id: int):
+    from apps.tests.package_service import export_exam_package
+
+    test = _own_test(request, test_id)
+    as_template = str(request.query_params.get("template") or "").lower() in ("1", "true")
+    return Response(export_exam_package(test, template=as_template), status=200)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsStudioTeacher])
+def studio_readiness_view(request, test_id: int):
+    from apps.tests.package_service import check_mock_publish_readiness
+
+    test = _own_test(request, test_id)
+    issues = check_mock_publish_readiness(test)
+    return Response({"ready": len(issues) == 0, "issues": issues}, status=200)

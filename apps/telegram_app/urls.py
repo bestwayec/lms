@@ -63,4 +63,5 @@ urlpatterns = [
     path("api/myplan/", views.tma_myplan_view, name="myplan"),
     path("api/mytuition/", views.tma_mytuition_view, name="mytuition"),
     path("api/insights/", views.tma_insights_view, name="insights"),
+    path("api/english/", views.tma_english_hub_view, name="english-hub"),
 ]

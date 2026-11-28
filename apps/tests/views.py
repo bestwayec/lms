@@ -30,7 +30,7 @@ from rest_framework.views import APIView
 
 from apps.accounts.access import is_platform_admin
 
-from .models import ExamPart, Test, TestAttempt
+from .models import ExamPart, Question, StudentAnswer, Test, TestAttempt
 from .permissions import CanStartAttempt, IsAttemptOwner
 from .serializers import (
     AttemptDetailSerializer,
@@ -40,7 +40,18 @@ from .serializers import (
     TestListSerializer,
 )
 from .visibility import can_see_test_content, visible_tests
-from .services import SaveAnswerService, StartAttemptService, SubmitAttemptService, TestPinRequiredError, TestInvalidPinError, TestAccessDeniedError, TestPinLockedError
+from .services import (
+    SaveAnswerService,
+    SessionLockConflictError,
+    StaleRevisionError,
+    StartAttemptService,
+    SubmitAttemptService,
+    TakeoverSessionService,
+    TestAccessDeniedError,
+    TestInvalidPinError,
+    TestPinLockedError,
+    TestPinRequiredError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -567,9 +578,22 @@ class SaveBatchAnswerView(APIView):
                         gap_answers=gap_ans,
                         matching=matching_ans,
                         written_text=written_ans,
+                        revision=item.get("revision"),
+                        session_token=item.get("session_token") or request.data.get("session_token"),
+                        annotations=item.get("annotations"),
                         student=request.user,
                     )
                     saved_count += 1
+        except (StaleRevisionError, SessionLockConflictError) as conflict:
+            return Response(
+                {
+                    "error": str(conflict),
+                    "code": conflict.code,
+                    "server_revision": conflict.server_revision,
+                    "saved_count": saved_count,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
         except Exception as e:
             logger.warning(
                 "Batch save partial failure: attempt=%s, user=%s, error=%s",
@@ -583,12 +607,16 @@ class SaveBatchAnswerView(APIView):
             )
 
         attempt.refresh_from_db()
+        from django.utils import timezone
+
         return Response(
             {
                 "success": True,
                 "message": f"{saved_count} ta javob muvaffaqiyatli sinxronlandi.",
                 "saved_count": saved_count,
+                "attempt_last_revision": int(attempt.last_revision or 0),
                 "remaining_seconds": attempt.remaining_seconds,
+                "server_time": timezone.now().isoformat(),
                 "synced": True,
             },
             status=status.HTTP_200_OK,
@@ -650,6 +678,9 @@ class SaveAnswerView(APIView):
                 gap_answers=serializer.validated_data.get("gap_answers") or {},
                 matching=serializer.validated_data.get("matching") or {},
                 written_text=serializer.validated_data.get("written_text"),
+                revision=serializer.validated_data.get("revision"),
+                session_token=serializer.validated_data.get("session_token"),
+                annotations=serializer.validated_data.get("annotations"),
                 student=request.user,
             )
             saved_choices = []
@@ -666,8 +697,12 @@ class SaveAnswerView(APIView):
             if hasattr(answer, "matching_responses"):
                 matching_cnt = answer.matching_responses.count()
             rem_sec = None
+            last_rev = 0
             if hasattr(answer, "attempt") and answer.attempt:
                 rem_sec = answer.attempt.remaining_seconds
+                last_rev = int(answer.attempt.last_revision or 0)
+
+            from django.utils import timezone
 
             return Response(
                 {
@@ -679,9 +714,21 @@ class SaveAnswerView(APIView):
                     "saved_gap_positions": saved_gaps,
                     "saved_matching_count": matching_cnt,
                     "written_word_count": getattr(answer, "written_word_count", 0) or 0,
+                    "revision": getattr(answer, "revision", 0) or 0,
+                    "attempt_last_revision": last_rev,
                     "remaining_seconds": rem_sec,
+                    "server_time": timezone.now().isoformat(),
                 },
                 status=status.HTTP_200_OK,
+            )
+        except (StaleRevisionError, SessionLockConflictError) as conflict:
+            return Response(
+                {
+                    "error": str(conflict),
+                    "code": conflict.code,
+                    "server_revision": conflict.server_revision,
+                },
+                status=status.HTTP_409_CONFLICT,
             )
         except ValueError as e:
             logger.warning(
@@ -764,9 +811,14 @@ class SubmitAttemptView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         try:
+            idem_key = (
+                request.headers.get("Idempotency-Key")
+                or (request.data.get("idempotency_key") if isinstance(request.data, dict) else None)
+            )
             result = SubmitAttemptService.execute(
                 attempt_id=attempt_id,
                 student=request.user,
+                idempotency_key=idem_key,
             )
         except ValueError as e:
             logger.warning(
@@ -841,6 +893,223 @@ class SubmitAttemptView(APIView):
                 },
             },
             status=status.HTTP_200_OK,
+        )
+
+
+class SessionTakeoverView(APIView):
+    """POST /api/tests/attempts/{id}/session-takeover/ — transfer session lease."""
+
+    permission_classes = [IsAuthenticated, IsAttemptOwner]
+
+    def post(self, request: Request, attempt_id: int, *args: Any, **kwargs: Any) -> Response:
+        if _own_attempt_or_404(request, attempt_id) is None:
+            return Response(
+                {"error": "Attempt topilmadi."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        try:
+            payload = TakeoverSessionService.execute(attempt_id=attempt_id, student=request.user)
+            return Response(payload, status=status.HTTP_200_OK)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ListeningScheduleView(APIView):
+    """GET/POST /api/tests/attempts/{id}/listening/{part_id}/play/ — server playback schedule."""
+
+    permission_classes = [IsAuthenticated, IsAttemptOwner]
+
+    def get(self, request: Request, attempt_id: int, part_id: int, *args: Any, **kwargs: Any) -> Response:
+        if _own_attempt_or_404(request, attempt_id) is None:
+            return Response({"error": "Attempt topilmadi."}, status=status.HTTP_404_NOT_FOUND)
+        from .listening_service import get_or_update_listening_schedule
+
+        try:
+            data = get_or_update_listening_schedule(
+                attempt_id=attempt_id,
+                student=request.user,
+                part_id=part_id,
+                start_play=False,
+            )
+            return Response(data, status=status.HTTP_200_OK)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+    def post(self, request: Request, attempt_id: int, part_id: int, *args: Any, **kwargs: Any) -> Response:
+        if _own_attempt_or_404(request, attempt_id) is None:
+            return Response({"error": "Attempt topilmadi."}, status=status.HTTP_404_NOT_FOUND)
+        from .listening_service import get_or_update_listening_schedule
+
+        dur = request.data.get("duration_seconds") if isinstance(request.data, dict) else None
+        try:
+            dur_val = float(dur) if dur is not None else None
+        except (TypeError, ValueError):
+            dur_val = None
+        try:
+            data = get_or_update_listening_schedule(
+                attempt_id=attempt_id,
+                student=request.user,
+                part_id=part_id,
+                start_play=True,
+                duration_seconds=dur_val,
+            )
+            return Response(data, status=status.HTTP_200_OK)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ListeningAudioStreamView(APIView):
+    """GET /api/tests/attempts/{id}/listening/{part_id}/audio/ — Range-safe audio without counting plays."""
+
+    permission_classes = [IsAuthenticated, IsAttemptOwner]
+
+    def get(self, request: Request, attempt_id: int, part_id: int, *args: Any, **kwargs: Any):
+        from django.http import Http404
+        from apps.core.private_files import stream_range_file_response
+
+        attempt = _own_attempt_or_404(request, attempt_id)
+        if attempt is None:
+            raise Http404
+        part = ExamPart.objects.filter(pk=part_id, section__test_id=attempt.test_id).first()
+        if part is None or not part.audio:
+            raise Http404
+        return stream_range_file_response(
+            request,
+            part.audio,
+            download_name=f"listening-part-{part.number}.wav",
+        )
+
+
+class AttemptSpeakingUploadView(APIView):
+    """
+    POST /api/tests/attempts/{attempt_id}/questions/{question_id}/speaking/
+
+    Record & attach a Speaking response directly inside an active Full Mock / English exam
+    using bounded WAV/WebM/OGG duration verification and duplicate-hash protection.
+    """
+
+    permission_classes = [IsAuthenticated, IsAttemptOwner]
+
+    def post(self, request: Request, attempt_id: int, question_id: int, *args: Any, **kwargs: Any) -> Response:
+        from django.db import transaction
+        from apps.speaking.audio_verify import InvalidSpeakingAudio, inspect_uploaded_audio
+        from apps.speaking.models import SpeakingSubmission, SpeakingTopic
+
+        audio_file = request.FILES.get("audio")
+        if not audio_file:
+            return Response(
+                {"ok": False, "code": "SPEAKING_AUDIO_EMPTY", "error": "Ovoz yozuvi (audio) yuklanmadi."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        expected_raw = request.data.get("expected_seconds")
+        expected_seconds = int(expected_raw) if str(expected_raw or "").isdigit() else None
+        duration_raw = request.data.get("duration_seconds", "60")
+        duration = max(5, min(900, int(duration_raw) if str(duration_raw or "").isdigit() else 60))
+
+        try:
+            audio_meta = inspect_uploaded_audio(
+                audio_file,
+                expected_seconds=expected_seconds,
+            )
+        except InvalidSpeakingAudio as exc:
+            return Response(
+                {"ok": False, "code": exc.code, "error": exc.message},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            attempt = (
+                TestAttempt.objects.select_related("test")
+                .select_for_update()
+                .filter(id=attempt_id, student=request.user)
+                .first()
+            )
+            if not attempt:
+                return Response({"ok": False, "error": "Attempt topilmadi."}, status=status.HTTP_404_NOT_FOUND)
+            if attempt.status != TestAttempt.Status.IN_PROGRESS:
+                return Response(
+                    {"ok": False, "code": "ATTEMPT_CLOSED", "error": "Urinish allaqachon yakunlangan."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            question = attempt.test.questions.filter(pk=question_id).first()
+            if not question or question.question_type != Question.QuestionType.SPEAKING_PROMPT:
+                return Response(
+                    {"ok": False, "error": "Speaking savoli topilmadi."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            state = dict(attempt.media_state or {})
+            spk_map = dict(state.get("speaking_submissions") or {})
+            existing_entry = spk_map.get(str(question.id))
+            if (
+                isinstance(existing_entry, dict)
+                and existing_entry.get("audio_hash")
+                and existing_entry.get("audio_hash") == audio_meta.get("audio_hash")
+            ):
+                existing_sub = SpeakingSubmission.objects.filter(pk=existing_entry.get("submission_id")).first()
+                if existing_sub:
+                    return Response(
+                        {
+                            "ok": True,
+                            "duplicate": True,
+                            "submission_id": existing_sub.id,
+                            "status": existing_sub.status,
+                            "decoded_duration_ms": existing_sub.decoded_duration_ms,
+                            "audio_hash": existing_sub.audio_hash,
+                        },
+                        status=status.HTTP_200_OK,
+                    )
+
+            is_ml = attempt.test.exam_type == Test.ExamType.CEFR_MULTILEVEL
+            topic_part = SpeakingTopic.PartChoice.MULTILEVEL if is_ml else SpeakingTopic.PartChoice.PART2
+            topic, _ = SpeakingTopic.objects.get_or_create(
+                title=(question.text or f"Mock Speaking Q{question.id}")[:250],
+                part=topic_part,
+                defaults={"prompt": question.text or "Respond clearly to the speaking prompt."},
+            )
+            sub = SpeakingSubmission.objects.create(
+                user=request.user,
+                topic=topic,
+                audio_file=audio_file,
+                duration_seconds=audio_meta.get("decoded_seconds") or duration,
+                decoded_duration_ms=audio_meta.get("decoded_duration_ms"),
+                audio_hash=audio_meta.get("audio_hash", ""),
+                is_verified_audio=bool(audio_meta.get("is_verified_audio")),
+                track=SpeakingSubmission.Track.CEFR_MULTILEVEL if is_ml else SpeakingSubmission.Track.IELTS,
+                rubric_version="uzbmb_multilevel_speaking_2026_v2" if is_ml else "ielts_speaking_v1",
+                teacher_review_requested=True,
+                status=SpeakingSubmission.Status.PENDING_TEACHER,
+            )
+
+            spk_map[str(question.id)] = {
+                "submission_id": sub.id,
+                "audio_hash": sub.audio_hash,
+                "decoded_duration_ms": sub.decoded_duration_ms,
+                "status": sub.status,
+            }
+            state["speaking_submissions"] = spk_map
+            attempt.media_state = state
+            attempt.save(update_fields=["media_state"])
+
+            StudentAnswer.objects.update_or_create(
+                attempt=attempt,
+                question=question,
+                defaults={"text_answer": f"speaking_submission:{sub.id}"},
+            )
+
+        return Response(
+            {
+                "ok": True,
+                "duplicate": False,
+                "submission_id": sub.id,
+                "status": sub.status,
+                "decoded_duration_ms": sub.decoded_duration_ms,
+                "is_verified_audio": sub.is_verified_audio,
+                "audio_hash": sub.audio_hash,
+            },
+            status=status.HTTP_201_CREATED,
         )
 
 
@@ -1461,11 +1730,17 @@ class ReportViolationView(APIView):
                 update_fields=["violation_count", "cheating_detected", "violation_logs"]
             )
             try:
+                from apps.results.models import Result
+
                 result = SubmitAttemptService.execute(
                     attempt_id=attempt.id,
                     student=request.user,
                 )
-                result_id = result.id
+                result_id = (
+                    Result.objects.filter(attempt_id=result.attempt_id)
+                    .values_list("id", flat=True)
+                    .first()
+                )
                 attempt.refresh_from_db()
             except Exception as exc:
                 logger.warning(
@@ -1603,6 +1878,8 @@ class CertificateCardView(APIView):
                 cefr_multilevel.summarize(attempt.section_scores or {})
             )
             summary.update(
+                grading_status="graded" if summary.get("overall") else "pending_grading",
+                cefr_level=(summary.get("overall") or {}).get("level") or "",
                 candidate_name=student_name,
                 exam_title=attempt.test.title,
                 exam_type=attempt.test.get_exam_type_display(),
@@ -1616,6 +1893,36 @@ class CertificateCardView(APIView):
         exam_type_str = getattr(
             attempt.test, "get_exam_type_display", lambda: "IELTS / CEFR"
         )()
+
+        if attempt.test.exam_type in (Test.ExamType.IELTS_ACADEMIC, Test.ExamType.IELTS_GENERAL) and getattr(attempt, "section_scores", None):
+            sec_map = attempt.section_scores or {}
+            has_pending = any(isinstance(v, dict) and v.get("status") == "pending" for v in sec_map.values())
+            overall_val = None if has_pending or attempt.band_score is None else float(attempt.band_score)
+            from apps.tests.blueprints import IELTS_ESTIMATE_VERSION
+            from apps.results.models import Result
+
+            result = Result.objects.filter(attempt=attempt).only("correct_answers", "total_questions").first()
+            correct = result.correct_answers if result else score_info["raw_score"]
+            total = result.total_questions if result else score_info["total_questions"]
+            return Response(
+                {
+                    "scale": "ielts_estimate",
+                    "is_estimate": True,
+                    "estimate_version": IELTS_ESTIMATE_VERSION,
+                    "grading_status": "pending_grading" if overall_val is None else "graded",
+                    "candidate_name": student_name,
+                    "exam_title": attempt.test.title,
+                    "exam_type": exam_type_str,
+                    "issue_date": (attempt.completed_at or attempt.started_at).strftime("%d.%m.%Y"),
+                    "correct_answers": correct,
+                    "total_questions": total,
+                    "overall_band": overall_val,
+                    "sections": sec_map,
+                    "is_valid": False,
+                    "show_estimate_notice": bool(getattr(settings, "SHOW_ESTIMATE_NOTICE", False)),
+                },
+                status=status.HTTP_200_OK,
+            )
 
         # IELTS / other English tests: the raw score and an ESTIMATED band, nothing
         # that looks like a certificate (no number, QR code, issuer or "official" title).
@@ -1638,6 +1945,18 @@ class CertificateCardView(APIView):
             "show_estimate_notice": bool(getattr(settings, "SHOW_ESTIMATE_NOTICE", False)),
         }
         return Response(payload, status=status.HTTP_200_OK)
+
+
+class EnglishBlueprintsView(APIView):
+    """GET /api/tests/english/blueprints/?exam_type=..."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        from apps.tests.blueprints import get_blueprint
+
+        exam_type = (request.query_params.get("exam_type") or "").strip() or None
+        return Response(get_blueprint(exam_type), status=status.HTTP_200_OK)
 
 
 # ---------------------------------------------------------------------------
@@ -1745,12 +2064,13 @@ class TestGradebookView(APIView):
                 status__in=[
                     TestAttempt.Status.COMPLETED,
                     TestAttempt.Status.TIMEOUT,
+                    TestAttempt.Status.PENDING_GRADING,
                     TestAttempt.Status.IN_PROGRESS,
                 ],
             )
             .select_related("student")
             .prefetch_related("answers")
-            .order_by("-score", "-rasch_score", "completed_at")
+            .order_by("-band_score", "-score", "-rasch_score", "completed_at")
         )
 
         seen_students = set()
@@ -1772,6 +2092,7 @@ class TestGradebookView(APIView):
             seen_students.add(student.id)
 
             is_in_progress = att.status == TestAttempt.Status.IN_PROGRESS
+            is_pending_grading = att.status == TestAttempt.Status.PENDING_GRADING
             if is_in_progress:
                 in_progress_count += 1
                 answers_cnt = att.answers.count()
@@ -1782,6 +2103,15 @@ class TestGradebookView(APIView):
                 pct = progress_pct
                 grade = "-"
                 badge_class = "badge-blue"
+            elif is_pending_grading:
+                answers_cnt = att.answers.count()
+                progress_pct = 100.0
+                raw = att.raw_score
+                rasch = float(att.rasch_score) if att.rasch_score else float(att.score or 0)
+                pct = float(att.percentage or 0)
+                status_label = "Tekshiruv kutilmoqda (W/S)"
+                grade = att.cefr_level or "Pending"
+                badge_class = "badge-amber"
             else:
                 completed_count += 1
                 answers_cnt = total_questions
@@ -1838,6 +2168,10 @@ class TestGradebookView(APIView):
                     ),
                     "status": att.status,
                     "is_in_progress": is_in_progress,
+                    "grading_status": "pending_grading" if is_pending_grading else ("in_progress" if is_in_progress else "graded"),
+                    "band_score": float(att.band_score) if att.band_score is not None else None,
+                    "cefr_level": att.cefr_level or "",
+                    "section_scores": att.section_scores or {},
                     "status_label": status_label,
                     "answers_count": answers_cnt,
                     "progress_percentage": progress_pct,

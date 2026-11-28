@@ -6,7 +6,6 @@ Models:
     SpeakingSubmission  — Audio recording, transcript, 4 criteria scores & AI feedback
 """
 
-from decimal import Decimal
 from django.conf import settings
 from django.db import models
 from django.utils.translation import gettext_lazy as _
@@ -89,7 +88,12 @@ class SpeakingSubmission(models.Model):
     class Status(models.TextChoices):
         EVALUATING = "evaluating", _("Baholanmoqda")
         COMPLETED = "completed", _("Yakunlandi")
+        PENDING_TEACHER = "pending_teacher", _("Ustoz tekshiruvida")
         ERROR = "error", _("Xatolik yuz berdi")
+
+    class Track(models.TextChoices):
+        IELTS = "ielts", _("IELTS Speaking (Band 0-9)")
+        CEFR_MULTILEVEL = "cefr_multilevel", _("CEFR Multi-level (B1-C1 / 75)")
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -110,38 +114,80 @@ class SpeakingSubmission(models.Model):
         null=True,
     )
     duration_seconds = models.PositiveIntegerField(_("Davomiyligi (soniya)"), default=0)
+    decoded_duration_ms = models.PositiveIntegerField(
+        _("Tekshirilgan audio davomiyligi (ms)"), null=True, blank=True
+    )
+    audio_hash = models.CharField(_("Audio SHA-256"), max_length=64, blank=True, default="", db_default="", db_index=True)
+    is_verified_audio = models.BooleanField(_("Audio tekshirilgan"), default=False, db_default=False)
+    track = models.CharField(
+        _("Yo'nalish"), max_length=24, choices=Track.choices, default=Track.IELTS, db_default=Track.IELTS, db_index=True
+    )
+    rubric_version = models.CharField(_("Rubrika versiyasi"), max_length=48, default="ielts_speaking_v1", db_default="ielts_speaking_v1")
     transcript = models.TextField(_("Ovoz matni (Transcript)"), blank=True, default="")
 
-    # 4 Official IELTS Evaluation Criteria (0.0 to 9.0)
+    # 4 Official IELTS Evaluation Criteria (0.0 to 9.0; pronunciation_score nullable when unmeasured acoustically)
     fluency_score = models.DecimalField(
         _("Fluency and Coherence (FC)"),
         max_digits=3,
         decimal_places=1,
-        default=Decimal("0.0"),
+        null=True,
+        blank=True,
+        default=None,
     )
     lexical_score = models.DecimalField(
         _("Lexical Resource (LR)"),
         max_digits=3,
         decimal_places=1,
-        default=Decimal("0.0"),
+        null=True,
+        blank=True,
+        default=None,
     )
     grammar_score = models.DecimalField(
         _("Grammatical Range and Accuracy (GRA)"),
         max_digits=3,
         decimal_places=1,
-        default=Decimal("0.0"),
+        null=True,
+        blank=True,
+        default=None,
     )
     pronunciation_score = models.DecimalField(
         _("Pronunciation (PR)"),
         max_digits=3,
         decimal_places=1,
-        default=Decimal("0.0"),
+        null=True,
+        blank=True,
+        default=None,
     )
     overall_band = models.DecimalField(
         _("Umumiy IELTS Band"),
         max_digits=3,
         decimal_places=1,
-        default=Decimal("0.0"),
+        null=True,
+        blank=True,
+        default=None,
+    )
+    task_scores = models.JSONField(
+        _("Bo'lim / Multi-level ballari"),
+        default=dict,
+        db_default={},
+        blank=True,
+    )
+    teacher_review_requested = models.BooleanField(_("Ustoz tekshiruvi so'ralgan"), default=False, db_default=False, db_index=True)
+    teacher_reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="speaking_reviews",
+        verbose_name=_("Tekshirgan ustoz"),
+    )
+    teacher_score = models.DecimalField(
+        _("Ustoz qo'ygan ball"), max_digits=5, decimal_places=1, null=True, blank=True
+    )
+    teacher_comments = models.TextField(_("Ustoz izohi"), blank=True, default="", db_default="")
+    teacher_reviewed_at = models.DateTimeField(_("Ustoz tekshirgan vaqt"), null=True, blank=True)
+    final_score = models.DecimalField(
+        _("Yakuniy ball"), max_digits=5, decimal_places=1, null=True, blank=True
     )
 
     feedback = models.JSONField(

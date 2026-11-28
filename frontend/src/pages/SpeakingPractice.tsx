@@ -29,13 +29,32 @@ export default function SpeakingPractice() {
   const [prepSecondsLeft, setPrepSecondsLeft] = useState<number>(60);
   const [speakSecondsLeft, setSpeakSecondsLeft] = useState<number>(120);
 
-  // Audio recording
+  // Audio recording & mic readiness
+  const [micStatus, setMicStatus] = useState<'idle' | 'checking' | 'ready' | 'error'>('idle');
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const prepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const speakTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const checkMicrophone = async () => {
+    setMicStatus('checking');
+    setError(null);
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setMicStatus('error');
+        setError(tr('spk_mic_unsupported'));
+        return;
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((track) => track.stop());
+      setMicStatus('ready');
+    } catch {
+      setMicStatus('error');
+      setError(tr('spk_mic_denied'));
+    }
+  };
 
   // Load topic
   useEffect(() => {
@@ -101,7 +120,11 @@ export default function SpeakingPractice() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioChunksRef.current = [];
 
-      const mediaRecorder = new MediaRecorder(stream);
+      const preferredTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'];
+      const chosenMime = preferredTypes.find((m) => MediaRecorder.isTypeSupported?.(m)) || '';
+      const mediaRecorder = chosenMime
+        ? new MediaRecorder(stream, { mimeType: chosenMime })
+        : new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (event) => {
@@ -111,7 +134,8 @@ export default function SpeakingPractice() {
       };
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const mimeType = mediaRecorder.mimeType || chosenMime || 'audio/webm';
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
         setAudioBlob(blob);
         setAudioUrl(URL.createObjectURL(blob));
         // Stop audio tracks
@@ -149,7 +173,8 @@ export default function SpeakingPractice() {
     setError(null);
 
     const fd = new FormData();
-    fd.append('audio', audioBlob, 'speaking_response.webm');
+    const ext = audioBlob.type.includes('ogg') ? 'ogg' : audioBlob.type.includes('wav') ? 'wav' : 'webm';
+    fd.append('audio', audioBlob, `speaking_response.${ext}`);
     fd.append('topic_id', String(topic.id));
     const duration = (topic.speak_time_seconds || 120) - speakSecondsLeft;
     fd.append('duration_seconds', String(Math.max(10, duration)));
@@ -340,7 +365,7 @@ export default function SpeakingPractice() {
             <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#FBBF24', marginBottom: 6 }}>
               {formatTimer(prepSecondsLeft)}
             </div>
-            <p className="muted" style={{ maxWidth: 440, margin: '0 auto 20px' }}>
+            <p style={{ maxWidth: 440, margin: '0 auto 20px', color: '#CBD5E1', fontSize: '0.92rem' }}>
               Qog'ozga qisqa reja tuzib oling. Tayyorgarlik vaqti tugagach nutq so'zlash boshlanadi.
             </p>
             <button
@@ -384,6 +409,16 @@ export default function SpeakingPractice() {
             <p className="muted small" style={{ maxWidth: 400, margin: '0 auto 20px' }}>
               Yuqoridagi binafsha tugmani bosing va baland, ravon ovozda gapirishni boshlang (maksimal {topic?.speak_time_seconds || 120} soniya).
             </p>
+            <button
+              type="button"
+              onClick={checkMicrophone}
+              className="btn sm ghost"
+              disabled={micStatus === 'checking'}
+              style={{ marginBottom: 14, fontWeight: 700 }}
+            >
+              {micStatus === 'ready' ? `✓ ${tr('spk_mic_ready')}` : micStatus === 'checking' ? tr('spk_mic_checking') : `🎤 ${tr('spk_mic_test')}`}
+            </button>
+            <br />
             <button
               type="button"
               onClick={startRecording}
