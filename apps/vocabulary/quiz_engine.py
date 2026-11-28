@@ -45,11 +45,12 @@ def build_answer_safe_vocab_questions(
             continue
 
         # Choose richest eligible question type deterministically
-        eligible = ["listen_choose", "listen_type"]
-        if sentence and re.search(rf"(?<![\w']){re.escape(word)}(?![\w'])", sentence, re.IGNORECASE):
-            eligible.extend(["fill_blank", "context_meaning"])
+        eligible: list[str] = []
         if synonyms:
             eligible.append("synonym")
+        if sentence and re.search(rf"(?<![\w']){re.escape(word)}(?![\w'])", sentence, re.IGNORECASE):
+            eligible.extend(["context_meaning", "fill_blank"])
+        eligible.extend(["listen_choose", "listen_type"])
 
         q_type = eligible[idx % len(eligible)]
         q: dict[str, Any] = {

@@ -66,19 +66,30 @@ export default function VocabularyStudio() {
 
   const submitAnswer = async (ans: string) => {
     if (!currentQ || !ans.trim()) return;
-    const res = await apiFetch<{ ok: boolean; is_correct: boolean; correct_answer: string }>(
-      '/api/v1/vocabulary/student-quiz/submit/',
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          id: currentQ.id,
-          word: currentQ.pronunciation_text || currentQ.prompt || '',
-          type: currentQ.type,
-          answer: ans.trim(),
-        }),
-      },
-    );
+    const res = await apiFetch<{
+      ok: boolean;
+      is_correct: boolean;
+      correct_answer: string;
+      due_count?: number;
+      mastered_count?: number;
+      streak?: number;
+    }>('/api/v1/vocabulary/student-quiz/submit/', {
+      method: 'POST',
+      body: JSON.stringify({
+        id: currentQ.id,
+        token: currentQ.token,
+        word: currentQ.pronunciation_text || (currentQ.type !== 'fill_blank' ? currentQ.prompt : '') || '',
+        type: currentQ.type,
+        answer: ans.trim(),
+      }),
+    });
     setFeedback({ is_correct: res.is_correct, correct_answer: res.correct_answer });
+    if (typeof res.due_count === 'number') {
+      setDueCount(res.due_count);
+    }
+    if (typeof res.mastered_count === 'number') {
+      setMasteredCount(res.mastered_count);
+    }
   };
 
   const nextQuestion = () => {

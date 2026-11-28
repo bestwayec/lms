@@ -408,7 +408,11 @@ def ielts_grade_view(request):
     )
     valid_task_types = {
         "ielts_task1": 150,
+        "ielts_ac_task1": 150,
+        "ielts_gt_letter": 150,
         "ielts_task2": 250,
+        "ielts_ac_task2": 250,
+        "ielts_gt_task2": 250,
         "multilevel_1_1": 50,
         "multilevel_1_2": 120,
         "multilevel_2": 180,
@@ -506,6 +510,9 @@ def ielts_grade_view(request):
             "ok": True,
             "submission_id": submission.id,
             "task_type": task_type,
+            "rubric_version": result.get("rubric_version"),
+            "evaluation_version": result.get("evaluation_version"),
+            "is_estimate": True,
             "overall_band": result["overall_band"],
             "cefr_level": result["cefr_level"],
             "word_count": result["word_count"],
@@ -514,7 +521,107 @@ def ielts_grade_view(request):
             "summary": result["summary"],
             "strengths": result["strengths"],
             "weaknesses": result["weaknesses"],
+            "spelling_errors": result.get("spelling_errors", []),
+            "corrections": result.get("corrections", []),
+            "vocabulary_upgrades": result.get("vocabulary_upgrades", []),
+            "next_level_example": result.get("next_level_example", ""),
             "teacher_recommendation": result["teacher_recommendation"],
             "improved_text": result["improved_text"],
+            "essay_text": essay_text,
+        }
+    )
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def ielts_draft_view(request):
+    """GET/POST /api/v1/essays/ielts/draft/ — Save and restore Writing Studio drafts."""
+    from django.utils import timezone
+    from apps.essays.models import EssayTopic
+
+    if request.method == "GET":
+        task_type = str(request.query_params.get("task_type") or "").strip().lower()
+        topic_id_raw = request.query_params.get("topic_id")
+        qs = EssaySubmission.objects.filter(
+            student=request.user,
+            status=EssaySubmission.Status.DRAFT,
+        )
+        if topic_id_raw and str(topic_id_raw).isdigit():
+            qs = qs.filter(topic_id=int(topic_id_raw))
+        elif task_type:
+            qs = qs.filter(raw_result__task_type=task_type)
+        draft = qs.order_by("-updated_at").first()
+        if not draft:
+            return Response({"draft": None})
+        raw = draft.raw_result if isinstance(draft.raw_result, dict) else {}
+        return Response(
+            {
+                "draft": {
+                    "id": draft.id,
+                    "task_type": raw.get("task_type") or "ielts_ac_task2",
+                    "topic_id": draft.topic_id,
+                    "topic_title": raw.get("topic_title") or (draft.topic.title if draft.topic else ""),
+                    "essay_text": draft.essay_text,
+                    "word_count": draft.word_count,
+                    "updated_at": draft.updated_at.isoformat(),
+                }
+            }
+        )
+
+    data = request.data or {}
+    essay_text = str(data.get("essay_text") or "")
+    task_type = str(data.get("task_type") or "ielts_ac_task2").strip().lower()
+    topic_title = str(data.get("topic_title") or "").strip()[:300]
+    topic_id_raw = data.get("topic_id")
+    topic = (
+        EssayTopic.objects.filter(id=int(topic_id_raw)).first()
+        if topic_id_raw is not None and str(topic_id_raw).isdigit()
+        else None
+    )
+
+    qs = EssaySubmission.objects.filter(
+        student=request.user,
+        status=EssaySubmission.Status.DRAFT,
+    )
+    if topic:
+        qs = qs.filter(topic=topic)
+    else:
+        qs = qs.filter(raw_result__task_type=task_type)
+    draft = qs.order_by("-updated_at").first()
+    wc = WordCounter.count(essay_text)
+    max_sc = 16 if task_type.startswith("multilevel") else 9
+    meta = {"subject": "english", "task_type": task_type, "topic_title": topic_title}
+
+    if draft:
+        draft.essay_text = essay_text
+        draft.word_count = wc
+        draft.max_score = max_sc
+        draft.raw_result = meta
+        draft.updated_at = timezone.now()
+        draft.save(update_fields=["essay_text", "word_count", "max_score", "raw_result", "updated_at"])
+    else:
+        draft = EssaySubmission.objects.create(
+            student=request.user,
+            topic=topic,
+            essay_text=essay_text,
+            word_count=wc,
+            max_score=max_sc,
+            raw_result=meta,
+            status=EssaySubmission.Status.DRAFT,
+            source=EssaySubmission.Source.WEB,
+        )
+
+    return Response(
+        {
+            "ok": True,
+            "draft": {
+                "id": draft.id,
+                "task_type": task_type,
+                "topic_id": draft.topic_id,
+                "topic_title": topic_title,
+                "essay_text": draft.essay_text,
+                "word_count": draft.word_count,
+                "updated_at": draft.updated_at.isoformat(),
+            },
         }
     )

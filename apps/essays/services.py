@@ -938,7 +938,7 @@ def detect_submission_rubric(submission: EssaySubmission) -> tuple[str, int]:
         else ("english" if rubric_type.startswith(("ielts", "multilevel")) or max_score in (9, 16, 75) else "uzbek")
     ) or "uzbek"
 
-    if rubric_type in ("ielts_task1", "ielts_task2") or (subject == "english" and max_score == 9) or max_score == 9:
+    if rubric_type.startswith("ielts") or (subject == "english" and max_score == 9) or max_score == 9:
         return "ielts", 9
     if rubric_type.startswith("multilevel") or (subject == "english" and max_score in (16, 75)) or max_score in (16, 75):
         return "multilevel", (75 if max_score == 75 else 16)
@@ -1220,6 +1220,10 @@ class TeacherReviewService:
             enqueue_essay_reviewed(submission, review)
         except Exception as outbox_err:
             logger.warning("Essay review outbox enqueue notice: %s", outbox_err)
+
+        from apps.speaking.services import _try_finalize_linked_mock_attempts
+
+        _try_finalize_linked_mock_attempts(essay_submission_id=submission.pk)
 
         logger.info(
             "Teacher review submitted: submission=%d, teacher=%d, score=%s/24, created=%s",
@@ -3368,6 +3372,10 @@ def apply_ai_result(submission, result: dict, *, cache_key: str | None = None) -
         submission.grading_cache_id = locked.grading_cache_id
         submission.grading_cache_key = locked.grading_cache_key
 
+        from apps.speaking.services import _try_finalize_linked_mock_attempts
+
+        _try_finalize_linked_mock_attempts(essay_submission_id=locked.pk)
+
 
 def is_ielts_submission(submission) -> bool:
     """Return True if the submission belongs to an English IELTS / Multi-level topic."""
@@ -4398,10 +4406,58 @@ def _validate_ielts_result(
         if str(w).strip()
     ]
 
+    allowed_task_types = (
+        "ielts_task1",
+        "ielts_task2",
+        "ielts_ac_task1",
+        "ielts_ac_task2",
+        "ielts_gt_letter",
+        "ielts_gt_task2",
+        "multilevel_1_1",
+        "multilevel_1_2",
+        "multilevel_2",
+        "multilevel_v2",
+    )
+
+    # Ground structured corrections (with original quote offsets) & filter unverified fabrications
+    raw_corrections = result.get("corrections") if isinstance(result.get("corrections"), list) else []
+    correction_candidates: list[dict[str, Any]] = []
+    for item in raw_corrections[:20]:
+        if isinstance(item, dict) and (item.get("quote") or item.get("original")):
+            correction_candidates.append(
+                {
+                    "quote": str(item.get("quote") or item.get("original") or "").strip(),
+                    "correction": str(item.get("correction") or item.get("corrected") or "").strip()[:300],
+                    "explanation": str(item.get("explanation") or item.get("grammar_rule") or "").strip()[:400],
+                    "category": str(item.get("category") or "grammar").strip()[:32],
+                }
+            )
+    if essay_text and correction_candidates:
+        from apps.core.ai_gateway import verify_evidence_items
+
+        verified_corr_all = verify_evidence_items(correction_candidates, essay_text)
+        corrections = [c for c in verified_corr_all if c.get("quote_verified")]
+    else:
+        corrections = []
+
+    raw_vocab = result.get("vocabulary_upgrades") if isinstance(result.get("vocabulary_upgrades"), list) else []
+    vocabulary_upgrades = [
+        {
+            "original": str(v.get("original") or "").strip()[:100],
+            "upgrade": str(v.get("upgrade") or v.get("improved") or "").strip()[:120],
+            "note": str(v.get("note") or v.get("explanation") or "").strip()[:240],
+        }
+        for v in raw_vocab[:10]
+        if isinstance(v, dict) and v.get("original") and (v.get("upgrade") or v.get("improved"))
+    ]
+
+    next_level_example = str(result.get("next_level_example") or result.get("next_level_rewrite") or "").strip()[:10000]
+
     return {
-        "rubric_type": task_type
-        if task_type in ("ielts_task1", "ielts_task2", "multilevel_1_1", "multilevel_1_2", "multilevel_2", "multilevel_v2")
-        else "ielts_task2",
+        "rubric_type": task_type if task_type in allowed_task_types else "ielts_task2",
+        "rubric_version": "uzbmb_multilevel_writing_2026_v2" if str(task_type).startswith("multilevel") else "ielts_writing_v1",
+        "evaluation_version": "EVIDENCE_V2",
+        "is_estimate": True,
         "topic_status": topic_status,
         "is_completely_off_topic": topic_status == "completely_off_topic",
         "is_off_topic": topic_status in ("completely_off_topic", "partially_off_topic"),
@@ -4425,6 +4481,9 @@ def _validate_ielts_result(
         "strengths": strengths,
         "weaknesses": weaknesses,
         "spelling_errors": spelling_errors,
+        "corrections": corrections,
+        "vocabulary_upgrades": vocabulary_upgrades,
+        "next_level_example": next_level_example,
         "teacher_recommendation": str(result.get("teacher_recommendation") or "")[
             :4000
         ],
@@ -4649,7 +4708,11 @@ def grade_ielts_essay(
     if min_words is None:
         min_words = {
             "ielts_task1": 150,
+            "ielts_ac_task1": 150,
+            "ielts_gt_letter": 150,
             "ielts_task2": 250,
+            "ielts_ac_task2": 250,
+            "ielts_gt_task2": 250,
             "multilevel_1_1": 50,
             "multilevel_1_2": 120,
             "multilevel_2": 180,
@@ -4673,6 +4736,10 @@ def grade_ielts_essay(
     if _is_mock_mode():
         # Ground a real quote from student's own text cleanly in mock/test runs
         first_sentence = re.split(r"[.!?]+", cleaned_text)[0].strip()
+        second_sentence = ""
+        parts_s = [p.strip() for p in re.split(r"[.!?]+", cleaned_text) if p.strip()]
+        if len(parts_s) > 1:
+            second_sentence = parts_s[1]
         res = _mock_ielts_response(
             cleaned_text,
             topic_title=topic_title,
@@ -4684,6 +4751,28 @@ def grade_ielts_essay(
 
             res["criteria"][0]["quote"] = first_sentence[:140]
             res["criteria"] = verify_evidence_items(res["criteria"], cleaned_text)
+        corr_raw = []
+        if second_sentence:
+            corr_raw.append(
+                {
+                    "quote": second_sentence[:140],
+                    "correction": f"{second_sentence[:120].rstrip('.')}, thereby improving academic precision.",
+                    "explanation": "Join or expand supporting clauses with a clear linking participle or cohesive adverbial.",
+                    "category": "grammar",
+                }
+            )
+        if corr_raw:
+            from apps.core.ai_gateway import verify_evidence_items
+
+            res["corrections"] = [c for c in verify_evidence_items(corr_raw, cleaned_text) if c.get("quote_verified")]
+        res["vocabulary_upgrades"] = [
+            {"original": "important", "upgrade": "indispensable / pivotal", "note": "Stronger academic register"},
+            {"original": "good", "upgrade": "beneficial / advantageous", "note": "More precise evaluative adjective"},
+        ]
+        res["next_level_example"] = (
+            "Band 8.5+ Model Paragraph: A balanced transition toward sustainable urban planning requires sustained capital "
+            "investment alongside measurable public accountability."
+        )
         record_ai_usage(feature="essay_ielts", model="mock", success=True)
         return res
 
@@ -4696,6 +4785,10 @@ def grade_ielts_essay(
         wc = WordCounter.count(cleaned_text)
         task_label = {
             "ielts_task1": "IELTS Academic/General Writing Task 1 (minimum 150 words)",
+            "ielts_ac_task1": "IELTS Academic Writing Task 1 Visual Report (minimum 150 words)",
+            "ielts_gt_letter": "IELTS General Training Task 1 Letter (minimum 150 words)",
+            "ielts_ac_task2": "IELTS Academic Writing Task 2 Essay (minimum 250 words)",
+            "ielts_gt_task2": "IELTS General Training Task 2 Essay (minimum 250 words)",
             "multilevel_1_1": "BMB CEFR Multi-level Writing Task 1.1 Informal/Semi-formal Email (50+ words, max 5 pts)",
             "multilevel_1_2": "BMB CEFR Multi-level Writing Task 1.2 Formal Email/Letter (120+ words, max 5 pts)",
             "multilevel_2": "BMB CEFR Multi-level Writing Task 2 Essay/Blog (180+ words, max 6 pts)",

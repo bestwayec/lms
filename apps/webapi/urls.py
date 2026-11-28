@@ -216,6 +216,9 @@ urlpatterns = [
     path(
         "essays/ielts/grade/", views_essays.ielts_grade_view, name="essays-ielts-grade"
     ),
+    path(
+        "essays/ielts/draft/", views_essays.ielts_draft_view, name="essays-ielts-draft"
+    ),
     # -- OMR Answer Sheet Auto-Scanner -----------------------------------
     path("tests/scan-omr/", views_omr.ScanOMRView.as_view(), name="tests-scan-omr"),
     path("tests/scan-omr/confirm/", views_omr.ConfirmOMRView.as_view(), name="tests-scan-omr-confirm"),

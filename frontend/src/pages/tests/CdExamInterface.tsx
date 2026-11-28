@@ -68,6 +68,10 @@ export interface CdAttempt {
   session_token?: string;
   last_revision?: number;
   remaining_seconds: number | null;
+  media_state?: {
+    speaking_submissions?: Record<string, { submission_id: number; status?: string; decoded_duration_ms?: number | null }>;
+    [k: string]: unknown;
+  };
   structure: CdSection[];
   questions: CdQuestion[];
   passages?: { id: number; title: string; content: string }[];
@@ -506,8 +510,9 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
 
   const save = useCallback(
     (q: CdQuestion, a: Answer) => {
+      const qt = (q.question_type || '').toUpperCase();
       const payload: SavePayload =
-        q.question_type === 'written'
+        qt === 'WRITTEN' || qt === 'ESSAY'
           ? { question_id: q.id, written_text: a.written || '' }
           : a.choice != null
             ? { question_id: q.id, choice_ids: [a.choice] }
@@ -591,10 +596,27 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
     const a = answers[q.id] || {};
     const num = q.config.number;
     const choices = [...q.choices].sort((x, y) => x.position - y.position);
+    const qtype = (q.question_type || '').toUpperCase();
 
-    if (q.question_type === 'SPEAKING_PROMPT') return <SpeakingPrompt key={q.id} q={q} />;
+    if (qtype === 'SPEAKING_PROMPT') {
+      const initialMeta = attempt.media_state?.speaking_submissions?.[String(q.id)];
+      return (
+        <SpeakingPrompt
+          key={q.id}
+          q={q}
+          attemptId={attemptId}
+          initialMeta={initialMeta}
+          onUploaded={(submissionId) => {
+            setAnswers((prev) => ({
+              ...prev,
+              [q.id]: { ...prev[q.id], text: `speaking_submission:${submissionId}` },
+            }));
+          }}
+        />
+      );
+    }
 
-    if (q.question_type === 'written') {
+    if (qtype === 'WRITTEN' || qtype === 'ESSAY') {
       const words = wordCount(a.written);
       const { min_words: min, max_words: max, target_words: target } = q.config;
       const range = target ? `~${target}` : min && max ? `${min}–${max}` : '';
@@ -621,7 +643,13 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
       );
     }
 
-    if (q.question_type === 'INLINE_GAP_FILL') {
+    if (
+      qtype === 'INLINE_GAP_FILL' ||
+      qtype === 'TEXT' ||
+      qtype === 'TEXT_MATCH' ||
+      qtype === 'GAP_FILL' ||
+      qtype === 'SHORT_ANSWER'
+    ) {
       const input = (
         <input
           className="cd-gap"
@@ -658,7 +686,7 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
       );
     }
 
-    if (SELECT_TYPES.has(q.question_type)) {
+    if (SELECT_TYPES.has(q.question_type) || SELECT_TYPES.has(qtype)) {
       const taken = group.each_option_once
         ? new Set(siblings.filter((s) => s.id !== q.id).map((s) => answers[s.id]?.choice))
         : new Set<number | undefined>();
@@ -685,7 +713,7 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
     }
 
     // MULTIPLE_CHOICE / TRUE_FALSE_NOT_GIVEN
-    const tfng = q.question_type === 'TRUE_FALSE_NOT_GIVEN';
+    const tfng = qtype === 'TRUE_FALSE_NOT_GIVEN';
     return (
       <fieldset key={q.id} id={`cdq-${q.id}`} className="cd-question cd-choice">
         <legend>
@@ -1534,17 +1562,53 @@ export default function CdExamInterface({ attempt }: { attempt: CdAttempt }) {
   );
 }
 
-/** Speaking task: prompt, optional For/Against table and prep/answer timers. */
-function SpeakingPrompt({ q }: { q: CdQuestion }) {
+/** Speaking task: prompt, optional For/Against table, prep/answer timers, audio capture & exam upload. */
+function SpeakingPrompt({
+  q,
+  attemptId,
+  initialMeta,
+  onUploaded,
+}: {
+  q: CdQuestion;
+  attemptId: string;
+  initialMeta?: { submission_id: number; status?: string; decoded_duration_ms?: number | null };
+  onUploaded: (submissionId: number) => void;
+}) {
   const { t } = useLang();
-  const [phase, setPhase] = useState<'idle' | 'prep' | 'speak' | 'done'>('idle');
+  const [phase, setPhase] = useState<'idle' | 'prep' | 'speak' | 'done'>(initialMeta ? 'done' : 'idle');
   const [left, setLeft] = useState(0);
   const [recordedUrl, setRecordedUrl] = useState<string | null>(null);
+  const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  const [uploadState, setUploadState] = useState<'idle' | 'uploading' | 'uploaded' | 'error'>(
+    initialMeta ? 'uploaded' : 'idle',
+  );
+  const [uploadedSubId, setUploadedSubId] = useState<number | null>(initialMeta?.submission_id ?? null);
   const [micNote, setMicNote] = useState<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const prep = q.config.prep_seconds || 0;
   const speak = q.config.answer_seconds || 0;
+
+  const uploadBlob = useCallback(
+    async (blob: Blob, durSec: number) => {
+      setUploadState('uploading');
+      setMicNote(null);
+      try {
+        const fd = new FormData();
+        const ext = blob.type.includes('ogg') ? 'ogg' : blob.type.includes('wav') ? 'wav' : 'webm';
+        fd.append('audio', blob, `speaking_q${q.id}.${ext}`);
+        fd.append('duration_seconds', String(Math.max(5, durSec)));
+        const res = await TestsApi.uploadSpeakingAnswer(attemptId, q.id, fd);
+        setUploadState('uploaded');
+        setUploadedSubId(res.submission_id);
+        onUploaded(res.submission_id);
+      } catch (err: unknown) {
+        setUploadState('error');
+        setMicNote(err instanceof Error ? err.message : t('cd_save_error'));
+      }
+    },
+    [attemptId, onUploaded, q.id, t],
+  );
 
   useEffect(() => {
     if (phase !== 'prep' && phase !== 'speak') return;
@@ -1577,15 +1641,20 @@ function SpeakingPrompt({ q }: { q: CdQuestion }) {
           return;
         }
         chunksRef.current = [];
-        const mr = new MediaRecorder(stream);
+        const preferredTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'];
+        const chosenMime = preferredTypes.find((m) => MediaRecorder.isTypeSupported?.(m)) || '';
+        const mr = chosenMime ? new MediaRecorder(stream, { mimeType: chosenMime }) : new MediaRecorder(stream);
         recorderRef.current = mr;
         mr.ondataavailable = (ev) => {
           if (ev.data.size > 0) chunksRef.current.push(ev.data);
         };
         mr.onstop = () => {
-          const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+          const mimeType = mr.mimeType || chosenMime || 'audio/webm';
+          const blob = new Blob(chunksRef.current, { type: mimeType });
+          setRecordedBlob(blob);
           setRecordedUrl(URL.createObjectURL(blob));
           stream.getTracks().forEach((tr) => tr.stop());
+          void uploadBlob(blob, Math.max(5, speak || 30));
         };
         mr.start();
         setMicNote(null);
@@ -1596,10 +1665,12 @@ function SpeakingPrompt({ q }: { q: CdQuestion }) {
     return () => {
       cancelled = true;
     };
-  }, [phase, t]);
+  }, [phase, speak, t, uploadBlob]);
 
   const start = () => {
     setRecordedUrl(null);
+    setRecordedBlob(null);
+    setUploadState('idle');
     setMicNote(null);
     if (prep) {
       setPhase('prep');
@@ -1656,6 +1727,21 @@ function SpeakingPrompt({ q }: { q: CdQuestion }) {
           </span>
         )}
       </div>
+      {uploadState === 'uploading' && (
+        <p className="muted small">{t('cd_saving')}</p>
+      )}
+      {uploadState === 'uploaded' && (
+        <p className="small" style={{ color: '#059669', fontWeight: 700 }}>
+          ✓ Yozuv serverga yuklandi {uploadedSubId ? `(#${uploadedSubId})` : ''}
+        </p>
+      )}
+      {uploadState === 'error' && recordedBlob && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+          <button type="button" className="btn sm primary" onClick={() => void uploadBlob(recordedBlob, Math.max(5, speak || 30))}>
+            Qayta yuklash
+          </button>
+        </div>
+      )}
       {micNote && <p className="muted small">{micNote}</p>}
       {recordedUrl && (
         <div style={{ marginTop: 8 }}>

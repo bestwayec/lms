@@ -1,24 +1,25 @@
-# GRANDEC NEXT 8.0 — Performance & Build Benchmarks
+# GRANDEC NEXT 8.0 — Performance, Bundle & Migration Benchmarks
 
-## Vite Production Bundle (`frontend/`)
-- **Build tool**: Vite + Rolldown chunking (`npx tsc -b && npm run build`)
-- **Measured full build time**: `15.26s` (`task-7646`), zero TypeScript errors, zero `oxlint` warnings across `203` source files.
-- **Lazy-loaded route splitting verified**:
-  - `EnglishCenter` chunk: `21.54 kB` (`4.49 kB` gzip)
-  - `EssayStudio` chunk: `10.91 kB` (`3.44 kB` gzip)
-  - `SpeakingPractice` chunk: `9.82 kB` (`3.27 kB` gzip)
-  - `SpeakingResult` chunk: `10.00 kB` (`3.36 kB` gzip)
-  - `EnglishExamInterface` chunk: `42.95 kB` (`12.71 kB` gzip)
-  - `PanelDashboard` chunk: `26.40 kB` (`5.86 kB` gzip)
-  - `Tma` chunk: `22.48 kB` (`6.25 kB` gzip)
+## 1. Vite Production Bundle Comparison (`origin/main @ 5db1a43` vs `NEXT 8.0`)
+Measured directly via isolated `git worktree` build on `origin/main` vs final `NEXT 8.0` `dist/` (`tsc -b && vite build`):
 
-## Live E2E Network-Idle Settlement (`127.0.0.1:5173` -> Django)
-All routes measured cold-to-networkidle under Chromium headless E2E (`task-7716`):
-- Fastest student route: `/speaking` (`1461.3 ms`)
-- Telegram Mini App shell: `/tma` (`1644.5 ms`)
-- Grammar Studio (10 seeded topics): `/grammar` (`1880.2 ms`)
-- Admin Panel (+ AI Gateway metrics): `/panel` (`2150.6 ms`)
-- Vocabulary Studio: `/vocabulary` (`2388.0 ms`)
-- English Learning Center: `/english` (`2824.0 ms`)
-- Teacher English Workspace: `/teacher/english` (`3086.3 ms`)
-- Writing Studio 3.0: `/essays/studio` (`3921.4 ms`)
+| Metric | `origin/main` (`v2.12.0`) | `NEXT 8.0` (Final) | Delta |
+| :--- | :--- | :--- | :--- |
+| JS Chunks | `124` | `127` | `+3` lazy routes |
+| Total JS (raw / gzip) | `2876.78 kB` / `838.55 kB` | `2956.77 kB` / `860.30 kB` | `+21.75 kB` gzip (`+2.6%`) |
+| Total CSS (raw / gzip) | `247.10 kB` / `43.57 kB` | `262.02 kB` / `45.33 kB` | `+1.76 kB` gzip |
+| **Initial Entry Transfer (`index.html` script/CSS)** | **`961.10 kB` / `266.53 kB` gzip** | **`984.43 kB` / `270.90 kB` gzip** | **`+4.37 kB` gzip (`+1.6%`)** |
+| Latest Clean Build Time (`task-8514`) | `44.92s` (cold worktree) | **`2.62s`** (warm workspace) | `0` TS errors, `0` warnings |
+
+## 2. Backend SQL Query Count Parity (PostgreSQL 17.11)
+Measured via Django `CaptureQueriesContext` across 15 seeded tests + historical attempts/results/essays against real PostgreSQL 17.11 (`lms_pg_mig_audit`):
+
+| Endpoint | `origin/main` Queries (ms) | `NEXT 8.0` Queries (ms) | Regression? |
+| :--- | :--- | :--- | :--- |
+| `GET /api/tests/` (`200 OK`) | `11` (`62.92 ms`) | `11` (`55.65 ms`) | None (`0` extra queries) |
+| `GET /api/tests/?subject=uzbek` (`200 OK`) | `11` (`69.33 ms`) | `11` (`62.25 ms`) | None (`0` extra queries) |
+| `GET /api/tests/<id>/` (`200 OK`) | `16` (`73.89 ms`) | `16` (`73.89 ms`) | None (`0` extra queries) |
+
+## 3. PostgreSQL 17.11 Migration & Rollback Compatibility (`v2.12.0` -> `NEXT 8.0`)
+- **Forward migration**: Seeded real `v2.12.0` PostgreSQL 17.11 DB (`origin/main`) with legacy Uzbek users, tests, completed attempts, results, and essays, then migrated forward to `NEXT 8.0` (`accounts.0027`, `essays.0024`, `speaking.0002`, `tests.0025`, `tests.0026`, `vocabulary.0002`) in **`15.41s`** with `data_preserved: true` and `200 OK` on legacy endpoints.
+- **Reverse migration**: Executed `manage.py migrate <app> <v2.12.0_target>` across all 5 apps (`accounts`, `vocabulary`, `speaking`, `essays`, `tests`) -> exit code `0` on all 5 apps, then re-applied forward (`reapply_rc: 0`). Standard `DEPLOYMENT_GUIDE.md` release rollback relies on pre-deploy DB snapshot restore + image pin (`sha-xxxxxxx`).

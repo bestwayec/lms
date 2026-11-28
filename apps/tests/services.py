@@ -964,6 +964,46 @@ class ExamBridgeService:
             if submission.status == EssaySubmission.Status.DRAFT:
                 ExamBridgeService._dispatch(submission)
             return submission
+
+        attempt = answer.attempt
+        test = attempt.test
+        exam_type = getattr(test, "exam_type", "")
+        is_ielts = exam_type in (Test.ExamType.IELTS_ACADEMIC, Test.ExamType.IELTS_GENERAL)
+        is_multilevel = exam_type == Test.ExamType.CEFR_MULTILEVEL
+
+        if is_ielts or is_multilevel:
+            cfg = answer.question.config or {}
+            task_type = str(
+                cfg.get("task_type")
+                or ("multilevel_v2" if is_multilevel else "ielts_task2")
+            )
+            q_pts = int(getattr(answer.question, "points", 0) or 0)
+            if is_multilevel:
+                sub_max = q_pts if q_pts in (5, 6, 16) else 16
+                rubric_tag = "uzbmb_multilevel_writing_2026_v2"
+            else:
+                sub_max = 9
+                rubric_tag = "ielts_writing_v1"
+
+            submission = EssaySubmission.objects.create(
+                student_id=student_id,
+                topic=None,
+                essay_text=text,
+                word_count=WordCounter.count(text),
+                max_score=sub_max,
+                raw_result={"subject": "english", "rubric_type": task_type, "exam_type": exam_type},
+                status=EssaySubmission.Status.PENDING_TEACHER,
+                teacher_review_requested=True,
+                teacher_review_reason=f"Full Mock ({test.title})",
+                source=EssaySubmission.Source.EXAM,
+                cache_scope=EssaySubmission.CacheScope.HIGH_STAKES,
+                submitted_at=timezone.now(),
+            )
+            bridge.essay_submission = submission
+            bridge.rubric_version = rubric_tag
+            bridge.save(update_fields=["essay_submission", "rubric_version"])
+            return submission
+
         submission = EssaySubmission.objects.create(
             student_id=student_id,
             topic=None,
@@ -1014,14 +1054,15 @@ class ExamBridgeService:
         None = not graded yet (pending — never zero).
         """
         from apps.essays.services import (
-            ESSAY_RUBRIC_MAX_SCORE,
+            detect_submission_rubric,
             essay_has_grade_result,
         )
 
         if submission is None or not essay_has_grade_result(submission):
             return None
+        _scale, rubric_max = detect_submission_rubric(submission)
         return _written_earned(
-            question.points, submission.effective_score, ESSAY_RUBRIC_MAX_SCORE
+            question.points, submission.effective_score, rubric_max
         )
 
 
@@ -1304,9 +1345,76 @@ class SubmitAttemptService:
             case_sensitive = bool(cfg.get("case_sensitive", False))
             partial_credit = bool(cfg.get("partial_credit", False))
 
-            # Speaking is assessed outside the CBT (AI Speaking / examiner):
-            # never auto-graded here and never weighs on the percentage.
+            # Speaking prompts inside Full Mocks resolve linked SpeakingSubmission records;
+            # legacy standalone/non-English SPEAKING_PROMPT questions preserve 0 weight unless linked.
             if question.question_type == Question.QuestionType.SPEAKING_PROMPT:
+                spk_meta = (
+                    (attempt.media_state or {}).get("speaking_submissions") or {}
+                    if isinstance(attempt.media_state, dict)
+                    else {}
+                )
+                raw_entry = spk_meta.get(str(question.id))
+                spk_sub_id = (
+                    raw_entry.get("submission_id")
+                    if isinstance(raw_entry, dict)
+                    else (int(raw_entry) if str(raw_entry or "").isdigit() else None)
+                )
+                ans_row = answers_by_qid.get(question.id)
+                if not spk_sub_id and ans_row and str(ans_row.text_answer or "").startswith("speaking_submission:"):
+                    tail = str(ans_row.text_answer).split(":", 1)[1]
+                    if tail.isdigit():
+                        spk_sub_id = int(tail)
+
+                if spk_sub_id:
+                    from apps.speaking.models import SpeakingSubmission
+
+                    spk_sub = SpeakingSubmission.objects.filter(pk=spk_sub_id).first()
+                    is_ml = test.exam_type == Test.ExamType.CEFR_MULTILEVEL
+                    has_final = (
+                        spk_sub is not None
+                        and spk_sub.status == SpeakingSubmission.Status.COMPLETED
+                        and (spk_sub.teacher_score is not None or spk_sub.final_score is not None or spk_sub.overall_band is not None)
+                    )
+                    if has_final and spk_sub is not None:
+                        if is_ml:
+                            raw_total = (spk_sub.task_scores or {}).get("raw_total")
+                            if raw_total is not None and qmax <= Decimal("21"):
+                                earned_s = min(qmax, Decimal(str(raw_total)))
+                            else:
+                                s75 = spk_sub.final_score if spk_sub.final_score is not None else Decimal("0")
+                                earned_s = min(qmax, (Decimal(str(s75)) / Decimal("75") * qmax).quantize(Decimal("0.1")))
+                        else:
+                            band_s = spk_sub.teacher_score if spk_sub.teacher_score is not None else (spk_sub.overall_band or spk_sub.final_score or Decimal("0"))
+                            earned_s = min(qmax, (Decimal(str(band_s)) / Decimal("9") * qmax).quantize(Decimal("0.1")))
+                        question_scores.append(
+                            QuestionScore(
+                                question_id=question.id,
+                                earned=earned_s,
+                                maximum=qmax,
+                                is_correct=earned_s > 0,
+                                answered=True,
+                                section_code=section_code or "SPEAKING",
+                                section_id=section_id,
+                                kind="written",
+                            )
+                        )
+                    else:
+                        if ans_row:
+                            pending_written_answers.append(ans_row)
+                        question_scores.append(
+                            QuestionScore(
+                                question_id=question.id,
+                                earned=Decimal("0"),
+                                maximum=qmax,
+                                is_correct=None,
+                                answered=True,
+                                section_code=section_code or "SPEAKING",
+                                section_id=section_id,
+                                kind="written",
+                            )
+                        )
+                    continue
+
                 question_scores.append(
                     QuestionScore(
                         question_id=question.id,
@@ -2108,9 +2216,31 @@ class SubmitAttemptService:
 
                 if sub.status == _ES.Status.DRAFT:
                     ExamBridgeService._dispatch(sub)
-        if still_pending:
+        # Also check any linked SpeakingSubmissions inside media_state before finalizing
+        spk_map = (
+            (attempt.media_state or {}).get("speaking_submissions") or {}
+            if isinstance(attempt.media_state, dict)
+            else {}
+        )
+        spk_ids = [
+            int(v["submission_id"]) if isinstance(v, dict) and str(v.get("submission_id", "")).isdigit() else int(v)
+            for v in spk_map.values()
+            if (isinstance(v, dict) and str(v.get("submission_id", "")).isdigit()) or str(v or "").isdigit()
+        ]
+        pending_spk = 0
+        if spk_ids:
+            from apps.speaking.models import SpeakingSubmission
+
+            for spk in SpeakingSubmission.objects.filter(pk__in=spk_ids):
+                is_done = spk.status == SpeakingSubmission.Status.COMPLETED and (
+                    spk.final_score is not None or spk.overall_band is not None or spk.teacher_score is not None
+                )
+                if not is_done:
+                    pending_spk += 1
+
+        if still_pending or pending_spk:
             raise ValueError(
-                f"Yozma ish baholanmoqda ({len(still_pending)} ta kutilmoqda)."
+                f"Yozma yoki og'zaki ish baholanmoqda ({len(still_pending) + pending_spk} ta kutilmoqda)."
             )
         return SubmitAttemptService._grade_attempt(attempt)
 

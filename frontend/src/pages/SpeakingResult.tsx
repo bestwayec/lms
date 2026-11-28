@@ -145,7 +145,12 @@ export default function SpeakingResult() {
       >
         <div>
           <span className="badge blue" style={{ marginBottom: 8 }}>
-            🎙️ {sub.part_label || "IELTS Speaking"} · Rasmiy baholash
+            🎙️ {sub.part_label || 'IELTS Speaking'} ·{' '}
+            {sub.teacher_score !== null && sub.teacher_score !== undefined
+              ? 'Ustoz Yakuniy Bahosi'
+              : sub.is_partial_estimate || sub.overall_band === null
+              ? 'Qisman AI Taxmin (3/4 mezon)'
+              : 'AI Taxminiy Baholash (Norasmiy)'}
           </span>
           <h1 style={{ fontSize: '1.65rem', fontWeight: 900, margin: '0 0 6px 0', color: 'var(--ink)' }}>
             {sub.topic_title}
@@ -163,8 +168,8 @@ export default function SpeakingResult() {
             gap: 14,
             padding: '16px 24px',
             borderRadius: 18,
-            background: 'rgba(0,0,0,0.3)',
-            border: '2px solid rgba(99, 102, 241, 0.5)',
+            background: 'var(--bg-elevated)',
+            border: '2px solid rgba(99, 102, 241, 0.45)',
           }}
         >
           <div
@@ -179,7 +184,7 @@ export default function SpeakingResult() {
               justifyContent: 'center',
               fontWeight: 900,
               fontSize: '1.35rem',
-              boxShadow: '0 6px 20px rgba(99, 102, 241, 0.4)',
+              boxShadow: '0 6px 20px rgba(99, 102, 241, 0.35)',
             }}
           >
             {sub.track === 'cefr_multilevel' && sub.final_score !== null && sub.final_score !== undefined
@@ -189,23 +194,47 @@ export default function SpeakingResult() {
               : '—'}
           </div>
           <div>
-            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#A5B4FC', textTransform: 'uppercase' }}>
-              {sub.track === 'cefr_multilevel' ? 'CEFR Multi-level' : 'Overall Band'}
+            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#6366F1', textTransform: 'uppercase' }}>
+              {sub.track === 'cefr_multilevel' ? 'CEFR Multi-level' : 'Speaking Band'}
             </div>
-            <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#fff' }}>
+            <div style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--ink)' }}>
               {sub.status === 'evaluating'
                 ? tr('spk_evaluating')
                 : sub.overall_band === null
-                ? '—'
+                ? sub.partial_band_estimate != null
+                  ? `Qisman: ~${Number(sub.partial_band_estimate).toFixed(1)}`
+                  : 'Kutilmoqda'
                 : sub.overall_band >= 7.5
-                ? "Yuqori daraja (C1)"
+                ? 'Yuqori daraja (C1)'
                 : sub.overall_band >= 6.5
-                ? "Yaxshi daraja (B2+)"
+                ? 'Yaxshi daraja (B2+)'
                 : "O'rtacha daraja (B2)"}
             </div>
           </div>
         </div>
       </motion.div>
+
+      {(sub.is_partial_estimate || sub.overall_band === null) && sub.status !== 'evaluating' && (
+        <div
+          className="card"
+          role="note"
+          style={{
+            padding: 16,
+            borderRadius: 14,
+            marginBottom: 20,
+            background: 'var(--warning-bg)',
+            border: '1px solid var(--warning-border)',
+            color: 'var(--warning-text)',
+          }}
+        >
+          <strong>Qisman tahlil (Pronunciation akustik tekshirilmadi):</strong>{' '}
+          <span>
+            Talaffuz faqat matn asosida taxmin qilinmadi. To&apos;liq rasmiy uslubdagi yakuniy Speaking bahosi uchun
+            ustoz tekshiruvini so&apos;rang
+            {sub.partial_band_estimate != null ? ` (3 ta matn mezoni taxmini: ~${Number(sub.partial_band_estimate).toFixed(1)}).` : '.'}
+          </span>
+        </div>
+      )}
 
       {/* 4 Official IELTS Criteria Grid */}
       <h3 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: 14 }}>
@@ -275,7 +304,7 @@ export default function SpeakingResult() {
           </h3>
 
           {sub.feedback.summary && (
-            <div style={{ marginBottom: 18, padding: 14, borderRadius: 12, background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.25)', color: '#D1FAE5', fontSize: '0.9rem', lineHeight: 1.5 }}>
+            <div style={{ marginBottom: 18, padding: 14, borderRadius: 12, background: 'var(--success-bg)', border: '1px solid var(--success-border)', color: 'var(--success-text)', fontSize: '0.9rem', lineHeight: 1.5 }}>
               <b>{tr('spk_summary')}</b> {sub.feedback.summary}
             </div>
           )}

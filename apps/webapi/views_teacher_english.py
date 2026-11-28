@@ -105,16 +105,53 @@ def build_teacher_english_workspace(user, *, group_id: int | None = None) -> dic
     )
     if not is_admin:
         attempts_qs = attempts_qs.filter(Q(student_id__in=student_ids) | Q(test__created_by=user))
-    pending_mocks = [
-        {
-            "attempt_id": a.id,
-            "student": a.student.get_full_name() or a.student.email,
-            "test_title": a.test.title,
-            "exam_type": a.test.exam_type,
-            "completed_at": a.completed_at.isoformat() if a.completed_at else None,
-        }
-        for a in attempts_qs.filter(status=TestAttempt.Status.PENDING_GRADING).order_by("-completed_at")[:30]
-    ]
+    pending_mocks = []
+    from apps.tests.models import ExamWrittenBridge
+
+    for a in attempts_qs.filter(status=TestAttempt.Status.PENDING_GRADING).order_by("-completed_at")[:30]:
+        bridges = list(
+            ExamWrittenBridge.objects.select_related("essay_submission")
+            .filter(attempt=a, essay_submission__isnull=False)
+            .values_list("essay_submission_id", "essay_submission__status", "essay_submission__final_score")
+        )
+        spk_meta = (a.media_state or {}).get("speaking_submissions") or {}
+        spk_ids = [
+            int(v["submission_id"]) if isinstance(v, dict) and str(v.get("submission_id", "")).isdigit() else int(v)
+            for v in spk_meta.values()
+            if (isinstance(v, dict) and str(v.get("submission_id", "")).isdigit()) or str(v or "").isdigit()
+        ]
+        spk_items = (
+            list(
+                SpeakingSubmission.objects.filter(pk__in=spk_ids).values(
+                    "id", "status", "track", "final_score", "overall_band"
+                )
+            )
+            if spk_ids
+            else []
+        )
+        pending_mocks.append(
+            {
+                "attempt_id": a.id,
+                "test_id": a.test_id,
+                "student": a.student.get_full_name() or a.student.email,
+                "test_title": a.test.title,
+                "exam_type": a.test.exam_type,
+                "completed_at": a.completed_at.isoformat() if a.completed_at else None,
+                "writing_items": [
+                    {"id": sid, "status": st, "final_score": float(fs) if fs is not None else None}
+                    for sid, st, fs in bridges
+                ],
+                "speaking_items": [
+                    {
+                        "id": sp["id"],
+                        "status": sp["status"],
+                        "track": sp["track"],
+                        "final_score": float(sp["final_score"]) if sp["final_score"] is not None else None,
+                    }
+                    for sp in spk_items
+                ],
+            }
+        )
 
     # 4. Separated Analytics (NEVER average IELTS Band 0..9 with CEFR Multilevel 0..75!)
     ielts_attempts = [a for a in attempts_qs if a.test.exam_type in (Test.ExamType.IELTS_ACADEMIC, Test.ExamType.IELTS_GENERAL)]
@@ -270,6 +307,24 @@ class TeacherEnglishExportView(APIView):
             )
             resp = HttpResponse(pdf_bytes, content_type="application/pdf")
             resp["Content-Disposition"] = 'attachment; filename="english-analytics.pdf"'
+            return resp
+
+        if fmt == "xlsx":
+            import openpyxl
+
+            wb = openpyxl.Workbook()
+            ws_sheet = wb.active
+            ws_sheet.title = "English Analytics"
+            ws_sheet.append(["Student", "Scale", "Title", "Score", "Status"])
+            for r in rows:
+                ws_sheet.append(safe_row([r["student"], r["scale"], r["title"], r["score_label"], r["status"]]))
+            buf = io.BytesIO()
+            wb.save(buf)
+            resp = HttpResponse(
+                buf.getvalue(),
+                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+            resp["Content-Disposition"] = 'attachment; filename="english-analytics.xlsx"'
             return resp
 
         out = io.StringIO()

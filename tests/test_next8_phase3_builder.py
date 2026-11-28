@@ -191,3 +191,26 @@ def test_builder_package_import_roundtrip_and_keyless_publish_gate():
     assert "acceptedAnswers" not in q_lis
     q_read_opts = exp_tpl.data["sections"][1]["parts"][0]["groups"][0]["questions"][0]["options"]
     assert all("isCorrect" not in opt for opt in q_read_opts)
+
+    # 4. Valid imported package publishes & assigns to a group with student visibility
+    from apps.courses.models import StudentGroup
+
+    student = User.objects.create_user(email="pkg_assigned_s@example.com", password="StrongPassword123!", role="student")
+    group = StudentGroup.objects.create(teacher=teacher, name="Package Cohort", subject="english")
+    group.students.add(student)
+    pub_full = client.post(f"/api/v1/teacher/studio/tests/{full_id}/publish/")
+    assert pub_full.status_code == 200
+    assert pub_full.data["test"]["status"] == "published"
+
+    assign_res = client.post(
+        f"/api/v1/teacher/studio/tests/{full_id}/assign/",
+        {"group_id": group.id, "due_at": "2027-01-15T12:00:00Z", "max_attempts": 2},
+        format="json",
+    )
+    assert assign_res.status_code == 201
+    s_client = APIClient()
+    s_client.force_authenticate(user=student)
+    list_res = s_client.get("/api/tests/")
+    assert list_res.status_code == 200
+    rows = list_res.data.get("results", list_res.data)
+    assert any(item["id"] == full_id for item in rows)

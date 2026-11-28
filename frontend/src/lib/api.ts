@@ -44,6 +44,21 @@ export function setTokens(access: string, refresh: string): void {
 export function clearTokens(): void {
   sessionStorage.removeItem(ACCESS_KEY);
   sessionStorage.removeItem(REFRESH_KEY);
+  // Isolate account sessions on shared devices: scrub cached exam drafts, answers, highlights & notes on logout.
+  const prefixes = ['cd-exam:', 'cd-pos:', 'cd-flags:', 'cd-highlights:', 'cd-notes:', 'exam_queue_', 'writing_studio_draft_'];
+  for (const store of [typeof localStorage !== 'undefined' ? localStorage : null, typeof sessionStorage !== 'undefined' ? sessionStorage : null]) {
+    if (!store) continue;
+    try {
+      for (let i = store.length - 1; i >= 0; i--) {
+        const k = store.key(i);
+        if (k && prefixes.some((p) => k.startsWith(p))) {
+          store.removeItem(k);
+        }
+      }
+    } catch {
+      /* ignore storage errors */
+    }
+  }
 }
 
 // Cross-tab sync: keep sessionStorage as store, listen for lms_access changes via storage event
@@ -721,6 +736,19 @@ export const Tests = {
       server_time: string;
     }>(`/api/tests/attempts/${attemptId}/session-takeover/`, {
       method: 'POST',
+    }),
+  uploadSpeakingAnswer: (attemptId: string | number, questionId: number, formData: FormData) =>
+    api<{
+      ok: boolean;
+      duplicate?: boolean;
+      submission_id: number;
+      status: string;
+      decoded_duration_ms?: number | null;
+      is_verified_audio?: boolean;
+      audio_hash?: string;
+    }>(`/api/tests/attempts/${attemptId}/questions/${questionId}/speaking/`, {
+      method: 'POST',
+      body: formData,
     }),
   listeningSchedule: (attemptId: string, partId: number) =>
     api<{
@@ -2805,8 +2833,27 @@ export interface IeltsCriterionScore {
   quote_verified?: boolean;
 }
 
+export interface IeltsCorrectionItem {
+  quote: string;
+  correction: string;
+  explanation?: string;
+  category?: string;
+  start_offset: number;
+  end_offset: number;
+  quote_verified: boolean;
+}
+
 export interface IeltsGradePayload {
-  task_type: 'ielts_task1' | 'ielts_task2' | 'multilevel_1_1' | 'multilevel_1_2' | 'multilevel_2';
+  task_type:
+    | 'ielts_task1'
+    | 'ielts_task2'
+    | 'ielts_ac_task1'
+    | 'ielts_ac_task2'
+    | 'ielts_gt_letter'
+    | 'ielts_gt_task2'
+    | 'multilevel_1_1'
+    | 'multilevel_1_2'
+    | 'multilevel_2';
   topic_title: string;
   topic_id?: number;
   essay_text: string;
@@ -2816,6 +2863,9 @@ export interface IeltsGradeResponse {
   ok: boolean;
   submission_id?: number | null;
   task_type?: string;
+  rubric_version?: string;
+  evaluation_version?: string;
+  is_estimate?: boolean;
   word_count: number;
   min_words: number;
   overall_band: number;
@@ -2824,8 +2874,23 @@ export interface IeltsGradeResponse {
   summary: string;
   strengths?: string[];
   weaknesses?: string[];
+  spelling_errors?: { word: string; correction: string; explanation: string }[];
+  corrections?: IeltsCorrectionItem[];
+  vocabulary_upgrades?: { original: string; upgrade: string; note?: string }[];
+  next_level_example?: string;
   teacher_recommendation?: string;
   improved_text?: string;
+  essay_text?: string;
+}
+
+export interface WritingDraftData {
+  id: number;
+  task_type: string;
+  topic_id: number | null;
+  topic_title: string;
+  essay_text: string;
+  word_count: number;
+  updated_at: string;
 }
 
 export const Essays = {
@@ -2893,6 +2958,18 @@ export const Essays = {
     }),
   ieltsGrade: (payload: IeltsGradePayload) =>
     api<IeltsGradeResponse>('/api/v1/essays/ielts/grade/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  ieltsDraftGet: (params?: { task_type?: string; topic_id?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.task_type) qs.set('task_type', params.task_type);
+    if (params?.topic_id) qs.set('topic_id', String(params.topic_id));
+    const q = qs.toString() ? `?${qs.toString()}` : '';
+    return api<{ draft: WritingDraftData | null }>(`/api/v1/essays/ielts/draft/${q}`);
+  },
+  ieltsDraftSave: (payload: { task_type: string; topic_title: string; topic_id?: number; essay_text: string }) =>
+    api<{ ok: boolean; draft: WritingDraftData }>('/api/v1/essays/ielts/draft/', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
@@ -3075,6 +3152,9 @@ export interface SpeakingSubmissionDetail {
   pronunciation_score: number | null;
   overall_band: number | null;
   final_score?: number | null;
+  is_partial_estimate?: boolean;
+  partial_band_estimate?: number | null;
+  assessment_scope?: string;
   task_scores?: Record<string, number>;
   feedback: {
     summary?: string;

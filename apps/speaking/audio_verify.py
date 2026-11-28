@@ -197,8 +197,8 @@ def inspect_uploaded_audio(
                     os.unlink(tmp_path)
                 except OSError:
                     pass
-    elif strict_decode:
-        ext = Path(name).suffix.lower() or ".webm"
+    elif strict_decode or len(raw_bytes) >= 44:
+        ext = Path(name).suffix.lower() or (".ogg" if raw_bytes[:4] == b"OggS" else ".webm")
         max_bound = (duration_bounds(expected_seconds)[1] if expected_seconds else 1800.0)
         tmp_path = None
         try:
@@ -210,7 +210,7 @@ def inspect_uploaded_audio(
         except InvalidDuration as exc:
             raise InvalidSpeakingAudio(
                 "SPEAKING_AUDIO_DURATION_INVALID",
-                "Audio faylni tekshirib bo'lmadi yoki davomiyligi mos emas.",
+                "Audio faylni dekod qilib bo'lmadi yoki davomiyligi talabga javob bermaydi.",
             ) from exc
         finally:
             if tmp_path and os.path.exists(tmp_path):

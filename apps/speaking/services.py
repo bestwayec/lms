@@ -314,9 +314,14 @@ def _build_speaking_evaluation(
 
     assert fc is not None and lr is not None and gra is not None
     if pr is not None:
-        overall = _round_to_half_band(float(fc + lr + gra + pr) / 4.0)
+        overall: Decimal | None = _round_to_half_band(float(fc + lr + gra + pr) / 4.0)
+        partial_estimate: Decimal | None = None
     else:
-        overall = _round_to_half_band(float(fc + lr + gra) / 3.0)
+        # Honest Speaking Policy: Never present a 3-criterion transcript average as a complete IELTS/Multilevel Speaking band.
+        # Store the partial 3-criterion estimate separately in feedback and keep overall_band/final_score pending (None)
+        # until acoustic pronunciation telemetry or qualified teacher review is provided.
+        overall = None
+        partial_estimate = _round_to_half_band(float(fc + lr + gra) / 3.0)
 
     resolved_track = track or (
         SpeakingSubmission.Track.CEFR_MULTILEVEL
@@ -328,31 +333,48 @@ def _build_speaking_evaluation(
         feedback.setdefault("pronunciation_status", "not_measured_from_transcript")
         feedback.setdefault(
             "pronunciation_feedback",
-            "Talaffuz faqat matn asosida taxmin qilinmadi; audio akustik baholash talab etiladi.",
+            "Talaffuz faqat matn asosida taxmin qilinmadi; audio akustik baholash yoki ustoz tekshiruvi talab etiladi.",
         )
+        feedback["assessment_scope"] = "partial_transcript_only"
+        feedback["is_partial_estimate"] = True
+        feedback["partial_band_estimate"] = float(partial_estimate) if partial_estimate is not None else None
+        feedback["acoustic_fluency_verified"] = False
+        feedback["requires_acoustic_or_teacher"] = True
+    else:
+        feedback["assessment_scope"] = "complete_4_criteria"
+        feedback["is_partial_estimate"] = False
+        feedback["acoustic_fluency_verified"] = True
+        feedback["requires_acoustic_or_teacher"] = False
 
     task_scores: dict[str, Any] = {}
-    final_score = overall
+    final_score: Decimal | None = overall
     rubric_version = "ielts_speaking_v1"
     if resolved_track == SpeakingSubmission.Track.CEFR_MULTILEVEL:
         rubric_version = "uzbmb_multilevel_speaking_2026_v2"
-        avg_ratio = float(overall) / 9.0
-        p11 = round(min(5.0, max(0.0, avg_ratio * 5.0)) * 2) / 2
-        p12 = round(min(5.0, max(0.0, avg_ratio * 5.0)) * 2) / 2
-        p2 = round(min(5.0, max(0.0, avg_ratio * 5.0)) * 2) / 2
-        p3 = round(min(6.0, max(0.0, avg_ratio * 6.0)) * 2) / 2
-        raw_21 = p11 + p12 + p2 + p3
-        scaled_75 = convert_multilevel_speaking_21_to_75(raw_21)
-        task_scores = {
-            "1.1": p11,
-            "1.2": p12,
-            "2": p2,
-            "3": p3,
-            "raw_total": raw_21,
-            "raw_max": 21,
-            "scaled_75": float(scaled_75),
-        }
-        final_score = scaled_75
+        if overall is not None:
+            avg_ratio = float(overall) / 9.0
+            p11 = round(min(5.0, max(0.0, avg_ratio * 5.0)) * 2) / 2
+            p12 = round(min(5.0, max(0.0, avg_ratio * 5.0)) * 2) / 2
+            p2 = round(min(5.0, max(0.0, avg_ratio * 5.0)) * 2) / 2
+            p3 = round(min(6.0, max(0.0, avg_ratio * 6.0)) * 2) / 2
+            raw_21 = p11 + p12 + p2 + p3
+            scaled_75 = convert_multilevel_speaking_21_to_75(raw_21)
+            task_scores = {
+                "1.1": p11,
+                "1.2": p12,
+                "2": p2,
+                "3": p3,
+                "raw_total": raw_21,
+                "raw_max": 21,
+                "scaled_75": float(scaled_75),
+            }
+            final_score = scaled_75
+        else:
+            task_scores = {
+                "is_partial_estimate": True,
+                "partial_band_estimate": float(partial_estimate) if partial_estimate is not None else None,
+            }
+            final_score = None
 
     record_ai_usage(feature="speaking", model=getattr(settings, "AI_EVALUATION_MODEL", "deepseek-r1"), success=True)
     return {
@@ -481,7 +503,23 @@ def can_review_speaking_submission(user, submission: SpeakingSubmission) -> bool
     return submission.user.student_groups.filter(
         teacher=user,
         status=StudentGroup.Status.ACTIVE,
-    ).exists()
+    ).exists() or _is_linked_mock_teacher(user, submission)
+
+
+def _is_linked_mock_teacher(user, submission: SpeakingSubmission) -> bool:
+    """Allow teacher access when submission belongs to a Full Mock test owned/taught by teacher."""
+    from apps.tests.models import TestAttempt
+
+    for att in TestAttempt.objects.select_related("test", "test__course").filter(
+        student=submission.user,
+        media_state__speaking_submissions__isnull=False,
+    )[:20]:
+        mapping = (att.media_state or {}).get("speaking_submissions") or {}
+        if isinstance(mapping, dict) and submission.pk in {int(v) for v in mapping.values() if str(v).isdigit()}:
+            t = att.test
+            if t.created_by_id == user.id or (t.course_id and t.course.teacher_id == user.id):
+                return True
+    return False
 
 
 class TeacherSpeakingReviewService:
@@ -513,6 +551,64 @@ class TeacherSpeakingReviewService:
         locked.final_score = effective
         locked.teacher_comments = (comments or "").strip()[:3000]
         locked.teacher_reviewed_at = timezone.now()
+        locked.teacher_review_requested = False
+        locked.feedback = {
+            **(locked.feedback or {}),
+            "assessment_scope": "teacher_finalized",
+            "is_partial_estimate": False,
+        }
         locked.status = SpeakingSubmission.Status.COMPLETED
         locked.save()
+
+        _try_finalize_linked_mock_attempts(speaking_submission_id=locked.pk)
         return locked
+
+
+def _extract_speaking_sub_ids(mapping: Any) -> set[int]:
+    ids: set[int] = set()
+    if not isinstance(mapping, dict):
+        return ids
+    for v in mapping.values():
+        raw_id = v.get("submission_id") if isinstance(v, dict) else v
+        if str(raw_id or "").isdigit():
+            ids.add(int(raw_id))
+    return ids
+
+
+def _try_finalize_linked_mock_attempts(
+    *,
+    speaking_submission_id: int | None = None,
+    essay_submission_id: int | None = None,
+) -> None:
+    """Best-effort finalization of PENDING_GRADING mock attempts when a rated section completes."""
+    from apps.tests.models import ExamWrittenBridge, TestAttempt
+    from apps.tests.services import SubmitAttemptService
+
+    target_attempts: list[TestAttempt] = []
+    if essay_submission_id is not None:
+        att_ids = list(
+            ExamWrittenBridge.objects.filter(essay_submission_id=essay_submission_id).values_list("attempt_id", flat=True)
+        )
+        target_attempts.extend(
+            TestAttempt.objects.select_related("student").filter(
+                id__in=att_ids, status=TestAttempt.Status.PENDING_GRADING
+            )
+        )
+    if speaking_submission_id is not None:
+        for att in TestAttempt.objects.select_related("student").filter(status=TestAttempt.Status.PENDING_GRADING)[:50]:
+            mapping = (att.media_state or {}).get("speaking_submissions") or {}
+            if speaking_submission_id in _extract_speaking_sub_ids(mapping):
+                target_attempts.append(att)
+
+    seen: set[int] = set()
+    for att in target_attempts:
+        if att.id in seen:
+            continue
+        seen.add(att.id)
+        try:
+            SubmitAttemptService.finalize_pending_grading(attempt_id=att.id, student=att.student)
+        except ValueError:
+            # Other sections (Writing or Speaking) are still pending grading.
+            pass
+        except Exception:
+            logger.exception("Auto-finalize attempt=%s failed cleanly", att.id)

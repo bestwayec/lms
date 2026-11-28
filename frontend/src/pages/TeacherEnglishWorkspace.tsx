@@ -9,7 +9,15 @@ interface WorkspacePayload {
   inbox: {
     writing: { id: number; student: string; topic: string; scale: string; score: number; max_score: number }[];
     speaking: { id: number; student: string; topic: string; track: string; ai_band: number | null }[];
-    mocks: { attempt_id: number; student: string; test_title: string; exam_type: string }[];
+    mocks: {
+      attempt_id: number;
+      test_id?: number;
+      student: string;
+      test_title: string;
+      exam_type: string;
+      writing_items?: { id: number; status: string; final_score: number | null }[];
+      speaking_items?: { id: number; status: string; track: string; final_score: number | null }[];
+    }[];
   };
   ielts_analytics: {
     scale: string;
@@ -79,7 +87,7 @@ export default function TeacherEnglishWorkspace() {
     );
   };
 
-  const exportUrl = (fmt: 'csv' | 'pdf') =>
+  const exportUrl = (fmt: 'csv' | 'xlsx' | 'pdf') =>
     `/api/v1/english/teacher/export/?export_format=${fmt}${groupId ? `&group_id=${groupId}` : ''}`;
 
   return (
@@ -111,6 +119,9 @@ export default function TeacherEnglishWorkspace() {
           )}
           <a href={exportUrl('csv')} className="btn sm ghost" download>
             <Download size={14} /> CSV
+          </a>
+          <a href={exportUrl('xlsx')} className="btn sm ghost" download>
+            <Download size={14} /> XLSX
           </a>
           <a href={exportUrl('pdf')} className="btn sm primary" download>
             <FileText size={14} /> PDF
@@ -255,13 +266,38 @@ export default function TeacherEnglishWorkspace() {
                 ) : (
                   <ul className="space-y-2">
                     {data.inbox.mocks.map((m) => (
-                      <li key={m.attempt_id} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
-                        <div>
-                          <strong>{m.student}</strong> — <span>{m.test_title}</span> ({m.exam_type})
+                      <li key={m.attempt_id} className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+                        <div className="space-y-1">
+                          <div>
+                            <strong>{m.student}</strong> — <span>{m.test_title}</span>{' '}
+                            <span className="muted small">({m.exam_type})</span>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {(m.writing_items || []).map((wi) => (
+                              <Link
+                                key={wi.id}
+                                to={`/teacher/essays/${wi.id}/review`}
+                                className="btn sm ghost"
+                              >
+                                Writing #{wi.id} ({wi.final_score ?? wi.status})
+                              </Link>
+                            ))}
+                            {(m.speaking_items || []).map((si) => (
+                              <span key={si.id} className="badge blue">
+                                Speaking #{si.id}: {si.final_score ?? si.status}
+                              </span>
+                            ))}
+                          </div>
                         </div>
-                        <Link to={`/results`} className="btn sm ghost">
-                          {t('tr_open_review')}
-                        </Link>
+                        {m.test_id ? (
+                          <Link to={`/teacher/gradebook?testId=${m.test_id}`} className="btn sm primary">
+                            Vedomost →
+                          </Link>
+                        ) : (
+                          <Link to="/results" className="btn sm ghost">
+                            {t('tr_open_review')}
+                          </Link>
+                        )}
                       </li>
                     ))}
                   </ul>

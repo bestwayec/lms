@@ -43,55 +43,114 @@ class EvidenceSpan:
 
 
 def _normalize_ws(text: str) -> str:
-    return re.sub(r"\s+", " ", (text or "").replace("\u2019", "'").replace("\u2018", "'")).strip()
+    return re.sub(
+        r"\s+",
+        " ",
+        (text or "")
+        .replace("\u2019", "'")
+        .replace("\u2018", "'")
+        .replace("\u201c", '"')
+        .replace("\u201d", '"')
+        .replace("\u00a0", " "),
+    ).strip()
 
 
-def find_grounded_offset(source_text: str, quote: str) -> EvidenceSpan:
-    """Locate ``quote`` inside ``source_text`` returning exact offsets when present."""
+def _find_all_occurrences(src: str, q: str) -> list[tuple[int, int]]:
+    """Return all (start, end) character index pairs for ``q`` inside ``src``."""
+    matches: list[tuple[int, int]] = []
+    start = 0
+    while True:
+        idx = src.find(q, start)
+        if idx == -1:
+            break
+        matches.append((idx, idx + len(q)))
+        start = idx + max(1, len(q))
+    if matches:
+        return matches
+
+    lower_src = src.lower()
+    lower_q = q.lower()
+    start = 0
+    while True:
+        idx = lower_src.find(lower_q, start)
+        if idx == -1:
+            break
+        matches.append((idx, idx + len(q)))
+        start = idx + max(1, len(q))
+    if matches:
+        return matches
+
+    # Whitespace & curly-quote tolerant search on raw string using flexible character classes
+    tokens = [re.escape(tok) for tok in _normalize_ws(q).split(" ") if tok]
+    if 1 <= len(tokens) <= 45:
+        joined = r"[\s\u00a0]+".join(tokens)
+        joined = joined.replace("'", r"['\u2018\u2019]").replace('"', r'["\u201c\u201d]')
+        pattern = re.compile(joined, re.IGNORECASE)
+        for m in pattern.finditer(src):
+            matches.append((m.start(), m.end()))
+    return matches
+
+
+def find_grounded_offset(
+    source_text: str,
+    quote: str,
+    *,
+    occurrence: int = 0,
+    context_hint: str = "",
+    exclude_spans: set[tuple[int, int]] | None = None,
+) -> EvidenceSpan:
+    """Locate ``quote`` inside ``source_text`` with repeated-phrase & Unicode support."""
     src = source_text or ""
-    q = (quote or "").strip().strip('"\'')
+    q = (quote or "").strip().strip('"\'\u201c\u201d\u2018\u2019')
     if not q or len(q) < 4:
         return EvidenceSpan(quote=q, start_offset=-1, end_offset=-1, verified=False)
 
-    idx = src.find(q)
-    if idx != -1:
-        return EvidenceSpan(quote=src[idx : idx + len(q)], start_offset=idx, end_offset=idx + len(q), verified=True)
+    candidates = _find_all_occurrences(src, q)
+    if not candidates:
+        return EvidenceSpan(quote=q, start_offset=-1, end_offset=-1, verified=False)
 
-    lower_idx = src.lower().find(q.lower())
-    if lower_idx != -1:
-        return EvidenceSpan(
-            quote=src[lower_idx : lower_idx + len(q)],
-            start_offset=lower_idx,
-            end_offset=lower_idx + len(q),
-            verified=True,
-        )
+    pool = [c for c in candidates if not exclude_spans or c not in exclude_spans] or candidates
+    chosen = pool[occurrence] if 0 <= occurrence < len(pool) else pool[0]
 
-    # Whitespace-collapsed regex fallback so exact linebreaks don't break grounding
-    tokens = [re.escape(tok) for tok in _normalize_ws(q).split(" ") if tok]
-    if 2 <= len(tokens) <= 40:
-        pattern = re.compile(r"\s+".join(tokens), re.IGNORECASE)
-        match = pattern.search(src)
-        if match:
-            return EvidenceSpan(
-                quote=src[match.start() : match.end()],
-                start_offset=match.start(),
-                end_offset=match.end(),
-                verified=True,
-            )
+    hint = _normalize_ws(context_hint).lower()
+    if hint and len(pool) > 1:
+        hint_tokens = [tok for tok in re.findall(r"[a-z0-9']+", hint) if len(tok) >= 4]
+        best_score = -1
+        for s_idx, e_idx in pool:
+            window = _normalize_ws(src[max(0, s_idx - 25) : min(len(src), e_idx + 45)]).lower()
+            score = 100 if hint in window else sum(1 for tok in hint_tokens if tok in window)
+            if score > best_score:
+                best_score = score
+                chosen = (s_idx, e_idx)
 
-    return EvidenceSpan(quote=q, start_offset=-1, end_offset=-1, verified=False)
+    s_idx, e_idx = chosen
+    return EvidenceSpan(quote=src[s_idx:e_idx], start_offset=s_idx, end_offset=e_idx, verified=True)
 
 
 def verify_evidence_items(items: list[dict[str, Any]], source_text: str) -> list[dict[str, Any]]:
     """Enrich criterion/feedback items with verified start_offset/end_offset spans."""
     enriched: list[dict[str, Any]] = []
+    seen_counts: dict[str, int] = {}
+    used_spans: set[tuple[int, int]] = set()
     for item in items:
         if not isinstance(item, dict):
             continue
         copy_item = dict(item)
         raw_quote = str(item.get("quote") or item.get("evidence_quote") or "").strip()
         if raw_quote:
-            span = find_grounded_offset(source_text, raw_quote)
+            key = _normalize_ws(raw_quote).lower()
+            explicit_occ = str(item.get("occurrence", "")).isdigit()
+            occ = int(item.get("occurrence")) if explicit_occ else seen_counts.get(key, 0)
+            seen_counts[key] = occ + 1
+            span = find_grounded_offset(
+                source_text,
+                raw_quote,
+                occurrence=occ,
+                context_hint=str(item.get("context") or item.get("reason") or ""),
+                exclude_spans=None if explicit_occ else used_spans,
+            )
+            if span.verified:
+                used_spans.add((span.start_offset, span.end_offset))
             copy_item["quote"] = span.quote
             copy_item["start_offset"] = span.start_offset
             copy_item["end_offset"] = span.end_offset

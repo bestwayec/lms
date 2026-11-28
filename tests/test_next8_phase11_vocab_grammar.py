@@ -56,6 +56,19 @@ def test_answer_safe_vocab_quiz_and_flashcard_deck():
     assert sub_res.data["is_correct"] is True
     assert sub_res.data["streak"] == 1
 
+    from apps.vocabulary.quiz_engine import build_answer_safe_vocab_questions
+
+    syn_entry = [
+        {"id": 10, "word": "coherent", "meaning": "mantiqiy izchil", "context_sentence": "", "synonyms": ["logical", "structured"]},
+        {"id": 11, "word": "abundant", "meaning": "mo'l-ko'l", "context_sentence": "", "synonyms": ["plentiful"]},
+        {"id": 12, "word": "scarce", "meaning": "kam", "context_sentence": "", "synonyms": []},
+        {"id": 13, "word": "rigid", "meaning": "qattiq", "context_sentence": "", "synonyms": []},
+        {"id": 14, "word": "vivid", "meaning": "yorqin", "context_sentence": "", "synonyms": []},
+    ]
+    syn_qs = build_answer_safe_vocab_questions(syn_entry, user_id=7, seed=3)
+    assert any(q["type"] == "synonym" and "logical" in q["options"] for q in syn_qs)
+    assert all("correct_answer" not in q for q in syn_qs)
+
 
 @pytest.mark.django_db
 def test_grammar_studio_10_topics_recommendations_and_submission():

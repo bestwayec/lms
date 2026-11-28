@@ -63,6 +63,7 @@ def _audio_path(sub: SpeakingSubmission) -> str | None:
 
 
 def _serialize_submission(sub: SpeakingSubmission) -> dict:
+    fb = sub.feedback or {}
     return {
         "id": sub.id,
         "topic_id": sub.topic_id,
@@ -83,8 +84,11 @@ def _serialize_submission(sub: SpeakingSubmission) -> dict:
         "pronunciation_score": float(sub.pronunciation_score) if sub.pronunciation_score is not None else None,
         "overall_band": float(sub.overall_band) if sub.overall_band is not None else None,
         "final_score": float(sub.final_score) if getattr(sub, "final_score", None) is not None else (float(sub.overall_band) if sub.overall_band is not None else None),
+        "is_partial_estimate": bool(fb.get("is_partial_estimate", sub.overall_band is None and sub.final_score is None and sub.fluency_score is not None)),
+        "partial_band_estimate": fb.get("partial_band_estimate"),
+        "assessment_scope": fb.get("assessment_scope") or ("teacher_finalized" if getattr(sub, "teacher_reviewed_at", None) else "complete_4_criteria"),
         "task_scores": getattr(sub, "task_scores", {}) or {},
-        "feedback": sub.feedback or {},
+        "feedback": fb,
         "teacher_review_requested": bool(getattr(sub, "teacher_review_requested", False)),
         "teacher_score": float(sub.teacher_score) if getattr(sub, "teacher_score", None) is not None else None,
         "teacher_comments": getattr(sub, "teacher_comments", ""),

@@ -119,6 +119,11 @@ urlpatterns = [
         name="listening-audio-stream",
     ),
     path(
+        "attempts/<int:attempt_id>/questions/<int:question_id>/speaking/",
+        views.AttemptSpeakingUploadView.as_view(),
+        name="attempt-speaking-upload",
+    ),
+    path(
         "attempts/<int:attempt_id>/submit/",
         views.SubmitAttemptView.as_view(),
         name="submit-attempt",

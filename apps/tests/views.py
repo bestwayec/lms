@@ -30,7 +30,7 @@ from rest_framework.views import APIView
 
 from apps.accounts.access import is_platform_admin
 
-from .models import ExamPart, Test, TestAttempt
+from .models import ExamPart, Question, StudentAnswer, Test, TestAttempt
 from .permissions import CanStartAttempt, IsAttemptOwner
 from .serializers import (
     AttemptDetailSerializer,
@@ -980,6 +980,139 @@ class ListeningAudioStreamView(APIView):
         )
 
 
+class AttemptSpeakingUploadView(APIView):
+    """
+    POST /api/tests/attempts/{attempt_id}/questions/{question_id}/speaking/
+
+    Record & attach a Speaking response directly inside an active Full Mock / English exam
+    using bounded WAV/WebM/OGG duration verification and duplicate-hash protection.
+    """
+
+    permission_classes = [IsAuthenticated, IsAttemptOwner]
+
+    def post(self, request: Request, attempt_id: int, question_id: int, *args: Any, **kwargs: Any) -> Response:
+        from django.db import transaction
+        from apps.speaking.audio_verify import InvalidSpeakingAudio, inspect_uploaded_audio
+        from apps.speaking.models import SpeakingSubmission, SpeakingTopic
+
+        audio_file = request.FILES.get("audio")
+        if not audio_file:
+            return Response(
+                {"ok": False, "code": "SPEAKING_AUDIO_EMPTY", "error": "Ovoz yozuvi (audio) yuklanmadi."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        expected_raw = request.data.get("expected_seconds")
+        expected_seconds = int(expected_raw) if str(expected_raw or "").isdigit() else None
+        duration_raw = request.data.get("duration_seconds", "60")
+        duration = max(5, min(900, int(duration_raw) if str(duration_raw or "").isdigit() else 60))
+
+        try:
+            audio_meta = inspect_uploaded_audio(
+                audio_file,
+                expected_seconds=expected_seconds,
+            )
+        except InvalidSpeakingAudio as exc:
+            return Response(
+                {"ok": False, "code": exc.code, "error": exc.message},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            attempt = (
+                TestAttempt.objects.select_related("test")
+                .select_for_update()
+                .filter(id=attempt_id, student=request.user)
+                .first()
+            )
+            if not attempt:
+                return Response({"ok": False, "error": "Attempt topilmadi."}, status=status.HTTP_404_NOT_FOUND)
+            if attempt.status != TestAttempt.Status.IN_PROGRESS:
+                return Response(
+                    {"ok": False, "code": "ATTEMPT_CLOSED", "error": "Urinish allaqachon yakunlangan."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            question = attempt.test.questions.filter(pk=question_id).first()
+            if not question or question.question_type != Question.QuestionType.SPEAKING_PROMPT:
+                return Response(
+                    {"ok": False, "error": "Speaking savoli topilmadi."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            state = dict(attempt.media_state or {})
+            spk_map = dict(state.get("speaking_submissions") or {})
+            existing_entry = spk_map.get(str(question.id))
+            if (
+                isinstance(existing_entry, dict)
+                and existing_entry.get("audio_hash")
+                and existing_entry.get("audio_hash") == audio_meta.get("audio_hash")
+            ):
+                existing_sub = SpeakingSubmission.objects.filter(pk=existing_entry.get("submission_id")).first()
+                if existing_sub:
+                    return Response(
+                        {
+                            "ok": True,
+                            "duplicate": True,
+                            "submission_id": existing_sub.id,
+                            "status": existing_sub.status,
+                            "decoded_duration_ms": existing_sub.decoded_duration_ms,
+                            "audio_hash": existing_sub.audio_hash,
+                        },
+                        status=status.HTTP_200_OK,
+                    )
+
+            is_ml = attempt.test.exam_type == Test.ExamType.CEFR_MULTILEVEL
+            topic_part = SpeakingTopic.PartChoice.MULTILEVEL if is_ml else SpeakingTopic.PartChoice.PART2
+            topic, _ = SpeakingTopic.objects.get_or_create(
+                title=(question.text or f"Mock Speaking Q{question.id}")[:250],
+                part=topic_part,
+                defaults={"prompt": question.text or "Respond clearly to the speaking prompt."},
+            )
+            sub = SpeakingSubmission.objects.create(
+                user=request.user,
+                topic=topic,
+                audio_file=audio_file,
+                duration_seconds=audio_meta.get("decoded_seconds") or duration,
+                decoded_duration_ms=audio_meta.get("decoded_duration_ms"),
+                audio_hash=audio_meta.get("audio_hash", ""),
+                is_verified_audio=bool(audio_meta.get("is_verified_audio")),
+                track=SpeakingSubmission.Track.CEFR_MULTILEVEL if is_ml else SpeakingSubmission.Track.IELTS,
+                rubric_version="uzbmb_multilevel_speaking_2026_v2" if is_ml else "ielts_speaking_v1",
+                teacher_review_requested=True,
+                status=SpeakingSubmission.Status.PENDING_TEACHER,
+            )
+
+            spk_map[str(question.id)] = {
+                "submission_id": sub.id,
+                "audio_hash": sub.audio_hash,
+                "decoded_duration_ms": sub.decoded_duration_ms,
+                "status": sub.status,
+            }
+            state["speaking_submissions"] = spk_map
+            attempt.media_state = state
+            attempt.save(update_fields=["media_state"])
+
+            StudentAnswer.objects.update_or_create(
+                attempt=attempt,
+                question=question,
+                defaults={"text_answer": f"speaking_submission:{sub.id}"},
+            )
+
+        return Response(
+            {
+                "ok": True,
+                "duplicate": False,
+                "submission_id": sub.id,
+                "status": sub.status,
+                "decoded_duration_ms": sub.decoded_duration_ms,
+                "is_verified_audio": sub.is_verified_audio,
+                "audio_hash": sub.audio_hash,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Finalize Attempt (PENDING_GRADING → COMPLETED once writing is graded)
 # ---------------------------------------------------------------------------
@@ -1745,6 +1878,8 @@ class CertificateCardView(APIView):
                 cefr_multilevel.summarize(attempt.section_scores or {})
             )
             summary.update(
+                grading_status="graded" if summary.get("overall") else "pending_grading",
+                cefr_level=(summary.get("overall") or {}).get("level") or "",
                 candidate_name=student_name,
                 exam_title=attempt.test.title,
                 exam_type=attempt.test.get_exam_type_display(),
@@ -1929,12 +2064,13 @@ class TestGradebookView(APIView):
                 status__in=[
                     TestAttempt.Status.COMPLETED,
                     TestAttempt.Status.TIMEOUT,
+                    TestAttempt.Status.PENDING_GRADING,
                     TestAttempt.Status.IN_PROGRESS,
                 ],
             )
             .select_related("student")
             .prefetch_related("answers")
-            .order_by("-score", "-rasch_score", "completed_at")
+            .order_by("-band_score", "-score", "-rasch_score", "completed_at")
         )
 
         seen_students = set()
@@ -1956,6 +2092,7 @@ class TestGradebookView(APIView):
             seen_students.add(student.id)
 
             is_in_progress = att.status == TestAttempt.Status.IN_PROGRESS
+            is_pending_grading = att.status == TestAttempt.Status.PENDING_GRADING
             if is_in_progress:
                 in_progress_count += 1
                 answers_cnt = att.answers.count()
@@ -1966,6 +2103,15 @@ class TestGradebookView(APIView):
                 pct = progress_pct
                 grade = "-"
                 badge_class = "badge-blue"
+            elif is_pending_grading:
+                answers_cnt = att.answers.count()
+                progress_pct = 100.0
+                raw = att.raw_score
+                rasch = float(att.rasch_score) if att.rasch_score else float(att.score or 0)
+                pct = float(att.percentage or 0)
+                status_label = "Tekshiruv kutilmoqda (W/S)"
+                grade = att.cefr_level or "Pending"
+                badge_class = "badge-amber"
             else:
                 completed_count += 1
                 answers_cnt = total_questions
@@ -2022,6 +2168,10 @@ class TestGradebookView(APIView):
                     ),
                     "status": att.status,
                     "is_in_progress": is_in_progress,
+                    "grading_status": "pending_grading" if is_pending_grading else ("in_progress" if is_in_progress else "graded"),
+                    "band_score": float(att.band_score) if att.band_score is not None else None,
+                    "cefr_level": att.cefr_level or "",
+                    "section_scores": att.section_scores or {},
                     "status_label": status_label,
                     "answers_count": answers_cnt,
                     "progress_percentage": progress_pct,

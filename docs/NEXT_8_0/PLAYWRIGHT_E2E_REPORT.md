@@ -1,37 +1,38 @@
 # GRANDEC NEXT 8.0 — Chromium Playwright E2E Verification Report
 
 ## Environment
-- **Backend**: Live Django (`config.settings.e2e`, SQLite migrated cleanly across all 21 Django apps, seeded with Student, Teacher, and Admin fixtures).
-- **Frontend**: Live Vite dev/preview proxy (`http://127.0.0.1:5173` -> `http://127.0.0.1:8000`).
-- **Browser**: Headless Chromium via Python Playwright (`sync_playwright`).
+- **Backend**: Live Django (`config.settings.e2e`, SQLite migrated cleanly across all 21 Django apps, seeded with Student, Teacher, Admin, 3 Full 4-Skill Mock Exams, Speaking Topic, Vocabulary Mistakes, and 10 Grammar Categories).
+- **Frontend**: Live Vite dev server (`http://127.0.0.1:5173` -> `http://127.0.0.1:8000`).
+- **Browser**: Headless Chromium via Python Playwright (`sync_playwright`, launched with `--use-fake-device-for-media-stream`, `--use-fake-ui-for-media-stream`, and `--use-file-for-fake-audio-capture`).
 
-## Role Flows & Authenticity
-All accounts authenticated through the real React `/login` SPA form (`form.form` -> `POST /api/auth/login/` -> `200 OK`):
+## End-to-End Full Mock Journeys Executed (`task-8528`)
+All roles authenticated via real `/login` SPA form (`POST /api/auth/login/` -> `200 OK`):
 
-| Role | Route | Result | Measured Navigation + Settled Load (ms) |
-| :--- | :--- | :--- | :--- |
-| Student | `/english` | Rendered authenticated English Center | `2824.0` |
-| Student | `/essays/studio` | Rendered Writing Studio 3.0 | `3921.4` |
-| Student | `/speaking` | Rendered AI Speaking Simulator topics | `1461.3` |
-| Student | `/vocabulary` | Rendered Flashcard Deck & Vocab Studio | `2388.0` |
-| Student | `/grammar` | Rendered 10-topic Grammar Studio | `1880.2` |
-| Student | `/tma` | Rendered Telegram Mini App Home & English card | `1644.5` |
-| Teacher | `/teacher/english` | Rendered `"English Ustoz Ish Joyi"` | `3086.3` |
-| Admin | `/panel` | Rendered `"Admin paneli"` + AI Gateway card | `2150.6` |
+1. **IELTS Academic Full Mock (`ielts_academic`)**:
+   - Listening (`TEXT_MATCH`), Reading (`SINGLE_CHOICE` with Passage), Writing (`WRITTEN`), Speaking (`SPEAKING_PROMPT` real Chromium WebM/Opus fake-mic upload -> `/api/tests/attempts/<id>/questions/<qid>/speaking/`).
+   - Submit -> inline `.cefr-result-page` (`pending_grading`), Logout -> `leftover_draft_keys: []`.
+   - Teacher Workspace Writing + Speaking reviews -> Auto-finalize -> Gradebook (`grading_status: "graded"`) -> Student Certificate Card (`overall_band`, `grading_status: "graded"`).
+2. **IELTS General Training Full Mock (`ielts_general`)**:
+   - Full 4-skill flow + Speaking WebM/Opus capture + Teacher review + Gradebook & Certificate Card parity (`grading_status: "graded"`).
+3. **CEFR Multilevel Full Mock (`cefr_multilevel`)**:
+   - Full 4-skill flow + Speaking WebM/Opus capture -> Writing `13/16 -> 63 (B2)`, Speaking `58/75 (B2)`, Listening `75 (C1)`, Reading `75 (C1)` -> Overall `67.8 (C1)`, `grading_status: "graded"`, `has_certificate: true`.
 
-## Responsive Viewport & Theme Matrix (12 Checks on `/english`)
-Tested across all 6 required widths in both **Light** and **Dark** modes:
+## Additional Studios & Auth Checks Verified Live
+- **Writing Studio (`/essays/studio`)**: Essay saved to backend draft (`POST /api/v1/essays/ielts/draft/`), reloaded cleanly, and verified preserved in `section textarea`.
+- **Speaking Practice (`/speaking/practice/<id>`)**: Microphone readiness & timer flow rendered cleanly (`speaking_practice_1366.png`).
+- **Vocabulary Studio (`/vocabulary`) & Grammar Studio (`/grammar`)**: Word deck and seeded Grammar topics rendered cleanly.
 
-| Width x Height | Light Theme Horizontal Overflow | Dark Theme Horizontal Overflow |
+## Responsive Viewport & Theme Matrix (`360px`..`1920px`, `task-8528`)
+| Width (px) | Horizontal Overflow (`/english`, `/essays/studio`, `/vocabulary`, `/grammar`) | Light & Dark / Theme Checks |
 | :--- | :--- | :--- |
-| `360 x 800` | `false` | `false` |
-| `390 x 844` | `false` | `false` |
-| `768 x 1024` | `false` | `false` |
-| `1024 x 768` | `false` | `false` |
-| `1366 x 768` | `false` | `false` |
-| `1920 x 1080` | `false` | `false` |
+| `360` | `false` (`overflows: []`) | `/english` `360px` search input (`paddingLeft: 38`, `clearGap: 12px` from search icon) |
+| `390` | `false` (`overflows: []`) | `/tma` Mobile shell clean (`tma_390_dark.png`) |
+| `768` | `false` (`overflows: []`) | Clean reflow |
+| `1024` | `false` (`overflows: []`) | Clean reflow |
+| `1366` | `false` (`overflows: []`) | Admin `/panel` Dark Mode (`cardBg: rgb(22, 32, 51)`, `cardColor: rgb(248, 250, 252)`), English Dark buttons fixed (`english_1366_dark.png`) |
+| `1920` | `false` (`overflows: []`) | Clean desktop layout |
 
-## Runtime Error Telemetry
+## Runtime Error Telemetry (`task-8528`)
 - **Browser `console.error` count**: `0`
 - **Uncaught `pageerror` exceptions**: `0`
 - **HTTP `5xx` server responses**: `0`

@@ -13,19 +13,33 @@ User = get_user_model()
 
 
 def test_evidence_offset_grounding_and_calibration_math():
-    source = "Renewable microgrids cut diesel reliance. Furthermore, solar storage keeps clinics powered."
+    source = (
+        "Renewable microgrids cut diesel reliance. Furthermore, solar storage keeps clinics powered. "
+        "However, solar storage also lowers outage costs during storms."
+    )
     items = verify_evidence_items(
         [
-            {"id": 1, "quote": "solar storage keeps clinics powered"},
-            {"id": 2, "quote": "fabricated quote not in text"},
+            {"id": 1, "quote": "solar storage", "reason": "Clinics context"},
+            {"id": 2, "quote": "solar storage", "reason": "Storm outage costs"},
+            {"id": 3, "quote": "fabricated quote not in text"},
         ],
         source,
     )
     assert items[0]["quote_verified"] is True
-    start, end = items[0]["start_offset"], items[0]["end_offset"]
-    assert source[start:end] == "solar storage keeps clinics powered"
-    assert items[1]["quote_verified"] is False
-    assert items[1]["start_offset"] == -1
+    s0, e0 = items[0]["start_offset"], items[0]["end_offset"]
+    assert source[s0:e0] == "solar storage"
+    assert items[1]["quote_verified"] is True
+    s1, e1 = items[1]["start_offset"], items[1]["end_offset"]
+    assert source[s1:e1] == "solar storage"
+    assert s1 > s0  # Repeated phrase resolves distinctly
+    assert items[2]["quote_verified"] is False
+    assert items[2]["start_offset"] == -1
+
+    # Unicode curly apostrophe & whitespace normalization grounding
+    uni_source = "Children\u2019s   access\u00a0to\nclean public libraries improves literacy."
+    uni_items = verify_evidence_items([{"id": 4, "quote": "Children's access to clean public libraries"}], uni_source)
+    assert uni_items[0]["quote_verified"] is True
+    assert uni_source[uni_items[0]["start_offset"] : uni_items[0]["end_offset"]].startswith("Children")
 
     cal = compute_calibrated_stats(
         [
@@ -91,6 +105,22 @@ def test_writing_studio_ielts_and_multilevel_grading_no_fake_scores_and_teacher_
         ml_student = User.objects.create_user(email="w_ml_student@example.com", password="StrongPassword123!", role="student")
         ml_client = APIClient()
         ml_client.force_authenticate(user=ml_student)
+
+        # Draft save & restore workflow in Writing Studio 3.0
+        draft_save = ml_client.post(
+            "/api/v1/essays/ielts/draft/",
+            {
+                "task_type": "ielts_gt_letter",
+                "topic_title": "Library extension request",
+                "essay_text": "Dear Librarian, I am writing to request a two-week extension.",
+            },
+            format="json",
+        )
+        assert draft_save.status_code == 200
+        draft_get = ml_client.get("/api/v1/essays/ielts/draft/?task_type=ielts_gt_letter")
+        assert draft_get.status_code == 200
+        assert "two-week extension" in draft_get.data["draft"]["essay_text"]
+
         ml_res = ml_client.post(
             "/api/v1/essays/ielts/grade/",
             {"task_type": "multilevel_1_2", "topic_title": "Formal Request", "essay_text": essay_text},
@@ -98,6 +128,11 @@ def test_writing_studio_ielts_and_multilevel_grading_no_fake_scores_and_teacher_
         )
         assert ml_res.status_code == 200
         assert ml_res.data["task_type"] == "multilevel_1_2"
+        assert ml_res.data["is_estimate"] is True
+        assert isinstance(ml_res.data.get("corrections"), list) and len(ml_res.data["corrections"]) >= 1
+        assert ml_res.data["corrections"][0]["quote_verified"] is True
+        assert isinstance(ml_res.data.get("vocabulary_upgrades"), list) and len(ml_res.data["vocabulary_upgrades"]) >= 1
+        assert bool(ml_res.data.get("next_level_example"))
 
     # N8-004: Teacher reviews English IELTS essay with 1.0..9.0 rubric
     sub = EssaySubmission.objects.get(id=ok_res.data["submission_id"])

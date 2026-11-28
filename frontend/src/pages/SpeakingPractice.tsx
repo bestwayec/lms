@@ -120,7 +120,11 @@ export default function SpeakingPractice() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioChunksRef.current = [];
 
-      const mediaRecorder = new MediaRecorder(stream);
+      const preferredTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'];
+      const chosenMime = preferredTypes.find((m) => MediaRecorder.isTypeSupported?.(m)) || '';
+      const mediaRecorder = chosenMime
+        ? new MediaRecorder(stream, { mimeType: chosenMime })
+        : new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (event) => {
@@ -130,7 +134,8 @@ export default function SpeakingPractice() {
       };
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const mimeType = mediaRecorder.mimeType || chosenMime || 'audio/webm';
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
         setAudioBlob(blob);
         setAudioUrl(URL.createObjectURL(blob));
         // Stop audio tracks
@@ -168,7 +173,8 @@ export default function SpeakingPractice() {
     setError(null);
 
     const fd = new FormData();
-    fd.append('audio', audioBlob, 'speaking_response.webm');
+    const ext = audioBlob.type.includes('ogg') ? 'ogg' : audioBlob.type.includes('wav') ? 'wav' : 'webm';
+    fd.append('audio', audioBlob, `speaking_response.${ext}`);
     fd.append('topic_id', String(topic.id));
     const duration = (topic.speak_time_seconds || 120) - speakSecondsLeft;
     fd.append('duration_seconds', String(Math.max(10, duration)));
@@ -359,7 +365,7 @@ export default function SpeakingPractice() {
             <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#FBBF24', marginBottom: 6 }}>
               {formatTimer(prepSecondsLeft)}
             </div>
-            <p className="muted" style={{ maxWidth: 440, margin: '0 auto 20px' }}>
+            <p style={{ maxWidth: 440, margin: '0 auto 20px', color: '#CBD5E1', fontSize: '0.92rem' }}>
               Qog'ozga qisqa reja tuzib oling. Tayyorgarlik vaqti tugagach nutq so'zlash boshlanadi.
             </p>
             <button

@@ -231,21 +231,22 @@ export default function EnglishCenter() {
                 e.preventDefault();
                 load(data?.track, searchQuery.trim() || undefined);
               }}
-              className="flex items-end gap-2"
+              className="flex items-end gap-2 w-full sm:w-auto"
             >
-              <div className="relative">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <div className="relative flex-1 sm:flex-initial min-w-0">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 <input
                   type="search"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder={t('eng_search_placeholder', 'Test yoki mavzu qidirish...')}
-                  className="h-9 pl-8 pr-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white"
+                  style={{ paddingLeft: 38 }}
+                  className="h-9 w-full sm:w-56 pr-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white"
                 />
               </div>
               <button
                 type="submit"
-                className="h-9 px-3.5 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold"
+                className="h-9 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400 text-white text-xs font-bold shrink-0 border-0"
               >
                 {t('search', 'Qidirish')}
               </button>
@@ -298,8 +299,8 @@ export default function EnglishCenter() {
                   onClick={() => setSelectedMode(m.code)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
                     selected
-                      ? 'border-amber-500 bg-amber-500/15 text-amber-700 dark:text-amber-300'
-                      : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      ? 'border-amber-500 bg-amber-500/20 text-amber-800 dark:text-amber-200'
+                      : 'border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700'
                   }`}
                 >
                   {m.label}

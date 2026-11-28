@@ -367,29 +367,58 @@ def student_vocab_quiz_view(request):
 @permission_classes([IsAuthenticated])
 def student_vocab_submit_view(request):
     """POST /api/v1/vocabulary/student-quiz/submit/ — Grade typed/selected vocab answer server-side."""
-    from .quiz_engine import _canon
+    from .quiz_engine import _canon, _question_token
 
     word = str(request.data.get("word") or request.data.get("prompt_word") or "").strip()
+    token = str(request.data.get("token") or "").strip()
     given = str(request.data.get("answer") or "").strip()
     q_type = str(request.data.get("type") or "listen_choose").strip()
     mistake_id = request.data.get("id")
 
+    entries = _student_vocab_entries(request.user)
+    matched = None
+    if token:
+        matched = next(
+            (e for e in entries if _question_token(request.user.id, str(e.get("word") or ""), q_type) == token),
+            None,
+        )
+    if not matched:
+        matched = next(
+            (
+                e
+                for e in entries
+                if (mistake_id and str(e.get("id")) == str(mistake_id))
+                or (word and _canon(str(e.get("word") or "")) == _canon(word))
+            ),
+            None,
+        )
+
     mistake = None
-    if mistake_id:
-        mistake = StudentWordMistake.objects.filter(id=mistake_id, student=request.user).first()
-    if not mistake and word:
+    if mistake_id and str(mistake_id).isdigit():
+        mistake = StudentWordMistake.objects.filter(id=int(mistake_id), student=request.user).first()
+    if not mistake and matched:
+        mistake = StudentWordMistake.objects.filter(student=request.user, word__iexact=matched["word"]).first()
+    elif not mistake and word:
         mistake = StudentWordMistake.objects.filter(student=request.user, word__iexact=word).first()
 
-    entries = _student_vocab_entries(request.user)
-    matched = next((e for e in entries if (mistake_id and e.get("id") == mistake_id) or (word and _canon(e["word"]) == _canon(word))), None)
     if not matched and not mistake:
         return Response({"error": "So'z topilmadi."}, status=status.HTTP_404_NOT_FOUND)
 
     target_word = mistake.word if mistake else matched["word"]
     target_meaning = (mistake.translation_uz or mistake.definition) if mistake else matched["meaning"]
+    target_synonyms = [str(s).strip() for s in ((matched or {}).get("synonyms") or []) if str(s).strip()]
 
-    expected = target_word if q_type in ("listen_type", "fill_blank") else target_meaning
-    is_correct = bool(given) and _canon(given) == _canon(expected)
+    if q_type in ("listen_type", "fill_blank"):
+        accepted = [target_word]
+        expected = target_word
+    elif q_type == "synonym" and target_synonyms:
+        accepted = target_synonyms
+        expected = target_synonyms[0]
+    else:
+        accepted = [target_meaning]
+        expected = target_meaning
+
+    is_correct = bool(given) and any(_canon(given) == _canon(ans) for ans in accepted if ans)
 
     if mistake:
         newly_mastered = mistake.record_attempt(is_correct)
@@ -405,6 +434,8 @@ def student_vocab_submit_view(request):
         streak = obj.consecutive_correct_streak
         is_mastered = obj.is_mastered
 
+    due_count = StudentWordMistake.objects.filter(student=request.user, is_mastered=False).count()
+    mastered_count = StudentWordMistake.objects.filter(student=request.user, is_mastered=True).count()
     return Response(
         {
             "ok": True,
@@ -413,6 +444,8 @@ def student_vocab_submit_view(request):
             "streak": streak,
             "is_mastered": is_mastered,
             "newly_mastered": newly_mastered,
+            "due_count": due_count,
+            "mastered_count": mastered_count,
         }
     )
 
