@@ -364,7 +364,13 @@ class StudentGroup(models.Model):
                 "uzbek": "ONA",
             }
             prefix = prefix_map.get(self.subject, "GR")
-            self.invite_code = f"{prefix}-{secrets.token_hex(2).upper()}"
+            candidate = f"{prefix}-{secrets.token_hex(2).upper()}"
+            for attempt in range(16):
+                if not StudentGroup.objects.filter(invite_code=candidate).exists():
+                    break
+                nbytes = 2 if attempt < 8 else 3
+                candidate = f"{prefix}-{secrets.token_hex(nbytes).upper()}"
+            self.invite_code = candidate
         if not self.invite_token:
             self.invite_token = generate_invite_token()
         super().save(*args, **kwargs)
